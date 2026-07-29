@@ -1,40 +1,38 @@
-# Obsidian Plugin Template (Bun)
+# AI Editor
 
-A modern Obsidian plugin template using **Bun** as the package manager and bundler, with TypeScript, Tailwind CSS v4, ESLint, Prettier, and automated release workflows.
+An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself** — not a chat sidebar, but configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
-## Features
+- **Editors**: AI personas (Concision Editor, Devil's Advocate, Fact Checker…) you define with a prompt — typed directly or sourced from your own vault notes.
+- **Panels**: groups of 1-n editors producing an aggregated scorecard: verdicts, top fixes, dissenting opinions.
+- **Review loop**: summon your editors, watch findings land as highlighted spans, triage them with keyboard-first accept/reject, push back and argue, refine suggestions.
+- **Actions**: rephrase, critique, say more, find evidence, identify assumptions — each bound to the editor or panel of your choice.
+- **Async margin comments**: select text, leave an instruction, and a background agent works on it while you keep writing.
+- **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
+- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI and compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
 
-- **Bun** for fast package management and bundling
-- **TypeScript** with strict configuration
-- **Tailwind CSS v4** for styling
-- **ESLint + Prettier** for code quality
-- **Husky + lint-staged** for pre-commit hooks
-- **Commitizen + Conventional Commits** for standardized commit messages
-- **GitHub Actions** for CI/CD and automated releases
-- **Immer** for immutable state management
-- **Zod** for runtime validation
+Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff.
 
-## Getting Started
+> Status: early development. See `documentation/plans/` for the implementation plan.
 
-See [TEMPLATE_USAGE.md](./TEMPLATE_USAGE.md) for detailed instructions on how to use this template to create your own Obsidian plugin.
+## Inspiration
 
-## Quick Start
+This plugin stands on the shoulders of two people:
 
-1. Click "Use this template" on GitHub to create a new repository
-2. Clone your new repository
-3. Follow the setup instructions in [TEMPLATE_USAGE.md](./TEMPLATE_USAGE.md)
-4. Run `bun install` to install dependencies
-5. Run `bun run dev` to start development
+- **[Maggie Appleton](https://maggieappleton.com)** — her [Language Model Sketchbook, or Why I Hate Chatbots](https://maggieappleton.com/lm-sketchbook) introduced *daemons*: background characters with distinct epistemic roles that live in the margins of your writing environment, suggest rather than impose, and can always be ignored. The core interaction philosophy of this plugin — bring the language model to the editing and thinking process instead of exiting into a chat interface — is hers.
+- **[Juri Strumpflohner](https://juri.dev)** — his AI-first markdown writing editor demos showed what that philosophy looks like as a working tool: a persona rail, summoning reviewers, inline diff suggestions, push-back conversations, and async review comments:
+    - [Built an AI-first markdown writing editor…](https://x.com/juristr/status/2074494746484236459)
+    - [I'm starting to really like this flow of collaborative editing](https://x.com/juristr/status/2077036970895872368)
+    - [I love my little reviewing tool…](https://x.com/juristr/status/2079297727364464700)
 
 ## Development
 
-See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed development instructions.
+Built with [Bun](https://bun.sh/) and TypeScript, from the [Obsidian Plugin Template (Bun)](https://github.com/dsebastien/obsidian-plugin-template).
 
 ### Prerequisites
 
 - [Bun](https://bun.sh/) (latest version)
 - [Git](https://git-scm.com/)
-- An Obsidian vault for testing
+- An Obsidian vault for testing (`OBSIDIAN_VAULT_LOCATION` env var)
 
 ### Commands
 
@@ -58,6 +56,6 @@ MIT License - see [LICENSE](./LICENSE) for details.
 
 ## News & Support
 
-<!-- TODO: Update these links with your own -->
+To stay up to date about this plugin, Obsidian in general, Personal Knowledge Management and note-taking, subscribe to [my newsletter](https://newsletter.dsebastien.net). Note that the best way to support my work is to become a paid subscriber ❤️.
 
-To stay up to date about this plugin, Obsidian in general, Personal Knowledge Management and note-taking, subscribe to [my newsletter](https://your-newsletter-url.com). Note that the best way to support my work is to become a paid subscriber ❤️.
+If this plugin is useful to you, you can also [buy me a coffee](https://www.buymeacoffee.com/dsebastien) ☕
