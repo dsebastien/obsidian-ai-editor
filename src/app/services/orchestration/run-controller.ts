@@ -187,7 +187,13 @@ class ReviewRunHandle implements RunHandle {
         if (changes.length === 0) {
             return
         }
-        this.appliedChanges.push([...changes])
+        // The replay history only exists to remap findings that arrive mid-edit
+        // (`ingestFinding`). Once every editor stream has settled no further
+        // finding can arrive, so retaining more batches would leak one array per
+        // keystroke for the lifetime of the run. Staleness tracking still runs.
+        if (!this.settledFlag) {
+            this.appliedChanges.push([...changes])
+        }
         this.findings.applyTextChanges(changes)
     }
 
@@ -295,7 +301,19 @@ class ReviewRunHandle implements RunHandle {
      * are deduped by content.
      */
     private ingestFinding(spec: RunEditorSpec, state: InternalEditorState, raw: RawFinding): void {
-        const key = JSON.stringify([raw.quote, raw.critique, raw.suggestion ?? ''])
+        // The key must include the locating hints: the prompt instructs models to
+        // disambiguate repeated text via `occurrence`/`prefix`/`suffix`, so two
+        // findings on different occurrences of the same quote are legitimately
+        // distinct and must not collapse into one. Only true stream-vs-result
+        // duplicates (identical in every field) are deduped.
+        const key = JSON.stringify([
+            raw.quote,
+            raw.critique,
+            raw.suggestion ?? '',
+            raw.occurrence ?? null,
+            raw.prefix ?? '',
+            raw.suffix ?? ''
+        ])
         if (state.seenFindingKeys.has(key)) {
             return
         }
@@ -416,10 +434,26 @@ export class RunController {
         return null
     }
 
-    /** Cancels every active run (e.g. on plugin unload). */
+    /**
+     * Cancels and forgets the run for a file (file closed, deleted or
+     * renamed). Each retained run pins the full snapshot text plus its
+     * finding store, so runs must be discarded rather than left to
+     * accumulate for the lifetime of the plugin.
+     */
+    discardRun(filePath: string): void {
+        const run = this.runs.get(filePath)
+        if (!run) {
+            return
+        }
+        run.cancelRun()
+        this.runs.delete(filePath)
+    }
+
+    /** Cancels every active run and forgets them (e.g. on plugin unload). */
     cancelAll(): void {
         for (const run of this.runs.values()) {
             run.cancelRun()
         }
+        this.runs.clear()
     }
 }

@@ -127,6 +127,34 @@ describe('RunController happy path', () => {
         expect(run.findings.list()).toHaveLength(2)
     })
 
+    it('keeps findings on different occurrences of the same quote distinct', async () => {
+        // DOC contains "fox" twice; same critique on occurrence 0 and 1 are
+        // two legitimate findings — the dedupe key must include the hints.
+        const first = raw({
+            quote: 'fox',
+            critique: 'Overused',
+            suggestion: undefined,
+            occurrence: 0
+        })
+        const second = raw({
+            quote: 'fox',
+            critique: 'Overused',
+            suggestion: undefined,
+            occurrence: 1
+        })
+        const editor = scriptedEditor('occ', (runId) => [
+            finding(runId, first),
+            finding(runId, second),
+            result(runId, [first, second])
+        ])
+        const run = new RunController().startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        const findings = run.findings.list()
+        expect(findings).toHaveLength(2)
+        const anchors = findings.map((f) => f.anchor?.from).sort((a, b) => (a ?? 0) - (b ?? 0))
+        expect(anchors[0]).not.toEqual(anchors[1])
+    })
+
     it('propagates the snapshot selection into the request', async () => {
         const controller = new RunController()
         let seen: ReviewRequest | null = null
@@ -584,6 +612,37 @@ describe('RunController subscriptions', () => {
         await Promise.resolve()
         controller.cancelAll()
         expect(run.getEditorState('hang')?.status).toEqual('cancelled')
+        gate.resolve()
+        await run.settled
+    })
+
+    it('cancelAll forgets every run', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('done', (runId) => [result(runId, [])])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        controller.cancelAll()
+        expect(controller.getRun('notes/test.md')).toBeNull()
+    })
+
+    it('discardRun cancels and forgets the run for a file', async () => {
+        const controller = new RunController()
+        const gate = deferred()
+        const hanging: RunEditorSpec = {
+            editorId: 'hang',
+            editorName: 'Hang',
+            execute: async function* (request) {
+                yield finding(request.runId, raw())
+                await gate.promise
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [hanging] })
+        await Promise.resolve()
+        controller.discardRun('notes/test.md')
+        expect(run.getEditorState('hang')?.status).toEqual('cancelled')
+        expect(controller.getRun('notes/test.md')).toBeNull()
+        // Discarding an unknown path is a no-op.
+        controller.discardRun('notes/unknown.md')
         gate.resolve()
         await run.settled
     })
