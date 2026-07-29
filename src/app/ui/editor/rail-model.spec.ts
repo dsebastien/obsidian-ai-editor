@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildRailViewModel } from './rail-model'
+import { DAEMON_ARMED_TITLE, buildRailViewModel } from './rail-model'
 import type { RailEditorState, RailState } from './rail-model'
 
 function editor(overrides: Partial<RailEditorState> = {}): RailEditorState {
@@ -117,6 +117,18 @@ describe('buildRailViewModel', () => {
             expect(byStatus(editor({ status: 'idle' }))?.retryAriaLabel).toBeNull()
             expect(byStatus(editor({ status: 'running' }))?.retryAriaLabel).toBeNull()
             expect(byStatus(editor({ status: 'done' }))?.retryAriaLabel).toBeNull()
+        })
+    })
+
+    describe('daemon indicator', () => {
+        it('is absent by default and when not armed', () => {
+            expect(buildRailViewModel(state()).daemon).toBeNull()
+            expect(buildRailViewModel(state({ daemonArmed: false })).daemon).toBeNull()
+        })
+
+        it('carries the tooltip text while a daemon refresh is armed', () => {
+            const vm = buildRailViewModel(state({ daemonArmed: true }))
+            expect(vm.daemon).toEqual({ title: DAEMON_ARMED_TITLE })
         })
     })
 })

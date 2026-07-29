@@ -591,6 +591,83 @@ describe('startReview', () => {
         }
     })
 
+    it('restricts the pool to the requested editorIds (daemon editor-set redispatch)', async () => {
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', name: 'One' }),
+                makeEditor({ id: 'e-2', name: 'Two' }),
+                makeEditor({ id: 'e-3', name: 'Broken', backend: { backendId: 'ghost' } })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            editorIds: ['e-2', 'e-3']
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // Outside the set: not a candidate — neither run nor a skip. Inside
+        // the set but undispatchable: a reported skip like any review.
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-2'])
+        expect(result.skips).toEqual([
+            { editorId: 'e-3', editorName: 'Broken', reason: 'backend-not-found' }
+        ])
+        await result.run.settled
+    })
+
+    it('returns no-editors when the requested editorIds cannot dispatch', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'e-2', name: 'Off', enabled: false })]
+        })
+        for (const editorIds of [['ghost'], ['e-2'], []]) {
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody()),
+                editorIds
+            })
+            expect(result.status).toBe('no-editors')
+        }
+    })
+
+    it('aborts without starting a run when abortWhen fires (daemon vs user summon)', async () => {
+        // The guard runs in the same synchronous block as startRun: a user
+        // run that appeared during the context-assembly awaits must win —
+        // startRun would cancel it otherwise.
+        const runController = new RunController()
+        const settings = makeSettings()
+        const userRun = runController.startRun({ snapshot: makeSnapshot(), editors: [] })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController,
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            abortWhen: () => true
+        })
+        expect(result).toEqual({ status: 'aborted' })
+        // The pre-existing run was neither cancelled nor replaced.
+        expect(runController.getRun('Notes/Test.md')).toBe(userRun)
+    })
+
+    it('proceeds normally when abortWhen stays false', async () => {
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            abortWhen: () => false
+        })
+        expect(result.status).toBe('started')
+    })
+
     it('excludes attached context notes without failing the run', async () => {
         const vault = new FakeVault()
         vault.notes.set('Voice.md', 'Voice rules here')

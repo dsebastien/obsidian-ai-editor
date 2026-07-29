@@ -114,6 +114,12 @@ export type ReviewStart =
           readonly wordCount: number
           readonly limit: number
       }
+    /**
+     * `abortWhen` returned true right before the run would have started: no
+     * run exists, nothing was cancelled. Only reachable when the caller
+     * supplied `abortWhen` (the daemon's superseded-by-a-user-run guard).
+     */
+    | { readonly status: 'aborted' }
 
 export interface StartReviewInput {
     readonly settings: PluginSettingsV1
@@ -166,6 +172,25 @@ export interface StartReviewInput {
      * validate through the same Zod parsing as any review.
      */
     readonly instruction?: RunInstruction
+    /**
+     * Restricts the participant pool to these editor ids (daemon refreshes
+     * re-dispatch the note's PREVIOUS run's editor set): editors outside the
+     * set were not asked — neither run nor reported as skips — while editors
+     * inside it that cannot dispatch still surface as skips. An empty
+     * effective pool yields the usual `no-editors` refusal. Ignored when
+     * `instruction` is set (the instruction already names the one editor).
+     */
+    readonly editorIds?: readonly string[]
+    /**
+     * Checked synchronously immediately before the run would start (after
+     * context assembly's awaits, in the same synchronous block as
+     * `startRun`). Returning true aborts with status `'aborted'` and NO run
+     * is started. The daemon passes "a run for this file is now unsettled":
+     * `startRun` cancels the file's previous run, so without this guard a
+     * daemon dispatch racing a user summon during the awaits would cancel
+     * the user's explicit run (plan §0 daemon row — summon always wins).
+     */
+    readonly abortWhen?: () => boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -373,9 +398,12 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // instruction whose editor no longer exists, is disabled, or cannot
     // dispatch yields `no-editors` like any other empty selection.
     const instruction = input.instruction
+    const editorIds = input.editorIds
     const editorPool = instruction
         ? settings.editors.filter((editor) => editor.id === instruction.editorId)
-        : settings.editors
+        : editorIds
+          ? settings.editors.filter((editor) => editorIds.includes(editor.id))
+          : settings.editors
     const skips: EditorSkip[] = []
     const participants: { editor: EditorConfig; backend: ApiBackend; model: string }[] = []
     for (const editor of editorPool) {
@@ -445,6 +473,14 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // The original snapshot was only used for the size guard and context
     // budgeting, where slightly stale text is harmless. A refreshed snapshot
     // for a DIFFERENT file (view switched notes mid-await) is discarded.
+    // -- Last-moment abort guard (daemon vs explicit user runs) --------------
+    // Checked in the same synchronous block as `startRun`: nothing can
+    // interleave between this check and the run start, so a true result
+    // means no run is started and no existing run is cancelled.
+    if (input.abortWhen?.() === true) {
+        return { status: 'aborted' }
+    }
+
     const refreshed = input.refreshSnapshot?.() ?? null
     let runSnapshot =
         refreshed !== null && refreshed.filePath === snapshot.filePath ? refreshed : snapshot

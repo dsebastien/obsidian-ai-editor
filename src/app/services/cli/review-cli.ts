@@ -449,6 +449,14 @@ export async function handleReviewCli(
     }
 
     switch (start.status) {
+        case 'aborted':
+            // Only reachable when a runner passes `abortWhen` (the daemon's
+            // superseded guard); the CLI runner never does. Handled for
+            // exhaustiveness — status-only, nothing was started.
+            return render(
+                errorOutput(path, 'backend-error', 'The review was aborted before it started'),
+                args.format
+            )
         case 'excluded':
             return render(
                 errorOutput(

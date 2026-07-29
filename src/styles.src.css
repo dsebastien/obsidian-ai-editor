@@ -541,6 +541,17 @@
     }
 }
 
+/* Daemon armed indicator: a tiny pulsing dot under the editor chips —
+   deliberately subtle (tooltip carries the explanation, no layout churn). */
+.ai-editor-rail-daemon {
+    @apply rounded-full;
+    width: 6px;
+    height: 6px;
+    margin: 2px auto 0;
+    background-color: var(--text-faint);
+    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+}
+
 .ai-editor-rail-badge {
     @apply absolute rounded-full px-1 leading-tight;
     top: -7px;

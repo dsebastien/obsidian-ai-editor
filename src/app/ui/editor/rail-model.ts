@@ -24,6 +24,12 @@ export interface RailState {
     readonly editors: readonly RailEditorState[]
     /** True while a review run is in flight (button shows Cancel). */
     readonly running: boolean
+    /**
+     * True while daemon mode is on AND an automatic refresh is armed for
+     * this note (idle countdown running). Rendered as a subtle indicator —
+     * a small dot with a tooltip, no layout churn.
+     */
+    readonly daemonArmed?: boolean
 }
 
 export interface RailButtonViewModel {
@@ -53,7 +59,12 @@ export interface RailDotViewModel {
 export interface RailViewModel {
     readonly button: RailButtonViewModel
     readonly dots: readonly RailDotViewModel[]
+    /** Non-null while a daemon refresh is armed for this note. */
+    readonly daemon: { readonly title: string } | null
 }
+
+/** Tooltip/aria text of the daemon armed indicator. */
+export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after you pause editing'
 
 const BADGE_MAX = 99
 
@@ -119,6 +130,7 @@ export function buildRailViewModel(state: RailState): RailViewModel {
           }
     return {
         button,
-        dots: state.editors.map(buildDot)
+        dots: state.editors.map(buildDot),
+        daemon: state.daemonArmed === true ? { title: DAEMON_ARMED_TITLE } : null
     }
 }

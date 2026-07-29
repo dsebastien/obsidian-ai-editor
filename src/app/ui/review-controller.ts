@@ -17,9 +17,10 @@ import type {
     RunController,
     RunHandle
 } from '../services/orchestration/run-controller'
-import { skipReasonLabel, startReview } from '../services/review-service'
+import { countWords, skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
 import { AskEditorModal } from './ask-editor-modal'
+import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
 import {
@@ -41,8 +42,10 @@ import type { SidePanelBinding } from './side-panel'
  * the CM6 decoration field, forwards user edits to the run handle (anchor
  * remapping, Business Rules #3), and drives the side panel + status bar.
  *
- * Everything here is user-initiated: the only paths into `startReview` are
- * the Review command and the rail button (Business Rules #1).
+ * Everything here is user-authorized (Business Rules #1): the paths into
+ * `startReview` are the Review command/rail button/menus/CLI — plus daemon
+ * refreshes via `startDaemonReview`, authorized by the explicit
+ * `behavior.daemonMode` opt-in (the rule's documented carve-out).
  */
 
 // ---------------------------------------------------------------------------
@@ -166,10 +169,23 @@ export class ReviewController {
     private lastActiveMarkdownFile: string | null = null
     private refreshTimer: number | null = null
     private disposed = false
+    /** Daemon-mode glue, attached after construction (see `attachDaemon`). */
+    private daemon: DaemonController | null = null
 
     constructor(deps: ReviewControllerDeps) {
         this.deps = deps
         this.vaultReader = new ObsidianVaultReader(deps.app)
+    }
+
+    /**
+     * Wires the daemon controller (created after this controller because it
+     * dispatches through it — `plugin.ts` breaks the cycle here). Once
+     * attached, the canonical-view update listener feeds it edits, the
+     * refresh cycle feeds it live run state, and the file lifecycle hooks
+     * (close/delete/rename) clear its per-file timers.
+     */
+    attachDaemon(daemon: DaemonController): void {
+        this.daemon = daemon
     }
 
     /** Registers workspace listeners; call once from `onload`. */
@@ -199,6 +215,7 @@ export class ReviewController {
                 }
                 this.deps.runController.discardRun(oldPath)
                 this.skipsByFile.delete(oldPath)
+                this.daemon?.fileClosed(oldPath)
                 if (this.lastActiveMarkdownFile === oldPath) {
                     this.lastActiveMarkdownFile = file.path
                 }
@@ -209,6 +226,7 @@ export class ReviewController {
             app.vault.on('delete', (file) => {
                 this.deps.runController.discardRun(file.path)
                 this.skipsByFile.delete(file.path)
+                this.daemon?.fileClosed(file.path)
                 if (this.lastActiveMarkdownFile === file.path) {
                     this.lastActiveMarkdownFile = null
                 }
@@ -338,6 +356,9 @@ export class ReviewController {
         })
 
         switch (result.status) {
+            case 'aborted':
+                // Only daemon dispatches pass `abortWhen`; unreachable here.
+                return
             case 'excluded':
                 new Notice('This note is excluded from AI review by your privacy settings.')
                 return
@@ -543,6 +564,86 @@ export class ReviewController {
     /** Whether the note is open in some markdown view (CLI run retention). */
     hasOpenMarkdownView(filePath: string): boolean {
         return this.findMarkdownView(filePath) !== null
+    }
+
+    // -- Daemon dispatch seam (`DaemonReviewPort`) ----------------------------
+
+    /**
+     * Live-buffer facts for the daemon's fire-time gates: hash (changed-text
+     * compare against the last run's snapshot) and word count (silent
+     * oversized skip). Null when the note is not open in any markdown view —
+     * the daemon then fails closed (nothing to dispatch against).
+     */
+    probeDaemonNote(filePath: string): { hash: string; wordCount: number } | null {
+        const view = this.findMarkdownView(filePath)
+        if (!view || view.file?.path !== filePath) {
+            return null
+        }
+        const text = view.editor.getValue()
+        return { hash: hashText(text), wordCount: countWords(text) }
+    }
+
+    /**
+     * Daemon refresh entry (`DaemonReviewPort`): the SAME `startReview`
+     * pipeline as every other surface (exclusions, size guard, editor/backend
+     * resolution, concurrency gate all apply), with the daemon-specific
+     * contract on top (plan §0 daemon row):
+     * - whole-note scope — a live selection must never narrow an automatic
+     *   refresh;
+     * - `editorIds` re-dispatches the note's previous run's editor set (null
+     *   = never reviewed → all enabled review-capable editors);
+     * - SILENT on every refusal: no Notices, no size-confirmation modal (the
+     *   daemon pre-checks size and skips oversized notes with one log line),
+     *   no side-panel activation — an automatic refresh must not rearrange
+     *   the workspace or nag;
+     * - `abortWhen` guards the context-assembly awaits: if a user summon
+     *   started a run meanwhile, the dispatch aborts WITHOUT starting a run —
+     *   `startRun` would cancel the user's run, and explicit interactions
+     *   always win over the daemon.
+     */
+    async startDaemonReview(
+        filePath: string,
+        editorIds: readonly string[] | null
+    ): Promise<'started' | 'refused'> {
+        if (this.disposed) {
+            return 'refused'
+        }
+        const view = this.findMarkdownView(filePath)
+        if (!view || view.file?.path !== filePath) {
+            return 'refused'
+        }
+        const snapshot = this.snapshotView(view, filePath, 'whole-note')
+        const result = await startReview({
+            settings: this.deps.getSettings(),
+            snapshot,
+            vault: this.vaultReader,
+            runController: this.deps.runController,
+            fetchImpl: window.fetch.bind(window),
+            confirmedLargeNote: false,
+            refreshSnapshot: (): DocumentSnapshot | null =>
+                view.file?.path === filePath
+                    ? this.snapshotView(view, filePath, 'whole-note')
+                    : null,
+            abortWhen: (): boolean => {
+                const run = this.deps.runController.getRun(filePath)
+                return run !== null && !run.isSettled()
+            },
+            ...(editorIds ? { editorIds } : {})
+        })
+        if (result.status !== 'started') {
+            return 'refused'
+        }
+        this.skipsByFile.set(filePath, result.skips)
+        // Synchronous bind, same invariant as the command path's 'started'
+        // branch: `glue.run` must hold the run before any keystroke can
+        // interleave. Safe: timer callback context, never a CM6 update cycle.
+        this.refreshAll()
+        return 'started'
+    }
+
+    /** Deferred refresh entry for the daemon's armed-state indicator. */
+    requestRefresh(): void {
+        this.scheduleRefresh()
     }
 
     /** Cancels the active run for the view's note (rail Cancel button). */
@@ -786,7 +887,7 @@ export class ReviewController {
             return
         }
         const glue = this.findGlueByEditorView(update.view)
-        if (!glue || !glue.run || glue.filePath === null) {
+        if (!glue || glue.filePath === null) {
             return
         }
         // The file shown by this view changed (doc-replacing transaction of a
@@ -796,6 +897,14 @@ export class ReviewController {
         }
         if (this.canonicalGlueFor(glue.filePath) !== glue) {
             return // non-canonical pane: the canonical view forwards this edit
+        }
+        // Daemon mode reuses this exact-once-per-file edit stream — no second
+        // CM6 listener exists. Fires for files WITHOUT a run too (a
+        // never-reviewed note arms just as well); near-zero cost while the
+        // daemon toggle is off.
+        this.daemon?.recordEdit(glue.filePath)
+        if (!glue.run) {
+            return
         }
         // Incremental stale-marking (M3): the FindingStore is the staleness
         // authority — snapshot which findings are stale before forwarding the
@@ -898,10 +1007,22 @@ export class ReviewController {
                 this.glues.set(view, this.createGlue(view))
             }
         }
+        const removedPaths = new Set<string>()
         for (const [view, glue] of [...this.glues]) {
             if (!seen.has(view)) {
+                if (glue.filePath !== null) {
+                    removedPaths.add(glue.filePath)
+                }
                 this.destroyGlue(glue)
                 this.glues.delete(view)
+            }
+        }
+        // Daemon timers are keyed by file path (popouts/splits share one
+        // schedule); clear a file's schedule only when its LAST view is gone.
+        for (const path of removedPaths) {
+            const stillOpen = [...this.glues.values()].some((glue) => glue.view.file?.path === path)
+            if (!stillOpen) {
+                this.daemon?.fileClosed(path)
             }
         }
     }
@@ -966,12 +1087,21 @@ export class ReviewController {
         }
         glue.filePath = filePath
 
+        // Daemon glue rides the refresh cycle: run notifications and
+        // workspace events land here, so the scheduler always sees the live
+        // in-flight state (summons, CLI runs, daemon runs, retries alike)
+        // and re-arms after settle when edits happened mid-run.
+        if (filePath !== null) {
+            this.daemon?.syncRunState(filePath, run !== null && !run.isSettled())
+        }
+
         // Rail only makes sense over an editable editor (Reading view is out
         // of scope for v1 interactions).
         glue.railWrapperEl.toggleClass('ai-editor-hidden', glue.view.getMode() === 'preview')
         glue.rail.render({
             editors: this.buildRailEditors(run),
-            running: run !== null && !run.isSettled()
+            running: run !== null && !run.isSettled(),
+            daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false)
         })
         this.dispatchDecorations(glue, run)
     }

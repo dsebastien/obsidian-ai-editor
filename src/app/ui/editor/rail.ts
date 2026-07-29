@@ -77,6 +77,17 @@ export class PersonaRail {
             dotsEl.appendChild(this.renderChip(dot))
         }
         this.rootEl.appendChild(dotsEl)
+
+        // Daemon armed indicator: one tiny pulsing dot with a tooltip —
+        // deliberately minimal, no layout churn (absent when not armed).
+        if (viewModel.daemon !== null) {
+            const daemonEl = this.doc.createElement('div')
+            daemonEl.classList.add('ai-editor-rail-daemon')
+            daemonEl.setAttribute('role', 'status')
+            daemonEl.setAttribute('aria-label', viewModel.daemon.title)
+            daemonEl.title = viewModel.daemon.title
+            this.rootEl.appendChild(daemonEl)
+        }
     }
 
     /** Removes the rail from the DOM. The instance must not be reused. */

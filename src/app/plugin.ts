@@ -12,6 +12,7 @@ import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
 import { registerEditorMenu } from './ui/menus/editor-menu'
 import { registerFileMenu } from './ui/menus/file-menu'
+import { DaemonController } from './ui/daemon-controller'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
@@ -54,6 +55,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
     private reviewController: ReviewController | null = null
 
+    private daemonController: DaemonController | null = null
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
@@ -92,6 +95,24 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         ])
         this.registerReviewPanelView(reviewController)
         reviewController.initialize()
+
+        // Daemon mode (plan §0, Business Rule #1 carve-out — the settings
+        // toggle IS the explicit user action): pure scheduler behind
+        // per-file timers; edits arrive via the controller's canonical-view
+        // update listener, run state via its refresh cycle, config via the
+        // settings observer (toggle + idle delay apply live, off clears all
+        // timers). Created after the ReviewController because it dispatches
+        // through it; `attachDaemon` closes the cycle.
+        const daemonController = new DaemonController({
+            getSettings: () => this.settings,
+            runController,
+            port: reviewController,
+            onStateChange: () => reviewController.requestRefresh()
+        })
+        this.daemonController = daemonController
+        reviewController.attachDaemon(daemonController)
+        this.register(this.subscribe(() => daemonController.settingsChanged()))
+
         registerReviewCommands(this, reviewController)
         registerEditorMenu(this, reviewController)
         registerFileMenu(this, reviewController)
@@ -171,8 +192,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     override onunload(): void {
-        // Rails, subscriptions and timers go first; then abort every
-        // in-flight backend request so nothing outlives the plugin.
+        // Daemon timers first (no dispatch can start mid-teardown), then
+        // rails/subscriptions, then abort every in-flight backend request so
+        // nothing outlives the plugin.
+        this.daemonController?.dispose()
+        this.daemonController = null
         this.reviewController?.dispose()
         this.reviewController = null
         this.runController?.cancelAll()
