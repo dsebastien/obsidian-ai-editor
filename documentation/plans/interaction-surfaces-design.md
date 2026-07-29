@@ -17,7 +17,7 @@ Structure (flat — no submenus; `setSection` for grouping):
 
 1. **Bound actions** — one item per action binding whose target editor/panel is enabled and whose backend resolves. Alphabetical by action label (MRU ordering is a later polish pass). Icons by verb class: `wand-2` generation (continue, say-more, humanize), `check` transformation (rephrase, summarize, simplify), `message-circle` critique/analysis (critique, find-evidence, identify-assumptions) — note "Review selection" is critique-class → `message-circle`.
 2. **Review selection** — runs all enabled review-capable editors on the selection (`message-circle`). Hidden when the note is not reviewable (no enabled editors, excluded, …).
-3. **Ask an editor…** — freeform prompt affordance; opens the freeform modal (M4; ships as a hidden item until the modal exists — never a dead menu item).
+3. **Ask an editor…** — freeform prompt affordance; opens the freeform modal (shipped 2026-07-29, commit `991fbcd`, per §6 decision 1: the modal exists and the entry is visible under the same gate as Review selection — the hidden-until-it-exists rule is satisfied by existence).
 
 **Resolved rule (as shipped, slice 3)**: unavailable items are HIDDEN, never disabled — an item that cannot dispatch is simply not added (consistent with §2's no-placeholder rule). `setDisabled(true)` is not used anywhere; a future backend-health surface may revisit transient-disable, but that is explicitly out of v1 scope. Cap at 10 action items; beyond that the palette is the surface.
 
@@ -37,6 +37,7 @@ No default hotkeys anywhere (community review guideline — plugins must not shi
 | -------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ | ----------- |
 | `review-current-note`                              | Review current note              | `checkCallback`: active md view + not excluded + ≥1 enabled editor | no (exists) |
 | `review-selection`                                 | Review selection                 | `editorCheckCallback`: selection non-empty + reviewable            | no          |
+| `ask-editor`                                       | Ask an editor                    | `editorCheckCallback`: selection non-empty + reviewable            | no          |
 | `open-review-panel`                                | Open review panel                | plain `callback`                                                   | no (exists) |
 | `cancel-run`                                       | Cancel review                    | `checkCallback`: a run for the active file is unsettled            | no          |
 | `action-<actionId>`                                | <Action label>                   | `editorCheckCallback`: selection/doc per verb + target enabled     | yes         |
