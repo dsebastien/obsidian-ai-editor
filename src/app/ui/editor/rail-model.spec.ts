@@ -88,6 +88,9 @@ describe('buildRailViewModel', () => {
             expect(byStatus(editor({ status: 'running' }))?.ariaLabel).toBe(
                 'Concision Editor — reviewing'
             )
+            expect(byStatus(editor({ status: 'transforming' }))?.ariaLabel).toBe(
+                'Concision Editor — transforming'
+            )
             expect(byStatus(editor({ status: 'done', findingCount: 1 }))?.ariaLabel).toBe(
                 'Concision Editor — 1 finding'
             )
@@ -135,6 +138,7 @@ describe('buildRailViewModel', () => {
             expect(byStatus(editor({ status: 'idle' }))?.retryAriaLabel).toBeNull()
             expect(byStatus(editor({ status: 'pending' }))?.retryAriaLabel).toBeNull()
             expect(byStatus(editor({ status: 'running' }))?.retryAriaLabel).toBeNull()
+            expect(byStatus(editor({ status: 'transforming' }))?.retryAriaLabel).toBeNull()
             expect(byStatus(editor({ status: 'done' }))?.retryAriaLabel).toBeNull()
         })
     })

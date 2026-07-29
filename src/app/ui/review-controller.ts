@@ -5,6 +5,8 @@ import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
 import { navigableFindings, stepFinding } from '../commands/finding-navigation'
 import type { NavigationDirection } from '../commands/finding-navigation'
+import { wordDiff } from '../domain/diff/word-diff'
+import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
 import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
@@ -17,6 +19,11 @@ import type {
     RunController,
     RunHandle
 } from '../services/orchestration/run-controller'
+import type {
+    TransformController,
+    TransformOutcome,
+    TransformRunHandle
+} from '../services/orchestration/transform-run'
 import { countWords, skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
 import { AskEditorModal } from './ask-editor-modal'
@@ -30,6 +37,8 @@ import {
 } from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
 import { newlyStaleIds, staleIds } from './editor/stale-diff'
+import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
+import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
 import { railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
@@ -120,6 +129,8 @@ export interface ReviewControllerDeps {
     readonly plugin: Plugin
     readonly getSettings: () => PluginSettingsV1
     readonly runController: RunController
+    /** Transform/generate runs (one per file); shares the request gate. */
+    readonly transformController: TransformController
     /** Status-bar projection (open finding count for the active note). */
     readonly setFindingCount: (count: number) => void
 }
@@ -134,6 +145,11 @@ interface ViewGlue {
     unsubscribe: (() => void) | null
     /** Serialized last-dispatched decoration specs (skip no-op dispatches). */
     lastSpecsKey: string
+    /** The file's transform run this glue follows (rail + preview widget). */
+    transformRun: TransformRunHandle | null
+    transformUnsubscribe: (() => void) | null
+    /** RunId of the currently presented preview ('' = none presented). */
+    transformPreviewKey: string
 }
 
 const REVEAL_SELECTION_MS = 1_500
@@ -166,6 +182,10 @@ export class ReviewController {
     private readonly glues = new Map<MarkdownView, ViewGlue>()
     private readonly skipsByFile = new Map<string, readonly EditorSkip[]>()
     private readonly pendingTimers = new Set<number>()
+    /** Transform runs whose failure Notice already fired (once per run). */
+    private readonly notifiedTransformErrors = new Set<string>()
+    /** Transform runs whose stale-dismiss Notice already fired. */
+    private readonly notifiedTransformStale = new Set<string>()
     /** Sticky: survives focus moving to the side panel itself. */
     private lastActiveMarkdownFile: string | null = null
     private refreshTimer: number | null = null
@@ -215,6 +235,7 @@ export class ReviewController {
                     return
                 }
                 this.deps.runController.discardRun(oldPath)
+                this.deps.transformController.discardRun(oldPath)
                 this.skipsByFile.delete(oldPath)
                 this.daemon?.fileClosed(oldPath)
                 if (this.lastActiveMarkdownFile === oldPath) {
@@ -226,6 +247,7 @@ export class ReviewController {
         plugin.registerEvent(
             app.vault.on('delete', (file) => {
                 this.deps.runController.discardRun(file.path)
+                this.deps.transformController.discardRun(file.path)
                 this.skipsByFile.delete(file.path)
                 this.daemon?.fileClosed(file.path)
                 if (this.lastActiveMarkdownFile === file.path) {
@@ -656,13 +678,27 @@ export class ReviewController {
         this.scheduleRefresh()
     }
 
-    /** Cancels the active run for the view's note (rail Cancel button). */
+    /**
+     * Cancels the in-flight work for the view's note (rail Cancel button):
+     * the review run AND any in-flight transform/generate run — the button
+     * shows Cancel while either is running, so it must stop both.
+     */
     cancelReview(view: MarkdownView): void {
         const path = view.file?.path
         if (!path) {
             return
         }
         this.deps.runController.getRun(path)?.cancelRun()
+        this.deps.transformController.getRun(path)?.cancel()
+    }
+
+    /**
+     * The transform run bound to the (last) active markdown file, if any —
+     * the `Cancel review or action` command gate reads through this.
+     */
+    getActiveTransformRun(): TransformRunHandle | null {
+        const path = this.resolveActiveFilePath()
+        return path ? this.deps.transformController.getRun(path) : null
     }
 
     /**
@@ -905,6 +941,14 @@ export class ReviewController {
         if (glue.view.file?.path !== glue.filePath) {
             return
         }
+        // A presented transform preview may go stale with this edit: defer a
+        // refresh so `dispatchTransformPreview` re-checks the apply
+        // precondition and auto-dismisses (coalesced timer, cheap no-op when
+        // nothing changed). Runs BEFORE the canonical check — the widget can
+        // live in a non-canonical pane too.
+        if (glue.transformRun?.isSettled() === true) {
+            this.scheduleRefresh()
+        }
         if (this.canonicalGlueFor(glue.filePath) !== glue) {
             return // non-canonical pane: the canonical view forwards this edit
         }
@@ -1077,13 +1121,18 @@ export class ReviewController {
             filePath: null,
             run: null,
             unsubscribe: null,
-            lastSpecsKey: ''
+            lastSpecsKey: '',
+            transformRun: null,
+            transformUnsubscribe: null,
+            transformPreviewKey: ''
         }
     }
 
     private destroyGlue(glue: ViewGlue): void {
         glue.unsubscribe?.()
         glue.unsubscribe = null
+        glue.transformUnsubscribe?.()
+        glue.transformUnsubscribe = null
         glue.rail.destroy()
         glue.railWrapperEl.remove()
         glue.view.contentEl.removeClass('ai-editor-rail-host')
@@ -1097,6 +1146,17 @@ export class ReviewController {
             glue.unsubscribe = run ? run.subscribe(() => this.scheduleRefresh()) : null
             glue.run = run
             glue.lastSpecsKey = ''
+        }
+        // Terminal transform failures/cancellations are reconciled (Notice +
+        // discard) BEFORE binding, so the rail and preview only ever see a
+        // pending/running/done transform run.
+        const transformRun = filePath ? this.reconcileTransformRun(filePath) : null
+        if (glue.transformRun !== transformRun) {
+            glue.transformUnsubscribe?.()
+            glue.transformUnsubscribe = transformRun
+                ? transformRun.subscribe(() => this.scheduleRefresh())
+                : null
+            glue.transformRun = transformRun
         }
         const previousPath = glue.filePath
         glue.filePath = filePath
@@ -1126,15 +1186,26 @@ export class ReviewController {
         // of scope for v1 interactions).
         glue.railWrapperEl.toggleClass('ai-editor-hidden', glue.view.getMode() === 'preview')
         glue.rail.render({
-            editors: this.buildRailEditors(run),
-            running: run !== null && !run.isSettled(),
+            editors: this.buildRailEditors(run, transformRun),
+            running:
+                (run !== null && !run.isSettled()) ||
+                (transformRun !== null && !transformRun.isSettled()),
             daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false)
         })
         this.dispatchDecorations(glue, run)
+        this.dispatchTransformPreview(glue, transformRun)
     }
 
-    private buildRailEditors(run: RunHandle | null): RailEditorState[] {
+    private buildRailEditors(
+        run: RunHandle | null,
+        transformRun: TransformRunHandle | null
+    ): RailEditorState[] {
         const settings = this.deps.getSettings()
+        // An in-flight transform overlays its editor's review status: the
+        // chip pulses ("transforming" / "waiting") while the action runs,
+        // and falls back to the review projection once it settles.
+        const transformActive =
+            transformRun !== null && !transformRun.isSettled() ? transformRun : null
         return settings.editors
             .filter((editor) => editor.enabled && editor.capabilities.review)
             .map((editor) => {
@@ -1143,11 +1214,18 @@ export class ReviewController {
                     state?.status === 'error' && state.error
                         ? railErrorReason(state.error.code)
                         : undefined
+                const reviewStatus = state ? railStatusOf(state.status) : 'idle'
+                const status: RailEditorStatus =
+                    transformActive && transformActive.editorId === editor.id
+                        ? transformActive.getState().status === 'pending'
+                            ? 'pending'
+                            : 'transforming'
+                        : reviewStatus
                 return {
                     id: editor.id,
                     name: editor.name,
                     color: editor.color,
-                    status: state ? railStatusOf(state.status) : 'idle',
+                    status,
                     findingCount: state ? state.findingIds.length : 0,
                     ...(errorReason === undefined ? {} : { errorReason })
                 }
@@ -1195,6 +1273,168 @@ export class ReviewController {
 
     private editorColors(): Map<string, string> {
         return new Map(this.deps.getSettings().editors.map((editor) => [editor.id, editor.color]))
+    }
+
+    // -- Transform preview (non-destructive inline diff, Business Rules #2/#3)
+
+    /**
+     * Resolves the file's transform run for presentation, absorbing terminal
+     * failures: an errored run surfaces ONE Notice (message already redacted
+     * by the handle) and is discarded; a cancelled run is discarded silently.
+     * Returns null for both so no surface renders a dead run.
+     */
+    private reconcileTransformRun(filePath: string): TransformRunHandle | null {
+        const run = this.deps.transformController.getRun(filePath)
+        if (!run) {
+            return null
+        }
+        const state = run.getState()
+        if (state.status === 'error') {
+            if (!this.notifiedTransformErrors.has(String(run.runId))) {
+                this.notifiedTransformErrors.add(String(run.runId))
+                const label = run.actionLabel ?? 'Action'
+                new Notice(
+                    `${label} failed (${run.editorName}): ${state.error?.message ?? 'unknown error'}`
+                )
+            }
+            this.deps.transformController.discardRun(filePath)
+            return null
+        }
+        if (state.status === 'cancelled') {
+            this.deps.transformController.discardRun(filePath)
+            return null
+        }
+        return run
+    }
+
+    /**
+     * Projects the glue's transform run into the preview widget: a run that
+     * is done AND still applicable (apply precondition against the CURRENT
+     * document, Business Rules #3) shows the inline diff; everything else
+     * clears it. When a presented result goes stale (an edit touched the
+     * target), the widget auto-dismisses with one Notice — stale proposals
+     * are never fuzzy-relocated, the user re-runs the action (BR #3/#4).
+     * Dispatch is keyed by runId so refresh cycles are no-ops while nothing
+     * changed (the decoration maps itself through unrelated edits).
+     */
+    private dispatchTransformPreview(glue: ViewGlue, run: TransformRunHandle | null): void {
+        const editorView = editorViewOf(glue.view)
+        if (!editorView) {
+            return
+        }
+        let spec: TransformPreviewSpec | null = null
+        if (run && glue.filePath === run.snapshot.filePath) {
+            const state = run.getState()
+            if (state.status === 'done' && state.outcome !== null) {
+                const precondition = run.checkPrecondition(editorView.state.doc.toString())
+                if (precondition.ok) {
+                    spec = this.buildTransformPreviewSpec(glue, run, state.outcome)
+                } else if (precondition.reason === 'text-changed') {
+                    if (!this.notifiedTransformStale.has(String(run.runId))) {
+                        this.notifiedTransformStale.add(String(run.runId))
+                        new Notice(
+                            'The text changed — the proposed edit was discarded. Run the action again.'
+                        )
+                    }
+                    this.deps.transformController.discardRun(run.snapshot.filePath)
+                }
+            }
+        }
+        const key = spec ? spec.runId : ''
+        if (key === glue.transformPreviewKey) {
+            return
+        }
+        glue.transformPreviewKey = key
+        editorView.dispatch({
+            effects: spec
+                ? [showTransformPreviewEffect.of(spec)]
+                : [clearTransformPreviewEffect.of(null)]
+        })
+    }
+
+    /** Widget content for one applicable done transform run (per glue). */
+    private buildTransformPreviewSpec(
+        glue: ViewGlue,
+        run: TransformRunHandle,
+        outcome: TransformOutcome
+    ): TransformPreviewSpec {
+        const target = run.target
+        const segments: readonly DiffSegment[] =
+            target.kind === 'replace-span'
+                ? wordDiff(target.spanText, outcome.text)
+                : [{ kind: 'ins', text: outcome.text }]
+        const editor = this.deps
+            .getSettings()
+            .editors.find((candidate) => candidate.id === run.editorId)
+        const label =
+            run.actionLabel ??
+            (target.kind === 'replace-span' ? 'Proposed replacement' : 'Proposed insertion')
+        return {
+            runId: String(run.runId),
+            kind: run.kind,
+            anchor: target.kind === 'replace-span' ? target.to : target.position,
+            title: `${label} — ${run.editorName}`,
+            editorColor: editor?.color ?? 'var(--text-accent)',
+            segments,
+            rationale: outcome.rationale,
+            actions: {
+                onAccept: (): void => {
+                    this.acceptTransform(glue, run)
+                },
+                onReject: (): void => {
+                    this.rejectTransform(glue, run)
+                }
+            }
+        }
+    }
+
+    /**
+     * Accept (Business Rules #2/#3): the precondition is re-verified against
+     * the CURRENT document in the same synchronous block as the apply; only
+     * then does the replacement/insertion go out as ONE editor transaction
+     * (single undo step) that also removes the widget. On failure the widget
+     * stays and a Notice explains — a stale race additionally auto-dismisses
+     * through the refresh cycle. The dispatched edit reaches the review
+     * run's anchor store through the canonical-view forwarding like any
+     * user edit.
+     */
+    private acceptTransform(glue: ViewGlue, run: TransformRunHandle): void {
+        const editorView = editorViewOf(glue.view)
+        if (!editorView || this.disposed) {
+            return
+        }
+        const precondition = run.checkPrecondition(editorView.state.doc.toString())
+        if (!precondition.ok) {
+            new Notice('The text changed since this result was computed — run the action again.')
+            this.scheduleRefresh()
+            return
+        }
+        const target = run.target
+        const from = target.kind === 'replace-span' ? target.from : target.position
+        const to = target.kind === 'replace-span' ? target.to : target.position
+        const insert = precondition.outcome.text
+        editorView.dispatch({
+            changes: { from, to, insert },
+            effects: clearTransformPreviewEffect.of(null),
+            selection: { anchor: from + insert.length },
+            scrollIntoView: true
+        })
+        editorView.focus()
+        glue.transformPreviewKey = ''
+        this.deps.transformController.discardRun(run.snapshot.filePath)
+        this.scheduleRefresh()
+    }
+
+    /** Reject: remove the widget and forget the run — nothing else. */
+    private rejectTransform(glue: ViewGlue, run: TransformRunHandle): void {
+        const editorView = editorViewOf(glue.view)
+        if (editorView) {
+            editorView.dispatch({ effects: clearTransformPreviewEffect.of(null) })
+            editorView.focus()
+        }
+        glue.transformPreviewKey = ''
+        this.deps.transformController.discardRun(run.snapshot.filePath)
+        this.scheduleRefresh()
     }
 
     // -- Ambient surfaces -----------------------------------------------------

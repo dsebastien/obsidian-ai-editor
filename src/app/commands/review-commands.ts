@@ -103,16 +103,32 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
 
     plugin.addCommand({
         id: 'cancel-run',
-        name: 'Cancel review',
+        name: 'Cancel review or action',
         checkCallback: (checking: boolean): boolean => {
+            // One cancel surface for everything in flight on the active
+            // note: the review run and/or the transform/generate run.
             const run = controller.getActiveRun()
-            if (!canCancelRun({ hasRun: run !== null, settled: run?.isSettled() ?? true })) {
+            const transform = controller.getActiveTransformRun()
+            const reviewCancellable = canCancelRun({
+                hasRun: run !== null,
+                settled: run?.isSettled() ?? true
+            })
+            const transformCancellable = canCancelRun({
+                hasRun: transform !== null,
+                settled: transform?.isSettled() ?? true
+            })
+            if (!reviewCancellable && !transformCancellable) {
                 return false
             }
             if (checking) {
                 return true
             }
-            run?.cancelRun()
+            if (reviewCancellable) {
+                run?.cancelRun()
+            }
+            if (transformCancellable) {
+                transform?.cancel()
+            }
             return true
         }
     })

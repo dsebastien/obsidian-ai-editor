@@ -8,8 +8,10 @@ import { createSettingsNotifier } from './settings/settings-facade'
 import type { SettingsFacade, SettingsListener } from './settings/settings-facade'
 import { AIEditorPluginSettingTab } from './settings/settings-tab'
 import { RunController } from './services/orchestration/run-controller'
+import { TransformController } from './services/orchestration/transform-run'
 import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
+import { transformPreviewField } from './ui/editor/transform-preview'
 import { registerEditorMenu } from './ui/menus/editor-menu'
 import { registerFileMenu } from './ui/menus/file-menu'
 import { DaemonController } from './ui/daemon-controller'
@@ -53,6 +55,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
     private runController: RunController | null = null
 
+    private transformController: TransformController | null = null
+
     private reviewController: ReviewController | null = null
 
     private daemonController: DaemonController | null = null
@@ -80,16 +84,22 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // next request without a reload.
         const runController = new RunController(() => this.settings.behavior.maxConcurrentRequests)
         this.runController = runController
+        // Transform/generate runs share the SAME request gate: reviews and
+        // actions together never exceed `maxConcurrentRequests`.
+        const transformController = new TransformController(runController.requestGate)
+        this.transformController = transformController
         const reviewController = new ReviewController({
             app: this.app,
             plugin: this,
             getSettings: () => this.settings,
             runController,
+            transformController,
             setFindingCount: (count) => this.setFindingCount(count)
         })
         this.reviewController = reviewController
         this.registerEditorExtension([
             findingDecorationsField,
+            transformPreviewField,
             reviewController.editorExtension(),
             findingCardExtension(reviewController.findingLookup())
         ])
@@ -201,6 +211,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.daemonController = null
         this.reviewController?.dispose()
         this.reviewController = null
+        this.transformController?.cancelAll()
+        this.transformController = null
         this.runController?.cancelAll()
         this.runController = null
     }

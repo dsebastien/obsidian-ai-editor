@@ -7,7 +7,14 @@
  * the view-owned DOM keeps the DOM layer trivial and disposable.
  */
 
-export type RailEditorStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+export type RailEditorStatus =
+    | 'idle'
+    | 'pending'
+    | 'running'
+    | 'transforming'
+    | 'done'
+    | 'error'
+    | 'cancelled'
 
 /** Per-editor input state, projected by the run orchestrator. */
 export interface RailEditorState {
@@ -118,6 +125,10 @@ function statusLabel(editor: RailEditorState): string {
             return editor.findingCount > 0
                 ? `reviewing, ${findingsLabel(editor.findingCount)} so far`
                 : 'reviewing'
+        case 'transforming':
+            // A transform/generate action is in flight on this editor. While
+            // it runs it overlays the editor's review status on the rail.
+            return 'transforming'
         case 'done':
             return findingsLabel(editor.findingCount)
         case 'error':
