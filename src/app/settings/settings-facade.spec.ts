@@ -137,6 +137,79 @@ describe('createSettingsFacade (fallback over loadData/saveData)', () => {
         expect(facade.getSettings().rules).toEqual([])
     })
 
+    test('notifies subscribers after every successful update', async () => {
+        const { host } = makeHost(null)
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let notifications = 0
+        facade.subscribe(() => {
+            notifications += 1
+            // Notified AFTER commit: the new value is already readable.
+            expect(facade.getSettings().behavior.stripFrontmatter).toBe(true)
+        })
+        await facade.update((draft) => {
+            draft.behavior.stripFrontmatter = true
+        })
+        expect(notifications).toBe(1)
+        await facade.update((draft) => {
+            draft.starterPackSeeded = true
+        })
+        expect(notifications).toBe(2)
+    })
+
+    test('does not notify on a rejected update', async () => {
+        const { host } = makeHost(null)
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let notifications = 0
+        facade.subscribe(() => {
+            notifications += 1
+        })
+        const rejection = await rejectionOf(
+            facade.update((draft) => {
+                draft.behavior.responseLanguageOverride = 'x'.repeat(51)
+            })
+        )
+        expect(rejection).toBeInstanceOf(Error)
+        expect(notifications).toBe(0)
+    })
+
+    test('unsubscribe stops notifications', async () => {
+        const { host } = makeHost(null)
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let notifications = 0
+        const unsubscribe = facade.subscribe(() => {
+            notifications += 1
+        })
+        await facade.update((draft) => {
+            draft.starterPackSeeded = true
+        })
+        unsubscribe()
+        await facade.update((draft) => {
+            draft.starterPackSeeded = false
+        })
+        expect(notifications).toBe(1)
+    })
+
+    test('a throwing listener neither breaks the update nor starves others', async () => {
+        const { host } = makeHost(null)
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let secondRan = false
+        facade.subscribe(() => {
+            throw new Error('observer bug')
+        })
+        facade.subscribe(() => {
+            secondRan = true
+        })
+        await facade.update((draft) => {
+            draft.starterPackSeeded = true
+        })
+        expect(secondRan).toBe(true)
+        expect(facade.getSettings().starterPackSeeded).toBe(true)
+    })
+
     test('successive updates compound', async () => {
         const { host } = makeHost(null)
         const { facade, ready } = createSettingsFacade(host)
@@ -172,5 +245,63 @@ describe('createSettingsFacade (host-provided facade)', () => {
         expect(facade.getSettings().starterPackSeeded).toBe(true)
         await facade.update(() => {})
         expect(updateCalls).toBe(1)
+    })
+
+    test('wraps a host without subscribe: local subscribers see successful updates', async () => {
+        const host: SettingsHost = {
+            loadData: () => Promise.reject(new Error('must not be called')),
+            saveData: () => Promise.reject(new Error('must not be called')),
+            getSettings: () => DEFAULT_PLUGIN_SETTINGS,
+            update: () => Promise.resolve()
+        }
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let notifications = 0
+        facade.subscribe(() => {
+            notifications += 1
+        })
+        await facade.update(() => {})
+        expect(notifications).toBe(1)
+    })
+
+    test('wrapped host update: no notification when the host update rejects', async () => {
+        const host: SettingsHost = {
+            loadData: () => Promise.reject(new Error('must not be called')),
+            saveData: () => Promise.reject(new Error('must not be called')),
+            getSettings: () => DEFAULT_PLUGIN_SETTINGS,
+            update: () => Promise.reject(new Error('invalid'))
+        }
+        const { facade, ready } = createSettingsFacade(host)
+        await ready
+        let notifications = 0
+        facade.subscribe(() => {
+            notifications += 1
+        })
+        let rejection: unknown = null
+        try {
+            await facade.update(() => {})
+        } catch (cause) {
+            rejection = cause
+        }
+        expect(rejection).toBeInstanceOf(Error)
+        expect((rejection as Error).message).toBe('invalid')
+        expect(notifications).toBe(0)
+    })
+
+    test('delegates subscribe to the host when it provides one', async () => {
+        let hostSubscribeCalls = 0
+        const host: SettingsHost = {
+            loadData: () => Promise.reject(new Error('must not be called')),
+            saveData: () => Promise.reject(new Error('must not be called')),
+            getSettings: () => DEFAULT_PLUGIN_SETTINGS,
+            update: () => Promise.resolve(),
+            subscribe: () => {
+                hostSubscribeCalls += 1
+                return () => {}
+            }
+        }
+        const { facade } = createSettingsFacade(host)
+        facade.subscribe(() => {})
+        expect(hostSubscribeCalls).toBe(1)
     })
 })

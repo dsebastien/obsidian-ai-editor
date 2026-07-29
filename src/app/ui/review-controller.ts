@@ -8,7 +8,7 @@ import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
-import { isExcluded } from '../services/context/exclusions'
+import { isReviewable } from '../services/reviewability'
 import type { RunController, RunHandle } from '../services/orchestration/run-controller'
 import type { EditorRunStatus } from '../services/orchestration/run-controller'
 import { skipReasonLabel, startReview } from '../services/review-service'
@@ -224,16 +224,21 @@ export class ReviewController {
         this.glues.clear()
     }
 
-    /** Command availability: an open markdown file that is not excluded. */
+    /**
+     * Command availability: an open markdown file that is not excluded AND at
+     * least one enabled review-capable editor whose backend resolves (shared
+     * `isReviewable` predicate — command gates, menus and the CLI all agree
+     * with what `startReview` would refuse).
+     */
     canReview(view: MarkdownView): boolean {
         const file = view.file
         if (!file) {
             return false
         }
-        return !isExcluded(
+        return isReviewable(
             file.path,
             this.vaultReader.getNoteMetadata(file.path),
-            this.deps.getSettings().behavior
+            this.deps.getSettings()
         )
     }
 

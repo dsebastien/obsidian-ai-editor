@@ -7,6 +7,9 @@ import {
 } from '../domain/settings/settings-schema'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 
+/** Mutation observer: called after every successful settings update/persist. */
+export type SettingsListener = () => void
+
 /**
  * Read/update facade every settings surface works against. All mutations go
  * through `update` (Immer-style mutator over a draft) so persistence happens
@@ -15,6 +18,46 @@ import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 export interface SettingsFacade {
     getSettings(): PluginSettingsV1
     update(mutator: (draft: Draft<PluginSettingsV1>) => void): Promise<void>
+    /**
+     * Registers a mutation observer, notified AFTER a mutation has been
+     * validated and persisted (never on rejected updates). Returns the
+     * unsubscribe function. Consumers re-read state via `getSettings()` —
+     * listeners receive no payload so no stale settings reference can leak.
+     */
+    subscribe(listener: SettingsListener): () => void
+}
+
+/**
+ * Listener registry shared by every facade implementation (and the plugin's
+ * own facade). A throwing listener never breaks persistence or starves the
+ * other listeners.
+ */
+export interface SettingsNotifier {
+    subscribe(this: void, listener: SettingsListener): () => void
+    notify(this: void): void
+}
+
+export function createSettingsNotifier(): SettingsNotifier {
+    const listeners = new Set<SettingsListener>()
+    return {
+        subscribe: (listener: SettingsListener): (() => void) => {
+            listeners.add(listener)
+            return (): void => {
+                listeners.delete(listener)
+            }
+        },
+        notify: (): void => {
+            // Snapshot: a listener may unsubscribe (itself or others) mid-notify.
+            for (const listener of [...listeners]) {
+                try {
+                    listener()
+                } catch {
+                    // Observer errors are the observer's problem — persistence
+                    // already succeeded and the remaining listeners must run.
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -55,12 +98,34 @@ export function createSettingsFacade(host: SettingsHost): CreatedSettingsFacade 
     const hostGetSettings = host.getSettings?.bind(host)
     const hostUpdate = host.update?.bind(host)
     if (hostGetSettings && hostUpdate) {
+        const hostSubscribe = host.subscribe?.bind(host)
+        if (hostSubscribe) {
+            return {
+                facade: {
+                    getSettings: hostGetSettings,
+                    update: hostUpdate,
+                    subscribe: hostSubscribe
+                },
+                ready: Promise.resolve()
+            }
+        }
+        // Host without an observer hook: wrap `update` so subscribers of THIS
+        // facade still see every successful mutation that flows through it.
+        const notifier = createSettingsNotifier()
         return {
-            facade: { getSettings: hostGetSettings, update: hostUpdate },
+            facade: {
+                getSettings: hostGetSettings,
+                update: async (mutator): Promise<void> => {
+                    await hostUpdate(mutator)
+                    notifier.notify()
+                },
+                subscribe: notifier.subscribe
+            },
             ready: Promise.resolve()
         }
     }
 
+    const notifier = createSettingsNotifier()
     let settings: PluginSettingsV1 = DEFAULT_PLUGIN_SETTINGS
     let foreignKeys: Record<string, unknown> = {}
     const ready: Promise<void> = host
@@ -89,7 +154,9 @@ export function createSettingsFacade(host: SettingsHost): CreatedSettingsFacade 
                 }
                 settings = parsed.data
                 await host.saveData({ ...foreignKeys, ...settings })
-            }
+                notifier.notify()
+            },
+            subscribe: notifier.subscribe
         },
         ready
     }

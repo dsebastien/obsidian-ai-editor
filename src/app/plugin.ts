@@ -4,7 +4,8 @@ import type { Draft } from 'immer'
 import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings/settings-schema'
 import type { PluginSettingsV1 } from './domain/settings/settings-schema'
 import { bootstrapSettings } from './settings/settings-bootstrap'
-import type { SettingsFacade } from './settings/settings-facade'
+import { createSettingsNotifier } from './settings/settings-facade'
+import type { SettingsFacade, SettingsListener } from './settings/settings-facade'
 import { AIEditorPluginSettingTab } from './settings/settings-tab'
 import { RunController } from './services/orchestration/run-controller'
 import { findingCardExtension } from './ui/editor/finding-card'
@@ -36,6 +37,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
      * versions never lose data.
      */
     private foreignKeys: Record<string, unknown> = {}
+
+    /** Settings mutation observers, notified after every successful persist. */
+    private readonly settingsNotifier = createSettingsNotifier()
 
     private statusBarEl: HTMLElement | null = null
 
@@ -147,6 +151,16 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     /**
+     * `SettingsFacade`: mutation observer, notified after every successful
+     * persist (user mutations AND load-time repairs). Dynamic surfaces
+     * (command registration diffing, menus) re-derive their state from
+     * `getSettings()` on each notification.
+     */
+    subscribe(listener: SettingsListener): () => void {
+        return this.settingsNotifier.subscribe(listener)
+    }
+
+    /**
      * Status-bar finding counter; hidden while there is nothing to count.
      * Called by the run orchestration wiring as findings arrive (M2).
      */
@@ -203,5 +217,6 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     private async persistSettings(): Promise<void> {
         await this.saveData({ ...this.foreignKeys, ...this.settings })
         log('Settings saved', 'debug')
+        this.settingsNotifier.notify()
     }
 }
