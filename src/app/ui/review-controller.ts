@@ -5,6 +5,7 @@ import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
 import { navigableFindings, stepFinding } from '../commands/finding-navigation'
 import type { NavigationDirection } from '../commands/finding-navigation'
+import { getBuiltInVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
@@ -12,7 +13,9 @@ import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
-import { isReviewable, reviewCapableEditors } from '../services/reviewability'
+import { resolveActionById, resolveCustomInstruction } from '../services/actions/action-resolution'
+import type { ResolvedAction } from '../services/actions/action-resolution'
+import { isExcluded, isReviewable, reviewCapableEditors } from '../services/reviewability'
 import type {
     EditorRunStatus,
     RetryEditorResult,
@@ -26,6 +29,7 @@ import type {
 } from '../services/orchestration/transform-run'
 import { countWords, skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
+import { startAction } from '../services/transform-service'
 import { AskEditorModal } from './ask-editor-modal'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
@@ -78,26 +82,54 @@ function editorViewOf(view: MarkdownView): EditorView | null {
 // Size-warning confirmation (window.confirm is forbidden — see AGENTS.md)
 // ---------------------------------------------------------------------------
 
+/** Copy variants for the size-warning modal (reviews vs bound actions). */
+interface SizeConfirmLabels {
+    readonly title: string
+    /** Sentence subject: "Reviewing it" / "Running it". */
+    readonly action: string
+    readonly cta: string
+}
+
+const REVIEW_SIZE_LABELS: SizeConfirmLabels = {
+    title: 'Review a large note?',
+    action: 'Reviewing it',
+    cta: 'Review anyway'
+}
+
+const ACTION_SIZE_LABELS: SizeConfirmLabels = {
+    title: 'Run the action on a large note?',
+    action: 'Running it',
+    cta: 'Run anyway'
+}
+
 class SizeConfirmModal extends Modal {
     private readonly wordCount: number
     private readonly limit: number
     private readonly onConfirm: () => void
+    private readonly labels: SizeConfirmLabels
 
-    constructor(app: App, wordCount: number, limit: number, onConfirm: () => void) {
+    constructor(
+        app: App,
+        wordCount: number,
+        limit: number,
+        onConfirm: () => void,
+        labels: SizeConfirmLabels = REVIEW_SIZE_LABELS
+    ) {
         super(app)
         this.wordCount = wordCount
         this.limit = limit
         this.onConfirm = onConfirm
+        this.labels = labels
     }
 
     override onOpen(): void {
-        this.setTitle('Review a large note?')
+        this.setTitle(this.labels.title)
         this.modalEl.addClass('ai-editor-modal')
         this.contentEl.createEl('p', {
             text:
                 `This note has about ${this.wordCount} words — above your size warning ` +
-                `threshold of ${this.limit}. Reviewing it sends the full text to your ` +
-                'configured AI backends, which may be slow or costly.'
+                `threshold of ${this.limit}. ${this.labels.action} sends the full text to ` +
+                'your configured AI backends, which may be slow or costly.'
         })
         new Setting(this.contentEl)
             .addButton((button) => {
@@ -105,7 +137,7 @@ class SizeConfirmModal extends Modal {
             })
             .addButton((button) => {
                 button
-                    .setButtonText('Review anyway')
+                    .setButtonText(this.labels.cta)
                     .setCta()
                     .onClick(() => {
                         this.close()
@@ -323,6 +355,19 @@ export class ReviewController {
     }
 
     /**
+     * Privacy exclusion alone (Business Rules #7) — the gate for bound
+     * actions, which dispatch independently of the note being "reviewable"
+     * (a vault whose editors are all rewrite-only still runs transforms).
+     */
+    isNoteExcluded(path: string): boolean {
+        return isExcluded(
+            path,
+            this.vaultReader.getNoteMetadata(path),
+            this.deps.getSettings().behavior
+        )
+    }
+
+    /**
      * Starts (or restarts) a review for the view's note. Snapshot is whole
      * note, selection-scoped when a selection exists. All refusals surface as
      * Notices; the size guard round-trips through an explicit confirmation.
@@ -483,6 +528,170 @@ export class ReviewController {
             return
         }
         void this.startReview(view, false, { from, to })
+    }
+
+    /**
+     * Bound-action dispatch entry (design §1/§3), shared by the editor
+     * context menu items and the dynamic `action-<bindingId>` commands. The
+     * binding is re-resolved against the CURRENT settings in this callback
+     * (menus and commands may hold a stale view), and the selection + its
+     * capture-time hash are read synchronously HERE (selection-capture
+     * contract — the dispatch path awaits vault reads before the run
+     * starts).
+     *
+     * Routing by verb class:
+     * - review-class → the exact `startReview` path, narrowed to the
+     *   resolved editor set (one editor, or every panel member) with the
+     *   verb instruction augmented onto each prompt; a non-empty selection
+     *   scopes the review, a caret reviews the whole note.
+     * - transform → `startAction` (`transform-selection`); requires a
+     *   non-empty selection.
+     * - generate → `startAction` (`insert-at`); inserts after the selection
+     *   or at the caret.
+     */
+    startBoundAction(view: MarkdownView, editor: Editor, bindingId: string): void {
+        if (!view.file || this.disposed) {
+            return
+        }
+        const resolved = resolveActionById(this.deps.getSettings(), bindingId)
+        if (!resolved) {
+            new Notice('This action is no longer available — check the Actions settings tab.')
+            return
+        }
+        const from = editor.posToOffset(editor.getCursor('from'))
+        const to = editor.posToOffset(editor.getCursor('to'))
+
+        if (resolved.verbClass === 'review') {
+            const verb = getBuiltInVerb(resolved.actionId)
+            if (!verb) {
+                // Custom actions are transform-class; unreachable.
+                return
+            }
+            void this.startReview(view, false, from !== to ? { from, to } : undefined, 'auto', {
+                editorIds: resolved.editorIds,
+                text: verb.instruction
+            })
+            return
+        }
+
+        if (resolved.verbClass === 'transform' && from === to) {
+            new Notice('Select the text to transform first.')
+            return
+        }
+        const selection = { from, to, capturedHash: hashText(editor.getValue()) }
+        void this.runTransformAction(view, resolved, selection, false)
+    }
+
+    /**
+     * Transform/generate dispatch continuation: resolves a custom action's
+     * instruction fresh from the vault (Business Rules #8), snapshots the
+     * view, and routes every `startAction` refusal to a Notice. Mirrors the
+     * `startReview` continuation — including the size-confirmation round
+     * trip, which re-enters with `confirmedLargeNote` and the ORIGINAL
+     * captured selection (the service re-validates it against the fresh
+     * snapshot and refuses staleness as `selection-changed`).
+     */
+    private async runTransformAction(
+        view: MarkdownView,
+        resolved: ResolvedAction,
+        selection: { from: number; to: number; capturedHash: string },
+        confirmedLargeNote: boolean
+    ): Promise<void> {
+        const file = view.file
+        if (!file || this.disposed) {
+            return
+        }
+        const filePath = file.path
+        const settings = this.deps.getSettings()
+        const editorId = resolved.editorIds[0]
+        if (editorId === undefined) {
+            return
+        }
+        let custom: { label: string; instruction: string } | undefined
+        if (resolved.kind === 'custom') {
+            const binding = settings.actions.find(
+                (candidate) => candidate.id === resolved.bindingId
+            )
+            if (!binding) {
+                return
+            }
+            const instruction = await resolveCustomInstruction(
+                binding.customInstruction,
+                this.vaultReader,
+                settings.behavior
+            )
+            if (instruction.trim().length === 0) {
+                new Notice(
+                    `${resolved.label}: its instruction notes are missing or excluded — nothing to send.`
+                )
+                return
+            }
+            custom = { label: resolved.label, instruction }
+        }
+        const snapshot = this.snapshotView(view, filePath, 'whole-note')
+        const result = await startAction({
+            settings,
+            snapshot,
+            vault: this.vaultReader,
+            runController: this.deps.runController,
+            transformController: this.deps.transformController,
+            actionId: resolved.actionId,
+            ...(custom ? { custom } : {}),
+            editorId,
+            fetchImpl: window.fetch.bind(window),
+            confirmedLargeNote,
+            selection,
+            refreshSnapshot: (): DocumentSnapshot | null =>
+                view.file?.path === filePath
+                    ? this.snapshotView(view, filePath, 'whole-note')
+                    : null
+        })
+        switch (result.status) {
+            case 'review':
+                // Review-class verbs dispatch via `startReview` upstream.
+                return
+            case 'started':
+                // Synchronous on purpose (same invariant as the review
+                // 'started' branch): the glue must subscribe to the transform
+                // run in the same block that started it so terminal states
+                // and the preview present without an unrelated refresh.
+                this.refreshAll()
+                return
+            case 'unknown-action':
+                new Notice('This action is no longer available — check the Actions settings tab.')
+                return
+            case 'excluded':
+                new Notice('This note is excluded from AI actions by your privacy settings.')
+                return
+            case 'needs-confirmation':
+                new SizeConfirmModal(
+                    this.deps.app,
+                    result.wordCount,
+                    result.limit,
+                    () => {
+                        void this.runTransformAction(view, resolved, selection, true)
+                    },
+                    ACTION_SIZE_LABELS
+                ).open()
+                return
+            case 'no-editor': {
+                const details = result.skips
+                    .map((skip) => `${skip.editorName} — ${skipReasonLabel(skip.reason)}`)
+                    .join('; ')
+                new Notice(
+                    details.length > 0
+                        ? `${resolved.label} could not run: ${details}`
+                        : `${resolved.label} could not run: its editor is unavailable.`
+                )
+                return
+            }
+            case 'selection-required':
+                new Notice('Select the text to transform first.')
+                return
+            case 'selection-changed':
+                new Notice('The text changed — run the action again.')
+                return
+        }
     }
 
     /**

@@ -1,44 +1,116 @@
 import { describe, expect, it } from 'bun:test'
-import { editorMenuItems, fileMenuItems } from './menu-model'
-import type { EditorMenuState, FileMenuState } from './menu-model'
+import { ACTION_MENU_CAP, actionMenuIcon, editorMenuEntries, fileMenuItems } from './menu-model'
+import type { BoundActionView, EditorMenuState, FileMenuState } from './menu-model'
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
+function action(overrides: Partial<BoundActionView> = {}): BoundActionView {
+    return { bindingId: 'humanize', label: 'Humanize', verbClass: 'transform', ...overrides }
+}
+
 function editorState(overrides: Partial<EditorMenuState> = {}): EditorMenuState {
-    return { editable: true, hasSelection: true, reviewable: true, ...overrides }
+    return {
+        editable: true,
+        hasSelection: true,
+        reviewable: true,
+        excluded: false,
+        actions: [],
+        ...overrides
+    }
 }
 
 function fileState(overrides: Partial<FileMenuState> = {}): FileMenuState {
     return { markdownFile: true, reviewable: true, ...overrides }
 }
 
+function entryIds(state: EditorMenuState): string[] {
+    return editorMenuEntries(state).map((entry) =>
+        entry.kind === 'action' ? `action:${entry.action.bindingId}` : entry.kind
+    )
+}
+
 // ---------------------------------------------------------------------------
-// editorMenuItems
+// editorMenuEntries
 // ---------------------------------------------------------------------------
 
-describe('editorMenuItems', () => {
+describe('editorMenuEntries', () => {
     it('offers review selection and ask editor for a reviewable selection in an editable view', () => {
-        expect(editorMenuItems(editorState())).toEqual(['review-selection', 'ask-editor'])
+        expect(entryIds(editorState())).toEqual(['review-selection', 'ask-editor'])
+    })
+
+    it('lists bound actions first, alphabetical by label, before the review items', () => {
+        const state = editorState({
+            actions: [
+                action({ bindingId: 'summarize', label: 'Summarize' }),
+                action({ bindingId: 'critique', label: 'Critique', verbClass: 'review' }),
+                action({ bindingId: 'humanize', label: 'Humanize' })
+            ]
+        })
+        expect(entryIds(state)).toEqual([
+            'action:critique',
+            'action:humanize',
+            'action:summarize',
+            'review-selection',
+            'ask-editor'
+        ])
+    })
+
+    it('caps the bound actions at ACTION_MENU_CAP', () => {
+        const actions = Array.from({ length: ACTION_MENU_CAP + 5 }, (_, index) =>
+            action({
+                bindingId: `binding-${index}`,
+                label: `Action ${String(index).padStart(2, '0')}`
+            })
+        )
+        const entries = editorMenuEntries(editorState({ actions }))
+        expect(entries.filter((entry) => entry.kind === 'action')).toHaveLength(ACTION_MENU_CAP)
+    })
+
+    it('offers bound actions on a non-reviewable note as long as it is not excluded', () => {
+        // A vault whose editors are all rewrite-only: reviewable is false,
+        // yet transform actions dispatch — the review items alone are hidden.
+        const state = editorState({ reviewable: false, actions: [action()] })
+        expect(entryIds(state)).toEqual(['action:humanize'])
+    })
+
+    it('offers no bound actions on an excluded note (Business Rules #7)', () => {
+        const state = editorState({ excluded: true, reviewable: false, actions: [action()] })
+        expect(entryIds(state)).toEqual([])
     })
 
     it('offers nothing without a selection', () => {
-        expect(editorMenuItems(editorState({ hasSelection: false }))).toEqual([])
+        expect(entryIds(editorState({ hasSelection: false, actions: [action()] }))).toEqual([])
     })
 
     it('offers nothing in a non-editable (reading) view', () => {
-        expect(editorMenuItems(editorState({ editable: false }))).toEqual([])
-    })
-
-    it('offers nothing when the note is not reviewable', () => {
-        expect(editorMenuItems(editorState({ reviewable: false }))).toEqual([])
+        expect(entryIds(editorState({ editable: false, actions: [action()] }))).toEqual([])
     })
 
     it('offers nothing when every gate fails at once', () => {
         expect(
-            editorMenuItems({ editable: false, hasSelection: false, reviewable: false })
+            entryIds(
+                editorState({
+                    editable: false,
+                    hasSelection: false,
+                    reviewable: false,
+                    excluded: true
+                })
+            )
         ).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// actionMenuIcon
+// ---------------------------------------------------------------------------
+
+describe('actionMenuIcon', () => {
+    it('maps each verb class to its design §1 icon', () => {
+        expect(actionMenuIcon('transform')).toBe('check')
+        expect(actionMenuIcon('generate')).toBe('wand-2')
+        expect(actionMenuIcon('review')).toBe('message-circle')
     })
 })
 

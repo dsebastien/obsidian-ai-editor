@@ -1,32 +1,56 @@
 import { MarkdownView } from 'obsidian'
 import type { Plugin } from 'obsidian'
+import type { PluginSettingsV1 } from '../../domain/settings/settings-schema'
+import { resolveActions } from '../../services/actions/action-resolution'
 import type { ReviewController } from '../review-controller'
-import { AI_EDITOR_MENU_SECTION, editorMenuItems } from './menu-model'
+import { AI_EDITOR_MENU_SECTION, actionMenuIcon, editorMenuEntries } from './menu-model'
 
 /**
  * Editor context menu (design doc "Interaction surfaces" §1): right-click on
- * a selection in an editable markdown view offers "Review selection". Which
- * items appear is decided by the pure `editorMenuItems` model; this file only
- * builds the state and wires the Obsidian `Menu`.
- *
- * v1 ships review-class items only — bound action verbs (rephrase, …) wait
- * for the M3 transform operations, and no placeholder items are registered.
+ * a selection in an editable markdown view offers the dispatchable bound
+ * actions (icon by verb class, alphabetical, capped), then "Review
+ * selection" and "Ask an editor…". Which items appear is decided by the pure
+ * `editorMenuEntries` model over `resolveActions`; this file only builds the
+ * state and wires the Obsidian `Menu`.
  */
-export function registerEditorMenu(plugin: Plugin, controller: ReviewController): void {
+export function registerEditorMenu(
+    plugin: Plugin,
+    controller: ReviewController,
+    getSettings: () => PluginSettingsV1
+): void {
     plugin.registerEvent(
         plugin.app.workspace.on('editor-menu', (menu, editor, info) => {
             // `info` can be any MarkdownFileInfo host (e.g. an embedded
-            // editor); reviews dispatch through a full MarkdownView only.
+            // editor); dispatch goes through a full MarkdownView only.
             if (!(info instanceof MarkdownView)) {
                 return
             }
-            const items = editorMenuItems({
+            const file = info.file
+            const entries = editorMenuEntries({
                 editable: info.getMode() !== 'preview',
                 hasSelection: editor.somethingSelected(),
-                reviewable: controller.canReview(info)
+                reviewable: controller.canReview(info),
+                excluded: file === null || controller.isNoteExcluded(file.path),
+                actions: resolveActions(getSettings())
             })
-            for (const item of items) {
-                switch (item) {
+            for (const entry of entries) {
+                switch (entry.kind) {
+                    case 'action': {
+                        const action = entry.action
+                        menu.addItem((menuItem) => {
+                            menuItem
+                                .setTitle(action.label)
+                                .setIcon(actionMenuIcon(action.verbClass))
+                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .onClick(() => {
+                                    // Selection-capture contract (design §1):
+                                    // the range + hash are read synchronously
+                                    // in this callback by `startBoundAction`.
+                                    controller.startBoundAction(info, editor, action.bindingId)
+                                })
+                        })
+                        break
+                    }
                     case 'review-selection':
                         menu.addItem((menuItem) => {
                             menuItem

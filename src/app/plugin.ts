@@ -124,7 +124,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.register(this.subscribe(() => daemonController.settingsChanged()))
 
         registerReviewCommands(this, reviewController)
-        registerEditorMenu(this, reviewController)
+        registerEditorMenu(this, reviewController, () => this.settings)
         registerFileMenu(this, reviewController)
 
         // CLI surface (interaction surfaces design §4): desktop-only and
