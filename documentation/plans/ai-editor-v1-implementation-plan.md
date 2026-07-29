@@ -359,6 +359,10 @@ Additional post-v1 features (each a GitHub issue):
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
+### Action vocabulary expansion (planned step, post-M3)
+
+The built-in verb list (rephrase, summarize, critique, say-more, find-evidence, identify-assumptions, simplify, humanize, continue) is a starting set, not a ceiling. A dedicated pass will expand it, candidates drawn from the OSK skill catalog and Juri/Maggie affordances: fact-check, add-examples, add-analogies, strengthen-hook, tighten-structure, extract-outline, translate, change-tone, make-scannable, title-suggestions, counter-argue, steelman, devils-advocate, explain-simpler (ELI5), add-transitions, remove-jargon. Selection criteria: each verb must be meaningfully distinct as a one-shot operation, benefit from a specific instruction prompt (vs just picking a different editor), and map cleanly onto the operation contract (transform-selection or review). Default bindings for new verbs ship unbound; the settings Actions tab lists them automatically from the schema.
+
 - Diff granularity: word-level vs sentence-level rendering of red/green inline diff (leaning word-level, like Juri).
 - Post-run usage display: show actual token usage per run (providers return it) — nice trust-builder, not required.
 - Whether "Get research" (web) is API-backend-gated or CLI-only in practice.

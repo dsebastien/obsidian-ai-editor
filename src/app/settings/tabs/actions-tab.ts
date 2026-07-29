@@ -21,6 +21,7 @@ const BUILT_IN_ACTION_DESCRIPTIONS: Record<BuiltInActionId, string> = {
     'find-evidence': 'Find support (or counter-evidence) for the claim.',
     'identify-assumptions': 'Surface what the text takes for granted.',
     'simplify': 'Make the selection easier to read.',
+    'humanize': 'Remove AI-sounding patterns; restore a human voice.',
     'continue': 'Draft a continuation at the cursor.'
 }
 

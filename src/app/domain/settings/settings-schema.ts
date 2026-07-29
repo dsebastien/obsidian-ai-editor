@@ -141,6 +141,7 @@ export const builtInActionIdSchema = z.enum([
     'find-evidence',
     'identify-assumptions',
     'simplify',
+    'humanize',
     'continue'
 ])
 export type BuiltInActionId = z.infer<typeof builtInActionIdSchema>

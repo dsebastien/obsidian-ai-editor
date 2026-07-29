@@ -53,6 +53,7 @@ const BUILT_IN_ACTION_LABELS: Record<BuiltInActionId, string> = {
     'find-evidence': 'Find evidence',
     'identify-assumptions': 'Identify assumptions',
     'simplify': 'Simplify',
+    'humanize': 'Humanize',
     'continue': 'Continue'
 }
 
