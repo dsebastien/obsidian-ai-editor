@@ -865,4 +865,64 @@ describe('RunController concurrency gate (behavior.maxConcurrentRequests)', () =
         await second.settled
         expect(second.getEditorStates().every((state) => state.status === 'done')).toBeTrue()
     })
+
+    it('reclaims the permit on cancel even when the executor ignores its abort signal', async () => {
+        const controller = new RunController(() => 1)
+        const started: string[] = []
+        /** Rogue executor: never yields, never ends, ignores the signal. */
+        const rogue: RunEditorSpec = {
+            editorId: 'rogue',
+            editorName: 'Rogue',
+            execute: async function* (request) {
+                started.push('rogue')
+                await new Promise<never>(() => undefined) // hangs forever
+                yield result(request.runId, []) // unreachable
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [rogue] })
+        await settle()
+        expect(started).toEqual(['rogue'])
+        expect(run.getEditorState('rogue')?.status).toEqual('running')
+
+        // Cancel marks the editor terminal; the stream keeps hanging, but the
+        // permit must be freed NOW — not at iterator end (which never comes).
+        run.cancelRun()
+        expect(run.getEditorState('rogue')?.status).toEqual('cancelled')
+
+        const after = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/after.md', text: DOC }),
+            editors: [scriptedEditor('after', (runId) => [result(runId, [])])]
+        })
+        await after.settled
+        expect(after.getEditorState('after')?.status).toEqual('done')
+    })
+
+    it('frees the permit at the terminal event while the stream is still draining', async () => {
+        const controller = new RunController(() => 1)
+        const started: string[] = []
+        /** Emits its terminal result, then keeps the stream open forever. */
+        const slowClosing: RunEditorSpec = {
+            editorId: 'slow',
+            editorName: 'Slow closing',
+            execute: async function* (request) {
+                started.push('slow')
+                yield result(request.runId, [])
+                await new Promise<never>(() => undefined) // never closes
+            }
+        }
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [slowClosing, scriptedEditor('next', (runId) => [result(runId, [])])]
+        })
+        // Extra turns: admission happens mid-drain, adding microtask hops
+        // before the second editor's stream starts and settles.
+        await settle()
+        await settle()
+
+        // The terminal 'result' released the permit; the queued editor ran to
+        // completion even though the first stream never closed.
+        expect(started).toEqual(['slow'])
+        expect(run.getEditorState('slow')?.status).toEqual('done')
+        expect(run.getEditorState('next')?.status).toEqual('done')
+    })
 })

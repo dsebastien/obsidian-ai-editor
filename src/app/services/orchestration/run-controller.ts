@@ -99,6 +99,18 @@ interface InternalEditorState {
     terminal: boolean
     /** Content keys of ingested findings, deduping stream vs result payloads. */
     seenFindingKeys: Set<string>
+    /**
+     * Frees this editor's concurrency permit (null until admitted, nulled
+     * once released). Held here — not only in the consume loop's closure —
+     * so the permit is released the moment the editor goes TERMINAL, not
+     * when its iterator finally ends: after a terminal event (or cancel)
+     * the loop keeps draining discarded events, and an executor that
+     * ignores its AbortSignal would otherwise hold the permit indefinitely
+     * — with `maxConcurrentRequests` = N, N such streams would deadlock
+     * every future review plugin-wide. Release is idempotent, and the
+     * consume loop's `finally` stays as backstop.
+     */
+    releasePermit: ReleasePermit | null
 }
 
 class ReviewRunHandle implements RunHandle {
@@ -144,7 +156,8 @@ class ReviewRunHandle implements RunHandle {
                 lastProgress: null,
                 error: null,
                 terminal: false,
-                seenFindingKeys: new Set()
+                seenFindingKeys: new Set(),
+                releasePermit: null
             })
         }
 
@@ -183,6 +196,10 @@ class ReviewRunHandle implements RunHandle {
             if (!state.terminal) {
                 state.terminal = true
                 state.status = 'cancelled'
+                // Reclaim the permit NOW: the aborted stream may keep
+                // draining (or, for an abort-ignoring executor, never end),
+                // and queued editors of other runs must not wait on it.
+                this.releasePermitOf(state)
             }
         }
         this.notify()
@@ -224,6 +241,7 @@ class ReviewRunHandle implements RunHandle {
             }
             return
         }
+        state.releasePermit = release
         try {
             if (state.terminal) {
                 return // cancelled between admission and this continuation
@@ -274,8 +292,12 @@ class ReviewRunHandle implements RunHandle {
                 }
             }
         } finally {
-            // Exactly-once by construction: `release` is idempotent, and this
-            // finally covers every exit (done, error, cancel, thrown stream).
+            // Backstop only: the permit is normally freed the moment the
+            // editor goes terminal (`terminate` / `cancelRun`) so a stream
+            // that keeps draining — or never ends — cannot starve other
+            // editors. Exactly-once by construction: `release` is idempotent,
+            // and this finally covers every exit (done, error, cancel,
+            // thrown stream).
             release()
         }
     }
@@ -389,7 +411,18 @@ class ReviewRunHandle implements RunHandle {
         state.terminal = true
         state.status = status
         state.error = error
+        // Terminal = this editor's backend work is over from the run's point
+        // of view; free the permit immediately rather than waiting for the
+        // (possibly still-draining, possibly never-ending) stream to close.
+        this.releasePermitOf(state)
         this.notify()
+    }
+
+    /** Frees the editor's concurrency permit, if held. Idempotent. */
+    private releasePermitOf(state: InternalEditorState): void {
+        const release = state.releasePermit
+        state.releasePermit = null
+        release?.()
     }
 
     private notify(): void {
