@@ -10,13 +10,13 @@
  *   domain (`mapAnchorThroughChanges`), fed by `changesFromTransaction`
  *   (see `changes-adapter.ts`), which iterates the same `ChangeSet` this
  *   field maps through. Stale detection is a domain decision; this field
- *   never decides staleness on its own. Today staleness reaches the
- *   decorations via the deferred full `setFindingsEffect` rebuild in
- *   `ReviewController.dispatchDecorations`. `markStaleEffect` is the
- *   incremental alternative (mark N ids stale without rebuilding the whole
- *   set) — supported and spec-covered here, but NOT dispatched anywhere
- *   yet; M3 (live stale-marking while the user types) is where it gets
- *   wired. Do not assume it runs today.
+ *   never decides staleness on its own. Staleness reaches the decorations
+ *   two ways: incrementally via `markStaleEffect`, dispatched (on a
+ *   microtask) by `ReviewController.handleEditorUpdate` for exactly the
+ *   findings whose anchor transitioned to stale during an edit batch (diff
+ *   logic in `stale-diff.ts`), and via the deferred full
+ *   `setFindingsEffect` rebuild in `ReviewController.dispatchDecorations`
+ *   — the eventual-consistency backstop.
  *
  * Rendering: each finding is a `Decoration.mark` with class
  * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale) and the

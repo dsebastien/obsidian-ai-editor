@@ -17,8 +17,13 @@ import { skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip } from '../services/review-service'
 import { changesFromTransaction } from './editor/changes-adapter'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
-import { clearFindingsEffect, setFindingsEffect } from './editor/finding-decorations'
+import {
+    clearFindingsEffect,
+    markStaleEffect,
+    setFindingsEffect
+} from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
+import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { PersonaRail } from './editor/rail'
 import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
@@ -685,12 +690,39 @@ export class ReviewController {
         if (this.canonicalGlueFor(glue.filePath) !== glue) {
             return // non-canonical pane: the canonical view forwards this edit
         }
+        // Incremental stale-marking (M3): the FindingStore is the staleness
+        // authority — snapshot which findings are stale before forwarding the
+        // batch, diff after, and dim exactly the transitioned ones in place.
+        const staleBefore = staleIds(glue.run.findings.list())
+        let forwarded = false
         for (const tr of update.transactions) {
             const changes = changesFromTransaction(tr)
             if (changes.length > 0) {
                 glue.run.applyTextChanges(changes)
+                forwarded = true
             }
         }
+        if (!forwarded) {
+            return
+        }
+        const wentStale = newlyStaleIds(staleBefore, glue.run.findings.list())
+        if (wentStale.length === 0) {
+            return
+        }
+        // CM6 forbids dispatching from within an update listener (it would
+        // re-enter `EditorView.update`), so the effect goes out on a
+        // microtask — still ahead of the deferred `scheduleRefresh` rebuild
+        // (setTimeout 0), which remains the eventual-consistency backstop.
+        // Safe without further guards: dispatch on a destroyed EditorView is
+        // a CM6 no-op, and `markStaleEffect` ignores ids the decoration set
+        // no longer holds (note switch, cleared run).
+        const editorView = update.view
+        queueMicrotask(() => {
+            if (this.disposed) {
+                return
+            }
+            editorView.dispatch({ effects: markStaleEffect.of(wentStale) })
+        })
     }
 
     /**
