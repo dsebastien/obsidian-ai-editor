@@ -74,6 +74,17 @@ The vault already contains a mature agent architecture ([[AI Assistant Architect
 | Panels | **In v1** ("I want it all"): user composes panels from 1-n editors; aggregated scorecard (verdicts, top fixes, dissent) |
 | Action bindings | Every UI action (rephrase, summarize, critique…) is **mapped in settings to an editor or panel** |
 | Prompt sourcing | Every prompt field = **textarea AND/OR 0-n vault note refs** ("configure directly as a prompt, or indirectly by documenting things in my vault") |
+| Finding arrival | **Stream as they land** — highlights pop in progressively, badges count up live; first insight in seconds |
+| Run scope | **Whole note by default; selection overrides** when text is selected. Size warning + confirm above a configurable word count |
+| Panel aggregation | **LLM aggregation call** after members finish: charter prompt + member outputs → recommendation, top-3 fixes, dissent. Panel has its own provider/model for this call |
+| Extra context | **Opt-in linked notes per editor** (1 hop, capped) + `[[wikilink]]` references typed in ANY prompt/input field (persona prompts, push-back, refine, custom actions) resolve and attach those notes as context. Wikilink autocomplete in plugin inputs |
+| Providers | 1-n configurable provider instances: **Anthropic, OpenAI + any OpenAI-compatible (custom base URL), Azure AI Foundry (first-class: deployment name, api-version, auth header), Ollama**. Per-editor AND per-panel provider/model selection |
+| Layout | **Adaptive Juri layout**: pane ≥ ~900px → left rail + floating cards + right margin comment column; narrow panes collapse to highlight-click → card + side-panel list |
+| Keyboard | **Full keyboard triage**: hotkey-assignable commands for next/prev finding, accept, reject, dismiss, suggest, focus push-back. Review = merge-conflict-style rapid triage |
+| Onboarding | **Guided setup wizard** on first use: pick/detect backend (Ollama running? `claude` on PATH?), test connection, seed starter editors, 30-second tour on sample text |
+| Guardrails | Size warning + confirm; **exclusions** (folders/tags/`ai_editor: false` frontmatter flag block review; strip-frontmatter option); **nothing runs automatically on note open — every AI action is user-initiated** |
+| Conversations | **Per-finding threads**: push-back → editor reply → counter → revised suggestion, collapsed history in the card. Session-scoped |
+| Editor modes | **Full parity in Live Preview AND Source mode** (both CM6); Reading view interaction out of scope |
 
 ## 4. Domain model
 
@@ -81,7 +92,8 @@ The vault already contains a mature agent architecture ([[AI Assistant Architect
 Editor
   id, name, color, icon?
   promptSource:      { text?: string; noteRefs: NotePath[] }   // concatenated at runtime
-  backend:           BackendRef | 'inherit'                    // provider+model or CLI agent
+  backend:           BackendInstanceRef + model | 'inherit'    // provider instance or CLI agent
+  contextPolicy:     { includeLinkedNotes: bool; maxLinkedNotes: number }  // opt-in, 1 hop, capped
   capabilities:      { review: bool; rewrite: bool; research: bool }  // what it may do
   enabled:           bool
 
@@ -89,8 +101,15 @@ Panel
   id, name, color/badge style (visually distinct from Editors everywhere)
   members:           EditorId[]           // 1-n
   charterSource:     { text?: string; noteRefs: NotePath[] }   // aggregation instructions
+  aggregationBackend: BackendInstanceRef + model | 'inherit'   // powers the scorecard call
   aggregation:       'scorecard' | 'merged-findings'
   enabled:           bool
+
+BackendInstance (1-n configured in settings)
+  ApiBackend:  provider (anthropic | openai-compatible | azure-ai-foundry | ollama),
+               label, apiKey?, baseUrl?, deployment?/apiVersion? (azure), defaultModel
+  CliBackend:  kind (claude-code | codex | custom), label, executablePath,
+               args template, cwd (vault), timeout
 
 VoiceProfile (global, singleton in settings)
   source:            { text?: string; noteRefs: NotePath[] }   // e.g. [[My Voice Profile]]
@@ -104,7 +123,8 @@ Action  (built-in verbs surfaced in context menu / command palette)
 
 Finding (ephemeral)
   editorId, quotedText, anchor {from,to} | null, critique,
-  suggestedReplacement?, rationale?, status: open|applied|dismissed
+  suggestedReplacement?, rationale?, status: open|applied|dismissed,
+  thread: Message[]      // per-finding push-back conversation (session-scoped)
 
 ReviewRun (ephemeral)
   target: note | selection, requestedBy: summon|action|panel,
@@ -138,10 +158,11 @@ interface ReviewBackend {
 }
 ```
 
-- **ApiBackend** (v1 core): direct `fetch` to provider APIs, streaming. Structured output via JSON schema / tool-call where supported; strict Zod validation of findings.
+- **ApiBackend** (v1 core): direct `fetch` to provider APIs, streaming. Structured output via JSON schema / tool-call where supported; strict Zod validation of findings. **Findings are parsed incrementally from the stream** and emitted as soon as each is complete (streaming-first UX). Provider adapters: Anthropic, OpenAI-compatible (custom base URL — covers OpenAI, OpenRouter, Groq, LM Studio…), Azure AI Foundry (deployment name + api-version + auth header), Ollama.
 - **CliBackend** (v1, desktop-only): spawn `claude` / `codex` in headless mode (`claude -p --output-format stream-json`) with the note (or selection) as context, cwd = vault root. Parse streamed JSON into BackendEvents. This is what powers "Get research"-grade actions (web, tools) and long async reviews.
 - Per-editor backend override; global default backend in settings.
-- All requests carry: system prompt (assembled per §4), the note content (raw markdown), optional selection range, and the structured-findings output contract.
+- All requests carry: system prompt (assembled per §4), the note content (raw markdown), optional selection range, an extensible `context[]` (resolved `[[wikilink]]` refs from prompts/inputs, opt-in linked notes per the editor's contextPolicy), and the structured-findings output contract.
+- **Nothing runs on note open.** Every backend call is triggered by an explicit user action (Review, an action verb, a push-back, a comment submission).
 
 ### 5.2 Finding contract (what every backend must return)
 
@@ -193,12 +214,14 @@ One `ItemView` ("AI Editor: Review") showing, per active note:
 ### 5.7 Settings design (UX matters here too)
 
 Tabs/sections:
-1. **Backends** — API providers (keys, models, test button), CLI agents (path detection, health check).
+1. **Backends** — **1-n provider instances** (add multiple, label them): Anthropic / OpenAI-compatible / Azure AI Foundry / Ollama, each with keys, base URL/deployment, default model, test button; CLI agents (path detection, health check). First-use **setup wizard** (detect Ollama + `claude`/`codex` on PATH, test connection, seed starter editors, sample-text tour).
 2. **Editors** — gallery of persona cards (color, name, enabled); create/edit modal with: name, color, prompt textarea, **note-ref picker (0-n notes, ordered, with fuzzy note search)**, backend/model override, capability toggles. Import/export JSON.
 3. **Panels** — compose from existing editors (multi-select, 1-n), charter (textarea + note refs), aggregation mode. Distinct visual identity.
 4. **Actions** — table of built-in verbs (rephrase, summarize, critique, say more, find evidence, identify assumptions, simplify, continue) each with a binding dropdown (editor or panel); add custom actions (name + prompt source + binding); hotkey hints (actual hotkeys via Obsidian's hotkey system).
 5. **Voice & Style** — global voice profile: textarea + note refs (e.g. [[My Voice Profile]]); per-editor injection opt-out.
-6. **Behavior** — summon scope (whole note / section / selection), concurrency, cost guardrails (max tokens per run), telemetry off.
+6. **Behavior** — size-warning threshold, concurrency, max tokens per run, **exclusions** (folders, tags, `ai_editor: false` frontmatter flag; strip-frontmatter toggle), hotkey pointers for the keyboard triage commands. No telemetry.
+
+All plugin text inputs (persona prompts, charters, push-back, refine, custom actions) support **`[[wikilink]]` autocomplete**; referenced notes are resolved and attached as context at run time.
 
 ### 5.8 Starter pack (shipped editors; all fully editable)
 
@@ -216,8 +239,8 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 ## 6. Milestones (what, not when; each lands green: tsc + lint + test + build)
 
 - **M0 — Foundations**: domain types + Zod schemas; settings store (Immer); backend abstraction with ApiBackend (Anthropic + OpenAI-compatible + Ollama); finding contract + anchoring pipeline with exhaustive spec tests (anchoring is the risk — de-risk first).
-- **M1 — Core review loop**: editor rail + Summon/Cancel + spinners + badges; span highlights; review cards (critique, Suggest/Apply/Dismiss, push-back input); inline diff with Accept/Reject/Refine. Single editor, whole-note scope.
-- **M2 — Editors & settings**: persona CRUD UI (gallery, colors, prompt textarea + note-ref picker), voice profile section, starter pack seeding, import/export.
+- **M1 — Core review loop**: editor rail + Review/Cancel + spinners + live count badges (streaming findings); span highlights; review cards (critique, Suggest/Apply/Dismiss, push-back input with per-finding thread); inline diff with Accept/Reject/Refine; keyboard triage commands (next/prev/accept/reject/dismiss). Single editor, whole-note scope + selection override. Verified in Live Preview AND Source mode.
+- **M2 — Editors & settings**: persona CRUD UI (gallery, colors, prompt textarea + note-ref picker with wikilink autocomplete), 1-n provider instances (incl. Azure AI Foundry), per-editor backend/model override, voice profile section, exclusions, starter pack seeding, import/export, setup wizard.
 - **M3 — Actions & context menu**: selection context menu + command palette commands; action→editor/panel bindings in settings; custom actions; "Generate more" continuation affordance.
 - **M4 — Panels**: panel CRUD (1-n members, charter, aggregation), panel run orchestration (parallel member runs + aggregation call), scorecard in side panel; visual distinction editors-vs-panels everywhere.
 - **M5 — CLI backends**: Claude Code + Codex adapters (headless streaming), health checks, per-editor backend override UI; research-grade actions light up.
@@ -237,12 +260,11 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
-- Diff granularity: word-level vs sentence-level rendering of red/green inline diff.
-- Multi-note context: should editors see linked notes / backlinks for context? (Powerful with CliBackend; scope creep risk.)
-- Streaming UX: show findings as they arrive vs batch at end (Juri batches; streaming might feel more alive).
-- Panel aggregation: second LLM call vs deterministic merge + verdict vote.
+- Diff granularity: word-level vs sentence-level rendering of red/green inline diff (leaning word-level, like Juri).
+- Post-run usage display: show actual token usage per run (providers return it) — nice trust-builder, not required.
 - Whether "Get research" (web) is API-backend-gated or CLI-only in practice.
 - Publish gates: a "Style Guard" mode that blocks a publish pipeline (integration with obsidian-ghost-publish?) — later.
+- Backlinks (not just outgoing links) as opt-in context.
 
 ## 9. References
 
