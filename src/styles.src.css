@@ -517,6 +517,13 @@
     @apply opacity-60;
 }
 
+/* Waiting for a concurrency permit: dimmed with a slow pulse — visibly
+   alive but distinct from the fast pulse of an active review. */
+.ai-editor-rail-dot-pending {
+    @apply opacity-60;
+    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+}
+
 .ai-editor-rail-dot-running {
     animation: ai-editor-pulse 1.2s ease-in-out infinite;
 }
@@ -556,6 +563,7 @@
    to 600 s) on every note being edited — motion-sensitive users get static
    dots (state stays visible through color/opacity alone). */
 @media (prefers-reduced-motion: reduce) {
+    .ai-editor-rail-dot-pending,
     .ai-editor-rail-dot-running,
     .ai-editor-rail-daemon {
         animation: none;

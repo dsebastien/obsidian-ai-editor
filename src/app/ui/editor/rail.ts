@@ -25,25 +25,50 @@ export interface RailCallbacks {
     readonly onRetry: (editorId: string) => void
 }
 
+/**
+ * Hover-tooltip attachment seam. The hosting view passes Obsidian's
+ * `setTooltip` (wrapped with a placement) so chips get native themed
+ * tooltips; without one the rail falls back to the `title` attribute —
+ * keeping this file Obsidian-free and unit-testable either way.
+ */
+export type RailTooltipSetter = (el: HTMLElement, tooltip: string) => void
+
 export class PersonaRail {
     private readonly doc: Document
     private readonly rootEl: HTMLElement
 
     /**
-     * @param containerEl view-owned element the rail attaches to
-     * @param callbacks   user-intent handlers (never invoked after destroy)
-     * @param doc         owning document; defaults to the container's — pass
-     *                    the view's document explicitly in popout contexts
+     * @param containerEl   view-owned element the rail attaches to
+     * @param callbacks     user-intent handlers (never invoked after destroy)
+     * @param doc           owning document; defaults to the container's — pass
+     *                      the view's document explicitly in popout contexts
+     * @param tooltipSetter native tooltip attachment (Obsidian `setTooltip`);
+     *                      falls back to the `title` attribute when absent
      */
     constructor(
         containerEl: HTMLElement,
         private readonly callbacks: RailCallbacks,
-        doc?: Document
+        doc?: Document,
+        private readonly tooltipSetter?: RailTooltipSetter
     ) {
         this.doc = doc ?? containerEl.ownerDocument
         this.rootEl = this.doc.createElement('div')
         this.rootEl.classList.add('ai-editor-rail')
         containerEl.appendChild(this.rootEl)
+    }
+
+    /**
+     * Screen-reader label plus hover tooltip for one element. The native
+     * setter and the `title` fallback are mutually exclusive so no element
+     * ever shows two tooltips.
+     */
+    private applyTooltip(el: HTMLElement, tooltip: string): void {
+        el.setAttribute('aria-label', tooltip)
+        if (this.tooltipSetter) {
+            this.tooltipSetter(el, tooltip)
+        } else {
+            el.title = tooltip
+        }
     }
 
     /** Rebuilds the rail DOM from the given state (idempotent, cheap). */
@@ -57,8 +82,7 @@ export class PersonaRail {
             button.classList.add('ai-editor-rail-button-cancel')
         }
         button.textContent = viewModel.button.label
-        button.setAttribute('aria-label', viewModel.button.ariaLabel)
-        button.title = viewModel.button.ariaLabel
+        this.applyTooltip(button, viewModel.button.ariaLabel)
         button.disabled = viewModel.button.disabled
         button.addEventListener('click', () => {
             if (viewModel.button.action === 'cancel') {
@@ -84,8 +108,7 @@ export class PersonaRail {
             const daemonEl = this.doc.createElement('div')
             daemonEl.classList.add('ai-editor-rail-daemon')
             daemonEl.setAttribute('role', 'status')
-            daemonEl.setAttribute('aria-label', viewModel.daemon.title)
-            daemonEl.title = viewModel.daemon.title
+            this.applyTooltip(daemonEl, viewModel.daemon.title)
             this.rootEl.appendChild(daemonEl)
         }
     }
@@ -109,8 +132,7 @@ export class PersonaRail {
             // Text glyph on purpose: the rail is Obsidian-free DOM (no
             // setIcon) and must not use innerHTML.
             retryEl.textContent = '↻'
-            retryEl.setAttribute('aria-label', dot.retryAriaLabel)
-            retryEl.title = dot.retryAriaLabel
+            this.applyTooltip(retryEl, dot.retryAriaLabel)
             retryEl.addEventListener('click', () => {
                 this.callbacks.onRetry(dot.editorId)
             })
@@ -123,8 +145,7 @@ export class PersonaRail {
         const dotEl = this.doc.createElement('button')
         dotEl.classList.add('ai-editor-rail-dot', `ai-editor-rail-dot-${dot.status}`)
         dotEl.style.setProperty('--ai-editor-editor-color', dot.color)
-        dotEl.setAttribute('aria-label', dot.ariaLabel)
-        dotEl.title = dot.title
+        this.applyTooltip(dotEl, dot.title)
         dotEl.dataset['editorId'] = dot.editorId
         dotEl.addEventListener('click', () => {
             this.callbacks.onEditorClick(dot.editorId)

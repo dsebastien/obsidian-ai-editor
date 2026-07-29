@@ -7,7 +7,7 @@
  * the view-owned DOM keeps the DOM layer trivial and disposable.
  */
 
-export type RailEditorStatus = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
+export type RailEditorStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 
 /** Per-editor input state, projected by the run orchestrator. */
 export interface RailEditorState {
@@ -18,6 +18,13 @@ export interface RailEditorState {
     readonly status: RailEditorStatus
     /** Findings reported so far (counts up live while streaming). */
     readonly findingCount: number
+    /**
+     * Short human reason for a failed attempt ("timeout", "rate limit"…),
+     * rendered as `failed (<reason>)` in the chip tooltip. Absent when the
+     * editor did not fail or the failure has no specific reason. Derive from
+     * an operation error code via `railErrorReason`.
+     */
+    readonly errorReason?: string
 }
 
 export interface RailState {
@@ -79,10 +86,34 @@ function findingsLabel(findingCount: number): string {
     return findingCount === 1 ? '1 finding' : `${findingCount} findings`
 }
 
+/**
+ * Maps an operation error code to the short reason shown in the chip
+ * tooltip (`failed (timeout)`). Returns undefined for codes with no useful
+ * short form ('unknown', 'cancelled' — the latter is its own status).
+ */
+export function railErrorReason(code: string): string | undefined {
+    switch (code) {
+        case 'timeout':
+            return 'timeout'
+        case 'network':
+            return 'network'
+        case 'auth':
+            return 'authentication'
+        case 'rate-limit':
+            return 'rate limit'
+        case 'invalid-output':
+            return 'invalid output'
+        default:
+            return undefined
+    }
+}
+
 function statusLabel(editor: RailEditorState): string {
     switch (editor.status) {
         case 'idle':
             return 'idle'
+        case 'pending':
+            return 'waiting'
         case 'running':
             return editor.findingCount > 0
                 ? `reviewing, ${findingsLabel(editor.findingCount)} so far`
@@ -90,7 +121,7 @@ function statusLabel(editor: RailEditorState): string {
         case 'done':
             return findingsLabel(editor.findingCount)
         case 'error':
-            return 'failed'
+            return editor.errorReason === undefined ? 'failed' : `failed (${editor.errorReason})`
         case 'cancelled':
             return 'cancelled'
     }
@@ -101,7 +132,7 @@ function isRetryable(status: RailEditorStatus): boolean {
 }
 
 function buildDot(editor: RailEditorState): RailDotViewModel {
-    const label = `${editor.name}: ${statusLabel(editor)}`
+    const label = `${editor.name} — ${statusLabel(editor)}`
     return {
         editorId: editor.id,
         color: editor.color,

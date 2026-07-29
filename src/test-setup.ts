@@ -7,6 +7,9 @@ import { mock } from 'bun:test'
 
 // Mock the obsidian module (fire-and-forget, no need to await)
 void mock.module('obsidian', () => ({
+    setTooltip: (_el: unknown, _tooltip: string) => {
+        // No-op for tests — hover tooltips are a DOM concern
+    },
     Notice: class Notice {
         constructor(_message: string, _timeout?: number) {
             // No-op for tests

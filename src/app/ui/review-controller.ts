@@ -1,4 +1,4 @@
-import { MarkdownView, Modal, Notice, Setting, TFile } from 'obsidian'
+import { MarkdownView, Modal, Notice, Setting, TFile, setTooltip } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -31,6 +31,7 @@ import {
 import type { FindingDecorationSpec } from './editor/finding-decorations'
 import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { PersonaRail } from './editor/rail'
+import { railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
@@ -1064,7 +1065,10 @@ export class ReviewController {
                     }
                 }
             },
-            doc
+            doc,
+            // Native themed tooltips on every chip: name + live status.
+            // The rail sits at the editor's right edge, so place them left.
+            (el, tooltip) => setTooltip(el, tooltip, { placement: 'left' })
         )
         return {
             view,
@@ -1135,12 +1139,17 @@ export class ReviewController {
             .filter((editor) => editor.enabled && editor.capabilities.review)
             .map((editor) => {
                 const state = run?.getEditorState(editor.id) ?? null
+                const errorReason =
+                    state?.status === 'error' && state.error
+                        ? railErrorReason(state.error.code)
+                        : undefined
                 return {
                     id: editor.id,
                     name: editor.name,
                     color: editor.color,
                     status: state ? railStatusOf(state.status) : 'idle',
-                    findingCount: state ? state.findingIds.length : 0
+                    findingCount: state ? state.findingIds.length : 0,
+                    ...(errorReason === undefined ? {} : { errorReason })
                 }
             })
     }
@@ -1325,6 +1334,9 @@ export class ReviewController {
 function railStatusOf(status: EditorRunStatus): RailEditorStatus {
     switch (status) {
         case 'pending':
+            // Distinct from 'running' so the chip tooltip can say "waiting"
+            // while the editor queues behind the concurrency limit.
+            return 'pending'
         case 'running':
             return 'running'
         case 'done':
