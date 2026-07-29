@@ -72,6 +72,14 @@ export type ReviewStart =
           readonly status: 'started'
           readonly run: RunHandle
           readonly skips: readonly EditorSkip[]
+          /**
+           * True when `requestedSelection` was provided but no longer valid at
+           * run start (bounds outside the fresh snapshot, degenerate range, or
+           * the text changed since capture) and the run fell back to whole-note
+           * scope. Callers should surface this ("Selection changed — reviewing
+           * the whole note"). Always false when no selection was requested.
+           */
+          readonly selectionFallback: boolean
       }
     /** Typed refusal: the target note is excluded (Business Rules #7). */
     | { readonly status: 'excluded'; readonly notePath: string }
@@ -107,6 +115,18 @@ export interface StartReviewInput {
      * switched notes mid-await) — the original snapshot is then used.
      */
     readonly refreshSnapshot?: () => DocumentSnapshot | null
+    /**
+     * Selection range (offsets into `snapshot.text`) the caller captured
+     * synchronously when the review was requested (context-menu item or
+     * command callback — the selection-capture contract of the interaction
+     * surfaces design §1). Re-validated against the fresh snapshot right
+     * before the run starts: the range must be non-empty, ordered, inside the
+     * text, and the text hash must still match the capture-time snapshot.
+     * Valid → the run is selection-scoped on exactly this range (taking
+     * precedence over any selection the snapshots carry themselves); invalid
+     * → whole-note scope with `selectionFallback: true` in the result.
+     */
+    readonly requestedSelection?: { readonly from: number; readonly to: number }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +137,27 @@ export interface StartReviewInput {
 export function countWords(text: string): number {
     const matches = text.match(/\S+/g)
     return matches ? matches.length : 0
+}
+
+/**
+ * Whether a caller-captured selection can still scope a run against the fresh
+ * snapshot taken at run start: the range must be non-empty, ordered, and
+ * inside the text, and the text must be unchanged since capture (hash
+ * equality with the capture-time snapshot). Offsets into changed text are
+ * meaningless even when they still fit — a hash mismatch always invalidates.
+ */
+export function isRequestedSelectionValid(
+    requested: { readonly from: number; readonly to: number },
+    capturedHash: string,
+    fresh: Pick<DocumentSnapshot, 'hash' | 'text'>
+): boolean {
+    if (requested.from >= requested.to) {
+        return false // degenerate (from === to) or inverted range
+    }
+    if (requested.from < 0 || requested.to > fresh.text.length) {
+        return false // out of bounds against the fresh text
+    }
+    return fresh.hash === capturedHash
 }
 
 export type BackendResolution =
@@ -326,9 +367,37 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // budgeting, where slightly stale text is harmless. A refreshed snapshot
     // for a DIFFERENT file (view switched notes mid-await) is discarded.
     const refreshed = input.refreshSnapshot?.() ?? null
-    const runSnapshot =
+    let runSnapshot =
         refreshed !== null && refreshed.filePath === snapshot.filePath ? refreshed : snapshot
 
+    // -- Apply the requested selection scope ---------------------------------
+    // The caller captured `requestedSelection` synchronously against
+    // `snapshot.text`; the awaits above may have let the document change.
+    // Re-validate against the snapshot the run will actually open on: still
+    // valid → the run is selection-scoped on exactly the captured range
+    // (overriding any live selection the refreshed snapshot picked up);
+    // invalid → whole-note scope, reported via `selectionFallback` so the UI
+    // can tell the user. Without a requested selection this block is inert —
+    // the legacy snapshot-carried selection behavior is untouched.
+    let selectionFallback = false
+    const requested = input.requestedSelection
+    if (requested) {
+        if (isRequestedSelectionValid(requested, snapshot.hash, runSnapshot)) {
+            runSnapshot = {
+                ...runSnapshot,
+                selection: { from: requested.from, to: requested.to }
+            }
+        } else {
+            selectionFallback = true
+            runSnapshot = {
+                id: runSnapshot.id,
+                filePath: runSnapshot.filePath,
+                text: runSnapshot.text,
+                hash: runSnapshot.hash
+            }
+        }
+    }
+
     const run = runController.startRun({ snapshot: runSnapshot, editors: editorSpecs })
-    return { status: 'started', run, skips }
+    return { status: 'started', run, skips, selectionFallback }
 }

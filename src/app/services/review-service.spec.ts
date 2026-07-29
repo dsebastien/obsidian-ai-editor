@@ -6,13 +6,14 @@ import {
     pluginSettingsSchema
 } from '../domain/settings/settings-schema'
 import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
-import { createSnapshot } from '../domain/snapshot'
+import { createSnapshot, hashText } from '../domain/snapshot'
 import { RunController } from './orchestration/run-controller'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
     composeSystemPrompt,
     countWords,
     createEditorSpec,
+    isRequestedSelectionValid,
     resolveApiBackend,
     skipReasonLabel,
     startReview
@@ -149,6 +150,34 @@ describe('skipReasonLabel', () => {
         for (const reason of reasons) {
             expect(skipReasonLabel(reason).length).toBeGreaterThan(0)
         }
+    })
+})
+
+describe('isRequestedSelectionValid', () => {
+    const fresh = { hash: hashText(DOC_TEXT), text: DOC_TEXT }
+
+    it('accepts an ordered non-empty range inside the unchanged text', () => {
+        expect(isRequestedSelectionValid({ from: 0, to: 11 }, fresh.hash, fresh)).toBe(true)
+        expect(isRequestedSelectionValid({ from: 0, to: DOC_TEXT.length }, fresh.hash, fresh)).toBe(
+            true
+        )
+    })
+
+    it('rejects degenerate and inverted ranges', () => {
+        expect(isRequestedSelectionValid({ from: 5, to: 5 }, fresh.hash, fresh)).toBe(false)
+        expect(isRequestedSelectionValid({ from: 11, to: 3 }, fresh.hash, fresh)).toBe(false)
+    })
+
+    it('rejects out-of-bounds offsets', () => {
+        expect(isRequestedSelectionValid({ from: -1, to: 5 }, fresh.hash, fresh)).toBe(false)
+        expect(
+            isRequestedSelectionValid({ from: 0, to: DOC_TEXT.length + 1 }, fresh.hash, fresh)
+        ).toBe(false)
+    })
+
+    it('rejects when the text changed since capture, even with fitting bounds', () => {
+        const capturedHash = hashText(`EDIT! ${DOC_TEXT}`)
+        expect(isRequestedSelectionValid({ from: 0, to: 11 }, capturedHash, fresh)).toBe(false)
     })
 })
 
@@ -532,5 +561,133 @@ describe('startReview', () => {
         await result.run.settled
         expect(sawAbort).toBe(true)
         expect(result.run.getEditorState('editor-1')?.status).toBe('cancelled')
+    })
+
+    // -- Selection scope (requestedSelection contract) -----------------------
+
+    it('scopes the run to a valid requested selection', async () => {
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: 11 }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(false)
+        expect(result.run.snapshot.selection).toEqual({ from: 0, to: 11 })
+        await result.run.settled
+    })
+
+    it('applies the requested selection to an unchanged refreshed snapshot', async () => {
+        // The refresh recaptured the same text (hash equal) but a DIFFERENT
+        // live selection — the synchronously captured range must win.
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            refreshSnapshot: () =>
+                createSnapshot({
+                    filePath: 'Notes/Test.md',
+                    text: DOC_TEXT,
+                    selection: { from: 3, to: 7 }
+                }),
+            requestedSelection: { from: 0, to: 11 }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(false)
+        expect(result.run.snapshot.selection).toEqual({ from: 0, to: 11 })
+        await result.run.settled
+    })
+
+    it('falls back to whole-note scope when the requested selection is out of bounds', async () => {
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: DOC_TEXT.length + 50 }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(true)
+        expect(result.run.snapshot.selection).toBeUndefined()
+        await result.run.settled
+    })
+
+    it('falls back to whole-note scope on a degenerate (empty) requested selection', async () => {
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 5, to: 5 }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(true)
+        expect(result.run.snapshot.selection).toBeUndefined()
+        await result.run.settled
+    })
+
+    it('falls back when the document changed between capture and run start', async () => {
+        // Bounds still fit the edited text, but the hash mismatch proves the
+        // offsets refer to stale content — whole note, stale live selection
+        // stripped, and the run opens on the FRESH text.
+        const editedText = `EDIT! ${DOC_TEXT}`
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            refreshSnapshot: () =>
+                createSnapshot({
+                    filePath: 'Notes/Test.md',
+                    text: editedText,
+                    selection: { from: 2, to: 8 }
+                }),
+            requestedSelection: { from: 0, to: 11 }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(true)
+        expect(result.run.snapshot.selection).toBeUndefined()
+        expect(result.run.snapshot.text).toBe(editedText)
+        await result.run.settled
+    })
+
+    it('keeps the legacy snapshot-carried selection when none is requested', async () => {
+        const snapshot = createSnapshot({
+            filePath: 'Notes/Test.md',
+            text: DOC_TEXT,
+            selection: { from: 0, to: 5 }
+        })
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody())
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(false)
+        expect(result.run.snapshot).toBe(snapshot)
+        expect(result.run.snapshot.selection).toEqual({ from: 0, to: 5 })
+        await result.run.settled
     })
 })

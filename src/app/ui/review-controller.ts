@@ -246,8 +246,18 @@ export class ReviewController {
      * Starts (or restarts) a review for the view's note. Snapshot is whole
      * note, selection-scoped when a selection exists. All refusals surface as
      * Notices; the size guard round-trips through an explicit confirmation.
+     *
+     * `requestedSelection` implements the selection-capture contract for
+     * selection-scoped surfaces (context menu, Review selection command): the
+     * caller captures the range synchronously in its own callback and the
+     * service re-validates it against the fresh snapshot at run start,
+     * falling back to whole-note scope (with a Notice) when it went stale.
      */
-    async startReview(view: MarkdownView, confirmedLargeNote = false): Promise<void> {
+    async startReview(
+        view: MarkdownView,
+        confirmedLargeNote = false,
+        requestedSelection?: { from: number; to: number }
+    ): Promise<void> {
         const file = view.file
         if (!file || this.disposed) {
             return
@@ -269,7 +279,8 @@ export class ReviewController {
             // another note mid-await — the service then falls back to the
             // command-time snapshot.
             refreshSnapshot: (): DocumentSnapshot | null =>
-                view.file?.path === file.path ? this.snapshotView(view, file.path) : null
+                view.file?.path === file.path ? this.snapshotView(view, file.path) : null,
+            ...(requestedSelection ? { requestedSelection } : {})
         })
 
         switch (result.status) {
@@ -278,7 +289,9 @@ export class ReviewController {
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
-                    void this.startReview(view, true)
+                    // The originally captured selection rides along; the
+                    // service re-validates it after the confirmation delay.
+                    void this.startReview(view, true, requestedSelection)
                 }).open()
                 return
             case 'no-editors': {
@@ -293,6 +306,9 @@ export class ReviewController {
                 return
             }
             case 'started':
+                if (result.selectionFallback) {
+                    new Notice('Selection changed — reviewing the whole note')
+                }
                 this.skipsByFile.set(file.path, result.skips)
                 if (result.skips.length > 0) {
                     const details = result.skips
