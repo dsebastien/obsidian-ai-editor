@@ -202,9 +202,11 @@ describe('RunController cancellation', () => {
             }
         }
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
-        // Let the first finding land.
-        await Promise.resolve()
-        await Promise.resolve()
+        // Let the first finding land (a few turns: the concurrency-gate
+        // acquire adds one microtask before the stream starts).
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
         expect(run.findings.list()).toHaveLength(1)
 
         run.cancelRun()
@@ -676,5 +678,191 @@ describe('RunController finding lookup', () => {
     it('returns null for an unknown finding id', () => {
         const controller = new RunController()
         expect(controller.findRunWithFinding(asFindingId('nope'))).toBeNull()
+    })
+})
+
+describe('RunController concurrency gate (behavior.maxConcurrentRequests)', () => {
+    /** Waits enough microtask turns for acquire/consume continuations. */
+    async function settle(): Promise<void> {
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
+    }
+
+    /**
+     * Editor whose stream starts (recorded in `started`), then holds until
+     * `gate` resolves OR the run is cancelled (abort-aware like the real
+     * executors), then emits an empty result.
+     */
+    function gatedEditor(editorId: string, started: string[], gate: Promise<void>): RunEditorSpec {
+        return {
+            editorId,
+            editorName: `Editor ${editorId}`,
+            execute: async function* (request, signal) {
+                started.push(editorId)
+                await new Promise<void>((resolve) => {
+                    if (signal.aborted) {
+                        resolve()
+                        return
+                    }
+                    signal.addEventListener('abort', () => resolve(), { once: true })
+                    void gate.then(resolve)
+                })
+                yield result(request.runId, [])
+            }
+        }
+    }
+
+    it('starts at most N executor streams and keeps the N+1th pending', async () => {
+        const controller = new RunController(() => 2)
+        const started: string[] = []
+        const gate = deferred()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                gatedEditor('one', started, gate.promise),
+                gatedEditor('two', started, gate.promise),
+                gatedEditor('three', started, gate.promise)
+            ]
+        })
+        await settle()
+
+        // Only two streams started; the third editor never reached its backend.
+        expect(started).toEqual(['one', 'two'])
+        expect(run.getEditorState('one')?.status).toEqual('running')
+        expect(run.getEditorState('two')?.status).toEqual('running')
+        expect(run.getEditorState('three')?.status).toEqual('pending')
+
+        // Completion releases permits and admits the waiter (FIFO).
+        gate.resolve()
+        await run.settled
+        expect(started).toEqual(['one', 'two', 'three'])
+        const states = run.getEditorStates()
+        expect(states.every((state) => state.status === 'done')).toBeTrue()
+    })
+
+    it('shares the gate across concurrent runs on different files', async () => {
+        const controller = new RunController(() => 1)
+        const started: string[] = []
+        const gateA = deferred()
+        const gateB = deferred()
+        const runA = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/a.md', text: DOC }),
+            editors: [gatedEditor('a', started, gateA.promise)]
+        })
+        const runB = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/b.md', text: DOC }),
+            editors: [gatedEditor('b', started, gateB.promise)]
+        })
+        await settle()
+
+        // One permit plugin-wide: run B waits behind run A.
+        expect(started).toEqual(['a'])
+        expect(runB.getEditorState('b')?.status).toEqual('pending')
+
+        gateA.resolve()
+        await runA.settled
+        await settle()
+        expect(started).toEqual(['a', 'b'])
+        gateB.resolve()
+        await runB.settled
+        expect(runB.getEditorState('b')?.status).toEqual('done')
+    })
+
+    it('cancelling a run ejects its queued editor without starting or leaking', async () => {
+        const controller = new RunController(() => 1)
+        const started: string[] = []
+        const gate = deferred()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                gatedEditor('holding', started, gate.promise),
+                gatedEditor('queued', started, gate.promise)
+            ]
+        })
+        await settle()
+        expect(started).toEqual(['holding'])
+        expect(run.getEditorState('queued')?.status).toEqual('pending')
+
+        run.cancelRun()
+        await run.settled
+
+        // The queued editor settled as cancelled and its stream never started.
+        expect(started).toEqual(['holding'])
+        expect(run.getEditorState('holding')?.status).toEqual('cancelled')
+        expect(run.getEditorState('queued')?.status).toEqual('cancelled')
+
+        // No leaked permit: a fresh run acquires immediately and completes.
+        const after = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/after.md', text: DOC }),
+            editors: [scriptedEditor('after', (runId) => [result(runId, [])])]
+        })
+        await after.settled
+        expect(after.getEditorState('after')?.status).toEqual('done')
+    })
+
+    it('cancelling only the queued run leaves the in-flight run untouched', async () => {
+        const controller = new RunController(() => 1)
+        const started: string[] = []
+        const gate = deferred()
+        const runA = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/a.md', text: DOC }),
+            editors: [gatedEditor('a', started, gate.promise)]
+        })
+        const runB = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/b.md', text: DOC }),
+            editors: [gatedEditor('b', started, gate.promise)]
+        })
+        await settle()
+        expect(started).toEqual(['a'])
+
+        // Abort-while-queued: B leaves the queue immediately and settles.
+        runB.cancelRun()
+        await runB.settled
+        expect(started).toEqual(['a'])
+        expect(runB.getEditorState('b')?.status).toEqual('cancelled')
+
+        // A still holds its permit and finishes normally.
+        expect(runA.getEditorState('a')?.status).toEqual('running')
+        gate.resolve()
+        await runA.settled
+        expect(runA.getEditorState('a')?.status).toEqual('done')
+    })
+
+    it('applies a limit raised between runs to subsequent acquisitions', async () => {
+        let limit = 1
+        const controller = new RunController(() => limit)
+        const startedFirst: string[] = []
+        const gateFirst = deferred()
+        const first = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/first.md', text: DOC }),
+            editors: [
+                gatedEditor('f1', startedFirst, gateFirst.promise),
+                gatedEditor('f2', startedFirst, gateFirst.promise)
+            ]
+        })
+        await settle()
+        expect(startedFirst).toEqual(['f1']) // limit 1: second editor queued
+
+        gateFirst.resolve()
+        await first.settled
+
+        // Settings change between runs: the next run sees the new limit.
+        limit = 2
+        const startedSecond: string[] = []
+        const gateSecond = deferred()
+        const second = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/second.md', text: DOC }),
+            editors: [
+                gatedEditor('s1', startedSecond, gateSecond.promise),
+                gatedEditor('s2', startedSecond, gateSecond.promise)
+            ]
+        })
+        await settle()
+        expect(startedSecond).toEqual(['s1', 's2']) // both in flight under limit 2
+
+        gateSecond.resolve()
+        await second.settled
+        expect(second.getEditorStates().every((state) => state.status === 'done')).toBeTrue()
     })
 })

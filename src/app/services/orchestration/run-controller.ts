@@ -13,6 +13,8 @@ import type {
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { FindingStore } from './finding-store'
+import type { ReleasePermit } from './semaphore'
+import { Semaphore } from './semaphore'
 
 /**
  * Review-run orchestration: consumes backend event streams for one snapshot,
@@ -120,7 +122,10 @@ class ReviewRunHandle implements RunHandle {
     private readonly appliedChanges: TextChange[][] = []
     private settledFlag = false
 
-    constructor(input: StartRunInput) {
+    constructor(
+        input: StartRunInput,
+        private readonly requestGate: Semaphore
+    ) {
         this.snapshot = input.snapshot
         this.findings = new FindingStore(() => this.notify())
 
@@ -202,50 +207,76 @@ class ReviewRunHandle implements RunHandle {
         if (!state || state.terminal) {
             return
         }
-        const request: ReviewRequest = {
-            kind: 'review',
-            contractVersion: CONTRACT_VERSION,
-            runId: state.runId,
-            snapshotHash: this.snapshot.hash,
-            text: this.snapshot.text,
-            ...(this.snapshot.selection ? { selection: { ...this.snapshot.selection } } : {})
-        }
-        state.status = 'running'
-        this.notify()
+        // Global concurrency gate (`behavior.maxConcurrentRequests`): the
+        // backend stream must not start until a permit is free. The gate is
+        // shared across ALL runs (owned by the RunController), so at most N
+        // backend requests are in flight plugin-wide. While queued the editor
+        // keeps its initial 'pending' status — the rail/panel truthfully show
+        // it as not yet started. Cancelling the run aborts `this.abort`,
+        // which ejects the queued waiter immediately (no zombie waiter, no
+        // permit consumed); `cancelRun` already marked the state cancelled.
+        let release: ReleasePermit
         try {
-            for await (const event of spec.execute(request, this.abort.signal)) {
-                if (state.terminal) {
-                    continue // post-terminal or post-cancel: discard
-                }
-                if (event.runId !== state.runId) {
-                    continue // foreign run: discard
-                }
-                this.handleEvent(spec, state, event)
+            release = await this.requestGate.acquire(this.abort.signal)
+        } catch {
+            if (!state.terminal) {
+                this.terminate(state, 'cancelled', null)
             }
-        } catch (cause) {
+            return
+        }
+        try {
+            if (state.terminal) {
+                return // cancelled between admission and this continuation
+            }
+            const request: ReviewRequest = {
+                kind: 'review',
+                contractVersion: CONTRACT_VERSION,
+                runId: state.runId,
+                snapshotHash: this.snapshot.hash,
+                text: this.snapshot.text,
+                ...(this.snapshot.selection ? { selection: { ...this.snapshot.selection } } : {})
+            }
+            state.status = 'running'
+            this.notify()
+            try {
+                for await (const event of spec.execute(request, this.abort.signal)) {
+                    if (state.terminal) {
+                        continue // post-terminal or post-cancel: discard
+                    }
+                    if (event.runId !== state.runId) {
+                        continue // foreign run: discard
+                    }
+                    this.handleEvent(spec, state, event)
+                }
+            } catch (cause) {
+                if (!state.terminal) {
+                    if (this.abort.signal.aborted) {
+                        this.terminate(state, 'cancelled', null)
+                    } else {
+                        this.terminate(state, 'error', {
+                            code: 'unknown',
+                            message: redactMessage(
+                                spec,
+                                cause instanceof Error ? cause.message : String(cause)
+                            )
+                        })
+                    }
+                }
+            }
             if (!state.terminal) {
                 if (this.abort.signal.aborted) {
                     this.terminate(state, 'cancelled', null)
                 } else {
                     this.terminate(state, 'error', {
-                        code: 'unknown',
-                        message: redactMessage(
-                            spec,
-                            cause instanceof Error ? cause.message : String(cause)
-                        )
+                        code: 'invalid-output',
+                        message: 'Stream ended without a terminal event'
                     })
                 }
             }
-        }
-        if (!state.terminal) {
-            if (this.abort.signal.aborted) {
-                this.terminate(state, 'cancelled', null)
-            } else {
-                this.terminate(state, 'error', {
-                    code: 'invalid-output',
-                    message: 'Stream ended without a terminal event'
-                })
-            }
+        } finally {
+            // Exactly-once by construction: `release` is idempotent, and this
+            // finally covers every exit (done, error, cancel, thrown stream).
+            release()
         }
     }
 
@@ -399,16 +430,33 @@ function toPublicState(state: InternalEditorState): EditorRunState {
  * Manages review runs per file: at most one active run per file path.
  * Starting a new run for a file cancels the previous one (its late events
  * are discarded by the cancelled handle).
+ *
+ * Also owns the plugin-wide backend concurrency gate: at most
+ * `getMaxConcurrentRequests()` backend requests are in flight across ALL
+ * runs combined (`behavior.maxConcurrentRequests`). The limit is read at
+ * each admission decision, so a settings change applies to subsequent
+ * acquisitions — requests already in flight are never killed. Editors
+ * waiting for a permit stay 'pending'.
  */
 export class RunController {
     private readonly runs = new Map<string, RunHandle>()
+    private readonly requestGate: Semaphore
+
+    /**
+     * @param getMaxConcurrentRequests Live view of the settings value; the
+     * default (unlimited) keeps headless/test callers unthrottled unless they
+     * opt in.
+     */
+    constructor(getMaxConcurrentRequests: () => number = () => Number.POSITIVE_INFINITY) {
+        this.requestGate = new Semaphore(getMaxConcurrentRequests)
+    }
 
     startRun(input: StartRunInput): RunHandle {
         const existing = this.runs.get(input.snapshot.filePath)
         if (existing) {
             existing.cancelRun()
         }
-        const run = new ReviewRunHandle(input)
+        const run = new ReviewRunHandle(input, this.requestGate)
         this.runs.set(input.snapshot.filePath, run)
         return run
     }

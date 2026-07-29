@@ -71,7 +71,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // changes to the domain anchor store; the card extension makes the
         // highlights clickable (Accept routed through the FindingStore
         // precondition via the controller's lookup, Business Rules #3).
-        const runController = new RunController()
+        // The controller owns the plugin-wide concurrency gate: at most
+        // `behavior.maxConcurrentRequests` backend requests in flight across
+        // all runs. Read per acquisition, so settings changes apply to the
+        // next request without a reload.
+        const runController = new RunController(() => this.settings.behavior.maxConcurrentRequests)
         this.runController = runController
         const reviewController = new ReviewController({
             app: this.app,
