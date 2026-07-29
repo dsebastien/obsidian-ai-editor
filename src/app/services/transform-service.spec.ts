@@ -174,6 +174,16 @@ describe('startAction refusals', () => {
         expect(result).toEqual({ status: 'unknown-action', actionId: 'not-a-verb' })
     })
 
+    it('refuses a custom verb whose resolved instruction is blank (fail-closed backstop)', async () => {
+        const result = await startAction(
+            makeInput({
+                actionId: 'custom-1',
+                custom: { label: 'Make checklist', instruction: '   ' }
+            })
+        )
+        expect(result).toEqual({ status: 'unknown-action', actionId: 'custom-1' })
+    })
+
     it('refuses excluded targets before anything else (Business Rules #7)', async () => {
         const result = await startAction(
             makeInput({
@@ -324,6 +334,32 @@ describe('startAction transform verbs', () => {
         expect(userMessage).toContain(getBuiltInVerb('rephrase')?.instruction ?? '!!missing')
         // The persona system prompt is composed exactly like a review's.
         expect(String(body['system'])).toBe('')
+    })
+
+    it('dispatches a custom verb as a transform with the resolved instruction and label', async () => {
+        const { fetchImpl, requests } = capturingFetch(
+            anthropicResultBody({ kind: 'transform-selection', replacement: '- [ ] item' })
+        )
+        const result = await startAction(
+            makeInput({
+                fetchImpl,
+                actionId: 'custom-1',
+                custom: {
+                    label: 'Make checklist',
+                    instruction: 'Turn the selection into a checklist.'
+                }
+            })
+        )
+        expect(result.status).toBe('started')
+        if (result.status !== 'started') {
+            return
+        }
+        expect(result.run.kind).toBe('transform-selection')
+        expect(result.run.actionLabel).toBe('Make checklist')
+        await result.run.settled
+        expect(result.run.getState().status).toBe('done')
+        const messages = (requests[0]?.body['messages'] ?? []) as { content: string }[]
+        expect(messages[0]?.content ?? '').toContain('Turn the selection into a checklist.')
     })
 
     it('captures the replace-span target with the exact span text', async () => {

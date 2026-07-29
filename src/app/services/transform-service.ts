@@ -56,7 +56,7 @@ export type ActionStart =
     | { readonly status: 'review'; readonly review: ReviewStart }
     /** Transform/generate verb dispatched; observe the handle. */
     | { readonly status: 'started'; readonly run: TransformRunHandle }
-    /** `actionId` is not a built-in verb (custom actions are M5 scope). */
+    /** `actionId` is not a built-in verb and no `custom` verb was supplied. */
     | { readonly status: 'unknown-action'; readonly actionId: string }
     /** Target note is excluded (Business Rules #7). */
     | { readonly status: 'excluded'; readonly notePath: string }
@@ -93,8 +93,15 @@ export interface StartActionInput {
     /** Review-class verbs delegate to `startReview` on this controller. */
     readonly runController: RunController
     readonly transformController: TransformController
-    /** Built-in verb id (see `builtInActionIdSchema`). */
+    /** Built-in verb id (see `builtInActionIdSchema`), or a custom UUID. */
     readonly actionId: string
+    /**
+     * Custom action verb, required when `actionId` is not a built-in verb.
+     * Custom actions are transform-class (they rewrite the selection); the
+     * instruction must already be resolved (`resolveCustomInstruction` —
+     * direct text + referenced notes) and non-blank.
+     */
+    readonly custom?: { readonly label: string; readonly instruction: string }
     /** Target editor (resolved from the action binding by the caller). */
     readonly editorId: string
     /** Injected network seam; defaults to the runtime's `fetch`. */
@@ -156,7 +163,19 @@ export function isInsertionAnchorValid(
  * size guard needs explicit confirmation, unusable editors are explained).
  */
 export async function startAction(input: StartActionInput): Promise<ActionStart> {
-    const verb = getBuiltInVerb(input.actionId)
+    const builtIn = getBuiltInVerb(input.actionId)
+    // Custom actions are transform-class with a caller-resolved instruction;
+    // a blank instruction has nothing to dispatch (the resolution layer
+    // refuses such bindings — this is the fail-closed backstop).
+    const verb =
+        builtIn ??
+        (input.custom && input.custom.instruction.trim().length > 0
+            ? {
+                  label: input.custom.label,
+                  verbClass: 'transform' as const,
+                  instruction: input.custom.instruction
+              }
+            : null)
     if (verb === null) {
         return { status: 'unknown-action', actionId: input.actionId }
     }
