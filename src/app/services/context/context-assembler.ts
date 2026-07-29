@@ -176,15 +176,17 @@ export async function assembleContext(input: AssembleContextInput): Promise<Asse
     // deduplicated. Excluded roots are never followed (their links are part
     // of a note the user opted out of AI processing). The memory note is not
     // a prompt source and is never followed.
-    const followSources: readonly { readonly notePaths: readonly string[]; readonly text: string }[] =
-        [
-            ...(editor.injectVoiceProfile && voiceProfile.followLinks
-                ? [{ notePaths: voiceProfile.notePaths, text: voiceText }]
-                : []),
-            ...(editor.prompt.followLinks
-                ? [{ notePaths: editor.prompt.notePaths, text: personaText }]
-                : [])
-        ]
+    const followSources: readonly {
+        readonly notePaths: readonly string[]
+        readonly text: string
+    }[] = [
+        ...(editor.injectVoiceProfile && voiceProfile.followLinks
+            ? [{ notePaths: voiceProfile.notePaths, text: voiceText }]
+            : []),
+        ...(editor.prompt.followLinks
+            ? [{ notePaths: editor.prompt.notePaths, text: personaText }]
+            : [])
+    ]
     const rootSeen = new Set<string>()
     const followRoots: string[] = []
     const addRoot = (path: string): void => {
