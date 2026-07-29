@@ -1,0 +1,74 @@
+import { Plugin } from 'obsidian'
+import { DEFAULT_SETTINGS } from './types/plugin-settings.intf'
+import type { PluginSettings } from './types/plugin-settings.intf'
+import { AIEditorPluginSettingTab } from './settings/settings-tab'
+import { log } from '../utils/log'
+import { registerWhatsNewDialog } from './whats-new'
+import { produce } from 'immer'
+import type { Draft } from 'immer'
+
+export class AIEditorPlugin extends Plugin {
+    /**
+     * The plugin settings are immutable
+     */
+    // No `override`: `Plugin.settings` only exists in API 1.13+ typings and the
+    // plugin supports older public releases.
+    settings: PluginSettings = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
+
+    /**
+     * Executed as soon as the plugin loads
+     */
+    override async onload() {
+        log('Initializing', 'debug')
+        // Must run before anything can call saveData (fresh-install detection)
+        registerWhatsNewDialog(this)
+        await this.loadSettings()
+
+        // TODO
+
+        // Add a settings screen for the plugin
+        this.addSettingTab(new AIEditorPluginSettingTab(this.app, this))
+    }
+
+    override onunload() {}
+
+    /**
+     * Load the plugin settings
+     */
+    async loadSettings() {
+        log('Loading settings', 'debug')
+        let loadedSettings = (await this.loadData()) as PluginSettings
+
+        if (!loadedSettings) {
+            log('Using default settings', 'debug')
+            loadedSettings = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
+            return
+        }
+
+        let needToSaveSettings = false
+
+        this.settings = produce(this.settings, (draft: Draft<PluginSettings>) => {
+            if (loadedSettings.enabled) {
+                draft.enabled = loadedSettings.enabled
+            } else {
+                log('The loaded settings miss the [enabled] property', 'debug')
+                needToSaveSettings = true
+            }
+        })
+
+        log(`Settings loaded`, 'debug', loadedSettings)
+
+        if (needToSaveSettings) {
+            void this.saveSettings()
+        }
+    }
+
+    /**
+     * Save the plugin settings
+     */
+    async saveSettings() {
+        log('Saving settings', 'debug', this.settings)
+        await this.saveData(this.settings)
+        log('Settings saved', 'debug', this.settings)
+    }
+}
