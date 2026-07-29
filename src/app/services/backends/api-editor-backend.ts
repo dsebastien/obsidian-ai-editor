@@ -549,8 +549,20 @@ function normalizeError(
         }
     }
     if (cause instanceof TypeError) {
-        // fetch rejects with TypeError on DNS/connection/CORS failures.
-        return { code: 'network', message: `Network request failed: ${cause.message}` }
+        // fetch rejects with TypeError on DNS/connection/CORS failures and
+        // the browser deliberately hides WHICH ("Failed to fetch"). CORS is
+        // the common trap here: requests run through the renderer's fetch,
+        // and self-hosted endpoints (Ollama, LM Studio) reject browser
+        // origins unless configured (e.g. OLLAMA_ORIGINS). Name it, or the
+        // user is left staring at an opaque network error.
+        return {
+            code: 'network',
+            message:
+                `Network request failed: ${cause.message}. ` +
+                'Check the endpoint URL and that the server is reachable; ' +
+                'if it is a self-hosted endpoint, it may be blocking ' +
+                'browser requests (CORS) — e.g. Ollama needs OLLAMA_ORIGINS=app://obsidian.md'
+        }
     }
     return {
         code: 'unknown',
