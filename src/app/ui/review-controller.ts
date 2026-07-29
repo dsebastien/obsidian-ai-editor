@@ -449,12 +449,21 @@ export class ReviewController {
      * its prompt augmented for this run only; a selection invalidated while
      * the modal was open falls back to whole-note scope with the usual
      * Notice. A collapsed selection at capture time (gate raced the click)
-     * simply asks about the whole note.
+     * simply asks about the whole note — dispatch uses `whole-note` scope,
+     * so a selection made WHILE the modal was open can never silently narrow
+     * the run (a valid captured selection still overrides it explicitly; the
+     * selection-capture contract, design §1, stays the only scoping path).
+     * If the view switched to a different note while the modal was open
+     * (programmatic openFile, workspace restore), the submit is refused with
+     * a Notice — the instruction was written about the captured note, and
+     * dispatching it against whatever note replaced it would silently
+     * redirect user intent.
      */
     openAskEditorModal(view: MarkdownView, editor: Editor): void {
         if (!view.file || this.disposed) {
             return
         }
+        const capturedPath = view.file.path
         const choices = reviewCapableEditors(this.deps.getSettings()).map((candidate) => ({
             id: candidate.id,
             name: candidate.name
@@ -468,7 +477,11 @@ export class ReviewController {
         const requested: RequestedSelection | undefined =
             from !== to ? { from, to, capturedHash: hashText(editor.getValue()) } : undefined
         new AskEditorModal(this.deps.app, choices, (editorId, instruction) => {
-            void this.startReview(view, false, requested, 'auto', {
+            if (view.file?.path !== capturedPath) {
+                new Notice('The note changed while the dialog was open — ask cancelled.')
+                return
+            }
+            void this.startReview(view, false, requested, 'whole-note', {
                 editorId,
                 text: instruction
             })
