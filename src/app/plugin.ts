@@ -17,9 +17,10 @@ import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerReviewCli } from './cli/register-review-cli'
-import { registerCancelCli } from './cli/register-run-cli'
+import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
 import { CANCEL_CLI_COMMAND } from './services/cli/cancel-cli'
 import { REVIEW_CLI_COMMAND } from './services/cli/review-cli'
+import { STATUS_CLI_COMMAND } from './services/cli/status-cli'
 import { registerWhatsNewView } from './whats-new'
 import { log } from '../utils/log'
 
@@ -122,6 +123,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             )
             guardCliRegistration(CANCEL_CLI_COMMAND, () =>
                 registerCancelCli({ plugin: this, runController })
+            )
+            guardCliRegistration(STATUS_CLI_COMMAND, () =>
+                registerStatusCli({ plugin: this, runController })
             )
         }
     }
