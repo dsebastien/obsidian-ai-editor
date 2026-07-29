@@ -1,0 +1,476 @@
+import type { AnchorState } from '../../domain/anchoring/anchor'
+import type { Severity } from '../../domain/operations/contract'
+import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
+import type { DocumentSnapshot } from '../../domain/snapshot'
+import { createSnapshot } from '../../domain/snapshot'
+import type { RunHandle } from '../orchestration/run-controller'
+import type { EditorSkip, ReviewStart } from '../review-service'
+import { skipReasonLabel } from '../review-service'
+
+/**
+ * Pure core of the `ai-editor:review` CLI subcommand (design doc
+ * "Interaction surfaces" §4). Obsidian-free by design: the vault, the
+ * settings, and the review pipeline are injected as `ReviewCliDeps`, so arg
+ * parsing, every typed error code, and both output formats are fully
+ * unit-testable. The Obsidian glue (`cli/register-review-cli.ts`) binds the
+ * deps to the live plugin and registers the handler.
+ *
+ * Contract (buffered — the CLI API returns a single string):
+ * - Runs one review through the exact same `startReview` pipeline as the
+ *   `Review current note` command (shared refusals: exclusions, size guard,
+ *   editor/backend resolution), waits for the run to settle, and returns one
+ *   JSON document (default) or one line per finding (`--format text`).
+ * - Errors are typed codes (`file-not-found`, `excluded`,
+ *   `needs-confirmation`, `no-editors`, `backend-error`, `timeout`) with
+ *   status-only messages: per-editor failure messages already passed the
+ *   run's redaction seam (Business Rules #12), and unexpected pipeline
+ *   failures are reported without echoing their message at all.
+ * - Nothing runs without an explicit user action (Business Rules #1): a CLI
+ *   invocation IS the explicit action, and the size guard still refuses
+ *   oversized notes unless `--confirm-large` is passed.
+ */
+
+// ---------------------------------------------------------------------------
+// Command metadata (consumed by the registration glue)
+// ---------------------------------------------------------------------------
+
+export const REVIEW_CLI_COMMAND = 'ai-editor:review'
+
+export const REVIEW_CLI_DESCRIPTION = 'Review a note with the configured AI editors'
+
+/** Structural twin of Obsidian's `CliFlag` (kept Obsidian-import-free). */
+export interface ReviewCliFlagSpec {
+    value?: string
+    description: string
+    required?: boolean
+}
+
+export const REVIEW_CLI_FLAGS: Record<string, ReviewCliFlagSpec> = {
+    'file': {
+        value: '<path>',
+        description: 'Vault path of the note to review',
+        required: true
+    },
+    'editors': {
+        value: '<ids-or-names>',
+        description: 'Comma-separated editor ids or names (default: every enabled editor)'
+    },
+    'format': {
+        value: '<json|text>',
+        description: 'Output format: json (default) or text (one line per finding)'
+    },
+    'confirm-large': {
+        description: 'Confirm reviewing a note above the size warning threshold'
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Output shape (design §4 — one document, machine-readable)
+// ---------------------------------------------------------------------------
+
+export type ReviewCliErrorCode =
+    | 'file-not-found'
+    | 'excluded'
+    | 'needs-confirmation'
+    | 'no-editors'
+    | 'backend-error'
+    | 'timeout'
+
+export interface ReviewCliAnchor {
+    readonly from: number
+    readonly to: number
+    readonly state: AnchorState
+}
+
+export interface ReviewCliFinding {
+    readonly id: string
+    /** Display name of the editor persona that produced the finding. */
+    readonly editor: string
+    readonly severity: Severity
+    readonly quote: string
+    readonly critique: string
+    readonly suggestion: string | null
+    /** `null` when the quote could not be located in the note. */
+    readonly anchor: ReviewCliAnchor | null
+}
+
+/**
+ * One editor that produced no findings and why: pre-run skips carry the
+ * review service's `SkipReason` codes; editors that failed after the run
+ * started are reported as `backend-error`, `timeout`, or `cancelled`.
+ */
+export interface ReviewCliSkip {
+    readonly editor: string
+    readonly reason: string
+}
+
+export interface ReviewCliError {
+    readonly code: ReviewCliErrorCode
+    readonly message: string
+}
+
+export interface ReviewCliOutput {
+    readonly ok: boolean
+    readonly file: string
+    readonly findings: readonly ReviewCliFinding[]
+    readonly skips: readonly ReviewCliSkip[]
+    readonly summaryByEditor: Readonly<Record<string, string>>
+    readonly error: ReviewCliError | null
+}
+
+// ---------------------------------------------------------------------------
+// Injected dependencies
+// ---------------------------------------------------------------------------
+
+export interface ReviewCliRunInput {
+    readonly settings: PluginSettingsV1
+    readonly snapshot: DocumentSnapshot
+    readonly confirmedLargeNote: boolean
+}
+
+export interface ReviewCliDeps {
+    readonly getSettings: () => PluginSettingsV1
+    /**
+     * Resolves user input (vault path, with or without `.md`, or link text)
+     * to the vault-relative path of an existing markdown note. `null` when
+     * no such note exists.
+     */
+    readonly resolveFile: (file: string) => string | null
+    /** Reads a note's raw markdown; `null` when it cannot be read. */
+    readonly readNote: (path: string) => Promise<string | null>
+    /**
+     * Dispatches the review run. Production binds this to the review
+     * service's `startReview` (closing over the vault reader, the shared
+     * `RunController`, and the network seam) so the CLI shares every refusal
+     * and guarantee with the command surfaces.
+     */
+    readonly runReview: (input: ReviewCliRunInput) => Promise<ReviewStart>
+}
+
+// ---------------------------------------------------------------------------
+// Arg parsing
+// ---------------------------------------------------------------------------
+
+export type ReviewCliFormat = 'json' | 'text'
+
+export interface ReviewCliArgs {
+    /** `null` when the required flag is missing or blank. */
+    readonly file: string | null
+    /** Requested editor ids/names; `null` = every enabled editor. */
+    readonly editors: readonly string[] | null
+    readonly format: ReviewCliFormat
+    readonly confirmLarge: boolean
+}
+
+/**
+ * Parses `CliData`-shaped args (values are strings; boolean flags arrive as
+ * `'true'`). Tolerant by design: an unknown `format` value falls back to
+ * `json`, a present `confirm-large` flag counts as confirmation regardless
+ * of its value, and blank list entries are dropped.
+ */
+export function parseReviewCliArgs(
+    params: Readonly<Record<string, string | undefined>>
+): ReviewCliArgs {
+    const fileRaw = params['file']
+    const file = typeof fileRaw === 'string' && fileRaw.trim().length > 0 ? fileRaw.trim() : null
+
+    const editorsRaw = params['editors']
+    const editors =
+        typeof editorsRaw === 'string'
+            ? editorsRaw
+                  .split(',')
+                  .map((token) => token.trim())
+                  .filter((token) => token.length > 0)
+            : []
+
+    return {
+        file,
+        editors: editors.length > 0 ? editors : null,
+        format: params['format'] === 'text' ? 'text' : 'json',
+        confirmLarge: params['confirm-large'] !== undefined
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Editor selection (--editors)
+// ---------------------------------------------------------------------------
+
+export type EditorSelection =
+    | { readonly ok: true; readonly settings: PluginSettingsV1 }
+    | { readonly ok: false; readonly unknown: readonly string[] }
+
+/**
+ * Narrows the settings to the requested editors. Tokens match an editor id
+ * exactly or an editor name case-insensitively (first match wins on
+ * duplicate names); duplicates collapse. Any unknown token fails the whole
+ * selection — a partial review behind a typo would be silent data loss for
+ * scripts.
+ */
+export function selectEditors(
+    settings: PluginSettingsV1,
+    requested: readonly string[] | null
+): EditorSelection {
+    if (requested === null) {
+        return { ok: true, settings }
+    }
+    const matched: EditorConfig[] = []
+    const unknown: string[] = []
+    for (const token of requested) {
+        const editor = settings.editors.find(
+            (candidate) =>
+                candidate.id === token || candidate.name.toLowerCase() === token.toLowerCase()
+        )
+        if (!editor) {
+            unknown.push(token)
+            continue
+        }
+        if (!matched.includes(editor)) {
+            matched.push(editor)
+        }
+    }
+    if (unknown.length > 0) {
+        return { ok: false, unknown }
+    }
+    return { ok: true, settings: { ...settings, editors: matched } }
+}
+
+// ---------------------------------------------------------------------------
+// Output shaping
+// ---------------------------------------------------------------------------
+
+function errorOutput(
+    file: string,
+    code: ReviewCliErrorCode,
+    message: string,
+    skips: readonly ReviewCliSkip[] = []
+): ReviewCliOutput {
+    return { ok: false, file, findings: [], skips, summaryByEditor: {}, error: { code, message } }
+}
+
+function toCliSkips(skips: readonly EditorSkip[]): ReviewCliSkip[] {
+    return skips.map((skip) => ({ editor: skip.editorName, reason: skip.reason }))
+}
+
+/**
+ * Shapes a settled run into the CLI output document. Every participating
+ * editor is accounted for exactly once: its findings appear in `findings`,
+ * its note-level summary in `summaryByEditor` (keyed by editor name), and a
+ * post-run failure joins the pre-run skips (`backend-error` / `timeout` /
+ * `cancelled`). `ok` is true when at least one editor completed; when none
+ * did, the overall error code is `timeout` only if every failure was a
+ * timeout, `backend-error` otherwise — with the (already redacted,
+ * Business Rules #12) per-editor messages joined.
+ */
+export function shapeRunOutput(
+    file: string,
+    run: RunHandle,
+    skips: readonly EditorSkip[]
+): ReviewCliOutput {
+    const states = run.getEditorStates()
+    const nameByEditorId = new Map<string, string>()
+    for (const state of states) {
+        nameByEditorId.set(state.editorId, state.editorName)
+    }
+
+    const findings: ReviewCliFinding[] = run.findings.list().map((finding) => ({
+        id: finding.id,
+        editor: nameByEditorId.get(finding.editorId) ?? finding.editorId,
+        severity: finding.raw.severity,
+        quote: finding.raw.quote,
+        critique: finding.raw.critique,
+        suggestion: finding.raw.suggestion ?? null,
+        anchor: finding.anchor
+            ? { from: finding.anchor.from, to: finding.anchor.to, state: finding.anchor.state }
+            : null
+    }))
+
+    const allSkips: ReviewCliSkip[] = toCliSkips(skips)
+    const summaryByEditor: Record<string, string> = {}
+    for (const state of states) {
+        if (state.summary !== null) {
+            summaryByEditor[state.editorName] = state.summary
+        }
+        if (state.status === 'error') {
+            allSkips.push({
+                editor: state.editorName,
+                reason: state.error?.code === 'timeout' ? 'timeout' : 'backend-error'
+            })
+        } else if (state.status === 'cancelled') {
+            allSkips.push({ editor: state.editorName, reason: 'cancelled' })
+        }
+    }
+
+    const anyDone = states.some((state) => state.status === 'done')
+    if (anyDone) {
+        return { ok: true, file, findings, skips: allSkips, summaryByEditor, error: null }
+    }
+
+    const failed = states.filter((state) => state.status === 'error')
+    const code: ReviewCliErrorCode =
+        failed.length > 0 && failed.every((state) => state.error?.code === 'timeout')
+            ? 'timeout'
+            : 'backend-error'
+    const message =
+        failed.length > 0
+            ? failed
+                  .map((state) => `${state.editorName}: ${state.error?.message ?? 'failed'}`)
+                  .join('; ')
+            : 'The run was cancelled before any editor completed'
+    return {
+        ok: false,
+        file,
+        findings,
+        skips: allSkips,
+        summaryByEditor,
+        error: { code, message }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Formatting
+// ---------------------------------------------------------------------------
+
+/** Collapses all whitespace runs so multi-line model text stays on one line. */
+function oneLine(text: string): string {
+    return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Text rendering: one line per finding (`[severity] Editor 12-45: "quote" —
+ * critique -> suggestion`), one `Skipped …` line per skip, a single `Error
+ * (code): …` line on failure, and `No findings.` when a successful run found
+ * nothing.
+ */
+export function formatTextOutput(output: ReviewCliOutput): string {
+    const lines: string[] = []
+    if (output.error) {
+        lines.push(`Error (${output.error.code}): ${oneLine(output.error.message)}`)
+    } else if (output.findings.length === 0) {
+        lines.push('No findings.')
+    }
+    for (const finding of output.findings) {
+        const anchor = finding.anchor
+            ? `${finding.anchor.from}-${finding.anchor.to}${
+                  finding.anchor.state === 'stale' ? ' (stale)' : ''
+              }`
+            : 'unanchored'
+        const suggestion = finding.suggestion === null ? '' : ` -> ${oneLine(finding.suggestion)}`
+        lines.push(
+            `[${finding.severity}] ${finding.editor} ${anchor}: "${oneLine(finding.quote)}" — ${oneLine(
+                finding.critique
+            )}${suggestion}`
+        )
+    }
+    for (const skip of output.skips) {
+        lines.push(`Skipped ${skip.editor}: ${skip.reason}`)
+    }
+    return lines.join('\n')
+}
+
+function render(output: ReviewCliOutput, format: ReviewCliFormat): string {
+    return format === 'text' ? formatTextOutput(output) : JSON.stringify(output)
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Handles one `ai-editor:review` invocation end to end: parse args, resolve
+ * and read the note, narrow to the requested editors, dispatch through the
+ * injected review pipeline, wait for settle, and render the result in the
+ * requested format. Never throws — every failure renders as a typed error
+ * document (the CLI surface must always answer with parseable output).
+ */
+export async function handleReviewCli(
+    params: Readonly<Record<string, string | undefined>>,
+    deps: ReviewCliDeps
+): Promise<string> {
+    const args = parseReviewCliArgs(params)
+
+    if (args.file === null) {
+        return render(errorOutput('', 'file-not-found', 'Missing required flag: file'), args.format)
+    }
+
+    const path = deps.resolveFile(args.file)
+    if (path === null) {
+        return render(
+            errorOutput(args.file, 'file-not-found', `File not found: ${args.file}`),
+            args.format
+        )
+    }
+
+    const text = await deps.readNote(path)
+    if (text === null) {
+        return render(
+            errorOutput(path, 'file-not-found', `File could not be read: ${path}`),
+            args.format
+        )
+    }
+
+    const selection = selectEditors(deps.getSettings(), args.editors)
+    if (!selection.ok) {
+        return render(
+            errorOutput(path, 'no-editors', `Unknown editors: ${selection.unknown.join(', ')}`),
+            args.format
+        )
+    }
+
+    const snapshot = createSnapshot({ filePath: path, text })
+    let start: ReviewStart
+    try {
+        start = await deps.runReview({
+            settings: selection.settings,
+            snapshot,
+            confirmedLargeNote: args.confirmLarge
+        })
+        if (start.status === 'started') {
+            await start.run.settled
+        }
+    } catch {
+        // Status-only on purpose: an unexpected pipeline failure has not
+        // passed any redaction seam, so its message is never echoed
+        // (Business Rules #12).
+        return render(
+            errorOutput(path, 'backend-error', 'The review failed unexpectedly'),
+            args.format
+        )
+    }
+
+    switch (start.status) {
+        case 'excluded':
+            return render(
+                errorOutput(
+                    path,
+                    'excluded',
+                    'This note is excluded from AI review by the privacy settings'
+                ),
+                args.format
+            )
+        case 'needs-confirmation':
+            return render(
+                errorOutput(
+                    path,
+                    'needs-confirmation',
+                    `The note has ${start.wordCount} words (warning threshold ${start.limit}) — pass confirm-large to review it anyway`
+                ),
+                args.format
+            )
+        case 'no-editors': {
+            const details = start.skips
+                .map((skip) => `${skip.editorName} — ${skipReasonLabel(skip.reason)}`)
+                .join('; ')
+            return render(
+                errorOutput(
+                    path,
+                    'no-editors',
+                    details.length > 0 ? `No editor could run: ${details}` : 'No enabled editors',
+                    toCliSkips(start.skips)
+                ),
+                args.format
+            )
+        }
+        case 'started':
+            return render(shapeRunOutput(path, start.run, start.skips), args.format)
+    }
+}

@@ -1,4 +1,4 @@
-import { Notice, Plugin } from 'obsidian'
+import { Notice, Platform, Plugin, requireApiVersion } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
 import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings/settings-schema'
@@ -16,6 +16,7 @@ import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
 import { registerReviewCommands } from './commands/review-commands'
+import { registerReviewCli } from './cli/register-review-cli'
 import { registerWhatsNewDialog } from './whats-new'
 import { log } from '../utils/log'
 
@@ -66,12 +67,13 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // changes to the domain anchor store; the card extension makes the
         // highlights clickable (Accept routed through the FindingStore
         // precondition via the controller's lookup, Business Rules #3).
-        this.runController = new RunController()
+        const runController = new RunController()
+        this.runController = runController
         const reviewController = new ReviewController({
             app: this.app,
             plugin: this,
             getSettings: () => this.settings,
-            runController: this.runController,
+            runController,
             setFindingCount: (count) => this.setFindingCount(count)
         })
         this.reviewController = reviewController
@@ -85,6 +87,18 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         registerReviewCommands(this, reviewController)
         registerEditorMenu(this, reviewController)
         registerFileMenu(this, reviewController)
+
+        // CLI surface (interaction surfaces design §4): desktop-only and
+        // gated on the API release that shipped `registerCliHandler`
+        // (1.12.2). Runtime-guarded so `minAppVersion` stays untouched —
+        // older public releases simply have no CLI surface.
+        if (Platform.isDesktop && requireApiVersion('1.12.2')) {
+            registerReviewCli({
+                plugin: this,
+                runController,
+                getSettings: () => this.settings
+            })
+        }
     }
 
     /**
