@@ -30,10 +30,16 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
                 text.inputEl.min = String(min)
                 text.inputEl.max = String(max)
                 text.setValue(String(value))
+                // Numeric commits skip `refresh`, so the render-time `value` goes
+                // stale after the first edit. Track the last committed value and
+                // use it as the fallback, otherwise blurring the field empty
+                // silently reverts the user's earlier change.
+                let current = value
                 // Commit on 'change' (blur/Enter), not per keystroke, so
                 // clamping never fights the user mid-typing.
                 text.inputEl.addEventListener('change', () => {
-                    const next = clampInt(text.inputEl.value, min, max, value)
+                    const next = clampInt(text.inputEl.value, min, max, current)
+                    current = next
                     text.setValue(String(next))
                     commit(ctx, (draft) => {
                         apply(draft, next)

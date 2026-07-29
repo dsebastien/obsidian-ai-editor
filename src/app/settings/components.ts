@@ -82,15 +82,19 @@ export function renderColorDot(
     return dot
 }
 
-const COLOR_PRESETS: readonly string[] = [
-    'var(--color-red)',
-    'var(--color-orange)',
-    'var(--color-yellow)',
-    'var(--color-green)',
-    'var(--color-cyan)',
-    'var(--color-blue)',
-    'var(--color-purple)',
-    'var(--color-pink)'
+/**
+ * Theme-variable colors paired with a human label: the label is what screen
+ * readers announce, so the raw CSS token never reaches assistive technology.
+ */
+const COLOR_PRESETS: readonly { readonly value: string; readonly label: string }[] = [
+    { value: 'var(--color-red)', label: 'red' },
+    { value: 'var(--color-orange)', label: 'orange' },
+    { value: 'var(--color-yellow)', label: 'yellow' },
+    { value: 'var(--color-green)', label: 'green' },
+    { value: 'var(--color-cyan)', label: 'cyan' },
+    { value: 'var(--color-blue)', label: 'blue' },
+    { value: 'var(--color-purple)', label: 'purple' },
+    { value: 'var(--color-pink)', label: 'pink' }
 ]
 
 export interface ColorFieldOptions {
@@ -116,15 +120,15 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
         for (const preset of COLOR_PRESETS) {
             const swatch = row.createEl('button', {
                 cls: 'ai-editor-swatch',
-                attr: { 'aria-label': `Use ${preset}`, 'type': 'button' }
+                attr: { 'aria-label': `Use ${preset.label}`, 'type': 'button' }
             })
-            swatch.style.backgroundColor = preset
-            if (preset === current) {
+            swatch.style.backgroundColor = preset.value
+            if (preset.value === current) {
                 swatch.addClass('is-selected')
             }
             swatch.addEventListener('click', (event) => {
                 event.preventDefault()
-                options.set(preset)
+                options.set(preset.value)
                 render()
             })
         }

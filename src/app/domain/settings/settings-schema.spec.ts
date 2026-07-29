@@ -6,6 +6,7 @@ import {
     loadSettings,
     loadSettingsDetailed,
     pluginSettingsSchema,
+    resolveIdCollisions,
     type PluginSettingsV1
 } from './settings-schema'
 
@@ -369,5 +370,90 @@ describe('checkReferentialIntegrity', () => {
         expect(new Set(issues.map((issue) => issue.entity))).toEqual(
             new Set(['default-backend', 'editor', 'panel', 'behavior'])
         )
+    })
+})
+
+describe('resolveIdCollisions', () => {
+    it('returns the same object when every id is unique', () => {
+        const settings = parseSettings({
+            backends: [validApiBackend('b1'), validApiBackend('b2')],
+            editors: [validEditor('e1')],
+            panels: [{ id: 'p1', name: 'Panel', memberEditorIds: ['e1'] }]
+        })
+        const resolution = resolveIdCollisions(settings)
+        expect(resolution.settings).toBe(settings)
+        expect(resolution.regenerated).toEqual([])
+    })
+
+    it('keeps the first duplicate and regenerates the later one within an array', () => {
+        const settings = parseSettings({
+            backends: [
+                { ...validApiBackend('dup'), label: 'First', apiKey: 'key-first' },
+                { ...validApiBackend('dup'), label: 'Second', apiKey: 'key-second' }
+            ],
+            defaultBackend: { backendId: 'dup' }
+        })
+        const resolution = resolveIdCollisions(settings, () => 'fresh-id')
+        expect(resolution.regenerated).toEqual(['backends[1]'])
+        expect(resolution.settings.backends[0]?.id).toEqual('dup')
+        expect(resolution.settings.backends[0]?.label).toEqual('First')
+        expect(resolution.settings.backends[1]?.id).toEqual('fresh-id')
+        expect(resolution.settings.backends[1]?.label).toEqual('Second')
+        // References keep resolving to the entity first-match lookups picked.
+        expect(resolution.settings.defaultBackend?.backendId).toEqual('dup')
+        expect(checkReferentialIntegrity(resolution.settings)).toEqual([])
+    })
+
+    it('enforces uniqueness across entity arrays', () => {
+        const settings = parseSettings({
+            backends: [validApiBackend('shared')],
+            editors: [validEditor('shared')]
+        })
+        const resolution = resolveIdCollisions(settings, () => 'fresh-id')
+        expect(resolution.regenerated).toEqual(['editors[0]'])
+        expect(resolution.settings.backends[0]?.id).toEqual('shared')
+        expect(resolution.settings.editors[0]?.id).toEqual('fresh-id')
+    })
+
+    it('retries generation until the fresh id is itself unique', () => {
+        const settings = parseSettings({
+            editors: [validEditor('e1'), validEditor('e1')]
+        })
+        const candidates = ['e1', 'e2']
+        const resolution = resolveIdCollisions(settings, () => candidates.shift() ?? 'e3')
+        expect(resolution.settings.editors[1]?.id).toEqual('e2')
+    })
+})
+
+describe('loadSettingsDetailed id collisions', () => {
+    it('repairs duplicated ids on a clean parse and reports them', () => {
+        const raw = {
+            schemaVersion: SETTINGS_SCHEMA_VERSION,
+            editors: [validEditor('dup'), validEditor('dup')]
+        }
+        const loaded = loadSettingsDetailed(raw)
+        expect(loaded.regeneratedIds).toEqual(['editors[1]'])
+        expect(loaded.dropped).toEqual([])
+        const ids = loaded.settings.editors.map((editor) => editor.id)
+        expect(new Set(ids).size).toEqual(2)
+    })
+
+    it('repairs duplicated ids that survive a salvage load', () => {
+        const raw = {
+            schemaVersion: SETTINGS_SCHEMA_VERSION,
+            editors: [validEditor('dup'), validEditor('dup')],
+            // Corrupt scalar forces the salvage path.
+            starterPackSeeded: 'not-a-boolean'
+        }
+        const loaded = loadSettingsDetailed(raw)
+        expect(loaded.dropped).toContain('starterPackSeeded')
+        expect(loaded.regeneratedIds).toEqual(['editors[1]'])
+        const ids = loaded.settings.editors.map((editor) => editor.id)
+        expect(new Set(ids).size).toEqual(2)
+    })
+
+    it('reports no regenerated ids on a clean load', () => {
+        const loaded = loadSettingsDetailed({ schemaVersion: SETTINGS_SCHEMA_VERSION })
+        expect(loaded.regeneratedIds).toEqual([])
     })
 })

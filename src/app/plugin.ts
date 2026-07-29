@@ -183,6 +183,17 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 )}). Review the plugin settings — especially privacy exclusions.`
             )
         }
+        if (boot.regeneratedIds.length > 0) {
+            // Sync-merge artifact: duplicated entity ids can route note
+            // content and the wrong API key to a different endpoint than
+            // the UI displays — resolved keep-first, later ids regenerated.
+            log(`Duplicate entity ids regenerated: ${boot.regeneratedIds.join(', ')}`, 'warn')
+            new Notice(
+                `AI Editor: duplicate entity ids were found in the saved settings (likely a sync conflict) and were repaired (${boot.regeneratedIds.join(
+                    ', '
+                )}). Review the plugin settings — especially backend assignments.`
+            )
+        }
         if (boot.needsSave) {
             await this.persistSettings()
         }

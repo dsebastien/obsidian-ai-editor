@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { generateId } from '../ids'
 
 /**
  * Persisted plugin settings: schema-versioned, Zod-validated on load.
@@ -243,6 +244,13 @@ export interface LoadedSettings {
      * backends destroys API keys on the next save.
      */
     readonly dropped: readonly string[]
+    /**
+     * Entity paths whose duplicated ids were regenerated (keep-first). Empty
+     * on a clean load. Non-empty means the resolved settings differ from
+     * disk and the caller must persist AND warn — see
+     * `resolveIdCollisions` for why collisions are dangerous.
+     */
+    readonly regeneratedIds: readonly string[]
 }
 
 /** Array sections whose elements can be salvaged individually. */
@@ -252,6 +260,62 @@ const ARRAY_SECTION_SCHEMAS: Partial<Record<keyof PluginSettingsV1, z.ZodType>> 
     panels: panelConfigSchema,
     actions: actionBindingSchema,
     rules: bindingRuleSchema
+}
+
+/** Result of `resolveIdCollisions`. */
+export interface IdCollisionResolution {
+    /** Same object as the input when no collision existed. */
+    readonly settings: PluginSettingsV1
+    /** Paths of entities whose ids were regenerated (`backends[2]`…). */
+    readonly regenerated: readonly string[]
+}
+
+/**
+ * Enforces global id uniqueness across every entity array (keep-first,
+ * regenerate later ids). data.json is syncable: a sync-merge conflict can
+ * duplicate entities, and every lookup resolves by first match — so with two
+ * backends sharing an id, the settings UI can display one while requests
+ * route note content and the WRONG API key to the other's endpoint
+ * (Business Rules #12). Keep-first makes existing references keep resolving
+ * to exactly the entity that first-match lookups already picked; the later
+ * duplicate gets a fresh id and becomes independently addressable again.
+ * Uniqueness is enforced ACROSS arrays too — cross-kind reuse of an id
+ * invites the same display-vs-routing divergence in future lookups.
+ */
+export function resolveIdCollisions(
+    settings: PluginSettingsV1,
+    generate: () => string = generateId
+): IdCollisionResolution {
+    const seen = new Set<string>()
+    const regenerated: string[] = []
+
+    const dedupe = <T extends { readonly id: string }>(section: string, items: readonly T[]): T[] =>
+        items.map((item, index) => {
+            if (!seen.has(item.id)) {
+                seen.add(item.id)
+                return item
+            }
+            regenerated.push(`${section}[${index}]`)
+            let next = generate()
+            while (seen.has(next)) {
+                next = generate()
+            }
+            seen.add(next)
+            return { ...item, id: next }
+        })
+
+    const backends = dedupe('backends', settings.backends)
+    const editors = dedupe('editors', settings.editors)
+    const panels = dedupe('panels', settings.panels)
+    const actions = dedupe('actions', settings.actions)
+    const rules = dedupe('rules', settings.rules)
+    if (regenerated.length === 0) {
+        return { settings, regenerated }
+    }
+    return {
+        settings: { ...settings, backends, editors, panels, actions, rules },
+        regenerated
+    }
 }
 
 /**
@@ -266,10 +330,19 @@ const ARRAY_SECTION_SCHEMAS: Partial<Record<keyof PluginSettingsV1, z.ZodType>> 
 export function loadSettingsDetailed(raw: unknown): LoadedSettings {
     const whole = pluginSettingsSchema.safeParse(raw)
     if (whole.success) {
-        return { settings: whole.data, dropped: [] }
+        const resolved = resolveIdCollisions(whole.data)
+        return {
+            settings: resolved.settings,
+            dropped: [],
+            regeneratedIds: resolved.regenerated
+        }
     }
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-        return { settings: DEFAULT_PLUGIN_SETTINGS, dropped: ['(all settings)'] }
+        return {
+            settings: DEFAULT_PLUGIN_SETTINGS,
+            dropped: ['(all settings)'],
+            regeneratedIds: []
+        }
     }
     const source = raw as Record<string, unknown>
     const salvaged: Record<string, unknown> = { schemaVersion: SETTINGS_SCHEMA_VERSION }
@@ -340,9 +413,14 @@ export function loadSettingsDetailed(raw: unknown): LoadedSettings {
     }
     const final = pluginSettingsSchema.safeParse({ ...DEFAULT_PLUGIN_SETTINGS, ...salvaged })
     if (final.success) {
-        return { settings: final.data, dropped }
+        const resolved = resolveIdCollisions(final.data)
+        return {
+            settings: resolved.settings,
+            dropped,
+            regeneratedIds: resolved.regenerated
+        }
     }
-    return { settings: DEFAULT_PLUGIN_SETTINGS, dropped: ['(all settings)'] }
+    return { settings: DEFAULT_PLUGIN_SETTINGS, dropped: ['(all settings)'], regeneratedIds: [] }
 }
 
 /** `loadSettingsDetailed` without the salvage report. */

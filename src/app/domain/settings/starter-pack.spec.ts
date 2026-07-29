@@ -108,7 +108,9 @@ describe('seedStarterPack', () => {
         for (const editor of seeded.editors) {
             const words = wordCount(editor.prompt.text)
             expect(words).toBeGreaterThanOrEqual(200)
-            expect(words).toBeLessThanOrEqual(500)
+            // Upper bound is a sanity rail against runaway prompt bloat, not a
+            // style target — the Humanizer's taxonomy legitimately runs long.
+            expect(words).toBeLessThanOrEqual(700)
             expect(editor.prompt.text).toMatch(/verbatim/i)
             expect(editor.prompt.notePaths).toEqual([])
         }

@@ -25,6 +25,12 @@ export interface SettingsBootstrap {
      * especially for privacy exclusions (Business Rule #7).
      */
     readonly dropped: readonly string[]
+    /**
+     * Entity paths whose duplicated ids were regenerated (sync-merge
+     * artifact — see `resolveIdCollisions`). The caller MUST warn when
+     * non-empty; `needsSave` is already set so the fix persists.
+     */
+    readonly regeneratedIds: readonly string[]
 }
 
 /**
@@ -39,7 +45,8 @@ export function bootstrapSettings(raw: unknown): SettingsBootstrap {
     return {
         settings: seeded,
         foreignKeys: collectForeignKeys(raw),
-        needsSave: seeded !== loaded.settings,
-        dropped: loaded.dropped
+        needsSave: seeded !== loaded.settings || loaded.regeneratedIds.length > 0,
+        dropped: loaded.dropped,
+        regeneratedIds: loaded.regeneratedIds
     }
 }

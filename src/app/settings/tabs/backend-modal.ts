@@ -9,7 +9,7 @@ import type { TabContext } from './shared'
 
 const BASE_URL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'anthropic': 'Optional — defaults to https://api.anthropic.com',
-    'openai': 'Optional — defaults to https://api.openai.com',
+    'openai': 'Optional — defaults to https://api.openai.com/v1',
     'openai-compatible': 'https://openrouter.ai/api/v1',
     'azure-openai': 'https://<resource>.openai.azure.com',
     'ollama': 'http://localhost:11434'
