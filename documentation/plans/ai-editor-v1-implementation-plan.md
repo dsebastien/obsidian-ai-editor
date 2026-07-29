@@ -14,7 +14,8 @@ The user writes; a configurable crew of **Editors** (AI personas) and **Panels**
 2. **Suggestions, never silent mutations.** Every AI change is a visible diff with Accept/Reject. The user stays the author.
 3. **Ignorable by design.** Findings fade away when dismissed; daemons never block writing (Appleton's daemons principle).
 4. **Vault as configuration.** Every prompt (editor persona, panel charter, voice profile) can be typed directly in a textarea OR sourced from 0-n vault notes. Documenting your assistant in your vault IS configuring the plugin.
-5. **Desktop-first.** Mobile support is explicitly not a priority.
+5. **Full parity in Live Preview AND Source mode.** Both are CM6, so highlights, rails, cards, diffs, and margin comments must work identically in both. Source mode is a first-class citizen, not a degraded fallback — test every surface in both modes.
+6. **Desktop-first.** Mobile support is explicitly not a priority.
 
 ## 2. Inspiration analysis
 
@@ -173,7 +174,7 @@ interface ReviewBackend {
 - Gutter/rail: custom DOM in the editor margin (left, like Juri) showing editor dots + panel badges, Summon/Cancel, spinners, count badges.
 - Review cards: floating widget (CM6 tooltip API or absolutely-positioned overlay) anchored to spans.
 - Inline diffs: widget decorations replacing the span while in preview state; Accept applies a transaction, Reject restores.
-- Works in Live Preview and Source mode; Reading view out of scope for interaction (maybe read-only highlights later).
+- Full parity in Live Preview and Source mode (north star #5): all decorations, cards, and diffs must render and behave identically in both — anchoring against raw markdown makes this natural since Source mode shows exactly what we anchor to. Reading view out of scope for interaction (maybe read-only highlights later).
 
 ### 5.5 Async margin comments
 
