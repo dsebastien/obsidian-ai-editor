@@ -89,6 +89,10 @@ The vault already contains a mature agent architecture ([[AI Assistant Architect
 | Bulk triage | **Accept/dismiss all per editor** (rail dot menu), **accept all non-conflicting** (one undoable transaction, precondition-checked), **severity filter** (info/suggestion/warning) |
 | Ambient UI | **Status-bar item** for the active note: last run's finding count + gate verdict badge; click → side panel. No heat strip in v1 |
 | Settings UX | **Tabbed settings** (Backends / Editors / Panels / Actions / Voice & Style / Rules / Behavior), well organized |
+| Overlapping findings | **Stacked card with tabs**: one blended highlight; the card shows every editor's take on that span (own suggestion + thread each); only one suggestion in diff-preview at a time |
+| Language | **Match the note's language automatically** (critiques, suggestions, threads in the text's language) + global override ("always respond in X") |
+| Comment routing | Async margin comments run on a **configurable default editor**, with a persona chip / @-mention in the input to reroute per comment |
+| Review surface | **Body only in v1** — frontmatter/metadata review (description, title, aliases, full properties) is post-v1 (GitHub issue) |
 
 ## 4. Domain model
 
@@ -304,6 +308,8 @@ Additional post-v1 features (each a GitHub issue):
 6. **Interview-first drafting** — an action that runs a structured one-question-at-a-time interview (angle, audience, unique take) in the card/side panel before drafting; answers feed the generation context. Mirrors the Ghostwriter's "interview first, write later" rule; builds on the per-finding thread machinery.
 7. **Community packs** — in-plugin pack browser with a rich explanatory UI (what each editor/pack is, what it's for). Packs are contributed via PRs to this repo under a `community/` parent folder (dedicated subfolders per editor and per pack); the plugin loads the registry from there. Contribution guide in the docs.
 8. **Publish gates** — settings to define gates (designate a panel as gate, optionally per note-type rule); a public plugin API other plugins can call ("latest gate verdict for file X", "run gate"); status-bar verdict badge. First consumer: obsidian-ghost-publish ("Style Guard failed" warning before publishing).
+9. **Metadata review** — editors propose frontmatter improvements: first description/title/aliases (prose-ish, publishing value), later any property as a structured, schema-aware diff (OSK type definitions when available). Companion of the tag-review issue.
+10. **Session summary** — on-demand command: distill a review session (per-editor accepted/rejected counts, key changes) into a formatted digest, copied to clipboard or appended to a chosen note (e.g. the daily note).
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
