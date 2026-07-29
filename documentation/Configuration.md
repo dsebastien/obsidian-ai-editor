@@ -10,7 +10,7 @@ User-facing configuration of the plugin (persisted in `data.json`, schema-versio
 4. **Actions** — built-in verbs + custom actions, each bound to an editor or panel; hotkeys via Obsidian's hotkey system.
 5. **Voice & Style** — global voice profile (textarea + note refs), per-editor injection opt-out.
 6. **Rules** — ordered binding rules (folder/tag/frontmatter → editors/panel/bindings or disabled); OSK note-type targets when the Starter Kit plugin is detected (optional, feature-detected, never required).
-7. **Behavior** — size-warning threshold, concurrency, token/byte context budget, exclusions (folders, tags, `ai_editor: false` frontmatter flag, strip-frontmatter toggle), default comment editor, language override.
+7. **Behavior** — size-warning threshold, concurrency, request timeout, token/byte context budget, daemon mode (off by default; toggle + idle delay — automatic review refresh after the user pauses editing, cost implication stated in the toggle copy, Business Rule #1 carve-out), exclusions (folders, tags, `ai_editor: false` frontmatter flag, strip-frontmatter toggle), default comment editor, language override.
 
 ## Notable defaults
 

@@ -31,4 +31,16 @@ nav_order: 2
 - Notes above the configured word threshold ask for confirmation before anything is sent.
 - Editors that cannot run (no backend, disabled backend, no model…) are reported, never silently skipped.
 
-Nothing runs automatically: reviews only start when you trigger them, and privacy-excluded notes (folder, tag, or `ai_editor: false` frontmatter) are never sent to any backend.
+## Daemon mode (opt-in)
+
+By default nothing runs automatically: reviews only start when you trigger them. **Daemon mode** (Settings → AI Editor → Behavior → Daemon) changes that for the notes you edit: with the toggle on, your editors watch your edits and refresh their recommendations automatically after you pause editing for the configured idle delay.
+
+- A refresh only happens when the note is reviewable, its text actually changed since the last review, and no review is already running for it (edits made during a run coalesce into one refresh after it finishes).
+- Notes above the size-warning threshold are silently skipped — daemon mode never interrupts you with dialogs.
+- Refreshes reuse the editors of the note's previous review (all enabled editors when it was never reviewed) and never override your explicit actions: summon, cancel, and retry always win.
+- While a refresh is armed for the current note, a small pulsing dot appears at the bottom of the persona rail.
+- **Cost warning**: every refresh calls your configured AI backends. Keep the idle delay generous if you pay per token.
+
+## Privacy
+
+Privacy-excluded notes (folder, tag, or `ai_editor: false` frontmatter) are never sent to any backend — not by commands, not by daemon mode.

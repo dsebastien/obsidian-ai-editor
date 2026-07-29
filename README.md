@@ -10,7 +10,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and
 - **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
 - **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI and compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
 
-Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff.
+Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff. The one opt-in exception is **daemon mode** — a settings toggle (off by default) that lets your editors watch your edits and refresh their recommendations after you pause; every refresh calls your configured backends, so the toggle states the cost implication plainly.
 
 > Status: early development. See `documentation/plans/` for the implementation plan.
 

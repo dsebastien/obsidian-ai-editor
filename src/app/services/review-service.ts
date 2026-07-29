@@ -24,9 +24,11 @@ import type { RunController, RunEditorSpec, RunHandle } from './orchestration/ru
  * Guarantees enforced here:
  * - Privacy exclusions are checked BEFORE anything else — an excluded target
  *   never reaches context assembly or a backend (Business Rules #7).
- * - Nothing runs without an explicit user action: this function is only ever
- *   invoked from the Review command / rail button (Business Rules #1), and
- *   oversized notes additionally require a user-confirmed flag.
+ * - Nothing runs without an explicit user action (Business Rules #1): the
+ *   invokers are the Review command / rail button / menus / CLI — plus daemon
+ *   refreshes, authorized by the rule's documented carve-out (the explicit
+ *   `behavior.daemonMode` opt-in). Oversized notes additionally require a
+ *   user-confirmed flag (the daemon skips them instead of asking).
  * - Error messages that could echo credentials are routed through the
  *   redaction seam (Business Rules #12).
  */
