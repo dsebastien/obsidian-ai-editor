@@ -639,7 +639,13 @@ function toPublicState(state: InternalEditorState): EditorRunState {
  */
 export class RunController {
     private readonly runs = new Map<string, RunHandle>()
-    private readonly requestGate: Semaphore
+    /**
+     * The plugin-wide backend concurrency gate. Public so sibling
+     * controllers running non-review operations (`TransformController`)
+     * share the SAME budget — `behavior.maxConcurrentRequests` bounds
+     * reviews and transforms combined, not each family separately.
+     */
+    readonly requestGate: Semaphore
 
     /**
      * @param getMaxConcurrentRequests Live view of the settings value; the
