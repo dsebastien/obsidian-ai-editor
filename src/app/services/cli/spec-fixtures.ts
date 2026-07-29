@@ -95,4 +95,9 @@ export class FakeRunHandle implements RunHandle {
     applyTextChanges(): void {
         // no-op for the fixture
     }
+
+    retryEditor(): { ok: false; reason: 'not-retryable' } {
+        // CLI surfaces never retry (UI-only affordance); fixture refuses.
+        return { ok: false, reason: 'not-retryable' }
+    }
 }

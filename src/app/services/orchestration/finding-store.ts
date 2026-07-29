@@ -218,6 +218,25 @@ export class FindingStore {
     }
 
     /**
+     * Removes findings outright — the per-editor retry path (`retryEditor`):
+     * a retried attempt REPLACES the failed attempt's findings, so they leave
+     * the store entirely (any status, terminal included — an accepted edit
+     * stays in the document, only its record goes). Unknown ids are ignored;
+     * `onChange` fires once when anything was removed.
+     */
+    removeMany(ids: readonly FindingId[]): void {
+        let removed = false
+        for (const id of ids) {
+            if (this.findings.delete(id)) {
+                removed = true
+            }
+        }
+        if (removed) {
+            this.notify()
+        }
+    }
+
+    /**
      * Maps every anchored finding through a batch of document changes
      * (pre-change coordinates, sorted, non-overlapping — the CM6
      * `iterChanges` shape). A finding whose anchor goes stale while in

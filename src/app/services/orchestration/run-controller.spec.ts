@@ -926,3 +926,303 @@ describe('RunController concurrency gate (behavior.maxConcurrentRequests)', () =
         expect(run.getEditorState('next')?.status).toEqual('done')
     })
 })
+
+describe('RunHandle.retryEditor (per-editor retry)', () => {
+    /** Fresh buffer text passed at retry time — repeated "fox" on purpose. */
+    const FRESH = 'A fox here. A fox there. Nothing else.'
+
+    async function until(predicate: () => boolean): Promise<void> {
+        for (let i = 0; i < 50 && !predicate(); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        expect(predicate()).toBeTrue()
+    }
+
+    /** First attempt fails with a timeout; later attempts run `retryScript`. */
+    function failingThenScripted(
+        editorId: string,
+        retryScript: (runId: string) => OperationEvent[]
+    ): RunEditorSpec {
+        let attempt = 0
+        return {
+            editorId,
+            editorName: `Editor ${editorId}`,
+            execute: async function* (request) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield finding(request.runId, raw({ critique: 'From the failed attempt' }))
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'timeout', message: 'boom' }
+                    }
+                    return
+                }
+                yield* retryScript(request.runId)
+            }
+        }
+    }
+
+    it('re-runs after an error, REPLACES the old findings, and anchors against the fresh text (occurrence disambiguation)', async () => {
+        const controller = new RunController()
+        const requests: ReviewRequest[] = []
+        let attempt = 0
+        const editor: RunEditorSpec = {
+            editorId: 'flaky',
+            editorName: 'Flaky',
+            execute: async function* (request) {
+                requests.push(request)
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield finding(request.runId, raw({ critique: 'Partial, from failure' }))
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'network', message: 'boom' }
+                    }
+                    return
+                }
+                // Repeated text in the NEW buffer: occurrence 1 must anchor
+                // on the SECOND "fox" of the fresh text, not the snapshot's.
+                yield result(request.runId, [
+                    raw({
+                        quote: 'fox',
+                        occurrence: 1,
+                        critique: 'Second fox',
+                        suggestion: 'vixen'
+                    })
+                ])
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        expect(run.getEditorState('flaky')?.status).toEqual('error')
+        expect(run.findings.list()).toHaveLength(1)
+        const oldId = run.findings.list()[0]!.id
+        const oldRunId = run.getEditorState('flaky')?.runId
+
+        expect(run.retryEditor('flaky', FRESH)).toEqual({ ok: true })
+        await until(() => run.getEditorState('flaky')?.status === 'done')
+
+        // Old finding gone, new one anchored against the FRESH text.
+        const findings = run.findings.list()
+        expect(findings).toHaveLength(1)
+        expect(run.findings.get(oldId)).toBeNull()
+        const tracked = findings[0]
+        expect(tracked?.raw.critique).toEqual('Second fox')
+        expect(tracked?.anchor).toEqual({
+            from: FRESH.indexOf('fox', 3),
+            to: FRESH.indexOf('fox', 3) + 3,
+            state: 'anchored'
+        })
+        expect(tracked?.anchoredText).toEqual('fox')
+
+        // The retried request carried the fresh text, and a fresh attempt id.
+        expect(requests[1]?.text).toEqual(FRESH)
+        expect(requests[1]?.runId).not.toEqual(requests[0]?.runId)
+        const state = run.getEditorState('flaky')
+        expect(state?.runId).not.toEqual(oldRunId)
+        expect(state?.error).toBeNull()
+        expect(state?.findingIds).toEqual([tracked!.id])
+    })
+
+    it('retries after cancelRun on a FRESH abort signal', async () => {
+        const controller = new RunController()
+        const freshness: boolean[] = []
+        let attempt = 0
+        const editor: RunEditorSpec = {
+            editorId: 'cancelled-once',
+            editorName: 'Cancelled once',
+            execute: async function* (request, signal) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    await new Promise<void>((resolve) => {
+                        signal.addEventListener('abort', () => resolve())
+                    })
+                    return
+                }
+                freshness.push(signal.aborted)
+                yield result(request.runId, [])
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
+        run.cancelRun()
+        await run.settled
+        expect(run.getEditorState('cancelled-once')?.status).toEqual('cancelled')
+
+        expect(run.retryEditor('cancelled-once', DOC)).toEqual({ ok: true })
+        await until(() => run.getEditorState('cancelled-once')?.status === 'done')
+        // The retry's signal was NOT the (permanently aborted) run signal.
+        expect(freshness).toEqual([false])
+    })
+
+    it('acquires the concurrency permit exactly like a first attempt', async () => {
+        const controller = new RunController(() => 1)
+        const failing = scriptedEditor('failing', (runId) => [
+            { type: 'error', runId, error: { code: 'network', message: 'boom' } }
+        ])
+        const runA = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/a.md', text: DOC }),
+            editors: [failing]
+        })
+        await runA.settled
+        expect(runA.getEditorState('failing')?.status).toEqual('error')
+
+        // A second run now holds the single permit with a hanging stream.
+        const gate = deferred()
+        const hog: RunEditorSpec = {
+            editorId: 'hog',
+            editorName: 'Hog',
+            execute: async function* (request) {
+                await gate.promise
+                yield result(request.runId, [])
+            }
+        }
+        const runB = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/b.md', text: DOC }),
+            editors: [hog]
+        })
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
+
+        // Retry queues behind the limit: the editor stays 'pending'.
+        expect(runA.retryEditor('failing', DOC)).toEqual({ ok: true })
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
+        expect(runA.getEditorState('failing')?.status).toEqual('pending')
+        expect(runA.isSettled()).toBeFalse()
+
+        // Freeing the permit admits the retry. (The retried attempt errors
+        // again — the scripted editor always fails — which is fine: what is
+        // pinned here is the admission, not the outcome.)
+        gate.resolve()
+        runB.cancelRun()
+        await until(() => runA.getEditorState('failing')?.status === 'error')
+    })
+
+    it('rejects illegal retries: done, in-flight, mid-retry, and unknown editors', async () => {
+        const controller = new RunController()
+        const gate = deferred()
+        let attempt = 0
+        const editor: RunEditorSpec = {
+            editorId: 'once-bad',
+            editorName: 'Once bad',
+            execute: async function* (request) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'network', message: 'boom' }
+                    }
+                    return
+                }
+                await gate.promise
+                yield result(request.runId, [])
+            }
+        }
+        const done = scriptedEditor('fine', (runId) => [result(runId, [])])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor, done] })
+        await run.settled
+
+        // 'done' editors and unknown ids are not retryable.
+        expect(run.retryEditor('fine', DOC)).toEqual({ ok: false, reason: 'not-retryable' })
+        expect(run.retryEditor('nope', DOC)).toEqual({ ok: false, reason: 'unknown-editor' })
+
+        // A retry in flight blocks a second retry of the same editor.
+        expect(run.retryEditor('once-bad', DOC)).toEqual({ ok: true })
+        expect(run.retryEditor('once-bad', DOC)).toEqual({ ok: false, reason: 'not-retryable' })
+        gate.resolve()
+        await until(() => run.getEditorState('once-bad')?.status === 'done')
+    })
+
+    it('flips isSettled back to false while the retry is in flight', async () => {
+        const controller = new RunController()
+        const editor = failingThenScripted('again', (runId) => [result(runId, [])])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        expect(run.isSettled()).toBeTrue()
+
+        expect(run.retryEditor('again', DOC)).toEqual({ ok: true })
+        expect(run.isSettled()).toBeFalse()
+        await until(() => run.isSettled())
+        expect(run.getEditorState('again')?.status).toEqual('done')
+    })
+
+    it('remaps retried findings through edits applied AFTER the retry started', async () => {
+        const controller = new RunController()
+        const gate = deferred()
+        let attempt = 0
+        const editor: RunEditorSpec = {
+            editorId: 'remap',
+            editorName: 'Remap',
+            execute: async function* (request) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'timeout', message: 'slow' }
+                    }
+                    return
+                }
+                await gate.promise
+                yield result(request.runId, [raw()]) // 'quick brown' [4, 15) in DOC
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+
+        // Retry against the current text (unchanged here), then edit BEFORE
+        // the finding arrives: insert 5 chars at offset 0.
+        expect(run.retryEditor('remap', DOC)).toEqual({ ok: true })
+        run.applyTextChanges([{ from: 0, to: 0, insertedLength: 5 }])
+        gate.resolve()
+        await until(() => run.getEditorState('remap')?.status === 'done')
+
+        const tracked = run.findings.list()[0]
+        expect(tracked?.anchor).toEqual({ from: 9, to: 20, state: 'anchored' })
+        const edited = `XXXXX${DOC}`
+        expect(run.findings.accept(tracked!.id, edited).ok).toBeTrue()
+    })
+
+    it('cancelRun aborts an in-flight retry', async () => {
+        const controller = new RunController()
+        let observedSignal: AbortSignal | null = null
+        let attempt = 0
+        const editor: RunEditorSpec = {
+            editorId: 'retry-cancel',
+            editorName: 'Retry cancel',
+            execute: async function* (request, signal) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'network', message: 'boom' }
+                    }
+                    return
+                }
+                observedSignal = signal
+                await new Promise<void>((resolve) => {
+                    signal.addEventListener('abort', () => resolve())
+                })
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+
+        expect(run.retryEditor('retry-cancel', DOC)).toEqual({ ok: true })
+        await until(() => run.getEditorState('retry-cancel')?.status === 'running')
+        run.cancelRun()
+        expect(observedSignal).not.toBeNull()
+        expect(observedSignal!.aborted).toBeTrue()
+        expect(run.getEditorState('retry-cancel')?.status).toEqual('cancelled')
+        expect(run.isSettled()).toBeTrue()
+    })
+})

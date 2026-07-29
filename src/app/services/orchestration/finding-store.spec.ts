@@ -268,3 +268,35 @@ describe('FindingStore.applyTextChanges', () => {
         expect(notifications).toEqual(before + 1)
     })
 })
+
+describe('FindingStore.removeMany', () => {
+    it('removes findings of any status and notifies exactly once', () => {
+        const store = new FindingStore()
+        const open = store.add(makeInput())
+        const accepted = store.add(makeInput())
+        expect(store.accept(accepted.id, DOC).ok).toBeTrue()
+        const kept = store.add(makeInput({ editorId: 'other' }))
+
+        let acts = 0
+        const acting = new FindingStore(() => acts++)
+        const a = acting.add(makeInput())
+        const b = acting.add(makeInput())
+        acts = 0
+        acting.removeMany([a.id, b.id])
+        expect(acts).toEqual(1)
+        expect(acting.list()).toHaveLength(0)
+
+        // Terminal findings are removed too (retry replaces the attempt).
+        store.removeMany([open.id, accepted.id])
+        expect(store.get(open.id)).toBeNull()
+        expect(store.get(accepted.id)).toBeNull()
+        expect(store.list()).toEqual([kept])
+    })
+
+    it('ignores unknown ids without notifying', () => {
+        let notifications = 0
+        const store = new FindingStore(() => notifications++)
+        store.removeMany([asFindingId('missing')])
+        expect(notifications).toEqual(0)
+    })
+})
