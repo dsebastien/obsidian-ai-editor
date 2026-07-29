@@ -85,6 +85,10 @@ The vault already contains a mature agent architecture ([[AI Assistant Architect
 | Guardrails | Size warning + confirm; **exclusions** (folders/tags/`ai_editor: false` frontmatter flag block review; strip-frontmatter option); **nothing runs automatically on note open — every AI action is user-initiated** |
 | Conversations | **Per-finding threads**: push-back → editor reply → counter → revised suggestion, collapsed history in the card. Session-scoped |
 | Editor modes | **Full parity in Live Preview AND Source mode** (both CM6); Reading view interaction out of scope |
+| Note-type rules | **Binding rules** (folder/tag/frontmatter → default editors/panel/bindings) + optional **OSK auto-discovery** (feature-detected, never mandatory) + per-scope **kill switch** (disable the plugin's UI entirely for chosen note types/folders) |
+| Bulk triage | **Accept/dismiss all per editor** (rail dot menu), **accept all non-conflicting** (one undoable transaction, precondition-checked), **severity filter** (info/suggestion/warning) |
+| Ambient UI | **Status-bar item** for the active note: last run's finding count + gate verdict badge; click → side panel. No heat strip in v1 |
+| Settings UX | **Tabbed settings** (Backends / Editors / Panels / Actions / Voice & Style / Rules / Behavior), well organized |
 
 ## 4. Domain model
 
@@ -265,7 +269,7 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 - **M1 — Provider & settings vertical slice**: 1-n provider instances (Anthropic, OpenAI, OpenAI-compatible, Azure OpenAI, Ollama) with capability negotiation, health checks, normalized errors, `AbortSignal`; tabbed settings shell; minimal editor entity + starter pack seeding.
 - **M2 — Buffered single-editor review**: Review/Cancel from the rail, span highlights, side panel findings list (also the narrow-layout fallback), whole-note + selection scope, size warning + confirm, exclusions + per-type kill switch.
 - **M3 — Streaming & anchors under edit**: per-provider streaming decoders where verified, live badges, cancellation races, stale-marking while the user types, precondition-checked apply.
-- **M4 — Cards, diffs & keyboard triage**: floating review cards (single active tooltip, collision-aware), non-destructive inline diff (source stays visible; CM6-undo-integrated Accept), per-finding threads, full keyboard triage state machine, adaptive layout via `ResizeObserver`.
+- **M4 — Cards, diffs & keyboard triage**: floating review cards (single active tooltip, collision-aware), non-destructive inline diff (source stays visible; CM6-undo-integrated Accept), per-finding threads, full keyboard triage state machine, bulk operations (per-editor accept/dismiss-all, accept-all-non-conflicting as one undoable transaction, severity filter), status-bar finding-count item, adaptive layout via `ResizeObserver`.
 - **M5 — Editors/actions/context CRUD**: persona gallery (colors, prompt textarea + dedicated note-ref control), voice profile section, action→editor/panel bindings, custom actions, note-type binding rules + optional OSK auto-discovery adapter, `[[link]]`-in-inputs context with budget + "what will be sent" preview, import/export with validation, setup wizard.
 - **M6 — Panels**: panel CRUD (1-n members, charter, per-panel aggregation backend), parallel member runs + typed `PanelResult` scorecard (verdicts, top fixes, dissent, partial-failure policy), editors-vs-panels visual distinction, "Generate more" / `InsertAt` continuation affordance.
 - **M7 — CLI backends (opt-in)**: Claude Code + Codex adapters behind the security boundary (stdin content, isolated cwd, allowlisted env, read-only sandbox, process-tree kill, protocol conformance tests), separate consent for tool/research mode.
@@ -293,6 +297,13 @@ Beyond reviewing prose, editors should help integrate the note into the vault's 
    - **Internal**: every vault note mentioned/linked in the body, consolidated.
    - **External**: URLs the user added manually + **every external source an LLM used as input/reference while editing/writing** (source-citation tracking: backends must report the sources behind their suggestions so citations are effortless and honest).
 4. Prerequisite plumbing: the operation contract's evidence entries (review finding #27) double as the citation source for external references.
+
+Additional post-v1 features (each a GitHub issue):
+
+5. **Per-editor learning loop** — optional per editor: distill accept/reject patterns + push-back arguments into a memory store (user chooses per editor: plugin settings OR a dedicated vault note) that is injected into future runs. Transparent and editable — you can read exactly what an editor "learned".
+6. **Interview-first drafting** — an action that runs a structured one-question-at-a-time interview (angle, audience, unique take) in the card/side panel before drafting; answers feed the generation context. Mirrors the Ghostwriter's "interview first, write later" rule; builds on the per-finding thread machinery.
+7. **Community packs** — in-plugin pack browser with a rich explanatory UI (what each editor/pack is, what it's for). Packs are contributed via PRs to this repo under a `community/` parent folder (dedicated subfolders per editor and per pack); the plugin loads the registry from there. Contribution guide in the docs.
+8. **Publish gates** — settings to define gates (designate a panel as gate, optionally per note-type rule); a public plugin API other plugins can call ("latest gate verdict for file X", "run gate"); status-bar verdict badge. First consumer: obsidian-ghost-publish ("Style Guard failed" warning before publishing).
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
