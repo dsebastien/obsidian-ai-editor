@@ -5,7 +5,9 @@ import type { DecorationSet } from '@codemirror/view'
 import {
     clearFindingsEffect,
     findingDecorationsField,
+    findingSpansAt,
     markStaleEffect,
+    removeFindingsEffect,
     setFindingsEffect
 } from './finding-decorations'
 import type { FindingDecorationSpec } from './finding-decorations'
@@ -222,6 +224,86 @@ describe('findingDecorationsField', () => {
             )
             state = apply(state, { effects: clearFindingsEffect.of(null) })
             expect(marksOf(state)).toEqual([])
+        })
+    })
+
+    describe('removeFindings', () => {
+        it('removes only the named findings, keeping the rest untouched', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'f-1', from: 0, to: 5 }),
+                    findingSpec({ findingId: 'f-2', from: 6, to: 10 }),
+                    findingSpec({ findingId: 'f-3', from: 11, to: 16 })
+                ])
+            )
+            state = apply(state, { effects: removeFindingsEffect.of(['f-1', 'f-3']) })
+            expect(marksOf(state).map((m) => m.findingId)).toEqual(['f-2'])
+        })
+
+        it('ignores unknown finding ids', () => {
+            let state = stateWith('alpha', setFindingsEffect.of([findingSpec()]))
+            state = apply(state, { effects: removeFindingsEffect.of(['nope']) })
+            expect(marksOf(state)).toHaveLength(1)
+        })
+
+        it('combines with a document change in the same transaction', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'f-1', from: 0, to: 5 }),
+                    findingSpec({ findingId: 'f-2', from: 6, to: 10 })
+                ])
+            )
+            // Accept-style dispatch: replace the range and drop its mark.
+            state = apply(state, {
+                changes: { from: 0, to: 5, insert: 'ALPHA INDEED' },
+                effects: removeFindingsEffect.of(['f-1'])
+            })
+            const marks = marksOf(state)
+            expect(marks.map((m) => m.findingId)).toEqual(['f-2'])
+            expect(state.doc.sliceString(marks[0]?.from ?? 0, marks[0]?.to ?? 0)).toBe('beta')
+        })
+    })
+
+    describe('findingSpansAt', () => {
+        it('returns the spans covering a position', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'f-1', from: 0, to: 5 }),
+                    findingSpec({ findingId: 'f-2', from: 6, to: 10 })
+                ])
+            )
+            expect(findingSpansAt(state, 7)).toEqual([
+                { findingId: 'f-2', editorId: 'e-1', from: 6, to: 10, stale: false }
+            ])
+        })
+
+        it('returns every overlapping span at the position', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'wide', from: 0, to: 16 }),
+                    findingSpec({ findingId: 'narrow', from: 6, to: 10, stale: true })
+                ])
+            )
+            const spans = findingSpansAt(state, 8)
+            expect(spans.map((s) => s.findingId).sort()).toEqual(['narrow', 'wide'])
+            expect(spans.find((s) => s.findingId === 'narrow')?.stale).toBe(true)
+        })
+
+        it('returns nothing away from any span', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([findingSpec({ from: 0, to: 5 })])
+            )
+            expect(findingSpansAt(state, 12)).toEqual([])
+        })
+
+        it('returns nothing when the field is not installed', () => {
+            const state = EditorState.create({ doc: 'alpha' })
+            expect(findingSpansAt(state, 0)).toEqual([])
         })
     })
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { asFindingId } from '../../domain/ids'
 import { createSnapshot } from '../../domain/snapshot'
 import type { OperationEvent, RawFinding, ReviewRequest } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
@@ -585,5 +586,36 @@ describe('RunController subscriptions', () => {
         expect(run.getEditorState('hang')?.status).toEqual('cancelled')
         gate.resolve()
         await run.settled
+    })
+})
+
+describe('RunController finding lookup', () => {
+    it('resolves the run owning a finding across files', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('lookup', (runId) => [result(runId, [raw()])])
+        const runA = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/a.md', text: DOC }),
+            editors: [editor]
+        })
+        const runB = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/b.md', text: DOC }),
+            editors: [editor]
+        })
+        await Promise.all([runA.settled, runB.settled])
+
+        const findingA = runA.findings.list()[0]
+        const findingB = runB.findings.list()[0]
+        expect(findingA).toBeDefined()
+        expect(findingB).toBeDefined()
+        if (!findingA || !findingB) {
+            return
+        }
+        expect(controller.findRunWithFinding(findingA.id)).toBe(runA)
+        expect(controller.findRunWithFinding(findingB.id)).toBe(runB)
+    })
+
+    it('returns null for an unknown finding id', () => {
+        const controller = new RunController()
+        expect(controller.findRunWithFinding(asFindingId('nope'))).toBeNull()
     })
 })

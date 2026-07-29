@@ -400,6 +400,22 @@ export class RunController {
         return this.runs.get(filePath) ?? null
     }
 
+    /**
+     * The run tracking the given finding, if any. Finding ids are UUIDs
+     * (globally unique across runs), so the first match is the only match.
+     * Used by the review card lookup, which only knows a finding id — the
+     * card renders inside an editor view but the id → run resolution must
+     * not depend on which view was clicked.
+     */
+    findRunWithFinding(findingId: FindingId): RunHandle | null {
+        for (const run of this.runs.values()) {
+            if (run.findings.get(findingId)) {
+                return run
+            }
+        }
+        return null
+    }
+
     /** Cancels every active run (e.g. on plugin unload). */
     cancelAll(): void {
         for (const run of this.runs.values()) {

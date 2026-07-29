@@ -6,9 +6,13 @@ import type { PluginSettingsV1 } from './domain/settings/settings-schema'
 import { bootstrapSettings } from './settings/settings-bootstrap'
 import type { SettingsFacade } from './settings/settings-facade'
 import { AIEditorPluginSettingTab } from './settings/settings-tab'
+import { RunController } from './services/orchestration/run-controller'
+import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
+import { ReviewController } from './ui/review-controller'
+import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
-import { registerReviewCurrentNoteCommand } from './commands/review-current-note'
+import { registerReviewCommands } from './commands/review-current-note'
 import { registerWhatsNewDialog } from './whats-new'
 import { log } from '../utils/log'
 
@@ -35,6 +39,10 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
     private statusBarEl: HTMLElement | null = null
 
+    private runController: RunController | null = null
+
+    private reviewController: ReviewController | null = null
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
@@ -43,19 +51,44 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
         this.addSettingTab(new AIEditorPluginSettingTab(this.app, this))
 
-        // Finding highlights: a StateField mapped through document changes on
-        // every transaction; driven by the run orchestration once it lands (M2).
-        this.registerEditorExtension(findingDecorationsField)
-
         this.statusBarEl = this.addStatusBarItem()
         this.setFindingCount(0)
 
-        registerReviewCurrentNoteCommand(this)
+        // Review pipeline: run orchestration + per-view UI glue. The finding
+        // StateField maps decorations through document changes on every
+        // transaction; the controller's update listener feeds the same
+        // changes to the domain anchor store; the card extension makes the
+        // highlights clickable (Accept routed through the FindingStore
+        // precondition via the controller's lookup, Business Rules #3).
+        this.runController = new RunController()
+        const reviewController = new ReviewController({
+            app: this.app,
+            plugin: this,
+            getSettings: () => this.settings,
+            runController: this.runController,
+            setFindingCount: (count) => this.setFindingCount(count)
+        })
+        this.reviewController = reviewController
+        this.registerEditorExtension([
+            findingDecorationsField,
+            reviewController.editorExtension(),
+            findingCardExtension(reviewController.findingLookup())
+        ])
+        this.registerView(
+            REVIEW_PANEL_VIEW_TYPE,
+            (leaf) => new ReviewSidePanelView(leaf, () => reviewController.getPanelBinding())
+        )
+        reviewController.initialize()
+        registerReviewCommands(this, reviewController)
     }
 
     override onunload(): void {
-        // SEAM (M2): cancel active runs here (RunController.cancelAll) so
-        // in-flight backend requests never outlive the plugin.
+        // Rails, subscriptions and timers go first; then abort every
+        // in-flight backend request so nothing outlives the plugin.
+        this.reviewController?.dispose()
+        this.reviewController = null
+        this.runController?.cancelAll()
+        this.runController = null
     }
 
     /** `SettingsFacade`: current immutable settings value. */

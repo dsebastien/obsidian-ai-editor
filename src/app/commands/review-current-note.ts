@@ -1,55 +1,39 @@
-import { MarkdownView, Notice } from 'obsidian'
+import { MarkdownView } from 'obsidian'
 import type { Plugin } from 'obsidian'
-import { createSnapshot } from '../domain/snapshot'
-import { log } from '../../utils/log'
+import type { ReviewController } from '../ui/review-controller'
 
 /**
- * Skeleton of the "Review current note" command: captures a
- * `DocumentSnapshot` of the active markdown view (whole note, or
- * selection-scoped when a selection exists) and stops there — no backend
- * call, per Business Rule #1 the review loop only ships once it is real.
- * The orchestration connects at the seam marked below.
+ * Review commands. Both are pure user intents delegated to the
+ * `ReviewController` (Business Rules #1 — nothing runs without an explicit
+ * user action):
+ *
+ * - `Review current note` — available only for an active markdown view whose
+ *   note is not privacy-excluded (exclusions gate availability, and the
+ *   review service re-checks them fail-closed).
+ * - `Open review panel` — reveals the side-panel leaf.
  */
-export function registerReviewCurrentNoteCommand(plugin: Plugin): void {
+export function registerReviewCommands(plugin: Plugin, controller: ReviewController): void {
     plugin.addCommand({
         id: 'review-current-note',
         name: 'Review current note',
         checkCallback: (checking: boolean): boolean => {
             const view = plugin.app.workspace.getActiveViewOfType(MarkdownView)
-            if (!view || !view.file) {
+            if (!view || !controller.canReview(view)) {
                 return false
             }
             if (checking) {
                 return true
             }
-            const editor = view.editor
-            const from = editor.posToOffset(editor.getCursor('from'))
-            const to = editor.posToOffset(editor.getCursor('to'))
-            const snapshot = createSnapshot({
-                filePath: view.file.path,
-                text: editor.getValue(),
-                ...(from !== to ? { selection: { from, to } } : {})
-            })
-            log(
-                `Review requested for ${snapshot.filePath} (snapshot ${snapshot.id}, hash ${snapshot.hash})`,
-                'info'
-            )
-            // ── SEAM (M2): review pipeline ─────────────────────────────────
-            // TODO(M2): resolve enabled editors + their backends from plugin
-            //   settings; build one RunEditorSpec per editor whose `execute`
-            //   bridges services/backends/providers (getProviderAdapter →
-            //   buildRequest → transport → parseBufferedResponse) with the
-            //   context assembled by services/context (exclusions first).
-            // TODO(M2): start the run via services/orchestration
-            //   RunController.startRun({ snapshot, editors }) — one active
-            //   run per file — and wire Cancel to the persona rail.
-            // TODO(M2): project anchored findings into the CM6
-            //   findingDecorationsField (setFindingsEffect) and feed the
-            //   status-bar counter via AIEditorPlugin.setFindingCount.
-            new Notice(
-                'AI review is not connected to a backend yet — coming in the next milestone.'
-            )
+            void controller.startReview(view)
             return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'open-review-panel',
+        name: 'Open review panel',
+        callback: (): void => {
+            void controller.activateSidePanel()
         }
     })
 }

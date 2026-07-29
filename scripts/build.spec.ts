@@ -42,6 +42,35 @@ describe('build constants', () => {
     })
 })
 
+describe('stylesheet ↔ runtime class contract', () => {
+    /**
+     * The What's New modal (src/app/ui/whats-new-modal.ts) builds its class
+     * names at runtime from `manifest.id` (`${id}-whats-new-*`). The
+     * stylesheet must target that exact prefix — a stale template prefix
+     * (e.g. `my-plugin-`) ships dead rules and an unstyled dialog.
+     */
+    test('whats-new selectors use the manifest.id prefix', async () => {
+        const manifest = (await Bun.file('manifest.json').json()) as { id: string }
+        const styles = await Bun.file(STYLES_SRC).text()
+        expect(styles).toContain(`.${manifest.id}-whats-new-dialog`)
+        expect(styles).toContain(`.${manifest.id}-whats-new-notes`)
+        expect(styles).not.toContain('my-plugin-')
+    })
+
+    /**
+     * Tailwind preflight is a GLOBAL reset (`*{margin:0;border:0 solid}`,
+     * `html` font defaults, `:root` theme variables) — Obsidian applies
+     * styles.css app-wide, so shipping it breaks the app and community
+     * themes (plugin guideline: no global styles). The source must never
+     * import 'tailwindcss' wholesale (which includes preflight.css).
+     */
+    test('styles source never imports tailwind preflight', async () => {
+        const styles = await Bun.file(STYLES_SRC).text()
+        expect(styles).not.toContain("@import 'tailwindcss';")
+        expect(styles).not.toContain('tailwindcss/preflight')
+    })
+})
+
 describe('EXTERNAL_MODULES', () => {
     test('includes obsidian', () => {
         expect(EXTERNAL_MODULES).toContain('obsidian')

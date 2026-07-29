@@ -21,7 +21,7 @@
  */
 
 import { StateEffect, StateField } from '@codemirror/state'
-import type { Range } from '@codemirror/state'
+import type { EditorState, Range } from '@codemirror/state'
 import { Decoration, EditorView } from '@codemirror/view'
 import type { DecorationSet } from '@codemirror/view'
 
@@ -56,6 +56,12 @@ export const setFindingsEffect = StateEffect.define<readonly FindingDecorationSp
 
 /** Removes every finding decoration (run cancelled, note switched, …). */
 export const clearFindingsEffect = StateEffect.define<null>()
+
+/**
+ * Removes the decorations of the given findings only (accepted or dismissed
+ * from a review card) — the remaining marks are untouched.
+ */
+export const removeFindingsEffect = StateEffect.define<readonly string[]>()
 
 /** Marks the given findings stale (dimmed, non-actionable) in place. */
 export const markStaleEffect = StateEffect.define<readonly string[]>()
@@ -120,6 +126,14 @@ function buildSet(specs: readonly FindingDecorationSpec[], docLength: number): D
     return Decoration.set(ranges, true)
 }
 
+/** Drops the marks belonging to the given findings, keeping all others. */
+function applyRemove(decorations: DecorationSet, findingIds: readonly string[]): DecorationSet {
+    const removed = new Set(findingIds)
+    return decorations.update({
+        filter: (_from, _to, decoration) => !removed.has(markSpecOf(decoration).findingId)
+    })
+}
+
 /** Rebuilds the set with the given findings switched to their stale look. */
 function applyStale(decorations: DecorationSet, findingIds: readonly string[]): DecorationSet {
     const staleIds = new Set(findingIds)
@@ -152,9 +166,44 @@ export const findingDecorationsField = StateField.define<DecorationSet>({
                 next = buildSet(effect.value, tr.newDoc.length)
             } else if (effect.is(markStaleEffect)) {
                 next = applyStale(next, effect.value)
+            } else if (effect.is(removeFindingsEffect)) {
+                next = applyRemove(next, effect.value)
             }
         }
         return next
     },
     provide: (field) => EditorView.decorations.from(field)
 })
+
+/** One finding span in the current decoration set (current-doc coordinates). */
+export interface FindingSpanInfo {
+    readonly findingId: string
+    readonly editorId: string
+    readonly from: number
+    readonly to: number
+    readonly stale: boolean
+}
+
+/**
+ * All finding spans whose range touches `pos` — the candidate set for the
+ * review card opened by clicking a highlight (`finding-card.ts` narrows and
+ * orders them). Returns an empty list when the field is not installed.
+ */
+export function findingSpansAt(state: EditorState, pos: number): FindingSpanInfo[] {
+    const decorations = state.field(findingDecorationsField, false)
+    if (!decorations) {
+        return []
+    }
+    const spans: FindingSpanInfo[] = []
+    decorations.between(pos, pos, (from, to, decoration) => {
+        const spec = markSpecOf(decoration)
+        spans.push({
+            findingId: spec.findingId,
+            editorId: spec.editorId,
+            from,
+            to,
+            stale: spec.stale
+        })
+    })
+    return spans
+}

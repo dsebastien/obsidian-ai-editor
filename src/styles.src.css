@@ -1,4 +1,15 @@
-@import 'tailwindcss';
+/*
+   Tailwind v4 WITHOUT preflight: importing 'tailwindcss' wholesale ships the
+   global reset (`*{margin:0;padding:0;border:0 solid}` etc.) and `html`/font
+   defaults into styles.css, which Obsidian applies app-wide — breaking the
+   app and community themes (plugin guideline: no global styles). Only the
+   theme (for @apply/utility generation) and the utilities layer are imported.
+   `theme(inline reference)` inlines the resolved values into each generated
+   utility instead of emitting `:root { --spacing: …; --text-xs: …; }` theme
+   variables that could collide with community themes.
+*/
+@import 'tailwindcss/theme.css' layer(theme) theme(inline reference);
+@import 'tailwindcss/utilities.css' layer(utilities);
 
 /* ========================================
    SUPPORT & UI SECTIONS
@@ -11,21 +22,27 @@
 
 /* ========================================
    "WHAT'S NEW" DIALOG
-   Shown once after a plugin update (see
-   src/app/ui/whats-new-modal.ts). The modal
-   renders in Obsidian's modal layer, outside
-   any plugin root element, so these rules use
-   plugin-id-prefixed classes (no conflicts
-   when sibling plugins ship this feature) and
-   Obsidian theme variables throughout.
+   Shown once after a plugin update. The modal
+   (src/app/ui/whats-new-modal.ts) builds its
+   class names at RUNTIME from manifest.id:
+   `${manifest.id}-whats-new-*`. manifest.id is
+   "ai-editor", so every selector below MUST
+   use the literal `ai-editor-whats-new-`
+   prefix or the rules are dead (enforced by
+   scripts/build.spec.ts). The modal renders in
+   Obsidian's modal layer, outside any plugin
+   root element, hence the id prefix (no
+   conflicts when sibling plugins ship this
+   feature) and Obsidian theme variables
+   throughout.
    ======================================== */
 
-.modal.my-plugin-whats-new-dialog {
+.modal.ai-editor-whats-new-dialog {
     width: min(640px, 92vw);
 }
 
 /* Scrollable release notes area, with breathing room after the changelog */
-.my-plugin-whats-new-notes {
+.ai-editor-whats-new-notes {
     max-height: 55vh;
     overflow-y: auto;
     margin: 0.25rem 0 1.25rem;
@@ -35,37 +52,37 @@
     background-color: var(--background-secondary);
 }
 
-.my-plugin-whats-new-notes > :first-child {
+.ai-editor-whats-new-notes > :first-child {
     margin-top: 0;
 }
 
 /* Version headings stay compact inside the dialog */
-.my-plugin-whats-new-notes h1,
-.my-plugin-whats-new-notes h2 {
+.ai-editor-whats-new-notes h1,
+.ai-editor-whats-new-notes h2 {
     font-size: var(--h4-size, 1.15em);
     margin: 0.75em 0 0.5em;
 }
 
-.my-plugin-whats-new-notes h3 {
+.ai-editor-whats-new-notes h3 {
     font-size: var(--h5-size, 1em);
     margin: 1em 0 0.35em;
 }
 
 /* Separator between versions (emitted between changelog sections) */
-.my-plugin-whats-new-notes hr {
+.ai-editor-whats-new-notes hr {
     margin: 1.5em 0;
     border: none;
     border-top: 1px solid var(--background-modifier-border);
 }
 
 /* One section per updated plugin (aggregated bulk updates) */
-.my-plugin-whats-new-section + .my-plugin-whats-new-section {
+.ai-editor-whats-new-section + .ai-editor-whats-new-section {
     margin-top: 1.25em;
     padding-top: 1.25em;
     border-top: 2px solid var(--background-modifier-border);
 }
 
-.my-plugin-whats-new-section-title {
+.ai-editor-whats-new-section-title {
     font-weight: var(--font-semibold, 600);
     font-size: var(--h4-size, 1.15em);
     color: var(--text-normal);
@@ -73,19 +90,19 @@
 }
 
 /* A single update names the plugin in the modal title already */
-.my-plugin-whats-new-section:only-child > .my-plugin-whats-new-section-title {
+.ai-editor-whats-new-section:only-child > .ai-editor-whats-new-section-title {
     display: none;
 }
 
 /* Community + support rows: tighter than default settings rows. Specificity
    matches Obsidian's `.modal:not(.mod-settings) .setting-item:not(...)`
    (0,4,0) so these rules actually win via source order. */
-.modal.my-plugin-whats-new-dialog .my-plugin-whats-new-links .setting-item {
+.modal.ai-editor-whats-new-dialog .ai-editor-whats-new-links .setting-item {
     border-top: none;
     padding: 0.45rem 0;
 }
 
-.modal.my-plugin-whats-new-dialog .my-plugin-whats-new-links .setting-item-description {
+.modal.ai-editor-whats-new-dialog .ai-editor-whats-new-links .setting-item-description {
     padding-right: 0.75rem;
 }
 
@@ -273,6 +290,117 @@
     @apply flex-wrap justify-end gap-y-2;
 }
 
+/* ========================================
+   FINDING REVIEW CARD (src/app/ui/editor/finding-card.ts)
+   Floating card opened by clicking a finding
+   highlight. position: fixed; left/top are
+   computed and viewport-clamped in code. The
+   `ai-editor-finding-card*` names are distinct
+   from the settings gallery `ai-editor-card*`
+   block above and from rail/decoration classes.
+   ======================================== */
+
+/* Highlights are clickable — advertise it */
+.ai-editor-finding {
+    cursor: pointer;
+}
+
+.ai-editor-finding-card {
+    @apply fixed flex flex-col overflow-y-auto rounded;
+    z-index: var(--layer-menu, 25);
+    width: min(360px, 92vw);
+    max-height: 60vh;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    box-shadow: var(--shadow-s, 0 2px 8px rgb(0 0 0 / 0.15));
+}
+
+.ai-editor-finding-card-section {
+    @apply flex flex-col gap-2 p-3;
+}
+
+.ai-editor-finding-card-section + .ai-editor-finding-card-section {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.ai-editor-finding-card-header {
+    @apply flex items-center gap-2;
+}
+
+/* Editor identity dot, tinted by the persona color set in code */
+.ai-editor-finding-card-dot {
+    @apply inline-block shrink-0 rounded-full;
+    width: 10px;
+    height: 10px;
+    background-color: var(--ai-editor-editor-color, var(--text-accent));
+}
+
+.ai-editor-finding-card-name {
+    @apply text-sm font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-finding-card-severity {
+    @apply ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs;
+    background-color: var(--background-modifier-hover);
+    color: var(--text-muted);
+}
+
+.ai-editor-finding-card-severity-warning {
+    color: var(--color-orange, var(--text-error));
+}
+
+.ai-editor-finding-card-critique {
+    @apply m-0 text-sm;
+    color: var(--text-normal);
+}
+
+.ai-editor-finding-card-quote {
+    @apply m-0 pl-2 text-sm italic;
+    border-left: 2px solid var(--background-modifier-border);
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Plain two-block old/new suggestion preview (no word-level diff yet) */
+.ai-editor-finding-card-diff {
+    @apply flex flex-col gap-1 rounded p-2 text-sm;
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-finding-card-diff-old {
+    color: var(--text-error);
+    text-decoration: line-through;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-finding-card-diff-new {
+    color: var(--color-green, var(--text-success));
+    text-decoration: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-finding-card-actions {
+    @apply flex items-center justify-end gap-2;
+}
+
+/* Push-back placeholder (disabled until thread wiring lands) */
+.ai-editor-finding-card-pushback {
+    @apply flex items-center gap-2;
+}
+
+.ai-editor-finding-card-pushback input {
+    @apply w-full;
+}
+
+.ai-editor-finding-card-coming-soon {
+    @apply shrink-0 text-xs italic;
+    color: var(--text-faint);
+}
+
 /* Modals (backend / editor / panel / confirm) */
 .modal.ai-editor-modal {
     width: min(620px, 94vw);
@@ -285,4 +413,302 @@
 
 .ai-editor-confirm-lines {
     @apply my-2 pl-5;
+}
+
+/* ========================================
+   PERSONA RAIL (src/app/ui/editor/rail.ts,
+   mounted by src/app/ui/review-controller.ts)
+   Persistent chrome over the editor: Review/
+   Cancel button + one dot per editor persona.
+   Positioned inside the view's contentEl.
+   ======================================== */
+
+/* Anchor for the absolutely-positioned rail (added to view.contentEl) */
+.ai-editor-rail-host {
+    position: relative;
+}
+
+.ai-editor-rail-wrapper {
+    @apply absolute;
+    top: 8px;
+    right: 18px;
+    z-index: var(--layer-popover, 30);
+}
+
+.ai-editor-hidden {
+    display: none;
+}
+
+.ai-editor-rail {
+    @apply flex flex-col items-center gap-2 rounded p-1.5;
+    border: 1px solid var(--background-modifier-border);
+    background-color: color-mix(in srgb, var(--background-primary) 85%, transparent);
+}
+
+.ai-editor-rail-button {
+    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    box-shadow: none;
+    color: var(--text-normal);
+}
+
+.ai-editor-rail-button:hover {
+    background-color: var(--interactive-hover);
+}
+
+.ai-editor-rail-button:disabled {
+    @apply cursor-not-allowed opacity-50;
+}
+
+.ai-editor-rail-button-cancel {
+    color: var(--text-error);
+}
+
+.ai-editor-rail-dots {
+    @apply flex flex-col items-center gap-1.5;
+}
+
+.ai-editor-rail-dot {
+    @apply relative cursor-pointer rounded-full p-0;
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    background-color: var(--ai-editor-editor-color, var(--text-accent));
+    box-shadow: none;
+}
+
+.ai-editor-rail-dot:hover {
+    border-color: var(--text-normal);
+}
+
+.ai-editor-rail-dot-idle {
+    @apply opacity-60;
+}
+
+.ai-editor-rail-dot-running {
+    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+}
+
+.ai-editor-rail-dot-error {
+    border-color: var(--text-error);
+    opacity: 0.7;
+}
+
+@keyframes ai-editor-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+.ai-editor-rail-badge {
+    @apply absolute rounded-full px-1 leading-tight;
+    top: -7px;
+    right: -9px;
+    font-size: 9px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+/* ========================================
+   FINDING HIGHLIGHTS (CM6 mark decorations,
+   src/app/ui/editor/finding-decorations.ts)
+   The per-editor persona color arrives via the
+   --ai-editor-finding-color custom property;
+   color-mix keeps the tint readable in light
+   and dark themes alike.
+   ======================================== */
+
+.ai-editor-finding {
+    @apply cursor-pointer;
+    border-radius: 2px;
+    background-color: color-mix(
+        in srgb,
+        var(--ai-editor-finding-color, var(--text-accent)) 18%,
+        transparent
+    );
+    border-bottom: 2px solid
+        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
+}
+
+/* Stale: the underlying text changed — dimmed, dashed, non-actionable */
+.ai-editor-finding-stale {
+    @apply opacity-55;
+    background-color: color-mix(
+        in srgb,
+        var(--ai-editor-finding-color, var(--text-accent)) 8%,
+        transparent
+    );
+    border-bottom: none;
+    text-decoration: underline dashed
+        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
+    text-underline-offset: 3px;
+}
+
+/* ========================================
+   REVIEW SIDE PANEL (src/app/ui/side-panel.ts)
+   ItemView leaf listing the active file's run:
+   per-editor sections, findings, skip report.
+   ======================================== */
+
+.ai-editor-panel {
+    @apply flex flex-col gap-3;
+}
+
+.ai-editor-panel-empty {
+    @apply my-3 text-sm italic;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-file {
+    @apply text-sm font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-skips {
+    @apply rounded p-2 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--color-yellow, orange);
+    background-color: var(--background-secondary);
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-section {
+    @apply flex flex-col gap-1.5 rounded p-2;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-panel-section-header {
+    @apply flex flex-wrap items-center gap-1.5;
+}
+
+.ai-editor-panel-dot {
+    @apply inline-block shrink-0 rounded-full;
+    width: 10px;
+    height: 10px;
+    background-color: var(--text-accent);
+}
+
+.ai-editor-panel-editor-name {
+    @apply text-sm font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-status {
+    @apply ml-auto text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-status-error {
+    color: var(--text-error);
+}
+
+.ai-editor-panel-verdict {
+    @apply rounded-full px-2 py-0.5 text-xs font-medium;
+    border: 1px solid var(--background-modifier-border);
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-verdict-publish {
+    color: var(--color-green, green);
+}
+
+.ai-editor-panel-verdict-needs-work {
+    color: var(--color-yellow, orange);
+}
+
+.ai-editor-panel-verdict-kill {
+    color: var(--text-error);
+}
+
+.ai-editor-panel-error {
+    @apply text-xs;
+    color: var(--text-error);
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-panel-summary {
+    @apply text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-none {
+    @apply text-xs italic;
+    color: var(--text-faint);
+}
+
+.ai-editor-panel-subheader {
+    @apply mt-1 text-xs font-medium uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+}
+
+.ai-editor-panel-findings {
+    @apply flex flex-col gap-1;
+}
+
+.ai-editor-panel-finding {
+    @apply flex items-start gap-1.5 rounded p-1.5;
+    border: 1px solid transparent;
+}
+
+.ai-editor-panel-finding.is-clickable {
+    @apply cursor-pointer;
+}
+
+.ai-editor-panel-finding.is-clickable:hover,
+.ai-editor-panel-finding.is-clickable:focus-visible {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-modifier-hover);
+}
+
+.ai-editor-panel-finding.is-stale {
+    @apply opacity-60;
+}
+
+.ai-editor-panel-severity {
+    @apply shrink-0;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-severity .svg-icon {
+    width: var(--icon-xs, 14px);
+    height: var(--icon-xs, 14px);
+}
+
+.ai-editor-panel-severity-warning {
+    color: var(--color-orange, orange);
+}
+
+.ai-editor-panel-severity-info {
+    color: var(--color-blue, steelblue);
+}
+
+.ai-editor-panel-finding-body {
+    @apply flex min-w-0 flex-col gap-0.5;
+}
+
+.ai-editor-panel-critique {
+    @apply text-xs;
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-quote {
+    @apply text-xs;
+    font-family: var(--font-monospace);
+    color: var(--text-muted);
+    border-left: 2px solid var(--background-modifier-border);
+    padding-left: 6px;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-panel-stale-note {
+    @apply text-xs italic;
+    color: var(--text-faint);
 }
