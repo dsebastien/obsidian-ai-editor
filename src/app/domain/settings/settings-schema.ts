@@ -6,7 +6,9 @@ import { z } from 'zod'
  * Rules (see Business Rules + review majors #24/#26):
  * - Every entity has a stable UUID; cross-references use IDs, never names.
  * - Unknown/invalid persisted data must never crash the plugin: `loadSettings`
- *   falls back to defaults per-section rather than discarding everything.
+ *   salvages per entity (array elements, behavior fields) rather than
+ *   discarding whole sections — and reports what it dropped so callers can
+ *   warn instead of silently losing API keys or privacy exclusions.
  * - API keys live inside `data.json` — documented prominently in README and
  *   the Backends tab; never logged.
  */
@@ -228,22 +230,49 @@ export type PluginSettingsV1 = z.infer<typeof pluginSettingsSchema>
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettingsV1 = pluginSettingsSchema.parse({})
 
+/** Result of a defensive settings load, including what could not be kept. */
+export interface LoadedSettings {
+    readonly settings: PluginSettingsV1
+    /**
+     * Human-readable paths of persisted values that failed validation and
+     * were replaced by defaults (`backends[1]`, `behavior.excludedTags`,
+     * `rules`, `(all settings)`…). Empty on a clean load. Callers MUST
+     * surface a non-empty list to the user: silently defaulting privacy
+     * exclusions would fail-open Business Rule #7, and silently defaulting
+     * backends destroys API keys on the next save.
+     */
+    readonly dropped: readonly string[]
+}
+
+/** Array sections whose elements can be salvaged individually. */
+const ARRAY_SECTION_SCHEMAS: Partial<Record<keyof PluginSettingsV1, z.ZodType>> = {
+    backends: backendInstanceSchema,
+    editors: editorConfigSchema,
+    panels: panelConfigSchema,
+    actions: actionBindingSchema,
+    rules: bindingRuleSchema
+}
+
 /**
  * Loads persisted settings defensively: parse the whole object; on failure,
- * salvage section by section so one corrupt entity never wipes the rest.
- * Unknown future versions are kept as-is data-wise but validated against the
- * current schema (migrations hook in here as versions grow).
+ * salvage with entity-level granularity so one corrupt value never wipes its
+ * siblings — array sections keep every individually-valid element, and the
+ * behavior section keeps every individually-valid field (privacy exclusions
+ * must survive an unrelated corrupt scalar — Business Rule #7). Never
+ * throws. Unknown future versions are kept as-is data-wise but validated
+ * against the current schema (migrations hook in here as versions grow).
  */
-export function loadSettings(raw: unknown): PluginSettingsV1 {
+export function loadSettingsDetailed(raw: unknown): LoadedSettings {
     const whole = pluginSettingsSchema.safeParse(raw)
     if (whole.success) {
-        return whole.data
+        return { settings: whole.data, dropped: [] }
     }
-    if (typeof raw !== 'object' || raw === null) {
-        return DEFAULT_PLUGIN_SETTINGS
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return { settings: DEFAULT_PLUGIN_SETTINGS, dropped: ['(all settings)'] }
     }
     const source = raw as Record<string, unknown>
     const salvaged: Record<string, unknown> = { schemaVersion: SETTINGS_SCHEMA_VERSION }
+    const dropped: string[] = []
     const sections: readonly (keyof PluginSettingsV1)[] = [
         'backends',
         'defaultBackend',
@@ -256,13 +285,68 @@ export function loadSettings(raw: unknown): PluginSettingsV1 {
         'starterPackSeeded',
         'onboarded'
     ]
+    /** Whether the value is valid as this section within otherwise-default settings. */
+    const sectionIsValid = (key: keyof PluginSettingsV1, value: unknown): boolean =>
+        pluginSettingsSchema.safeParse({ ...DEFAULT_PLUGIN_SETTINGS, [key]: value }).success
+
     for (const key of sections) {
-        const candidate = { ...DEFAULT_PLUGIN_SETTINGS, [key]: source[key] }
-        if (pluginSettingsSchema.safeParse(candidate).success) {
-            salvaged[key] = source[key]
+        const value = source[key]
+        if (sectionIsValid(key, value)) {
+            salvaged[key] = value
+            continue
         }
+        const elementSchema = ARRAY_SECTION_SCHEMAS[key]
+        if (elementSchema && Array.isArray(value)) {
+            const kept: unknown[] = []
+            value.forEach((element, index) => {
+                if (elementSchema.safeParse(element).success) {
+                    kept.push(element)
+                } else {
+                    dropped.push(`${key}[${index}]`)
+                }
+            })
+            // Re-check the pruned array (guards e.g. max-length violations).
+            if (sectionIsValid(key, kept)) {
+                salvaged[key] = kept
+            } else {
+                dropped.push(key)
+            }
+            continue
+        }
+        if (key === 'behavior' && typeof value === 'object' && value !== null) {
+            const behaviorSource = value as Record<string, unknown>
+            const keptFields: Record<string, unknown> = {}
+            for (const field of Object.keys(behaviorSettingsSchema.shape)) {
+                const fieldValue = behaviorSource[field]
+                const fieldCandidate = {
+                    ...DEFAULT_PLUGIN_SETTINGS.behavior,
+                    [field]: fieldValue
+                }
+                if (behaviorSettingsSchema.safeParse(fieldCandidate).success) {
+                    keptFields[field] = fieldValue
+                } else {
+                    dropped.push(`behavior.${field}`)
+                }
+            }
+            if (sectionIsValid('behavior', keptFields)) {
+                salvaged['behavior'] = keptFields
+            } else {
+                dropped.push('behavior')
+            }
+            continue
+        }
+        dropped.push(key)
     }
-    return pluginSettingsSchema.parse({ ...DEFAULT_PLUGIN_SETTINGS, ...salvaged })
+    const final = pluginSettingsSchema.safeParse({ ...DEFAULT_PLUGIN_SETTINGS, ...salvaged })
+    if (final.success) {
+        return { settings: final.data, dropped }
+    }
+    return { settings: DEFAULT_PLUGIN_SETTINGS, dropped: ['(all settings)'] }
+}
+
+/** `loadSettingsDetailed` without the salvage report. */
+export function loadSettings(raw: unknown): PluginSettingsV1 {
+    return loadSettingsDetailed(raw).settings
 }
 
 /**
@@ -292,7 +376,12 @@ export function checkReferentialIntegrity(settings: PluginSettingsV1): Integrity
         }
         const pool = target.targetType === 'editor' ? editorIds : panelIds
         if (!pool.has(target.targetId)) {
-            issues.push({ entity, entityId, missing: target.targetType, missingId: target.targetId })
+            issues.push({
+                entity,
+                entityId,
+                missing: target.targetType,
+                missingId: target.targetId
+            })
         }
     }
 

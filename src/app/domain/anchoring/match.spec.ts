@@ -73,6 +73,39 @@ describe('matchQuote — exact matching', () => {
     })
 })
 
+describe('matchQuote — occurrence indexes ALL document occurrences', () => {
+    // 'foo' occurs at offsets 2, 8, 14; prefix 'x ' matches occurrences 0 and 2.
+    const REPEATED = 'x foo y foo x foo'
+
+    it('resolves occurrence against the full occurrence list, never a hint-filtered pool', () => {
+        const result = matchQuote(REPEATED, 'foo', { occurrence: 1 })
+        expect(result.status).toEqual('matched')
+        if (result.status === 'matched') {
+            expect(result.match.from).toEqual(8)
+        }
+    })
+
+    it('accepts a consistent prefix + occurrence combination', () => {
+        const result = matchQuote(REPEATED, 'foo', { prefix: 'x ', occurrence: 2 })
+        expect(result.status).toEqual('matched')
+        if (result.status === 'matched') {
+            expect(result.match.from).toEqual(14)
+        }
+    })
+
+    it('stays ambiguous when occurrence and hints disagree (internally inconsistent)', () => {
+        // Occurrence 1 is preceded by 'y ', not 'x ' — never anchor on a guess.
+        expect(matchQuote(REPEATED, 'foo', { prefix: 'x ', occurrence: 1 }).status).toEqual(
+            'ambiguous'
+        )
+    })
+
+    it('anchors a unique quote even when the hints are inconsistent', () => {
+        const result = matchQuote(REPEATED, 'y foo', { occurrence: 5 })
+        expect(result.status).toEqual('matched')
+    })
+})
+
 describe('matchQuote — normalized matching', () => {
     it('matches straight quotes against curly source apostrophes', () => {
         const result = matchQuote(DOC, "you don't own and can't fix")

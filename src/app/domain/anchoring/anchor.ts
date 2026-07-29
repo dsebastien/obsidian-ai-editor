@@ -35,26 +35,26 @@ export function createAnchor(from: number, to: number): Anchor {
 /**
  * Maps an anchor through a single document change.
  *
- * Rules:
- * - Change entirely after the anchor: no effect.
- * - Change entirely before the anchor: shift by the length delta.
- * - Change touching/overlapping the anchor range: mark stale (position is
+ * Rules (boundary comparisons are inclusive — a change that merely TOUCHES a
+ * boundary without replacing any anchored character leaves the anchored text
+ * intact, so it must never stale the anchor):
+ * - Change starting at or after `to` (deletion/replacement of what follows,
+ *   insertion exactly at `to`): no effect.
+ * - Change ending at or before `from` (deletion/replacement of what precedes,
+ *   insertion exactly at `from`): shift by the length delta.
+ * - Change overlapping the anchored range itself: mark stale (position is
  *   kept best-effort for display, but the anchor is no longer actionable).
- *   Insertions exactly AT the boundaries (empty-range changes at `from` or
- *   `to`) do not invalidate the anchored text itself: an insertion at `from`
- *   shifts, an insertion at `to` leaves the range untouched.
  */
 export function mapAnchorThroughChange(anchor: Anchor, change: TextChange): Anchor {
     const delta = change.insertedLength - (change.to - change.from)
-    const isPureInsertion = change.from === change.to
 
-    // Entirely after the anchor (insertion exactly at `to` counts as after).
-    if (change.from > anchor.to || (isPureInsertion && change.from === anchor.to)) {
+    // Entirely at/after the anchor end: the anchored text is untouched.
+    if (change.from >= anchor.to) {
         return anchor
     }
 
-    // Entirely before the anchor (insertion exactly at `from` counts as before).
-    if (change.to < anchor.from || (isPureInsertion && change.from === anchor.from)) {
+    // Entirely at/before the anchor start: the anchored text only shifts.
+    if (change.to <= anchor.from) {
         return {
             from: anchor.from + delta,
             to: anchor.to + delta,

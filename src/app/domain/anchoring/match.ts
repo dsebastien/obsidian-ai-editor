@@ -53,23 +53,50 @@ function findAllOccurrences(haystack: string, needle: string): number[] {
     return result
 }
 
+/**
+ * Picks the single actionable candidate, or `null` when the quote cannot be
+ * disambiguated safely.
+ *
+ * `occurrence` is the 0-based index among ALL occurrences in the document
+ * (the operation contract's definition) — it is never resolved against a
+ * hint-filtered subset, which would silently re-index it. When both an
+ * occurrence index and prefix/suffix hints are present they must agree: the
+ * indexed candidate must also satisfy the hints, otherwise the backend
+ * response is internally inconsistent and anchoring would risk applying an
+ * edit to the wrong span (Business Rules #4).
+ */
 function disambiguate<T>(
     candidates: readonly T[],
     matchesHints: (candidate: T) => boolean,
+    hasHints: boolean,
     occurrence: number | undefined
 ): T | null {
     if (candidates.length === 1) {
         return candidates[0] ?? null
     }
+    if (occurrence !== undefined) {
+        if (occurrence < 0 || occurrence >= candidates.length) {
+            return null
+        }
+        const indexed = candidates[occurrence]
+        if (indexed === undefined || (hasHints && !matchesHints(indexed))) {
+            return null
+        }
+        return indexed
+    }
     const hinted = candidates.filter(matchesHints)
     if (hinted.length === 1) {
         return hinted[0] ?? null
     }
-    const pool = hinted.length > 0 ? hinted : candidates
-    if (occurrence !== undefined && occurrence >= 0 && occurrence < pool.length) {
-        return pool[occurrence] ?? null
-    }
     return null
+}
+
+/** Whether the hints carry any usable prefix/suffix context. */
+function hasContextHints(hints: MatchHints): boolean {
+    return (
+        (hints.prefix !== undefined && hints.prefix.length > 0) ||
+        (hints.suffix !== undefined && hints.suffix.length > 0)
+    )
 }
 
 /**
@@ -95,6 +122,7 @@ export function matchQuote(
         const chosen = disambiguate(
             matches,
             (candidate) => contextMatches(snapshotText, candidate.from, candidate.to, hints),
+            hasContextHints(hints),
             hints.occurrence
         )
         if (chosen) {
@@ -126,6 +154,7 @@ export function matchQuote(
     const chosen = disambiguate(
         projected,
         (candidate) => contextMatches(snapshotText, candidate.from, candidate.to, hints),
+        hasContextHints(hints),
         hints.occurrence
     )
     if (chosen) {

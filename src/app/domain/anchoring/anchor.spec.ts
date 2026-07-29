@@ -48,6 +48,34 @@ describe('mapAnchorThroughChange', () => {
         expect(mapAnchorThroughChange(anchor, change)).toEqual(anchor)
     })
 
+    it('shifts for a deletion ending exactly at the anchor start', () => {
+        const change: TextChange = { from: 1, to: 3, insertedLength: 0 }
+        expect(mapAnchorThroughChange(anchor, change)).toEqual({
+            from: 1,
+            to: 4,
+            state: 'anchored'
+        })
+    })
+
+    it('shifts for a replacement ending exactly at the anchor start', () => {
+        const change: TextChange = { from: 1, to: 3, insertedLength: 1 }
+        expect(mapAnchorThroughChange(anchor, change)).toEqual({
+            from: 2,
+            to: 5,
+            state: 'anchored'
+        })
+    })
+
+    it('ignores a deletion starting exactly at the anchor end', () => {
+        const change: TextChange = { from: 6, to: 8, insertedLength: 0 }
+        expect(mapAnchorThroughChange(anchor, change)).toEqual(anchor)
+    })
+
+    it('ignores a replacement starting exactly at the anchor end', () => {
+        const change: TextChange = { from: 6, to: 7, insertedLength: 1 }
+        expect(mapAnchorThroughChange(anchor, change)).toEqual(anchor)
+    })
+
     it('marks overlapping edits stale', () => {
         const change: TextChange = { from: 4, to: 5, insertedLength: 3 }
         const mapped = mapAnchorThroughChange(anchor, change)
