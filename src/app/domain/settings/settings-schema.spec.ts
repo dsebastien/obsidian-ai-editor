@@ -50,6 +50,10 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         expect(behavior.respectFrontmatterOptOut).toEqual(true)
         expect(behavior.stripFrontmatter).toEqual(false)
         expect(behavior.defaultCommentEditorId).toEqual('')
+        // Daemon mode is off by default (Business Rule #1: automatic runs
+        // only after the user explicitly enabled the toggle) — cost control.
+        expect(behavior.daemonMode).toEqual(false)
+        expect(behavior.daemonIdleSeconds).toEqual(30)
     })
 
     it('bounds the request timeout to 30-3600 seconds, integers only', () => {
@@ -60,6 +64,16 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         expect(parse(29)).toEqual(false)
         expect(parse(3_601)).toEqual(false)
         expect(parse(90.5)).toEqual(false)
+    })
+
+    it('bounds the daemon idle delay to 5-600 seconds, integers only', () => {
+        const parse = (daemonIdleSeconds: unknown) =>
+            behaviorSettingsSchema.safeParse({ daemonIdleSeconds }).success
+        expect(parse(5)).toEqual(true)
+        expect(parse(600)).toEqual(true)
+        expect(parse(4)).toEqual(false)
+        expect(parse(601)).toEqual(false)
+        expect(parse(30.5)).toEqual(false)
     })
 
     it('is itself schema-valid', () => {

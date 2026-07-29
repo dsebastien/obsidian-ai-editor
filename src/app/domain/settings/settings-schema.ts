@@ -234,6 +234,20 @@ export const behaviorSettingsSchema = z.object({
     requestTimeoutSeconds: z.number().int().min(30).max(3_600).default(600),
     /** Total context budget per run, in characters (proxy for tokens). */
     contextBudgetChars: z.number().int().min(1_000).max(2_000_000).default(200_000),
+    /**
+     * Daemon mode (plan §0, decisions locked 2026-07-29): editors watch file
+     * edits and automatically re-dispatch a review after the user pauses
+     * editing a reviewable note whose text actually changed since its last
+     * run. Explicit carve-out to Business Rule #1: enabling this toggle IS
+     * the explicit user action authorizing those runs. Default off — every
+     * automatic refresh calls the configured backends (cost control).
+     */
+    daemonMode: z.boolean().default(false),
+    /**
+     * Seconds of editing inactivity before a daemon refresh dispatches
+     * (per-file idle window; every edit restarts it).
+     */
+    daemonIdleSeconds: z.number().int().min(5).max(600).default(30),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
     /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */

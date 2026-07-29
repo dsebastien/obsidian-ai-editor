@@ -90,6 +90,42 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
         }
     )
 
+    new Setting(containerEl).setName('Daemon').setHeading()
+    new Setting(containerEl)
+        .setName('Daemon mode')
+        .setDesc(
+            'Editors watch your edits and refresh their recommendations automatically ' +
+                'after you pause. Every refresh calls your configured AI backends — ' +
+                'this can increase costs significantly.'
+        )
+        .addToggle((toggle) => {
+            toggle.setValue(settings.behavior.daemonMode)
+            toggle.onChange((value) => {
+                // refresh: the idle-delay field only exists while the mode is
+                // on (it has no effect otherwise, and hiding it keeps the
+                // cost-sensitive toggle the single decision point).
+                commit(
+                    ctx,
+                    (draft) => {
+                        draft.behavior.daemonMode = value
+                    },
+                    { refresh: true }
+                )
+            })
+        })
+    if (settings.behavior.daemonMode) {
+        renderIntField(
+            'Idle delay (seconds)',
+            'How long you must stop editing a note before its review refreshes.',
+            settings.behavior.daemonIdleSeconds,
+            5,
+            600,
+            (draft, next) => {
+                draft.behavior.daemonIdleSeconds = next
+            }
+        )
+    }
+
     new Setting(containerEl).setName('Privacy exclusions').setHeading()
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',
