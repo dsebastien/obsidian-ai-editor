@@ -10,6 +10,8 @@ import { AIEditorPluginSettingTab } from './settings/settings-tab'
 import { RunController } from './services/orchestration/run-controller'
 import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
+import { registerEditorMenu } from './ui/menus/editor-menu'
+import { registerFileMenu } from './ui/menus/file-menu'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
@@ -81,6 +83,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.registerReviewPanelView(reviewController)
         reviewController.initialize()
         registerReviewCommands(this, reviewController)
+        registerEditorMenu(this, reviewController)
+        registerFileMenu(this, reviewController)
     }
 
     /**

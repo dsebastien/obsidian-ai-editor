@@ -235,11 +235,16 @@ export class ReviewController {
         if (!file) {
             return false
         }
-        return isReviewable(
-            file.path,
-            this.vaultReader.getNoteMetadata(file.path),
-            this.deps.getSettings()
-        )
+        return this.canReviewPath(file.path)
+    }
+
+    /**
+     * Same predicate for a note that may not be open in any view (file
+     * context menu, CLI): metadata is read through the vault reader, so a
+     * closed note fails closed exactly like `startReview` would.
+     */
+    canReviewPath(path: string): boolean {
+        return isReviewable(path, this.vaultReader.getNoteMetadata(path), this.deps.getSettings())
     }
 
     /**
@@ -326,6 +331,20 @@ export class ReviewController {
                 void this.activateSidePanel()
                 return
         }
+    }
+
+    /**
+     * Whole-note review entry for surfaces not bound to an open view (file
+     * context menu "Review note"): opens the file in a markdown view when it
+     * is not already open, then dispatches through the exact same
+     * `startReview` path as the "Review current note" command.
+     */
+    async reviewFile(filePath: string): Promise<void> {
+        const view = await this.openMarkdownView(filePath)
+        if (!view) {
+            return
+        }
+        await this.startReview(view)
     }
 
     /** Snapshot of the view's current text (selection-scoped when present). */
@@ -764,19 +783,10 @@ export class ReviewController {
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {
             return
         }
-        let view = this.findMarkdownView(filePath)
+        const view = await this.openMarkdownView(filePath)
         if (!view) {
-            const file = this.deps.app.vault.getFileByPath(filePath)
-            if (!file) {
-                return
-            }
-            await this.deps.app.workspace.getLeaf(false).openFile(file)
-            view = this.findMarkdownView(filePath)
-        }
-        if (!view || this.disposed) {
             return
         }
-        await this.deps.app.workspace.revealLeaf(view.leaf)
         const editor = view.editor
         const docLength = editor.getValue().length
         const from = Math.min(finding.anchor.from, docLength)
@@ -807,6 +817,30 @@ export class ReviewController {
             }
         }, REVEAL_SELECTION_MS)
         this.pendingTimers.add(timer)
+    }
+
+    /**
+     * Finds a markdown view showing `filePath`, opening the file in a new
+     * leaf when none exists, and reveals the leaf. Shared by every surface
+     * that must land the user on the note (side-panel reveal, file context
+     * menu). `null` when the file does not exist or the controller was
+     * disposed while awaiting.
+     */
+    private async openMarkdownView(filePath: string): Promise<MarkdownView | null> {
+        let view = this.findMarkdownView(filePath)
+        if (!view) {
+            const file = this.deps.app.vault.getFileByPath(filePath)
+            if (!file) {
+                return null
+            }
+            await this.deps.app.workspace.getLeaf(false).openFile(file)
+            view = this.findMarkdownView(filePath)
+        }
+        if (!view || this.disposed) {
+            return null
+        }
+        await this.deps.app.workspace.revealLeaf(view.leaf)
+        return view
     }
 
     private findMarkdownView(filePath: string): MarkdownView | null {
