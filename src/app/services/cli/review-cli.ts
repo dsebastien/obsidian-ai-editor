@@ -1,11 +1,18 @@
-import type { AnchorState } from '../../domain/anchoring/anchor'
-import type { Severity } from '../../domain/operations/contract'
 import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { createSnapshot } from '../../domain/snapshot'
 import type { RunHandle } from '../orchestration/run-controller'
 import type { EditorSkip, ReviewStart } from '../review-service'
 import { skipReasonLabel } from '../review-service'
+import type { CliFinding, CliFlagSpec, CliFormat } from './cli-shared'
+import {
+    formatFindingLine,
+    oneLine,
+    parseFileFlag,
+    parseFormatFlag,
+    shapeFindings,
+    shapeSummaryByEditor
+} from './cli-shared'
 
 /**
  * Pure core of the `ai-editor:review` CLI subcommand (design doc
@@ -38,14 +45,7 @@ export const REVIEW_CLI_COMMAND = 'ai-editor:review'
 
 export const REVIEW_CLI_DESCRIPTION = 'Review a note with the configured AI editors'
 
-/** Structural twin of Obsidian's `CliFlag` (kept Obsidian-import-free). */
-export interface ReviewCliFlagSpec {
-    value?: string
-    description: string
-    required?: boolean
-}
-
-export const REVIEW_CLI_FLAGS: Record<string, ReviewCliFlagSpec> = {
+export const REVIEW_CLI_FLAGS: Record<string, CliFlagSpec> = {
     'file': {
         value: '<path>',
         description: 'Vault path of the note to review',
@@ -76,23 +76,11 @@ export type ReviewCliErrorCode =
     | 'backend-error'
     | 'timeout'
 
-export interface ReviewCliAnchor {
-    readonly from: number
-    readonly to: number
-    readonly state: AnchorState
-}
-
-export interface ReviewCliFinding {
-    readonly id: string
-    /** Display name of the editor persona that produced the finding. */
-    readonly editor: string
-    readonly severity: Severity
-    readonly quote: string
-    readonly critique: string
-    readonly suggestion: string | null
-    /** `null` when the quote could not be located in the note. */
-    readonly anchor: ReviewCliAnchor | null
-}
+/**
+ * The finding shape is shared with `ai-editor:status` (`cli-shared.ts`) so
+ * both subcommands report byte-identical finding documents.
+ */
+export type ReviewCliFinding = CliFinding
 
 /**
  * One editor that produced no findings and why: pre-run skips carry the
@@ -168,7 +156,7 @@ export interface ReviewCliDeps {
 // Arg parsing
 // ---------------------------------------------------------------------------
 
-export type ReviewCliFormat = 'json' | 'text'
+export type ReviewCliFormat = CliFormat
 
 export interface ReviewCliArgs {
     /** `null` when the required flag is missing or blank. */
@@ -188,8 +176,7 @@ export interface ReviewCliArgs {
 export function parseReviewCliArgs(
     params: Readonly<Record<string, string | undefined>>
 ): ReviewCliArgs {
-    const fileRaw = params['file']
-    const file = typeof fileRaw === 'string' && fileRaw.trim().length > 0 ? fileRaw.trim() : null
+    const file = parseFileFlag(params)
 
     const editorsRaw = params['editors']
     const editors =
@@ -203,7 +190,7 @@ export function parseReviewCliArgs(
     return {
         file,
         editors: editors.length > 0 ? editors : null,
-        format: params['format'] === 'text' ? 'text' : 'json',
+        format: parseFormatFlag(params),
         confirmLarge: params['confirm-large'] !== undefined
     }
 }
@@ -297,29 +284,11 @@ export function shapeRunOutput(
     skips: readonly EditorSkip[]
 ): ReviewCliOutput {
     const states = run.getEditorStates()
-    const nameByEditorId = new Map<string, string>()
-    for (const state of states) {
-        nameByEditorId.set(state.editorId, state.editorName)
-    }
-
-    const findings: ReviewCliFinding[] = run.findings.list().map((finding) => ({
-        id: finding.id,
-        editor: nameByEditorId.get(finding.editorId) ?? finding.editorId,
-        severity: finding.raw.severity,
-        quote: finding.raw.quote,
-        critique: finding.raw.critique,
-        suggestion: finding.raw.suggestion ?? null,
-        anchor: finding.anchor
-            ? { from: finding.anchor.from, to: finding.anchor.to, state: finding.anchor.state }
-            : null
-    }))
+    const findings = shapeFindings(run)
+    const summaryByEditor = shapeSummaryByEditor(states)
 
     const allSkips: ReviewCliSkip[] = toCliSkips(skips)
-    const summaryByEditor: Record<string, string> = {}
     for (const state of states) {
-        if (state.summary !== null) {
-            summaryByEditor[state.editorName] = state.summary
-        }
         if (state.status === 'error') {
             allSkips.push({
                 editor: state.editorName,
@@ -360,11 +329,6 @@ export function shapeRunOutput(
 // Formatting
 // ---------------------------------------------------------------------------
 
-/** Collapses all whitespace runs so multi-line model text stays on one line. */
-function oneLine(text: string): string {
-    return text.replace(/\s+/g, ' ').trim()
-}
-
 /**
  * Text rendering: one line per finding (`[severity] Editor 12-45: "quote" —
  * critique -> suggestion`), one `Skipped …` line per skip, a single `Error
@@ -379,17 +343,7 @@ export function formatTextOutput(output: ReviewCliOutput): string {
         lines.push('No findings.')
     }
     for (const finding of output.findings) {
-        const anchor = finding.anchor
-            ? `${finding.anchor.from}-${finding.anchor.to}${
-                  finding.anchor.state === 'stale' ? ' (stale)' : ''
-              }`
-            : 'unanchored'
-        const suggestion = finding.suggestion === null ? '' : ` -> ${oneLine(finding.suggestion)}`
-        lines.push(
-            `[${finding.severity}] ${finding.editor} ${anchor}: "${oneLine(finding.quote)}" — ${oneLine(
-                finding.critique
-            )}${suggestion}`
-        )
+        lines.push(formatFindingLine(finding))
     }
     for (const skip of output.skips) {
         lines.push(`Skipped ${skip.editor}: ${skip.reason}`)

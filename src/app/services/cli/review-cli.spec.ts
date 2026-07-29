@@ -1,18 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { createAnchor } from '../../domain/anchoring/anchor'
-import type { Anchor } from '../../domain/anchoring/anchor'
-import { asFindingId, asRunId, generateId } from '../../domain/ids'
-import { rawFindingSchema } from '../../domain/operations/contract'
 import {
     editorConfigSchema,
     apiBackendSchema,
     pluginSettingsSchema
 } from '../../domain/settings/settings-schema'
 import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
-import { createSnapshot } from '../../domain/snapshot'
-import { FindingStore } from '../orchestration/finding-store'
-import type { EditorRunState, RunHandle } from '../orchestration/run-controller'
+import type { RunHandle } from '../orchestration/run-controller'
 import type { EditorSkip, ReviewStart } from '../review-service'
+import { FakeRunHandle, makeState } from './spec-fixtures'
 import {
     REVIEW_CLI_FLAGS,
     formatTextOutput,
@@ -52,82 +47,6 @@ function makeSettings(overrides: Record<string, unknown> = {}): PluginSettingsV1
         editors: [makeEditor()],
         ...overrides
     })
-}
-
-function makeState(overrides: Partial<EditorRunState> = {}): EditorRunState {
-    return {
-        editorId: 'editor-1',
-        editorName: 'Hater',
-        runId: asRunId(generateId()),
-        status: 'done',
-        findingIds: [],
-        summary: null,
-        verdict: null,
-        lastProgress: null,
-        error: null,
-        ...overrides
-    }
-}
-
-interface FindingFixture {
-    readonly editorId: string
-    readonly quote: string
-    readonly critique: string
-    readonly suggestion?: string
-    readonly severity?: 'info' | 'suggestion' | 'warning'
-    readonly anchor?: Anchor | null
-}
-
-class FakeRunHandle implements RunHandle {
-    readonly snapshot = createSnapshot({ filePath: 'Notes/Test.md', text: 'Hello world' })
-    readonly findings = new FindingStore()
-    readonly settled: Promise<void> = Promise.resolve()
-
-    constructor(
-        private readonly states: readonly EditorRunState[],
-        findingFixtures: readonly FindingFixture[] = []
-    ) {
-        for (const fixture of findingFixtures) {
-            this.findings.add({
-                id: asFindingId(generateId()),
-                runId: asRunId('run-1'),
-                editorId: fixture.editorId,
-                raw: rawFindingSchema.parse({
-                    quote: fixture.quote,
-                    critique: fixture.critique,
-                    ...(fixture.suggestion === undefined ? {} : { suggestion: fixture.suggestion }),
-                    ...(fixture.severity === undefined ? {} : { severity: fixture.severity })
-                }),
-                anchor: fixture.anchor === undefined ? createAnchor(0, 5) : fixture.anchor,
-                anchoredText: fixture.anchor === null ? null : fixture.quote,
-                matchStrategy: fixture.anchor === null ? null : 'exact'
-            })
-        }
-    }
-
-    getEditorStates(): readonly EditorRunState[] {
-        return this.states
-    }
-
-    getEditorState(editorId: string): EditorRunState | null {
-        return this.states.find((state) => state.editorId === editorId) ?? null
-    }
-
-    isSettled(): boolean {
-        return true
-    }
-
-    subscribe(): () => void {
-        return () => undefined
-    }
-
-    cancelRun(): void {
-        // no-op for the fixture
-    }
-
-    applyTextChanges(): void {
-        // no-op for the fixture
-    }
 }
 
 function startedResult(run: RunHandle, skips: readonly EditorSkip[] = []): ReviewStart {

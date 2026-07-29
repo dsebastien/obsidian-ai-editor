@@ -1,4 +1,3 @@
-import { normalizePath } from 'obsidian'
 import type { Plugin } from 'obsidian'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import {
@@ -12,6 +11,7 @@ import type { RunController } from '../services/orchestration/run-controller'
 import { startReview } from '../services/review-service'
 import { ObsidianVaultReader } from '../ui/obsidian-vault-reader'
 import type { ReviewController } from '../ui/review-controller'
+import { createNoteResolver } from './resolve-note-path'
 
 /**
  * Obsidian glue for the `ai-editor:review` CLI subcommand (design doc
@@ -52,17 +52,7 @@ export function registerReviewCli(input: {
 
     const deps: ReviewCliDeps = {
         getSettings,
-        // Accepts a vault-relative path (with or without `.md`) or plain
-        // link text, markdown notes only — same tolerance as wikilink
-        // resolution, so `--file "My Note"` works like `[[My Note]]`.
-        resolveFile: (file: string): string | null => {
-            const normalized = normalizePath(file)
-            const vault = plugin.app.vault
-            const byPath =
-                vault.getFileByPath(normalized) ?? vault.getFileByPath(`${normalized}.md`)
-            const resolved = byPath ?? plugin.app.metadataCache.getFirstLinkpathDest(normalized, '')
-            return resolved !== null && resolved.extension === 'md' ? resolved.path : null
-        },
+        resolveFile: createNoteResolver(plugin.app),
         readNote: (path: string): Promise<string | null> => vaultReader.readNote(path),
         runReview: async (run) => {
             const path = run.snapshot.filePath
