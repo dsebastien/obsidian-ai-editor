@@ -28,6 +28,7 @@ export function renderVoiceTab(containerEl: HTMLElement, ctx: TabContext): void 
     })
 
     renderNoteRefsEditor(containerEl, {
+        app: ctx.app,
         name: 'Voice profile notes',
         desc: 'Vault notes appended in order at run time (e.g. My Voice Profile). Editing those notes immediately affects every subsequent run.',
         getPaths: () => ctx.facade.getSettings().voiceProfile.notePaths,

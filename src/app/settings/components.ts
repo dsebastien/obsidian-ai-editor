@@ -2,6 +2,7 @@ import { Modal, Notice, Setting } from 'obsidian'
 import type { App, DropdownComponent } from 'obsidian'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { backendKindLabel, encodeActionTarget, moveItem } from './helpers'
+import { NotePathSuggest } from './note-path-suggest'
 
 /**
  * Shared DOM building blocks for the settings tab and its modals.
@@ -240,6 +241,8 @@ export function renderPromptTextArea(
 // ---------------------------------------------------------------------------
 
 export interface NoteRefsEditorOptions {
+    /** App handle for the vault-backed note autocomplete. */
+    app: App
     name: string
     desc: string
     getPaths(): readonly string[]
@@ -247,10 +250,10 @@ export interface NoteRefsEditorOptions {
 }
 
 /**
- * Ordered list of vault note paths with add/remove/reorder. Paths are typed
- * as plain text for now — the dedicated `AbstractInputSuggest`-based note
- * picker with fuzzy search is a later milestone (M5 in the implementation
- * plan); this control keeps the data model and UX slot ready for it.
+ * Ordered list of vault note paths with add/remove/reorder. The add field
+ * carries an `AbstractInputSuggest`-based note autocomplete (picking a
+ * suggestion adds the note directly); free-typed paths still work for
+ * notes that do not exist yet.
  */
 export function renderNoteRefsEditor(
     containerEl: HTMLElement,
@@ -313,17 +316,20 @@ export function renderNoteRefsEditor(
         })
 
         let pending = ''
-        const submit = (): void => {
-            const trimmed = pending.trim()
+        const add = (raw: string): void => {
+            const trimmed = raw.trim()
             if (trimmed.length === 0 || paths.includes(trimmed)) {
                 return
             }
             apply([...paths, trimmed])
         }
+        const submit = (): void => {
+            add(pending)
+        }
         new Setting(wrapper)
             .setClass('ai-editor-note-ref-add')
             .addText((text) => {
-                text.setPlaceholder('Path to a note, e.g. Meta/My Voice Profile.md')
+                text.setPlaceholder('Search notes, or type a path')
                 text.onChange((value) => {
                     pending = value
                 })
@@ -332,6 +338,12 @@ export function renderNoteRefsEditor(
                         event.preventDefault()
                         submit()
                     }
+                })
+                // Picking a suggestion adds the note directly; typing a path
+                // that matches nothing still works via Enter / "Add note".
+                new NotePathSuggest(options.app, text.inputEl, {
+                    onPick: add,
+                    excludePaths: () => new Set(options.getPaths())
                 })
             })
             .addButton((button) => {

@@ -75,6 +75,7 @@ export class EditorModal extends Modal {
         })
 
         renderNoteRefsEditor(contentEl, {
+            app: this.app,
             name: 'Prompt notes',
             desc: 'Vault notes appended to the prompt, resolved fresh at every run — the vault is the config.',
             getPaths: () => this.draft.prompt.notePaths,

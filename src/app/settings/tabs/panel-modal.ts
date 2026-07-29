@@ -113,6 +113,7 @@ export class PanelModal extends Modal {
         })
 
         renderNoteRefsEditor(contentEl, {
+            app: this.app,
             name: 'Charter notes',
             desc: 'Vault notes appended to the charter, resolved fresh at every run.',
             getPaths: () => this.draft.charter.notePaths,
