@@ -62,14 +62,14 @@ Verdict: do not begin M1 from this plan. It is a strong product vision, but the 
 
 29. **Major — Milestone ordering is wrong.** Specific dependency inversions:
 
-   - M1 needs editor/backend configuration that does not arrive until M2.
-   - M1’s narrow-layout fallback needs the side panel, but the side panel effectively arrives with M4.
-   - M3 exposes panel bindings before panels exist in M4.
-   - M3 exposes research actions before CLI capability arrives in M5.
-   - M1 depends on unproven structured streaming.
-   - Security/privacy, accessibility, manual dual-mode testing, and documentation are deferred to “polish.”
+- M1 needs editor/backend configuration that does not arrive until M2.
+- M1’s narrow-layout fallback needs the side panel, but the side panel effectively arrives with M4.
+- M3 exposes panel bindings before panels exist in M4.
+- M3 exposes research actions before CLI capability arrives in M5.
+- M1 depends on unproven structured streaming.
+- Security/privacy, accessibility, manual dual-mode testing, and documentation are deferred to “polish.”
 
-   A safer order is: M0 contracts/threat model plus CM6, transport, and CLI spikes; M1 minimal provider/settings vertical slice; M2 buffered single-editor review with side panel/highlights; M3 streaming/cancellation and mapped anchors; M4 diffs/cards/keyboard; M5 editor/action/context CRUD; M6 panels; M7 opt-in CLI; M8 durable comments.
+A safer order is: M0 contracts/threat model plus CM6, transport, and CLI spikes; M1 minimal provider/settings vertical slice; M2 buffered single-editor review with side panel/highlights; M3 streaming/cancellation and mapped anchors; M4 diffs/cards/keyboard; M5 editor/action/context CRUD; M6 panels; M7 opt-in CLI; M8 durable comments.
 
 30. **Major — The testing plan is far too shallow.** Add property/fuzz tests for normalization and duplicate quotes, CM6 transaction-mapping tests, stale-apply tests, provider contract fixtures, adversarial SSE chunking, cancellation races, sidecar migration/corruption tests, and import validation. Each editor milestone needs manual Obsidian verification in Source mode, Live Preview, split panes, popouts, light/dark themes, and narrow layouts; a passing build cannot verify these UI claims.
 

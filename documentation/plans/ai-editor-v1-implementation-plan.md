@@ -22,22 +22,23 @@ The user writes; a configurable crew of **Editors** (AI personas) and **Panels**
 ### 2.1 Juri Strumpflohner's "Quill" (X posts, analyzed frame-by-frame from demo videos)
 
 Sources:
+
 - https://x.com/juristr/status/2074494746484236459 (8-min demo, July 7 2026)
 - https://x.com/juristr/status/2077036970895872368 (28-s dark-mode demo, July 14 2026)
 - https://x.com/juristr/status/2079297727364464700 (screenshot of async review, July 20 2026)
 
 Observed UX (all confirmed via frame extraction):
 
-| Element | Behavior |
-|---|---|
-| **Persona rail** (left gutter) | Colored dots, one per persona. Hover reveals name (e.g. "DEVIL'S ADVOCATE") + edit/delete icons. A `+` dot creates a new persona. |
-| **Summon button** | Above the rail. Click → all personas review the doc. Button becomes "Cancel"; dots become spinners; when done, each dot shows a **count badge** (findings count, e.g. 8/4/8). |
-| **Span highlights** | Each persona highlights the text spans it has findings for (subtle tinted background). |
-| **Review card** | Click a highlight → floating card near the span: persona name ("Concision Editor"), critique text, quoted passage, buttons **Suggest / Apply / Dismiss**, plus a freeform input "Push back, ask for evidence…" to argue with the persona. |
-| **Inline diff** | "Suggest" → in-place diff: red strikethrough deletions, green insertions, one-line rationale ("Dropped 'just' and 'a bunch of', replaced the vague clause…"), **Accept / Reject**, plus "Refine this suggestion…" input. |
-| **Selection context menu** | Select text → menu: Rephrase, Say more, Critique, Find evidence, Get research, Identify assumptions, + "Ask the daemon…" freeform. Keyboard shortcuts shown. |
-| **Generate more** | A ghost "+ Generate more" affordance between blocks → inline "Generating…" placeholder → continuation drafted in place. |
-| **Async review (v2)** | Select text + type an instruction → margin comment card showing the quote, the instruction, status **SUBMITTED**, then a live **"Reviewing 0:27"** timer while a background agent works. Result lands back in the card. Google-Docs-comments where the reviewer is an agent. |
+| Element                        | Behavior                                                                                                                                                                                                                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Persona rail** (left gutter) | Colored dots, one per persona. Hover reveals name (e.g. "DEVIL'S ADVOCATE") + edit/delete icons. A `+` dot creates a new persona.                                                                                                                                            |
+| **Summon button**              | Above the rail. Click → all personas review the doc. Button becomes "Cancel"; dots become spinners; when done, each dot shows a **count badge** (findings count, e.g. 8/4/8).                                                                                                |
+| **Span highlights**            | Each persona highlights the text spans it has findings for (subtle tinted background).                                                                                                                                                                                       |
+| **Review card**                | Click a highlight → floating card near the span: persona name ("Concision Editor"), critique text, quoted passage, buttons **Suggest / Apply / Dismiss**, plus a freeform input "Push back, ask for evidence…" to argue with the persona.                                    |
+| **Inline diff**                | "Suggest" → in-place diff: red strikethrough deletions, green insertions, one-line rationale ("Dropped 'just' and 'a bunch of', replaced the vague clause…"), **Accept / Reject**, plus "Refine this suggestion…" input.                                                     |
+| **Selection context menu**     | Select text → menu: Rephrase, Say more, Critique, Find evidence, Get research, Identify assumptions, + "Ask the daemon…" freeform. Keyboard shortcuts shown.                                                                                                                 |
+| **Generate more**              | A ghost "+ Generate more" affordance between blocks → inline "Generating…" placeholder → continuation drafted in place.                                                                                                                                                      |
+| **Async review (v2)**          | Select text + type an instruction → margin comment card showing the quote, the instruction, status **SUBMITTED**, then a live **"Reviewing 0:27"** timer while a background agent works. Result lands back in the card. Google-Docs-comments where the reviewer is an agent. |
 
 ### 2.2 Maggie Appleton — Language Model Sketchbook (https://maggieappleton.com/lm-sketchbook)
 
@@ -49,50 +50,50 @@ Observed UX (all confirmed via frame extraction):
 
 The vault already contains a mature agent architecture ([[AI Assistant Architecture]]) whose concepts map 1:1 onto plugin features:
 
-| Vault concept | Plugin analog |
-|---|---|
-| **Agent** = SOUL.md (identity, voice, DO/DON'T, expertise, decision framework, boundaries) | **Editor** persona whose prompt can point at vault notes (a SOUL note works as-is) |
-| **Panel** = N agents → individual verdicts + aggregated recommendation + top-3 fixes + dissent (e.g. osk-panel-publish: Editor, Beginner, Power User, Hater) | **Panel** entity: 1-n editors + aggregation step → scorecard view |
-| `user-voice-profile` context loader (My Voice Profile, Content Strategy, Content Types) | **Voice/style configuration** (textarea + 0-n note refs) injected into every editor run |
-| `osk-writing-humanizer` (AI-pattern detection, banned vocabulary, P0/P1/P2 severity, structure-is-the-#1-tell) | Starter editor: **Humanizer** — flags AI-sounding passages, metronomic rhythm, banned words |
-| `osk-writing-rigor` (hedge-stacking, uncited claims, magnitude language, weasel openers) | Starter editor: **Rigor Auditor** |
-| `developassion-style-police` / `style-guard` (banned words, emdash abuse, signature elements, pass/fail gate) | Starter editor: **Style Enforcer**; a "pre-publish gate" panel |
-| Agents: Hater, Skeptic, Beginner, Power User, Storyteller, Provocateur | Starter personas for the editor gallery |
-| Scorecards with verdicts (publish / needs work / kill it) | Panel result UI |
+| Vault concept                                                                                                                                                | Plugin analog                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Agent** = SOUL.md (identity, voice, DO/DON'T, expertise, decision framework, boundaries)                                                                   | **Editor** persona whose prompt can point at vault notes (a SOUL note works as-is)          |
+| **Panel** = N agents → individual verdicts + aggregated recommendation + top-3 fixes + dissent (e.g. osk-panel-publish: Editor, Beginner, Power User, Hater) | **Panel** entity: 1-n editors + aggregation step → scorecard view                           |
+| `user-voice-profile` context loader (My Voice Profile, Content Strategy, Content Types)                                                                      | **Voice/style configuration** (textarea + 0-n note refs) injected into every editor run     |
+| `osk-writing-humanizer` (AI-pattern detection, banned vocabulary, P0/P1/P2 severity, structure-is-the-#1-tell)                                               | Starter editor: **Humanizer** — flags AI-sounding passages, metronomic rhythm, banned words |
+| `osk-writing-rigor` (hedge-stacking, uncited claims, magnitude language, weasel openers)                                                                     | Starter editor: **Rigor Auditor**                                                           |
+| `developassion-style-police` / `style-guard` (banned words, emdash abuse, signature elements, pass/fail gate)                                                | Starter editor: **Style Enforcer**; a "pre-publish gate" panel                              |
+| Agents: Hater, Skeptic, Beginner, Power User, Storyteller, Provocateur                                                                                       | Starter personas for the editor gallery                                                     |
+| Scorecards with verdicts (publish / needs work / kill it)                                                                                                    | Panel result UI                                                                             |
 
 ## 3. Decisions locked so far (from the grilling session)
 
-| Decision | Choice |
-|---|---|
-| Audience | **Public community plugin**, fully configurable; the user's own style rules become his persona configs |
-| Backends | **Both**: direct LLM APIs (BYOK) **and** agent CLIs (Claude Code, Codex). Desktop-only |
-| v1 surfaces | **All four**: persona rail + summon, selection context menu, async margin comments, generate/continue |
-| Persistence | **Ephemeral findings** (in-memory CM6 decorations, remapped as you type, gone on close — re-summon is cheap) + **sidecar store** for async comments (survive editor sessions, background agents outlive the note being open) |
-| Persona model | Per-editor **model/backend override** (fallback to global default) + starter pack + JSON import/export |
-| Anchoring | **Exact-quote matching** (structured findings quote the text; plugin locates quote in raw markdown, exact → normalized → fuzzy; unmatched findings degrade to a note-level list) |
-| Naming | Personas are **"Editors"**; groups are **"Panels"**. Plugin name: **AI Editor** |
-| Panels | **In v1** ("I want it all"): user composes panels from 1-n editors; aggregated scorecard (verdicts, top fixes, dissent) |
-| Action bindings | Every UI action (rephrase, summarize, critique…) is **mapped in settings to an editor or panel** |
-| Prompt sourcing | Every prompt field = **textarea AND/OR 0-n vault note refs** ("configure directly as a prompt, or indirectly by documenting things in my vault") |
-| Finding arrival | **Stream as they land** — highlights pop in progressively, badges count up live; first insight in seconds |
-| Run scope | **Whole note by default; selection overrides** when text is selected. Size warning + confirm above a configurable word count |
-| Panel aggregation | **LLM aggregation call** after members finish: charter prompt + member outputs → recommendation, top-3 fixes, dissent. Panel has its own provider/model for this call |
-| Extra context | **Opt-in linked notes per editor** (1 hop, capped) + `[[wikilink]]` references typed in ANY prompt/input field (persona prompts, push-back, refine, custom actions) resolve and attach those notes as context. Wikilink autocomplete in plugin inputs |
-| Providers | 1-n configurable provider instances: **Anthropic, OpenAI + any OpenAI-compatible (custom base URL), Azure AI Foundry (first-class: deployment name, api-version, auth header), Ollama**. Per-editor AND per-panel provider/model selection |
-| Layout | **Adaptive Juri layout**: pane ≥ ~900px → left rail + floating cards + right margin comment column; narrow panes collapse to highlight-click → card + side-panel list |
-| Keyboard | **Full keyboard triage**: hotkey-assignable commands for next/prev finding, accept, reject, dismiss, suggest, focus push-back. Review = merge-conflict-style rapid triage |
-| Onboarding | **Guided setup wizard** on first use: pick/detect backend (Ollama running? `claude` on PATH?), test connection, seed starter editors, 30-second tour on sample text |
-| Guardrails | Size warning + confirm; **exclusions** (folders/tags/`ai_editor: false` frontmatter flag block review; strip-frontmatter option); **nothing runs automatically on note open — every AI action is user-initiated** |
-| Conversations | **Per-finding threads**: push-back → editor reply → counter → revised suggestion, collapsed history in the card. Session-scoped |
-| Editor modes | **Full parity in Live Preview AND Source mode** (both CM6); Reading view interaction out of scope |
-| Note-type rules | **Binding rules** (folder/tag/frontmatter → default editors/panel/bindings) + optional **OSK auto-discovery** (feature-detected, never mandatory) + per-scope **kill switch** (disable the plugin's UI entirely for chosen note types/folders) |
-| Bulk triage | **Accept/dismiss all per editor** (rail dot menu), **accept all non-conflicting** (one undoable transaction, precondition-checked), **severity filter** (info/suggestion/warning) |
-| Ambient UI | **Status-bar item** for the active note: last run's finding count + gate verdict badge; click → side panel. No heat strip in v1 |
-| Settings UX | **Tabbed settings** (Backends / Editors / Panels / Actions / Voice & Style / Rules / Behavior), well organized |
-| Overlapping findings | **Stacked card with tabs**: one blended highlight; the card shows every editor's take on that span (own suggestion + thread each); only one suggestion in diff-preview at a time |
-| Language | **Match the note's language automatically** (critiques, suggestions, threads in the text's language) + global override ("always respond in X") |
-| Comment routing | Async margin comments run on a **configurable default editor**, with a persona chip / @-mention in the input to reroute per comment |
-| Review surface | **Body only in v1** — frontmatter/metadata review (description, title, aliases, full properties) is post-v1 (GitHub issue) |
+| Decision             | Choice                                                                                                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audience             | **Public community plugin**, fully configurable; the user's own style rules become his persona configs                                                                                                                                                |
+| Backends             | **Both**: direct LLM APIs (BYOK) **and** agent CLIs (Claude Code, Codex). Desktop-only                                                                                                                                                                |
+| v1 surfaces          | **All four**: persona rail + summon, selection context menu, async margin comments, generate/continue                                                                                                                                                 |
+| Persistence          | **Ephemeral findings** (in-memory CM6 decorations, remapped as you type, gone on close — re-summon is cheap) + **sidecar store** for async comments (survive editor sessions, background agents outlive the note being open)                          |
+| Persona model        | Per-editor **model/backend override** (fallback to global default) + starter pack + JSON import/export                                                                                                                                                |
+| Anchoring            | **Exact-quote matching** (structured findings quote the text; plugin locates quote in raw markdown, exact → normalized → fuzzy; unmatched findings degrade to a note-level list)                                                                      |
+| Naming               | Personas are **"Editors"**; groups are **"Panels"**. Plugin name: **AI Editor**                                                                                                                                                                       |
+| Panels               | **In v1** ("I want it all"): user composes panels from 1-n editors; aggregated scorecard (verdicts, top fixes, dissent)                                                                                                                               |
+| Action bindings      | Every UI action (rephrase, summarize, critique…) is **mapped in settings to an editor or panel**                                                                                                                                                      |
+| Prompt sourcing      | Every prompt field = **textarea AND/OR 0-n vault note refs** ("configure directly as a prompt, or indirectly by documenting things in my vault")                                                                                                      |
+| Finding arrival      | **Stream as they land** — highlights pop in progressively, badges count up live; first insight in seconds                                                                                                                                             |
+| Run scope            | **Whole note by default; selection overrides** when text is selected. Size warning + confirm above a configurable word count                                                                                                                          |
+| Panel aggregation    | **LLM aggregation call** after members finish: charter prompt + member outputs → recommendation, top-3 fixes, dissent. Panel has its own provider/model for this call                                                                                 |
+| Extra context        | **Opt-in linked notes per editor** (1 hop, capped) + `[[wikilink]]` references typed in ANY prompt/input field (persona prompts, push-back, refine, custom actions) resolve and attach those notes as context. Wikilink autocomplete in plugin inputs |
+| Providers            | 1-n configurable provider instances: **Anthropic, OpenAI + any OpenAI-compatible (custom base URL), Azure AI Foundry (first-class: deployment name, api-version, auth header), Ollama**. Per-editor AND per-panel provider/model selection            |
+| Layout               | **Adaptive Juri layout**: pane ≥ ~900px → left rail + floating cards + right margin comment column; narrow panes collapse to highlight-click → card + side-panel list                                                                                 |
+| Keyboard             | **Full keyboard triage**: hotkey-assignable commands for next/prev finding, accept, reject, dismiss, suggest, focus push-back. Review = merge-conflict-style rapid triage                                                                             |
+| Onboarding           | **Guided setup wizard** on first use: pick/detect backend (Ollama running? `claude` on PATH?), test connection, seed starter editors, 30-second tour on sample text                                                                                   |
+| Guardrails           | Size warning + confirm; **exclusions** (folders/tags/`ai_editor: false` frontmatter flag block review; strip-frontmatter option); **nothing runs automatically on note open — every AI action is user-initiated**                                     |
+| Conversations        | **Per-finding threads**: push-back → editor reply → counter → revised suggestion, collapsed history in the card. Session-scoped                                                                                                                       |
+| Editor modes         | **Full parity in Live Preview AND Source mode** (both CM6); Reading view interaction out of scope                                                                                                                                                     |
+| Note-type rules      | **Binding rules** (folder/tag/frontmatter → default editors/panel/bindings) + optional **OSK auto-discovery** (feature-detected, never mandatory) + per-scope **kill switch** (disable the plugin's UI entirely for chosen note types/folders)        |
+| Bulk triage          | **Accept/dismiss all per editor** (rail dot menu), **accept all non-conflicting** (one undoable transaction, precondition-checked), **severity filter** (info/suggestion/warning)                                                                     |
+| Ambient UI           | **Status-bar item** for the active note: last run's finding count + gate verdict badge; click → side panel. No heat strip in v1                                                                                                                       |
+| Settings UX          | **Tabbed settings** (Backends / Editors / Panels / Actions / Voice & Style / Rules / Behavior), well organized                                                                                                                                        |
+| Overlapping findings | **Stacked card with tabs**: one blended highlight; the card shows every editor's take on that span (own suggestion + thread each); only one suggestion in diff-preview at a time                                                                      |
+| Language             | **Match the note's language automatically** (critiques, suggestions, threads in the text's language) + global override ("always respond in X")                                                                                                        |
+| Comment routing      | Async margin comments run on a **configurable default editor**, with a persona chip / @-mention in the input to reroute per comment                                                                                                                   |
+| Review surface       | **Body only in v1** — frontmatter/metadata review (description, title, aliases, full properties) is post-v1 (GitHub issue)                                                                                                                            |
 
 ## 4. Domain model
 
@@ -151,6 +152,7 @@ Backend
 ```
 
 Key invariants:
+
 - An Editor's effective system prompt = voice profile (if injected) + persona prompt (textarea ⊕ resolved note contents, in declared order).
 - Note refs are resolved at run time (fresh read), so editing [[My Voice Profile]] immediately affects every subsequent run — the vault is the config.
 - Panels are visually distinguishable from Editors in every surface (rail, context menu, cards): distinct shape/badge (e.g. editors = solid dots, panels = ringed/stacked dots).
@@ -237,6 +239,7 @@ interface ReviewBackend {
 ### 5.6 Side panel (workspace leaf)
 
 One `ItemView` ("AI Editor: Review") showing, per active note:
+
 - current run status per editor/panel, findings list (jump-to-span on click),
 - panel scorecards: per-member verdict, aggregated recommendation, top-3 fixes, dissent,
 - unanchored findings and note-level summaries,
@@ -245,6 +248,7 @@ One `ItemView` ("AI Editor: Review") showing, per active note:
 ### 5.7 Settings design (UX matters here too)
 
 Tabs/sections:
+
 1. **Backends** — **1-n provider instances** (add multiple, label them): Anthropic / OpenAI-compatible / Azure AI Foundry / Ollama, each with keys, base URL/deployment, default model, test button; CLI agents (path detection, health check). First-use **setup wizard** (detect Ollama + `claude`/`codex` on PATH, test connection, seed starter editors, sample-text tour).
 2. **Editors** — gallery of persona cards (color, name, enabled); create/edit modal with: name, color, prompt textarea, **note-ref picker (0-n notes, ordered, with fuzzy note search)**, backend/model override, capability toggles. Import/export JSON.
 3. **Panels** — compose from existing editors (multi-select, 1-n), charter (textarea + note refs), aggregation mode. Distinct visual identity.
@@ -282,14 +286,14 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 
 ## 7. Risks & mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Quote anchoring fails on markdown syntax mismatch (LLM quotes rendered text vs raw source) | Always send raw markdown to the model; instruct quoting verbatim from input; 3-stage matcher + graceful degradation; heavy test corpus |
-| CM6 overlay complexity (cards/diffs fighting Live Preview widgets) | Prototype the diff widget early (M1); prefer CM6-native decorations over DOM hacks |
-| CLI backend fragility (paths, versions, auth) | Health-check button, clear error surfaces, API backend always available as fallback |
-| Cost runaway (N editors × long notes) | Scope control (selection/section), per-run token caps, count badge = findings only after completion, explicit Summon (never auto-run by default) |
-| Findings spam / annoying UX | Severity filter, per-editor max findings, "fade on dismiss" everywhere, ignorable-by-design |
-| Obsidian review guidelines (no `innerHTML`, sentence-case UI, no "Obsidian" in name/desc) | Template conventions + review-lint before submission |
+| Risk                                                                                       | Mitigation                                                                                                                                       |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Quote anchoring fails on markdown syntax mismatch (LLM quotes rendered text vs raw source) | Always send raw markdown to the model; instruct quoting verbatim from input; 3-stage matcher + graceful degradation; heavy test corpus           |
+| CM6 overlay complexity (cards/diffs fighting Live Preview widgets)                         | Prototype the diff widget early (M1); prefer CM6-native decorations over DOM hacks                                                               |
+| CLI backend fragility (paths, versions, auth)                                              | Health-check button, clear error surfaces, API backend always available as fallback                                                              |
+| Cost runaway (N editors × long notes)                                                      | Scope control (selection/section), per-run token caps, count badge = findings only after completion, explicit Summon (never auto-run by default) |
+| Findings spam / annoying UX                                                                | Severity filter, per-editor max findings, "fade on dismiss" everywhere, ignorable-by-design                                                      |
+| Obsidian review guidelines (no `innerHTML`, sentence-case UI, no "Obsidian" in name/desc)  | Template conventions + review-lint before submission                                                                                             |
 
 ## 7b. Later: knowledge-integration features (post-v1, tracked as GitHub issues)
 
@@ -298,8 +302,8 @@ Beyond reviewing prose, editors should help integrate the note into the vault's 
 1. **Tag review** — an editor reviews/improves the note's tags: suggests existing vault tags that fit (never inventing new ones without flagging), flags redundant/missing ones. Respects vault tag conventions.
 2. **Related-notes discovery** — find vault notes relevant to the current note and propose them as wikilinks, targeted at a specific section (e.g. `## Related`); accept/reject per suggestion, like findings.
 3. **References management** — add/update a full references list at the end of the note:
-   - **Internal**: every vault note mentioned/linked in the body, consolidated.
-   - **External**: URLs the user added manually + **every external source an LLM used as input/reference while editing/writing** (source-citation tracking: backends must report the sources behind their suggestions so citations are effortless and honest).
+    - **Internal**: every vault note mentioned/linked in the body, consolidated.
+    - **External**: URLs the user added manually + **every external source an LLM used as input/reference while editing/writing** (source-citation tracking: backends must report the sources behind their suggestions so citations are effortless and honest).
 4. Prerequisite plumbing: the operation contract's evidence entries (review finding #27) double as the citation source for external references.
 
 Additional post-v1 features (each a GitHub issue):

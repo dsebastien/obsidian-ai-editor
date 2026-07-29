@@ -4,7 +4,7 @@
     "description": "Review, edit, and draft notes collaboratively with configurable AI editors and panels.",
     "version": "0.0.0",
     "minAppVersion": "1.8.7",
-    "isDesktopOnly": false,
+    "isDesktopOnly": true,
     "author": "Sébastien Dubois",
     "authorUrl": "https://dsebastien.net",
     "fundingUrl": "https://www.buymeacoffee.com/dsebastien"

@@ -1,1 +1,47 @@
 # Architecture
+
+High-level structure of the AI Editor plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/ai-editor-v1-implementation-plan.md` for the roadmap.
+
+## Layers
+
+```
+src/app/
+├── types/        # Settings interfaces, branded IDs
+├── domain/       # Pure logic: operation contract (Zod), anchoring engine, snapshots
+│                 # No Obsidian imports — fully unit-testable under bun test
+├── services/     # Backends (API providers, CLI agents), context assembly,
+│                 # run orchestration, persistence (sidecar repository)
+├── commands/     # Obsidian command registrations (review, triage, actions)
+├── ui/           # CM6 integration (decorations, rail, cards, diffs), side panel,
+│                 # settings tab, wizard, modals
+└── settings/     # Settings tab + components
+```
+
+Dependency direction: `ui`/`commands` → `services` → `domain` → `types`. The domain layer never imports from Obsidian or CM6 — editor-position mapping is abstracted behind `TextChange` (adapted from CM6 `ChangeDesc` at the ui boundary).
+
+## Core flow (a review run)
+
+1. User triggers Review (command/rail). The active note is snapshotted (`DocumentSnapshot`: text + hash + id).
+2. Context is assembled per editor: system prompt (voice profile + persona prompt text + resolved note refs), the snapshot text, optional selection, resolved `[[wikilink]]` context — all within a token/byte budget, after privacy exclusions.
+3. Each enabled editor's backend runs an `Operation` (see contract in `src/app/domain/operations/`). Backends emit `OperationEvent`s: findings (as they complete, when streaming is verified for the provider), progress, exactly one terminal event (result/error), all tagged with the run id.
+4. Findings are anchored against the snapshot (exact → normalized → contextual; ambiguous/fuzzy = display-only) and projected into CM6 decorations. User edits remap positions via change-mapping; edits intersecting a finding's range mark it stale.
+5. Triage: cards, diffs, threads, keyboard commands, bulk operations. Accept re-verifies the precondition text, applies as a single undoable transaction.
+6. Panel runs add an aggregation operation over member results, producing a typed `PanelResult` scorecard.
+
+## Backends
+
+Two families behind one adapter contract (per-instance capability negotiation: streaming?, JSON schema?, usage?):
+
+- **API providers** (v1 core): Anthropic, OpenAI, OpenAI-compatible (custom base URL), Azure OpenAI (deployment-based), Ollama. Buffered structured output is the baseline; per-provider streaming decoders only where verified. Transport constraint: Obsidian's `requestUrl` does not stream; renderer `fetch` is used where CORS permits, `requestUrl` as buffered fallback.
+- **CLI agents** (opt-in, late milestone): Claude Code, Codex — headless spawns behind the security boundary defined in Business Rules #9.
+
+## UI integration points
+
+- CM6 `StateField` for finding decorations (mapped through transactions), single active tooltip per view for cards, view-owned panel element for the persona rail, `ItemView` workspace leaf for the side panel (findings list, scorecards, comments), status-bar item (finding count / gate verdict).
+- Multiple leaves/popouts: a file-level run controller with per-view projections; all DOM created via the owning view's document.
+
+## Persistence
+
+- Settings (editors, panels, actions, rules, providers): plugin `data.json`, schema-versioned with migrations, stable UUIDs, referential integrity on delete.
+- Findings/runs: ephemeral (in-memory per session).
+- Async margin comments: sidecar repository under the plugin data dir — schema version, quote+prefix+suffix anchors with fuzzy re-anchor on open, rename handling, corruption recovery, interrupted-job semantics on restart (Retry; no fake resumption).
