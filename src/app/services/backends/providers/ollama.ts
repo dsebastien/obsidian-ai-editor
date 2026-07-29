@@ -55,8 +55,9 @@ export const ollamaAdapter: ProviderAdapter = {
                 // the JSON payload. When on, the answer arrives in
                 // `message.content` and the reasoning in `message.thinking` —
                 // the parser reads only `content`, so thinking never leaks
-                // into the operation result.
-                think: config.thinking === 'on'
+                // into the operation result. Any non-'off' mode counts as on
+                // ('budget' is an Anthropic-only distinction).
+                think: config.thinking !== 'off'
             })
         }
     },

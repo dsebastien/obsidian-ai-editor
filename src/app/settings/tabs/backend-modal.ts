@@ -172,31 +172,45 @@ export class BackendModal extends Modal {
      */
     private renderThinkingControls(contentEl: HTMLElement): void {
         const kind = this.draft.kind
-        if (kind === 'ollama' || kind === 'anthropic') {
+        if (kind === 'ollama') {
             new Setting(contentEl)
-                .setName(kind === 'anthropic' ? 'Extended thinking' : 'Thinking')
+                .setName('Thinking')
                 .setDesc(
-                    kind === 'anthropic'
-                        ? 'Let the model reason before answering. Uses the thinking budget below.'
-                        : 'Let thinking-family models (qwen3, deepseek-r1) reason before answering. Off avoids minutes of silent reasoning.'
+                    'Let thinking-family models (qwen3, deepseek-r1) reason before answering. Off avoids minutes of silent reasoning.'
                 )
                 .addDropdown((dropdown) => {
                     dropdown.addOption('off', 'Off')
                     dropdown.addOption('on', 'On')
-                    dropdown.setValue(this.draft.thinking)
+                    dropdown.setValue(this.draft.thinking === 'off' ? 'off' : 'on')
                     dropdown.onChange((value) => {
                         this.draft.thinking = value === 'on' ? 'on' : 'off'
-                        // Anthropic shows/hides the budget field with the toggle.
-                        if (kind === 'anthropic') {
-                            this.renderContent()
-                        }
                     })
                 })
         }
-        if (kind === 'anthropic' && this.draft.thinking === 'on') {
+        if (kind === 'anthropic') {
+            new Setting(contentEl)
+                .setName('Thinking')
+                .setDesc(
+                    'Adaptive lets the model decide when and how much to think (Claude 4.6 and newer). Budget is the legacy manual mode for Claude 4.5 and earlier — newer models reject it.'
+                )
+                .addDropdown((dropdown) => {
+                    dropdown.addOption('off', 'Off')
+                    dropdown.addOption('on', 'Adaptive')
+                    dropdown.addOption('budget', 'Budget (legacy)')
+                    dropdown.setValue(this.draft.thinking)
+                    dropdown.onChange((value) => {
+                        this.draft.thinking = value === 'on' || value === 'budget' ? value : 'off'
+                        // The budget field shows only in budget mode.
+                        this.renderContent()
+                    })
+                })
+        }
+        if (kind === 'anthropic' && this.draft.thinking === 'budget') {
             new Setting(contentEl)
                 .setName('Thinking budget (tokens)')
-                .setDesc('Tokens the model may spend reasoning per request (1024-32000).')
+                .setDesc(
+                    'Tokens the model may spend reasoning per request (1024-32000). Capped so budget plus output stays within the 32k limit of legacy models.'
+                )
                 .addText((text) => {
                     text.inputEl.type = 'number'
                     text.inputEl.min = '1024'

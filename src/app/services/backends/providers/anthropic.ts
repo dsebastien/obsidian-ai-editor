@@ -19,20 +19,45 @@ import {
  * schema-conforming tool input. The CORS opt-in header enables direct
  * renderer `fetch` from Obsidian (no backend proxy).
  *
- * Extended thinking (config.thinking === 'on'): the request carries
- * `thinking: { type: 'enabled', budget_tokens }` and, because the API
- * rejects forced tool use while thinking is enabled, `tool_choice` relaxes
- * to `auto` — the prompt still demands the tool call, and the parser's
- * text-block JSON fallback covers a model that answers in prose. The
- * thinking budget is added ON TOP of the output budget so the API
- * constraint `budget_tokens < max_tokens` holds by construction. Response
- * `thinking`/`redacted_thinking` blocks are skipped by the parser.
+ * Thinking (config.thinking):
+ * - 'on' sends ADAPTIVE thinking (`thinking: { type: 'adaptive' }`) — the
+ *   current API mode (Claude 4.6 and newer; manual `budget_tokens` is
+ *   deprecated on 4.6 and rejected with HTTP 400 on 4.7+/5.x). Adaptive
+ *   thinking supports forced tool use, so `tool_choice` stays forced; the
+ *   thinking spend counts against `max_tokens`, so the output budget is
+ *   raised to leave room for both reasoning and the result.
+ * - 'budget' sends the LEGACY manual block
+ *   (`thinking: { type: 'enabled', budget_tokens } `) for Claude
+ *   4.5-and-earlier models. Forced tool use is rejected in this mode, so
+ *   `tool_choice` relaxes to `auto` — the prompt still demands the tool
+ *   call, and the parser's text-block JSON fallback covers a model that
+ *   answers in prose. The budget rides on top of the output budget, with
+ *   the sum clamped to the 32k output ceiling of those legacy models and
+ *   the budget clamped below `max_tokens` (API constraint
+ *   `budget_tokens < max_tokens`).
+ * Response `thinking`/`redacted_thinking` blocks are skipped by the parser
+ * in both modes.
  */
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com'
 const ANTHROPIC_VERSION = '2023-06-01'
 const RESULT_TOOL_NAME = 'emit_result'
 const MAX_OUTPUT_TOKENS = 8_192
+/**
+ * Output budget with adaptive thinking on: thinking tokens count against
+ * `max_tokens`, so 8192 alone risks a long think truncating the result.
+ * Every adaptive-capable model (Claude 4.6+) allows ≥64k output, so 32k is
+ * safe headroom for reasoning + result.
+ */
+const ADAPTIVE_MAX_OUTPUT_TOKENS = 32_000
+/**
+ * Hard output-token ceiling of the legacy (≤4.5) Claude models — the only
+ * ones that still accept manual extended thinking. `max_tokens` above this
+ * fails request validation with HTTP 400 before any generation happens.
+ */
+const LEGACY_MAX_TOKENS_CEILING = 32_000
+/** Minimum room kept for the result when the legacy budget is clamped. */
+const LEGACY_RESULT_HEADROOM = 1_024
 
 function trimTrailingSlash(url: string): string {
     return url.endsWith('/') ? url.slice(0, -1) : url
@@ -59,14 +84,26 @@ export const anthropicAdapter: ProviderAdapter = {
         const baseUrl = trimTrailingSlash(
             config.baseUrl.length > 0 ? config.baseUrl : DEFAULT_BASE_URL
         )
-        const thinkingOn = config.thinking === 'on'
+        const mode = config.thinking
+        // Legacy budget mode: budget rides on top of the output budget, but
+        // the sum must stay within the legacy models' 32k output ceiling —
+        // and budget_tokens must stay strictly below max_tokens.
+        const legacyMaxTokens = Math.min(
+            MAX_OUTPUT_TOKENS + config.thinkingBudgetTokens,
+            LEGACY_MAX_TOKENS_CEILING
+        )
+        const legacyBudget = Math.min(
+            config.thinkingBudgetTokens,
+            legacyMaxTokens - LEGACY_RESULT_HEADROOM
+        )
         const body: Record<string, unknown> = {
             model,
-            // With thinking on, the budget counts against max_tokens — adding
-            // it on top keeps the full output budget for the actual result.
-            max_tokens: thinkingOn
-                ? MAX_OUTPUT_TOKENS + config.thinkingBudgetTokens
-                : MAX_OUTPUT_TOKENS,
+            max_tokens:
+                mode === 'on'
+                    ? ADAPTIVE_MAX_OUTPUT_TOKENS
+                    : mode === 'budget'
+                      ? legacyMaxTokens
+                      : MAX_OUTPUT_TOKENS,
             system: systemPrompt,
             messages: [{ role: 'user', content: buildUserMessage(operation, 'tool-input') }],
             tools: [
@@ -76,13 +113,18 @@ export const anthropicAdapter: ProviderAdapter = {
                     input_schema: resultJsonSchema(operation.kind)
                 }
             ],
-            // Forced tool use is rejected while extended thinking is enabled
-            // (only 'auto'/'none' are allowed) — relax to auto and rely on
-            // the prompt + the parser's text fallback.
-            tool_choice: thinkingOn ? { type: 'auto' } : { type: 'tool', name: RESULT_TOOL_NAME }
+            // Forced tool use is rejected only by LEGACY manual thinking
+            // (only 'auto'/'none' are allowed there) — relax to auto in that
+            // mode and rely on the prompt + the parser's text fallback.
+            // Adaptive thinking supports forced tool use, so it keeps the
+            // structural output guarantee.
+            tool_choice:
+                mode === 'budget' ? { type: 'auto' } : { type: 'tool', name: RESULT_TOOL_NAME }
         }
-        if (thinkingOn) {
-            body['thinking'] = { type: 'enabled', budget_tokens: config.thinkingBudgetTokens }
+        if (mode === 'on') {
+            body['thinking'] = { type: 'adaptive' }
+        } else if (mode === 'budget') {
+            body['thinking'] = { type: 'enabled', budget_tokens: legacyBudget }
         }
         return {
             url: `${baseUrl}/v1/messages`,

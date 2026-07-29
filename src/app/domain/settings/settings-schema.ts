@@ -54,17 +54,22 @@ export const apiBackendSchema = z.object({
     azureApiVersion: z.string().max(50).default(''),
     defaultModel: z.string().max(200).default(''),
     /**
-     * Ollama + Anthropic: extended thinking / reasoning toggle. Default 'off'
+     * Ollama + Anthropic: thinking / reasoning mode. Default 'off'
      * everywhere — deliberate UX choice: a local model silently reasoning for
      * minutes with zero visible output is indistinguishable from a hang.
-     * Ollama 'off' sends `think: false`, 'on' sends `think: true`; Anthropic
-     * 'on' sends the extended-thinking block with `thinkingBudgetTokens`.
+     * Ollama treats any non-'off' value as `think: true`. Anthropic 'on'
+     * sends adaptive thinking (`{ type: 'adaptive' }` — the current API mode,
+     * Claude 4.6 and newer); 'budget' sends the legacy manual block
+     * (`{ type: 'enabled', budget_tokens }`) that only Claude 4.5-and-earlier
+     * models still accept — current models reject it with HTTP 400.
      */
-    thinking: z.enum(['off', 'on']).default('off'),
+    thinking: z.enum(['off', 'on', 'budget']).default('off'),
     /**
      * Anthropic only: thinking token budget, sent only when `thinking` is
-     * 'on'. API minimum is 1024; the adapter adds this on top of the output
-     * budget so `budget_tokens < max_tokens` holds by construction.
+     * 'budget' (legacy manual mode). API minimum is 1024; the adapter adds it
+     * on top of the output budget and clamps the sum to the 32k output-token
+     * ceiling of the legacy models that still accept manual thinking, keeping
+     * `budget_tokens < max_tokens` intact for every allowed value.
      */
     thinkingBudgetTokens: z.number().int().min(1_024).max(32_000).default(8_192),
     /**

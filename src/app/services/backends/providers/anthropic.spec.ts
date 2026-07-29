@@ -65,24 +65,50 @@ describe('anthropicAdapter.buildRequest', () => {
         expect(body['tool_choice']).toEqual({ type: 'tool', name: 'emit_result' })
     })
 
-    it('sends the extended-thinking block with the configured budget when on', () => {
+    it('sends adaptive thinking and keeps forced tool use when thinking is on', () => {
+        const body = JSON.parse(build({ thinking: 'on' }).body) as Record<string, unknown>
+        // 'on' = adaptive (current API mode) — manual budget_tokens is
+        // rejected with HTTP 400 on every current model.
+        expect(body['thinking']).toEqual({ type: 'adaptive' })
+        // Adaptive thinking supports forced tool use — the structural
+        // output guarantee stays.
+        expect(body['tool_choice']).toEqual({ type: 'tool', name: 'emit_result' })
+        // Thinking counts against max_tokens — raised so a long think
+        // cannot truncate the result.
+        expect(body['max_tokens']).toBe(32_000)
+    })
+
+    it('sends the legacy manual-thinking block with the configured budget in budget mode', () => {
         const body = JSON.parse(
-            build({ thinking: 'on', thinkingBudgetTokens: 4_096 }).body
+            build({ thinking: 'budget', thinkingBudgetTokens: 4_096 }).body
         ) as Record<string, unknown>
         expect(body['thinking']).toEqual({ type: 'enabled', budget_tokens: 4_096 })
         // Budget rides on top of the output budget: budget_tokens < max_tokens
         // holds by construction.
         expect(body['max_tokens']).toBe(8_192 + 4_096)
-        // Forced tool use is incompatible with extended thinking — relaxes to auto.
+        // Forced tool use is incompatible with legacy manual thinking — relaxes to auto.
         expect(body['tool_choice']).toEqual({ type: 'auto' })
     })
 
-    it('keeps the result tool available when thinking is on', () => {
-        const body = JSON.parse(build({ thinking: 'on' }).body) as {
-            tools: { name: string }[]
+    it('clamps budget mode to the 32k output ceiling of legacy models', () => {
+        const body = JSON.parse(
+            build({ thinking: 'budget', thinkingBudgetTokens: 32_000 }).body
+        ) as Record<string, unknown>
+        // 8192 + 32000 would exceed the legacy models' 32k max_tokens cap
+        // (HTTP 400 at validation time) — clamp the sum, and keep
+        // budget_tokens strictly below max_tokens with result headroom.
+        expect(body['max_tokens']).toBe(32_000)
+        expect(body['thinking']).toEqual({ type: 'enabled', budget_tokens: 30_976 })
+    })
+
+    it('keeps the result tool available in both thinking modes', () => {
+        for (const thinking of ['on', 'budget'] as const) {
+            const body = JSON.parse(build({ thinking }).body) as {
+                tools: { name: string }[]
+            }
+            expect(body.tools).toHaveLength(1)
+            expect(body.tools[0]?.name).toBe('emit_result')
         }
-        expect(body.tools).toHaveLength(1)
-        expect(body.tools[0]?.name).toBe('emit_result')
     })
 
     it('never leaks the API key into the body', () => {

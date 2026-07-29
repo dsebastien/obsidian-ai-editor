@@ -87,6 +87,7 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
     it('restricts thinking and reasoning effort to their enums', () => {
         const base = validApiBackend('b1')
         expect(apiBackendSchema.safeParse({ ...base, thinking: 'on' }).success).toEqual(true)
+        expect(apiBackendSchema.safeParse({ ...base, thinking: 'budget' }).success).toEqual(true)
         expect(apiBackendSchema.safeParse({ ...base, thinking: 'auto' }).success).toEqual(false)
         for (const effort of ['default', 'minimal', 'low', 'medium', 'high']) {
             expect(

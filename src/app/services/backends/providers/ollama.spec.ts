@@ -63,9 +63,11 @@ describe('ollamaAdapter.buildRequest', () => {
         expect(body.think).toBe(false)
     })
 
-    it('sends think: true when thinking is on', () => {
-        const body = JSON.parse(build({ thinking: 'on' }).body) as { think: boolean }
-        expect(body.think).toBe(true)
+    it('sends think: true for any non-off thinking mode', () => {
+        for (const thinking of ['on', 'budget'] as const) {
+            const body = JSON.parse(build({ thinking }).body) as { think: boolean }
+            expect(body.think).toBe(true)
+        }
     })
 
     it('sends no auth header and never embeds a configured key', () => {

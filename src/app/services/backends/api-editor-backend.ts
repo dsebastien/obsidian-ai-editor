@@ -471,7 +471,11 @@ function anthropicStreamError(error: unknown): TransportError {
  * OpenAI-family Chat Completions stream: each `data:` frame carries
  * `choices[0].delta.content` (or `.refusal`) fragments; `data: [DONE]`
  * ends the stream. Fragments are reassembled into the buffered
- * `{ choices: [{ message }] }` envelope.
+ * `{ choices: [{ message }] }` envelope. Reasoning models behind
+ * compatible endpoints stream their reasoning as `delta.reasoning_content`
+ * (DeepSeek convention) or `delta.reasoning` (OpenRouter) — never part of
+ * the payload, but counted as progress so a model reasoning for minutes
+ * does not look like a hang.
  */
 function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
     let content = ''
@@ -502,6 +506,18 @@ function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
             }
             if (typeof record['refusal'] === 'string' && record['refusal'].length > 0) {
                 refusal += record['refusal']
+                advanced = true
+            }
+            // Reasoning deltas (DeepSeek `reasoning_content`, OpenRouter
+            // `reasoning`) are progress but never payload — mirrors the
+            // Anthropic accumulator's thinking_delta handling.
+            if (
+                typeof record['reasoning_content'] === 'string' &&
+                record['reasoning_content'].length > 0
+            ) {
+                advanced = true
+            }
+            if (typeof record['reasoning'] === 'string' && record['reasoning'].length > 0) {
                 advanced = true
             }
             return advanced

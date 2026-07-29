@@ -339,7 +339,7 @@ describe('createApiEditorExecutor — streaming', () => {
         const { calls, fetchImpl } = makeStreamingFetch(lines, 9)
         const executor = makeExecutor(fetchImpl, {
             kind: 'anthropic',
-            thinking: 'on',
+            thinking: 'budget',
             thinkingBudgetTokens: 2_048
         })
 
@@ -357,6 +357,42 @@ describe('createApiEditorExecutor — streaming', () => {
         const sentBody = sentJsonBody(calls[0])
         expect(sentBody['thinking']).toEqual({ type: 'enabled', budget_tokens: 2_048 })
         expect(sentBody['tool_choice']).toEqual({ type: 'auto' })
+    })
+
+    it('treats openai-compatible reasoning deltas as progress without leaking them into the result', async () => {
+        const resultJson = JSON.stringify(validReviewResult())
+        const lines = [
+            // Reasoning phase first — DeepSeek streams `reasoning_content`,
+            // OpenRouter `reasoning`; a thinking model enabled via
+            // extraBodyJson may emit ONLY these for minutes before any
+            // content arrives.
+            `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'Let me think…' } }] })}`,
+            '',
+            `data: ${JSON.stringify({ choices: [{ delta: { reasoning: '…about this document.' } }] })}`,
+            '',
+            `data: ${JSON.stringify({ choices: [{ delta: { content: resultJson } }] })}`,
+            '',
+            'data: [DONE]',
+            ''
+        ].join('\n')
+        const { fetchImpl } = makeStreamingFetch(lines, 9)
+        const executor = makeExecutor(fetchImpl, {
+            kind: 'openai-compatible',
+            baseUrl: 'https://openrouter.example.test/api/v1'
+        })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        const terminal = expectProtocol(events)
+        // Reasoning deltas alone must already surface progress — the exact
+        // hang-lookalike failure mode this increment eliminates.
+        expect(events.filter((event) => event.type === 'progress').length).toBeGreaterThan(1)
+        if (terminal.type !== 'result' || terminal.result.kind !== 'review') {
+            throw new Error('expected review result')
+        }
+        // The reasoning text is never accumulated into the payload.
+        expect(terminal.result.findings[0]?.quote).toBe('Hello world')
+        expect(JSON.stringify(terminal.result)).not.toContain('Let me think')
     })
 
     it('maps a truncated stream whose payload fails validation to invalid-output', async () => {
