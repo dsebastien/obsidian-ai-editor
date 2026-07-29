@@ -178,7 +178,7 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
             ...(selection && selection.from < selection.to
                 ? { requestedSelection: selection }
                 : {}),
-            instruction: { editorId: input.editorId, text: verb.instruction }
+            instruction: { editorIds: [input.editorId], text: verb.instruction }
         })
         return { status: 'review', review }
     }

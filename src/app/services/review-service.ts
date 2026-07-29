@@ -79,13 +79,16 @@ export function skipReasonLabel(reason: SkipReason): string {
 // ---------------------------------------------------------------------------
 
 /**
- * One-run-only instruction for a single editor: the run is narrowed to
- * exactly `editorId` and that editor's composed system prompt is augmented
- * with `text` via `augmentSystemPrompt`. Nothing is persisted — settings are
- * never mutated, the next run assembles its prompt from scratch.
+ * One-run-only instruction for a set of editors: the run is narrowed to
+ * exactly `editorIds` and each of those editors' composed system prompts is
+ * augmented with `text` via `augmentSystemPrompt`. Nothing is persisted —
+ * settings are never mutated, the next run assembles its prompt from
+ * scratch. "Ask an editor" passes one id; a review-class action bound to a
+ * panel passes every member editor id (v1 panel dispatch — each member runs
+ * the instruction independently; charter aggregation is M6).
  */
 export interface RunInstruction {
-    readonly editorId: string
+    readonly editorIds: readonly string[]
     readonly text: string
 }
 
@@ -168,9 +171,10 @@ export interface StartReviewInput {
         readonly capturedHash: string
     }
     /**
-     * Freeform "Ask an editor" scope (design §6 decision 1): when set, ONLY
-     * the named editor participates (the other editors were not asked — they
-     * are neither run nor reported as skips), and its fully composed system
+     * Per-run instruction scope ("Ask an editor", design §6 decision 1, and
+     * review-class action verbs): when set, ONLY the named editors
+     * participate (the other editors were not asked — they are neither run
+     * nor reported as skips), and each named editor's fully composed system
      * prompt is augmented with the instruction text for this run only (see
      * `augmentSystemPrompt`; settings stay untouched). The instruction is
      * user content riding in the prompt — it cannot change the operation
@@ -184,7 +188,7 @@ export interface StartReviewInput {
      * set were not asked — neither run nor reported as skips — while editors
      * inside it that cannot dispatch still surface as skips. An empty
      * effective pool yields the usual `no-editors` refusal. Ignored when
-     * `instruction` is set (the instruction already names the one editor).
+     * `instruction` is set (the instruction already names its editors).
      */
     readonly editorIds?: readonly string[]
     /**
@@ -399,14 +403,14 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // SEAM (M6): binding rules (folder/tag/frontmatter → default editors or
     // disabled) will narrow this selection per note. Until then every enabled
     // review-capable editor participates — unless a per-run instruction
-    // narrows the run to the one editor the user asked (the others are not
+    // narrows the run to the editor(s) the user asked (the others are not
     // candidates at all, so they never appear in the skip report). An
-    // instruction whose editor no longer exists, is disabled, or cannot
+    // instruction whose editors no longer exist, are disabled, or cannot
     // dispatch yields `no-editors` like any other empty selection.
     const instruction = input.instruction
     const editorIds = input.editorIds
     const editorPool = instruction
-        ? settings.editors.filter((editor) => editor.id === instruction.editorId)
+        ? settings.editors.filter((editor) => instruction.editorIds.includes(editor.id))
         : editorIds
           ? settings.editors.filter((editor) => editorIds.includes(editor.id))
           : settings.editors
@@ -454,7 +458,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                     backend: participant.backend,
                     model: participant.model,
                     systemPrompt:
-                        instruction && participant.editor.id === instruction.editorId
+                        instruction && instruction.editorIds.includes(participant.editor.id)
                             ? augmentSystemPrompt(composedPrompt, instruction.text)
                             : composedPrompt,
                     timeoutMs: reviewTimeoutMs(behavior),

@@ -530,7 +530,7 @@ export class ReviewController {
                 return
             }
             void this.startReview(view, false, requested, 'whole-note', {
-                editorId,
+                editorIds: [editorId],
                 text: instruction
             })
         }).open()

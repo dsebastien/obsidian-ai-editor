@@ -555,7 +555,7 @@ describe('startReview', () => {
             vault: new FakeVault(),
             runController: new RunController(),
             fetchImpl,
-            instruction: { editorId: 'editor-2', text: 'Is this argument convincing?' }
+            instruction: { editorIds: ['editor-2'], text: 'Is this argument convincing?' }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -574,6 +574,54 @@ describe('startReview', () => {
         expect(result.run.findings.list()).toHaveLength(1)
     })
 
+    it('runs an instruction against every named editor with each prompt augmented (panel dispatch)', async () => {
+        const captured: string[] = []
+        const fetchImpl = ((url: string, init: { body: string }) => {
+            captured.push(init.body)
+            void url
+            return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
+        }) as unknown as typeof fetch
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ prompt: { text: 'Persona one.', notePaths: [] } }),
+                makeEditor({
+                    id: 'editor-2',
+                    name: 'Mentor',
+                    prompt: { text: 'Persona two.', notePaths: [] }
+                }),
+                makeEditor({
+                    id: 'editor-3',
+                    name: 'Bystander',
+                    prompt: { text: 'Persona three.', notePaths: [] }
+                })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl,
+            instruction: { editorIds: ['editor-1', 'editor-2'], text: 'Check the argument.' }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // Editors outside the set are neither run nor reported as skips.
+        expect(result.skips).toEqual([])
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual([
+            'editor-1',
+            'editor-2'
+        ])
+        await result.run.settled
+        expect(captured).toHaveLength(2)
+        for (const body of captured) {
+            expect(body).toContain('Check the argument.')
+            expect(body).toContain('user-instruction')
+            expect(body).not.toContain('Persona three.')
+        }
+    })
+
     it('returns no-editors when the instruction names an unknown or disabled editor', async () => {
         const settings = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Off', enabled: false })]
@@ -585,7 +633,7 @@ describe('startReview', () => {
                 vault: new FakeVault(),
                 runController: new RunController(),
                 fetchImpl: fetchReturning(anthropicReviewBody()),
-                instruction: { editorId, text: 'focus' }
+                instruction: { editorIds: [editorId], text: 'focus' }
             })
             expect(result.status).toBe('no-editors')
         }
