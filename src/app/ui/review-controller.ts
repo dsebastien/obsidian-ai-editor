@@ -124,6 +124,28 @@ interface ViewGlue {
 
 const REVEAL_SELECTION_MS = 1_500
 
+/**
+ * How `snapshotView` treats a live selection: `auto` embeds it when non-empty
+ * (the legacy behavior of the Review command and the rail button — a selected
+ * range scopes the review), `whole-note` ignores it (explicit whole-note
+ * surfaces: the file context menu's "Review note" and the CLI, where a
+ * selection the user happens to have open must not silently narrow the run).
+ */
+type SnapshotScope = 'auto' | 'whole-note'
+
+/**
+ * Caller-captured selection riding into the review pipeline. `capturedHash`
+ * is filled by `startReview` from the first snapshot (capture and snapshot
+ * happen in the same synchronous block) and carried unchanged through the
+ * size-confirmation round trip so the service validates against the text the
+ * offsets were actually captured on.
+ */
+interface RequestedSelection {
+    readonly from: number
+    readonly to: number
+    readonly capturedHash?: string
+}
+
 export class ReviewController {
     private readonly deps: ReviewControllerDeps
     private readonly vaultReader: ObsidianVaultReader
@@ -263,13 +285,26 @@ export class ReviewController {
     async startReview(
         view: MarkdownView,
         confirmedLargeNote = false,
-        requestedSelection?: { from: number; to: number }
+        requestedSelection?: RequestedSelection,
+        scope: SnapshotScope = 'auto'
     ): Promise<void> {
         const file = view.file
         if (!file || this.disposed) {
             return
         }
-        const snapshot = this.snapshotView(view, file.path)
+        const snapshot = this.snapshotView(view, file.path, scope)
+        // Capture-time baseline for the selection re-validation: on the FIRST
+        // invocation this snapshot is taken in the same synchronous block as
+        // the selection capture, so its hash IS the capture-time hash. The
+        // size-confirmation retry passes the filled object back in, so the
+        // ORIGINAL hash survives the round trip — re-deriving it from the
+        // post-modal snapshot would validate stale offsets against themselves.
+        const requested = requestedSelection
+            ? {
+                  ...requestedSelection,
+                  capturedHash: requestedSelection.capturedHash ?? snapshot.hash
+              }
+            : undefined
 
         const result = await startReview({
             settings: this.deps.getSettings(),
@@ -286,8 +321,8 @@ export class ReviewController {
             // another note mid-await — the service then falls back to the
             // command-time snapshot.
             refreshSnapshot: (): DocumentSnapshot | null =>
-                view.file?.path === file.path ? this.snapshotView(view, file.path) : null,
-            ...(requestedSelection ? { requestedSelection } : {})
+                view.file?.path === file.path ? this.snapshotView(view, file.path, scope) : null,
+            ...(requested ? { requestedSelection: requested } : {})
         })
 
         switch (result.status) {
@@ -296,9 +331,11 @@ export class ReviewController {
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
-                    // The originally captured selection rides along; the
-                    // service re-validates it after the confirmation delay.
-                    void this.startReview(view, true, requestedSelection)
+                    // The originally captured selection rides along WITH its
+                    // capture-time hash; the service re-validates it after
+                    // the confirmation delay and falls back to whole-note
+                    // scope when the note was edited meanwhile.
+                    void this.startReview(view, true, requested, scope)
                 }).open()
                 return
             case 'no-editors': {
@@ -339,25 +376,35 @@ export class ReviewController {
      * Whole-note review entry for surfaces not bound to an open view (file
      * context menu "Review note"): opens the file in a markdown view when it
      * is not already open, then dispatches through the exact same
-     * `startReview` path as the "Review current note" command.
+     * `startReview` path as the "Review current note" command — explicitly
+     * whole-note: a live selection in the opened view must not silently
+     * narrow the review the user asked for from the file menu (design §2).
      */
     async reviewFile(filePath: string): Promise<void> {
         const view = await this.openMarkdownView(filePath)
         if (!view) {
             return
         }
-        await this.startReview(view)
+        await this.startReview(view, false, undefined, 'whole-note')
     }
 
-    /** Snapshot of the view's current text (selection-scoped when present). */
-    private snapshotView(view: MarkdownView, filePath: string): DocumentSnapshot {
+    /**
+     * Snapshot of the view's current text; `auto` scope embeds a non-empty
+     * live selection, `whole-note` ignores it (see `SnapshotScope`).
+     */
+    private snapshotView(
+        view: MarkdownView,
+        filePath: string,
+        scope: SnapshotScope = 'auto'
+    ): DocumentSnapshot {
         const editor = view.editor
         const from = editor.posToOffset(editor.getCursor('from'))
         const to = editor.posToOffset(editor.getCursor('to'))
+        const selectionScoped = scope === 'auto' && from !== to
         return createSnapshot({
             filePath,
             text: editor.getValue(),
-            ...(from !== to ? { selection: { from, to } } : {})
+            ...(selectionScoped ? { selection: { from, to } } : {})
         })
     }
 
@@ -379,6 +426,59 @@ export class ReviewController {
             return
         }
         void this.startReview(view, false, { from, to })
+    }
+
+    // -- CLI dispatch seam ----------------------------------------------------
+
+    /**
+     * Live-buffer snapshot machinery for a CLI-dispatched run
+     * (`cli/register-review-cli.ts`): when the note is open in a markdown
+     * view, the CLI must review the editor buffer, not the saved vault state
+     * — the buffer may hold unsaved edits, and a run opened on vault text
+     * would compute anchors/decorations against different offsets than the
+     * document the view displays. Whole-note on purpose: CLI v1 has no
+     * selection scope, so a live selection must not silently narrow the run.
+     * `null` when the note is not open in any view (the CLI then reviews the
+     * vault state and discards the run after reporting).
+     */
+    cliRunBinding(filePath: string): {
+        snapshot: DocumentSnapshot
+        refreshSnapshot: () => DocumentSnapshot | null
+    } | null {
+        const view = this.findMarkdownView(filePath)
+        if (!view || view.file?.path !== filePath) {
+            return null
+        }
+        return {
+            snapshot: this.snapshotView(view, filePath, 'whole-note'),
+            refreshSnapshot: (): DocumentSnapshot | null =>
+                view.file?.path === filePath
+                    ? this.snapshotView(view, filePath, 'whole-note')
+                    : null
+        }
+    }
+
+    /**
+     * Binds a run started outside the controller (CLI) to the view glue. Must
+     * run synchronously in the same block that started the run — the exact
+     * rationale of the `started` branch in `startReview`: edit forwarding
+     * (`handleEditorUpdate`) only covers edits made after `glue.run` is
+     * bound, and nothing else refreshes until an unrelated workspace event.
+     * Also records the run's skip report so the side panel shows it like any
+     * command-started run. Does NOT force the side panel open — a script
+     * invocation should not rearrange the workspace.
+     */
+    bindCliRun(filePath: string, skips: readonly EditorSkip[]): void {
+        if (this.disposed) {
+            return
+        }
+        this.skipsByFile.set(filePath, skips)
+        this.refreshAll()
+    }
+
+    /** Whether the note is open in some markdown view (CLI run retention). */
+    hasOpenMarkdownView(filePath: string): boolean {
+        return this.findMarkdownView(filePath) !== null
     }
 
     /** Cancels the active run for the view's note (rail Cancel button). */

@@ -249,6 +249,33 @@ describe('selectEditors', () => {
         expect(selection.ok).toBe(false)
         if (!selection.ok) {
             expect(selection.unknown).toEqual(['Nope', 'Also Nope'])
+            expect(selection.disabled).toEqual([])
+        }
+    })
+
+    it('fails the whole selection on an explicitly requested disabled editor', () => {
+        // The pipeline silently drops disabled editors (no skip entry), so an
+        // explicit request for one must be a typed error — otherwise scripts
+        // get a partial review with no trace of the missing editor.
+        const withDisabled = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Sleeper', enabled: false })]
+        })
+        const selection = selectEditors(withDisabled, ['Hater', 'Sleeper'])
+        expect(selection.ok).toBe(false)
+        if (!selection.ok) {
+            expect(selection.unknown).toEqual([])
+            expect(selection.disabled).toEqual(['Sleeper'])
+        }
+    })
+
+    it('still passes disabled editors through when none are explicitly requested', () => {
+        const withDisabled = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Sleeper', enabled: false })]
+        })
+        const selection = selectEditors(withDisabled, null)
+        expect(selection.ok).toBe(true)
+        if (selection.ok) {
+            expect(selection.settings).toBe(withDisabled)
         }
     })
 })
@@ -466,6 +493,21 @@ describe('handleReviewCli', () => {
         expect(deps.runInputs).toHaveLength(0)
     })
 
+    it('returns no-editors for explicitly requested disabled editors without running', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Sleeper', enabled: false })]
+        })
+        const deps = makeDeps({ getSettings: () => settings })
+        const output = parseOutput(
+            await handleReviewCli({ file: 'Notes/Test.md', editors: 'Sleeper,Ghost' }, deps)
+        )
+        expect(output.error?.code).toBe('no-editors')
+        expect(output.error?.message).toBe(
+            'Unknown editors: Ghost; Disabled editors: Sleeper — enable them in the settings'
+        )
+        expect(deps.runInputs).toHaveLength(0)
+    })
+
     it('narrows the settings to the requested editors', async () => {
         const settings = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Concision Editor' })]
@@ -576,6 +618,36 @@ describe('handleReviewCli', () => {
             code: 'backend-error',
             message: 'The review failed unexpectedly'
         })
+    })
+
+    it('releases the settled run after the output document was shaped', async () => {
+        const run = new FakeRunHandle(
+            [makeState()],
+            [{ editorId: 'editor-1', quote: 'Hello', critique: 'Weak opener' }]
+        )
+        const released: { path: string; run: unknown }[] = []
+        const deps = makeDeps({
+            runReview: () => Promise.resolve(startedResult(run)),
+            releaseRun: (path, releasedRun) => {
+                released.push({ path, run: releasedRun })
+            }
+        })
+        const output = parseOutput(await handleReviewCli({ file: 'Notes/Test.md' }, deps))
+        // Shaped BEFORE release: the findings made it into the document.
+        expect(output.findings).toHaveLength(1)
+        expect(released).toEqual([{ path: 'Notes/Test.md', run }])
+    })
+
+    it('does not release anything when the pipeline refused the run', async () => {
+        const released: string[] = []
+        const deps = makeDeps({
+            runReview: () => Promise.resolve({ status: 'excluded', notePath: 'Notes/Test.md' }),
+            releaseRun: (path) => {
+                released.push(path)
+            }
+        })
+        await handleReviewCli({ file: 'Notes/Test.md' }, deps)
+        expect(released).toEqual([])
     })
 
     it('declares the documented flags with file required', () => {

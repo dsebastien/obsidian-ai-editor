@@ -572,7 +572,7 @@ describe('startReview', () => {
             vault: new FakeVault(),
             runController: new RunController(),
             fetchImpl: fetchReturning(anthropicReviewBody()),
-            requestedSelection: { from: 0, to: 11 }
+            requestedSelection: { from: 0, to: 11, capturedHash: hashText(DOC_TEXT) }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -597,7 +597,7 @@ describe('startReview', () => {
                     text: DOC_TEXT,
                     selection: { from: 3, to: 7 }
                 }),
-            requestedSelection: { from: 0, to: 11 }
+            requestedSelection: { from: 0, to: 11, capturedHash: hashText(DOC_TEXT) }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -614,7 +614,11 @@ describe('startReview', () => {
             vault: new FakeVault(),
             runController: new RunController(),
             fetchImpl: fetchReturning(anthropicReviewBody()),
-            requestedSelection: { from: 0, to: DOC_TEXT.length + 50 }
+            requestedSelection: {
+                from: 0,
+                to: DOC_TEXT.length + 50,
+                capturedHash: hashText(DOC_TEXT)
+            }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -631,7 +635,7 @@ describe('startReview', () => {
             vault: new FakeVault(),
             runController: new RunController(),
             fetchImpl: fetchReturning(anthropicReviewBody()),
-            requestedSelection: { from: 5, to: 5 }
+            requestedSelection: { from: 5, to: 5, capturedHash: hashText(DOC_TEXT) }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -658,7 +662,7 @@ describe('startReview', () => {
                     text: editedText,
                     selection: { from: 2, to: 8 }
                 }),
-            requestedSelection: { from: 0, to: 11 }
+            requestedSelection: { from: 0, to: 11, capturedHash: hashText(DOC_TEXT) }
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
@@ -666,6 +670,31 @@ describe('startReview', () => {
         expect(result.selectionFallback).toBe(true)
         expect(result.run.snapshot.selection).toBeUndefined()
         expect(result.run.snapshot.text).toBe(editedText)
+        await result.run.settled
+    })
+
+    it('falls back across a size-confirmation round trip when the note was edited meanwhile', async () => {
+        // Round-trip shape: the selection was captured against the ORIGINAL
+        // text, the size modal delayed the run, the user edited, and the
+        // caller re-snapshots AFTER the modal — so the input snapshot is
+        // already the post-edit text. Validating against `snapshot.hash`
+        // would compare the fresh hash with itself and pass; only the carried
+        // `capturedHash` proves the offsets are stale (bounds still fit).
+        const originalText = `${DOC_TEXT} tail`
+        const postEditSnapshot = createSnapshot({ filePath: 'Notes/Test.md', text: DOC_TEXT })
+        const result = await startReview({
+            settings: makeSettings(),
+            snapshot: postEditSnapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: 11, capturedHash: hashText(originalText) }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.selectionFallback).toBe(true)
+        expect(result.run.snapshot.selection).toBeUndefined()
         await result.run.settled
     })
 

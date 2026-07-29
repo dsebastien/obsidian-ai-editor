@@ -116,17 +116,25 @@ export interface StartReviewInput {
      */
     readonly refreshSnapshot?: () => DocumentSnapshot | null
     /**
-     * Selection range (offsets into `snapshot.text`) the caller captured
-     * synchronously when the review was requested (context-menu item or
-     * command callback — the selection-capture contract of the interaction
-     * surfaces design §1). Re-validated against the fresh snapshot right
-     * before the run starts: the range must be non-empty, ordered, inside the
-     * text, and the text hash must still match the capture-time snapshot.
-     * Valid → the run is selection-scoped on exactly this range (taking
-     * precedence over any selection the snapshots carry themselves); invalid
-     * → whole-note scope with `selectionFallback: true` in the result.
+     * Selection range the caller captured synchronously when the review was
+     * requested (context-menu item or command callback — the selection-capture
+     * contract of the interaction surfaces design §1). `capturedHash` is the
+     * hash of the text the offsets were captured against — NOT necessarily
+     * `snapshot.hash`: on the size-confirmation round trip the caller
+     * re-snapshots after the modal, so validating against the input snapshot
+     * would compare a hash with itself and let stale offsets through.
+     * Re-validated against the fresh snapshot right before the run starts:
+     * the range must be non-empty, ordered, inside the text, and the text
+     * hash must still equal `capturedHash`. Valid → the run is
+     * selection-scoped on exactly this range (taking precedence over any
+     * selection the snapshots carry themselves); invalid → whole-note scope
+     * with `selectionFallback: true` in the result.
      */
-    readonly requestedSelection?: { readonly from: number; readonly to: number }
+    readonly requestedSelection?: {
+        readonly from: number
+        readonly to: number
+        readonly capturedHash: string
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -371,8 +379,9 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         refreshed !== null && refreshed.filePath === snapshot.filePath ? refreshed : snapshot
 
     // -- Apply the requested selection scope ---------------------------------
-    // The caller captured `requestedSelection` synchronously against
-    // `snapshot.text`; the awaits above may have let the document change.
+    // The caller captured `requestedSelection` synchronously against the text
+    // hashed as `capturedHash`; the awaits above (and, on the size-guard
+    // round trip, the confirmation modal) may have let the document change.
     // Re-validate against the snapshot the run will actually open on: still
     // valid → the run is selection-scoped on exactly the captured range
     // (overriding any live selection the refreshed snapshot picked up);
@@ -382,7 +391,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     let selectionFallback = false
     const requested = input.requestedSelection
     if (requested) {
-        if (isRequestedSelectionValid(requested, snapshot.hash, runSnapshot)) {
+        if (isRequestedSelectionValid(requested, requested.capturedHash, runSnapshot)) {
             runSnapshot = {
                 ...runSnapshot,
                 selection: { from: requested.from, to: requested.to }

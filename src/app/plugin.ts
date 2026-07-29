@@ -93,11 +93,24 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // (1.12.2). Runtime-guarded so `minAppVersion` stays untouched —
         // older public releases simply have no CLI surface.
         if (Platform.isDesktop && requireApiVersion('1.12.2')) {
-            registerReviewCli({
-                plugin: this,
-                runController,
-                getSettings: () => this.settings
-            })
+            // `registerCliHandler` throws when the command is still
+            // registered by a dying instance (double-load race — same
+            // failure mode `registerReviewPanelView` heals). There is no
+            // public unregister API, so degrade: skip the CLI surface for
+            // this session instead of failing the whole plugin load.
+            try {
+                registerReviewCli({
+                    plugin: this,
+                    runController,
+                    reviewController,
+                    getSettings: () => this.settings
+                })
+            } catch (error) {
+                log(
+                    `CLI command still registered from a previous load — continuing without the CLI surface (${String(error)})`,
+                    'warn'
+                )
+            }
         }
     }
 

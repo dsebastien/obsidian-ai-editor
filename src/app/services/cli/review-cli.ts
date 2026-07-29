@@ -142,9 +142,26 @@ export interface ReviewCliDeps {
      * Dispatches the review run. Production binds this to the review
      * service's `startReview` (closing over the vault reader, the shared
      * `RunController`, and the network seam) so the CLI shares every refusal
-     * and guarantee with the command surfaces.
+     * and guarantee with the command surfaces. The production glue may
+     * substitute a live editor-buffer snapshot for `input.snapshot` when the
+     * note is open in a view (the buffer, not the saved vault state, is what
+     * decorations must anchor against) and binds the started run to the view
+     * glue synchronously so edits typed during the run keep remapping
+     * anchors.
      */
     readonly runReview: (input: ReviewCliRunInput) => Promise<ReviewStart>
+    /**
+     * Called once per started run, after it settled and the output document
+     * was shaped. Production discards the run from the `RunController` when
+     * the note is not open in any view — a CLI-only run has no UI surface to
+     * live on, and retained runs pin the full snapshot text plus the finding
+     * store for the lifetime of the plugin (batch CLI usage would accumulate
+     * unboundedly). Runs on open notes are kept: they show in the
+     * rail/panel/highlights like any other run. The settled run handle is
+     * passed so the glue can verify it still owns the controller slot — a
+     * newer run started while this one settled must never be discarded.
+     */
+    readonly releaseRun?: (path: string, run: RunHandle) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -197,14 +214,20 @@ export function parseReviewCliArgs(
 
 export type EditorSelection =
     | { readonly ok: true; readonly settings: PluginSettingsV1 }
-    | { readonly ok: false; readonly unknown: readonly string[] }
+    | {
+          readonly ok: false
+          readonly unknown: readonly string[]
+          readonly disabled: readonly string[]
+      }
 
 /**
  * Narrows the settings to the requested editors. Tokens match an editor id
  * exactly or an editor name case-insensitively (first match wins on
- * duplicate names); duplicates collapse. Any unknown token fails the whole
- * selection — a partial review behind a typo would be silent data loss for
- * scripts.
+ * duplicate names); duplicates collapse. Any unknown OR disabled token fails
+ * the whole selection: a partial review behind a typo would be silent data
+ * loss for scripts, and an explicitly requested disabled editor would
+ * otherwise be dropped by the pipeline without even a skip entry (the run
+ * only reports skips for ENABLED editors that cannot participate).
  */
 export function selectEditors(
     settings: PluginSettingsV1,
@@ -215,6 +238,7 @@ export function selectEditors(
     }
     const matched: EditorConfig[] = []
     const unknown: string[] = []
+    const disabled: string[] = []
     for (const token of requested) {
         const editor = settings.editors.find(
             (candidate) =>
@@ -224,12 +248,18 @@ export function selectEditors(
             unknown.push(token)
             continue
         }
+        if (!editor.enabled) {
+            if (!disabled.includes(editor.name)) {
+                disabled.push(editor.name)
+            }
+            continue
+        }
         if (!matched.includes(editor)) {
             matched.push(editor)
         }
     }
-    if (unknown.length > 0) {
-        return { ok: false, unknown }
+    if (unknown.length > 0 || disabled.length > 0) {
+        return { ok: false, unknown, disabled }
     }
     return { ok: true, settings: { ...settings, editors: matched } }
 }
@@ -410,10 +440,16 @@ export async function handleReviewCli(
 
     const selection = selectEditors(deps.getSettings(), args.editors)
     if (!selection.ok) {
-        return render(
-            errorOutput(path, 'no-editors', `Unknown editors: ${selection.unknown.join(', ')}`),
-            args.format
-        )
+        const parts: string[] = []
+        if (selection.unknown.length > 0) {
+            parts.push(`Unknown editors: ${selection.unknown.join(', ')}`)
+        }
+        if (selection.disabled.length > 0) {
+            parts.push(
+                `Disabled editors: ${selection.disabled.join(', ')} — enable them in the settings`
+            )
+        }
+        return render(errorOutput(path, 'no-editors', parts.join('; ')), args.format)
     }
 
     const snapshot = createSnapshot({ filePath: path, text })
@@ -470,7 +506,12 @@ export async function handleReviewCli(
                 args.format
             )
         }
-        case 'started':
-            return render(shapeRunOutput(path, start.run, start.skips), args.format)
+        case 'started': {
+            // Shape BEFORE releasing: the output reads the run's finding
+            // store, which the release may discard.
+            const output = shapeRunOutput(path, start.run, start.skips)
+            deps.releaseRun?.(path, start.run)
+            return render(output, args.format)
+        }
     }
 }
