@@ -348,8 +348,10 @@ interface AnthropicBlock {
  * Anthropic Messages stream: `content_block_start` opens a block per
  * index; `content_block_delta` carries `input_json_delta.partial_json`
  * fragments of the forced tool call (or `text_delta.text` for text
- * blocks); `message_stop` ends the stream. Frames are reassembled into
- * the buffered `{ content: [...] }` envelope.
+ * blocks, or `thinking_delta.thinking` under extended thinking — progress
+ * only, never payload); `message_stop` ends the stream. Frames are
+ * reassembled into the buffered `{ content: [...] }` envelope with
+ * thinking blocks dropped.
  */
 function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator {
     const blocks = new Map<number, AnthropicBlock>()
@@ -400,6 +402,16 @@ function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator
                         block.text += delta['text']
                         return delta['text'].length > 0
                     }
+                    if (
+                        delta['type'] === 'thinking_delta' &&
+                        typeof delta['thinking'] === 'string'
+                    ) {
+                        // Reasoning content is never accumulated into the
+                        // payload (thinking blocks are dropped at finalize),
+                        // but it IS progress: without this, a model thinking
+                        // for minutes looks exactly like a hang.
+                        return delta['thinking'].length > 0
+                    }
                     return false
                 }
                 default:
@@ -411,6 +423,11 @@ function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator
         finalize(): OperationResult {
             const content = [...blocks.entries()]
                 .sort(([a], [b]) => a - b)
+                // Thinking blocks (extended thinking) carry no payload — drop
+                // them so the reassembled envelope holds only result content.
+                .filter(
+                    ([, block]) => block.kind !== 'thinking' && block.kind !== 'redacted_thinking'
+                )
                 .map(([, block]) =>
                     block.kind === 'tool_use'
                         ? { type: 'tool_use', name: block.name, input: parseToolInput(block) }

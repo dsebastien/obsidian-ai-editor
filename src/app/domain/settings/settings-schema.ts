@@ -53,6 +53,32 @@ export const apiBackendSchema = z.object({
     azureDeployment: z.string().max(200).default(''),
     azureApiVersion: z.string().max(50).default(''),
     defaultModel: z.string().max(200).default(''),
+    /**
+     * Ollama + Anthropic: extended thinking / reasoning toggle. Default 'off'
+     * everywhere — deliberate UX choice: a local model silently reasoning for
+     * minutes with zero visible output is indistinguishable from a hang.
+     * Ollama 'off' sends `think: false`, 'on' sends `think: true`; Anthropic
+     * 'on' sends the extended-thinking block with `thinkingBudgetTokens`.
+     */
+    thinking: z.enum(['off', 'on']).default('off'),
+    /**
+     * Anthropic only: thinking token budget, sent only when `thinking` is
+     * 'on'. API minimum is 1024; the adapter adds this on top of the output
+     * budget so `budget_tokens < max_tokens` holds by construction.
+     */
+    thinkingBudgetTokens: z.number().int().min(1_024).max(32_000).default(8_192),
+    /**
+     * OpenAI + Azure OpenAI: `reasoning_effort` passthrough. 'default' sends
+     * nothing (provider default); other values are forwarded verbatim.
+     */
+    reasoningEffort: z.enum(['default', 'minimal', 'low', 'medium', 'high']).default('default'),
+    /**
+     * openai-compatible only (advanced): raw JSON object merged into the
+     * request body — thinking/reasoning flags vary per host (OpenRouter,
+     * Groq, LM Studio…), so an escape hatch beats per-host switches.
+     * Validated as a JSON object at save time; the adapter re-validates.
+     */
+    extraBodyJson: z.string().max(20_000).default(''),
     enabled: z.boolean().default(true)
 })
 export type ApiBackend = z.infer<typeof apiBackendSchema>

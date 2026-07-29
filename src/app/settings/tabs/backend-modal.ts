@@ -15,6 +15,16 @@ const BASE_URL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'ollama': 'http://localhost:11434'
 }
 
+/** True when the string parses as a plain JSON object (not array/scalar). */
+function isJsonObject(value: string): boolean {
+    try {
+        const parsed = JSON.parse(value) as unknown
+        return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+    } catch {
+        return false
+    }
+}
+
 const MODEL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'anthropic': 'e.g. claude-sonnet-4-5',
     'openai': 'e.g. gpt-5.2',
@@ -140,6 +150,8 @@ export class BackendModal extends Modal {
                 })
             })
 
+        this.renderThinkingControls(contentEl)
+
         new Setting(contentEl)
             .addButton((button) => {
                 button.setButtonText('Cancel').onClick(() => this.close())
@@ -150,6 +162,92 @@ export class BackendModal extends Modal {
                     .setCta()
                     .onClick(() => this.save())
             })
+    }
+
+    /**
+     * Per-kind thinking/reasoning controls. Only what applies to the
+     * selected provider kind is shown; defaults are 'off'/'default'
+     * everywhere (a local model silently reasoning for minutes with zero
+     * output reads as a hang).
+     */
+    private renderThinkingControls(contentEl: HTMLElement): void {
+        const kind = this.draft.kind
+        if (kind === 'ollama' || kind === 'anthropic') {
+            new Setting(contentEl)
+                .setName(kind === 'anthropic' ? 'Extended thinking' : 'Thinking')
+                .setDesc(
+                    kind === 'anthropic'
+                        ? 'Let the model reason before answering. Uses the thinking budget below.'
+                        : 'Let thinking-family models (qwen3, deepseek-r1) reason before answering. Off avoids minutes of silent reasoning.'
+                )
+                .addDropdown((dropdown) => {
+                    dropdown.addOption('off', 'Off')
+                    dropdown.addOption('on', 'On')
+                    dropdown.setValue(this.draft.thinking)
+                    dropdown.onChange((value) => {
+                        this.draft.thinking = value === 'on' ? 'on' : 'off'
+                        // Anthropic shows/hides the budget field with the toggle.
+                        if (kind === 'anthropic') {
+                            this.renderContent()
+                        }
+                    })
+                })
+        }
+        if (kind === 'anthropic' && this.draft.thinking === 'on') {
+            new Setting(contentEl)
+                .setName('Thinking budget (tokens)')
+                .setDesc('Tokens the model may spend reasoning per request (1024-32000).')
+                .addText((text) => {
+                    text.inputEl.type = 'number'
+                    text.inputEl.min = '1024'
+                    text.inputEl.max = '32000'
+                    text.setValue(String(this.draft.thinkingBudgetTokens))
+                    text.inputEl.addEventListener('change', () => {
+                        const parsed = Number.parseInt(text.inputEl.value, 10)
+                        const next = Number.isFinite(parsed)
+                            ? Math.min(32_000, Math.max(1_024, parsed))
+                            : this.draft.thinkingBudgetTokens
+                        this.draft.thinkingBudgetTokens = next
+                        text.setValue(String(next))
+                    })
+                })
+        }
+        if (kind === 'openai' || kind === 'azure-openai') {
+            new Setting(contentEl)
+                .setName('Reasoning effort')
+                .setDesc("How hard reasoning models think. 'Default' sends nothing.")
+                .addDropdown((dropdown) => {
+                    dropdown.addOption('default', 'Default')
+                    dropdown.addOption('minimal', 'Minimal')
+                    dropdown.addOption('low', 'Low')
+                    dropdown.addOption('medium', 'Medium')
+                    dropdown.addOption('high', 'High')
+                    dropdown.setValue(this.draft.reasoningEffort)
+                    dropdown.onChange((value) => {
+                        this.draft.reasoningEffort =
+                            value === 'minimal' ||
+                            value === 'low' ||
+                            value === 'medium' ||
+                            value === 'high'
+                                ? value
+                                : 'default'
+                    })
+                })
+        }
+        if (kind === 'openai-compatible') {
+            new Setting(contentEl)
+                .setName('Extra request body (advanced)')
+                .setDesc(
+                    'Raw JSON object merged into every request body — for host-specific thinking/reasoning flags. Leave empty unless your endpoint needs it.'
+                )
+                .addTextArea((text) => {
+                    text.setPlaceholder('{"reasoning": {"effort": "high"}}')
+                    text.setValue(this.draft.extraBodyJson)
+                    text.onChange((value) => {
+                        this.draft.extraBodyJson = value
+                    })
+                })
+        }
     }
 
     private save(): void {
@@ -165,6 +263,11 @@ export class BackendModal extends Modal {
         }
         if (this.draft.kind === 'azure-openai' && this.draft.azureDeployment.trim().length === 0) {
             new Notice('Azure OpenAI backends need a deployment name.')
+            return
+        }
+        this.draft.extraBodyJson = this.draft.extraBodyJson.trim()
+        if (this.draft.extraBodyJson.length > 0 && !isJsonObject(this.draft.extraBodyJson)) {
+            new Notice('Extra request body must be a JSON object, e.g. {"think": true}.')
             return
         }
         const parsed = apiBackendSchema.safeParse(this.draft)

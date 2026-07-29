@@ -286,6 +286,79 @@ describe('createApiEditorExecutor — streaming', () => {
         expect(calls[0]?.url).toBe('https://api.openai.com/v1/chat/completions')
     })
 
+    it('treats Anthropic thinking deltas as progress and drops thinking blocks from the result', async () => {
+        const resultJson = JSON.stringify(validReviewResult())
+        const lines = [
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_1"}}',
+            '',
+            // Thinking block first — extended thinking streams reasoning
+            // before the tool call.
+            'event: content_block_start',
+            `data: ${JSON.stringify({
+                type: 'content_block_start',
+                index: 0,
+                content_block: { type: 'thinking', thinking: '' }
+            })}`,
+            '',
+            'event: content_block_delta',
+            `data: ${JSON.stringify({
+                type: 'content_block_delta',
+                index: 0,
+                delta: { type: 'thinking_delta', thinking: 'Let me reason about this…' }
+            })}`,
+            '',
+            'event: content_block_delta',
+            `data: ${JSON.stringify({
+                type: 'content_block_delta',
+                index: 0,
+                delta: { type: 'signature_delta', signature: 'sig_abc' }
+            })}`,
+            '',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            '',
+            'event: content_block_start',
+            `data: ${JSON.stringify({
+                type: 'content_block_start',
+                index: 1,
+                content_block: { type: 'tool_use', id: 'tu_1', name: 'emit_result', input: {} }
+            })}`,
+            '',
+            'event: content_block_delta',
+            `data: ${JSON.stringify({
+                type: 'content_block_delta',
+                index: 1,
+                delta: { type: 'input_json_delta', partial_json: resultJson }
+            })}`,
+            '',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            ''
+        ].join('\n')
+        const { calls, fetchImpl } = makeStreamingFetch(lines, 9)
+        const executor = makeExecutor(fetchImpl, {
+            kind: 'anthropic',
+            thinking: 'on',
+            thinkingBudgetTokens: 2_048
+        })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        const terminal = expectProtocol(events)
+        // Thinking deltas alone must already surface progress — a model
+        // reasoning for minutes must not look like a hang.
+        expect(events.filter((event) => event.type === 'progress').length).toBeGreaterThan(1)
+        if (terminal.type !== 'result' || terminal.result.kind !== 'review') {
+            throw new Error('expected review result')
+        }
+        expect(terminal.result.findings[0]?.quote).toBe('Hello world')
+
+        const sentBody = sentJsonBody(calls[0])
+        expect(sentBody['thinking']).toEqual({ type: 'enabled', budget_tokens: 2_048 })
+        expect(sentBody['tool_choice']).toEqual({ type: 'auto' })
+    })
+
     it('maps a truncated stream whose payload fails validation to invalid-output', async () => {
         // Stream ends after half of the JSON — no more frames, no [DONE].
         const half = JSON.stringify(validReviewResult()).slice(0, 20)

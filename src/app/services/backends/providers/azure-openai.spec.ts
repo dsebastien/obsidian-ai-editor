@@ -75,6 +75,21 @@ describe('azureOpenAiAdapter.buildRequest', () => {
         expect(body.response_format.type).toBe('json_schema')
     })
 
+    it('omits reasoning_effort by default (provider default)', () => {
+        const body = JSON.parse(build().body) as Record<string, unknown>
+        expect(body['reasoning_effort']).toBeUndefined()
+    })
+
+    it('passes reasoning_effort through for every non-default level', () => {
+        for (const effort of ['minimal', 'low', 'medium', 'high'] as const) {
+            const body = JSON.parse(build({ reasoningEffort: effort }).body) as Record<
+                string,
+                unknown
+            >
+            expect(body['reasoning_effort']).toBe(effort)
+        }
+    })
+
     it('never leaks the API key into the body or URL', () => {
         const request = build()
         expect(request.body).not.toContain(TEST_API_KEY)

@@ -58,6 +58,16 @@ describe('ollamaAdapter.buildRequest', () => {
         expect(body.messages[1]?.content).toContain('"kind" set to "review"')
     })
 
+    it('sends think: false by default (thinking off)', () => {
+        const body = JSON.parse(build().body) as { think: boolean }
+        expect(body.think).toBe(false)
+    })
+
+    it('sends think: true when thinking is on', () => {
+        const body = JSON.parse(build({ thinking: 'on' }).body) as { think: boolean }
+        expect(body.think).toBe(true)
+    })
+
     it('sends no auth header and never embeds a configured key', () => {
         const request = build({ apiKey: TEST_API_KEY })
         expect(request.headers['authorization']).toBeUndefined()
@@ -93,6 +103,30 @@ describe('ollamaAdapter.parseBufferedResponse', () => {
     it('parses a valid aggregate-panel result', () => {
         const result = ollamaAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
         expect(result.kind).toBe('aggregate-panel')
+    })
+
+    it('ignores message.thinking — only content is parsed', () => {
+        const raw = {
+            model: 'qwen3',
+            message: {
+                role: 'assistant',
+                thinking: 'Let me reason about this document at length…',
+                content: JSON.stringify(validReviewResult())
+            },
+            done: true
+        }
+        const result = ollamaAdapter.parseBufferedResponse(raw)
+        expect(result.kind).toBe('review')
+        if (result.kind === 'review') {
+            expect(result.summary).toBe('Solid draft overall')
+        }
+    })
+
+    it('throws invalid-output when only thinking arrived (no content)', () => {
+        const raw = {
+            message: { role: 'assistant', thinking: 'reasoning only', content: '' }
+        }
+        expect(() => ollamaAdapter.parseBufferedResponse(raw)).toThrow(ProviderError)
     })
 
     it('throws invalid-output on schema-violating content', () => {

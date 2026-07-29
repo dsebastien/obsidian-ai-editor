@@ -58,6 +58,33 @@ describe('anthropicAdapter.buildRequest', () => {
         expect(body.messages[0]?.content).toContain('"kind" set to "review"')
     })
 
+    it('sends no thinking block by default (thinking off)', () => {
+        const body = JSON.parse(build().body) as Record<string, unknown>
+        expect(body['thinking']).toBeUndefined()
+        expect(body['max_tokens']).toBe(8_192)
+        expect(body['tool_choice']).toEqual({ type: 'tool', name: 'emit_result' })
+    })
+
+    it('sends the extended-thinking block with the configured budget when on', () => {
+        const body = JSON.parse(
+            build({ thinking: 'on', thinkingBudgetTokens: 4_096 }).body
+        ) as Record<string, unknown>
+        expect(body['thinking']).toEqual({ type: 'enabled', budget_tokens: 4_096 })
+        // Budget rides on top of the output budget: budget_tokens < max_tokens
+        // holds by construction.
+        expect(body['max_tokens']).toBe(8_192 + 4_096)
+        // Forced tool use is incompatible with extended thinking — relaxes to auto.
+        expect(body['tool_choice']).toEqual({ type: 'auto' })
+    })
+
+    it('keeps the result tool available when thinking is on', () => {
+        const body = JSON.parse(build({ thinking: 'on' }).body) as {
+            tools: { name: string }[]
+        }
+        expect(body.tools).toHaveLength(1)
+        expect(body.tools[0]?.name).toBe('emit_result')
+    })
+
     it('never leaks the API key into the body', () => {
         expect(build().body).not.toContain(TEST_API_KEY)
     })
@@ -126,6 +153,41 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
             expect(result.recommendation).toBe('needs-work')
             expect(result.missingMembers).toEqual(['Beginner'])
         }
+    })
+
+    it('skips thinking blocks interleaved with the tool call', () => {
+        const raw = {
+            id: 'msg_2',
+            content: [
+                { type: 'thinking', thinking: 'Long reasoning…', signature: 'sig_abc' },
+                { type: 'redacted_thinking', data: 'opaque-blob' },
+                { type: 'text', text: 'Reporting now.' },
+                { type: 'tool_use', id: 'toolu_2', name: 'emit_result', input: validReviewResult() }
+            ],
+            stop_reason: 'tool_use'
+        }
+        const result = anthropicAdapter.parseBufferedResponse(raw)
+        expect(result.kind).toBe('review')
+        if (result.kind === 'review') {
+            expect(result.findings[0]?.quote).toBe('Hello world')
+        }
+    })
+
+    it('skips thinking blocks ahead of the text-JSON fallback', () => {
+        const raw = {
+            content: [
+                { type: 'thinking', thinking: 'Reasoning…', signature: 'sig' },
+                { type: 'text', text: JSON.stringify(validReviewResult()) }
+            ]
+        }
+        expect(anthropicAdapter.parseBufferedResponse(raw).kind).toBe('review')
+    })
+
+    it('throws invalid-output when only thinking blocks arrived', () => {
+        const raw = {
+            content: [{ type: 'thinking', thinking: 'All budget spent reasoning', signature: 's' }]
+        }
+        expect(() => anthropicAdapter.parseBufferedResponse(raw)).toThrow(ProviderError)
     })
 
     it('accepts a text-block JSON fallback when no tool call is present', () => {

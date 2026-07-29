@@ -50,9 +50,13 @@ export const ollamaAdapter: ProviderAdapter = {
                 ],
                 format: 'json',
                 stream: false,
-                // Thinking-family models (qwen3, deepseek-r1) otherwise burn the
-                // whole budget on reasoning before emitting the JSON payload.
-                think: false
+                // Off by default: thinking-family models (qwen3, deepseek-r1)
+                // otherwise burn the whole budget on reasoning before emitting
+                // the JSON payload. When on, the answer arrives in
+                // `message.content` and the reasoning in `message.thinking` —
+                // the parser reads only `content`, so thinking never leaks
+                // into the operation result.
+                think: config.thinking === 'on'
             })
         }
     },

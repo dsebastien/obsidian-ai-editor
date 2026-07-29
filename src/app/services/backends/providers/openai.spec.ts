@@ -104,6 +104,74 @@ describe('openAiAdapter.buildRequest', () => {
         expect(request.headers['authorization']).toBeUndefined()
     })
 
+    it('omits reasoning_effort by default (provider default)', () => {
+        const body = JSON.parse(build().body) as Record<string, unknown>
+        expect(body['reasoning_effort']).toBeUndefined()
+    })
+
+    it('passes reasoning_effort through for every non-default level', () => {
+        for (const effort of ['minimal', 'low', 'medium', 'high'] as const) {
+            const body = JSON.parse(build({ reasoningEffort: effort }).body) as Record<
+                string,
+                unknown
+            >
+            expect(body['reasoning_effort']).toBe(effort)
+        }
+    })
+
+    it('never sends reasoning_effort for openai-compatible backends', () => {
+        const body = JSON.parse(
+            build({
+                kind: 'openai-compatible',
+                baseUrl: 'https://openrouter.example/api/v1',
+                reasoningEffort: 'high'
+            }).body
+        ) as Record<string, unknown>
+        expect(body['reasoning_effort']).toBeUndefined()
+    })
+
+    it('merges the extra request body into openai-compatible requests, extras winning', () => {
+        const body = JSON.parse(
+            build({
+                kind: 'openai-compatible',
+                baseUrl: 'https://openrouter.example/api/v1',
+                extraBodyJson:
+                    '{"reasoning": {"effort": "high"}, "response_format": {"type": "text"}}'
+            }).body
+        ) as Record<string, unknown>
+        expect(body['reasoning']).toEqual({ effort: 'high' })
+        // Extras override colliding keys — that is the point of the escape hatch.
+        expect(body['response_format']).toEqual({ type: 'text' })
+        // Untouched core fields survive the merge.
+        expect(body['model']).toBe('gpt-4.1')
+        expect(Array.isArray(body['messages'])).toBe(true)
+    })
+
+    it('ignores the extra request body for native OpenAI', () => {
+        const body = JSON.parse(build({ extraBodyJson: '{"think": true}' }).body) as Record<
+            string,
+            unknown
+        >
+        expect(body['think']).toBeUndefined()
+    })
+
+    it('rejects invalid extra request body JSON with invalid-config, key redacted', () => {
+        for (const extraBodyJson of ['{not json', '[1,2]', '"scalar"']) {
+            try {
+                build({
+                    kind: 'openai-compatible',
+                    baseUrl: 'https://openrouter.example/api/v1',
+                    extraBodyJson
+                })
+                expect.unreachable()
+            } catch (error) {
+                expect(error).toBeInstanceOf(ProviderError)
+                expect((error as ProviderError).code).toBe('invalid-config')
+                expect((error as Error).message).not.toContain(TEST_API_KEY)
+            }
+        }
+    })
+
     it('never leaks the API key into the body', () => {
         expect(build().body).not.toContain(TEST_API_KEY)
     })

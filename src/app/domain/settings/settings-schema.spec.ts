@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
     DEFAULT_PLUGIN_SETTINGS,
     SETTINGS_SCHEMA_VERSION,
+    apiBackendSchema,
     behaviorSettingsSchema,
     checkReferentialIntegrity,
     loadSettings,
@@ -63,6 +64,38 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
 
     it('is itself schema-valid', () => {
         expect(pluginSettingsSchema.safeParse(DEFAULT_PLUGIN_SETTINGS).success).toEqual(true)
+    })
+
+    it('defaults API backend thinking settings to off/provider-default', () => {
+        const backend = apiBackendSchema.parse(validApiBackend('b1'))
+        expect(backend.thinking).toEqual('off')
+        expect(backend.thinkingBudgetTokens).toEqual(8_192)
+        expect(backend.reasoningEffort).toEqual('default')
+        expect(backend.extraBodyJson).toEqual('')
+    })
+
+    it('bounds the thinking budget to 1024-32000 tokens, integers only', () => {
+        const parse = (thinkingBudgetTokens: unknown) =>
+            apiBackendSchema.safeParse({ ...validApiBackend('b1'), thinkingBudgetTokens }).success
+        expect(parse(1_024)).toEqual(true)
+        expect(parse(32_000)).toEqual(true)
+        expect(parse(1_023)).toEqual(false)
+        expect(parse(32_001)).toEqual(false)
+        expect(parse(2_048.5)).toEqual(false)
+    })
+
+    it('restricts thinking and reasoning effort to their enums', () => {
+        const base = validApiBackend('b1')
+        expect(apiBackendSchema.safeParse({ ...base, thinking: 'on' }).success).toEqual(true)
+        expect(apiBackendSchema.safeParse({ ...base, thinking: 'auto' }).success).toEqual(false)
+        for (const effort of ['default', 'minimal', 'low', 'medium', 'high']) {
+            expect(
+                apiBackendSchema.safeParse({ ...base, reasoningEffort: effort }).success
+            ).toEqual(true)
+        }
+        expect(apiBackendSchema.safeParse({ ...base, reasoningEffort: 'xhigh' }).success).toEqual(
+            false
+        )
     })
 })
 

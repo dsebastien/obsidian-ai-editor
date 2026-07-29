@@ -45,6 +45,25 @@ export const azureOpenAiAdapter: ProviderAdapter = {
         const baseUrl = trimTrailingSlash(config.baseUrl)
         const deployment = encodeURIComponent(config.azureDeployment)
         const apiVersion = encodeURIComponent(config.azureApiVersion)
+        const body: Record<string, unknown> = {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: buildUserMessage(operation, 'json-object') }
+            ],
+            response_format: {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'operation_result',
+                    schema: resultJsonSchema(operation.kind)
+                }
+            },
+            stream: false
+        }
+        // reasoning_effort passthrough; 'default' sends nothing so deployments
+        // of non-reasoning models never see an unknown parameter.
+        if (config.reasoningEffort !== 'default') {
+            body['reasoning_effort'] = config.reasoningEffort
+        }
         return {
             url: `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`,
             method: 'POST',
@@ -52,20 +71,7 @@ export const azureOpenAiAdapter: ProviderAdapter = {
                 'content-type': 'application/json',
                 'api-key': config.apiKey
             },
-            body: JSON.stringify({
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: buildUserMessage(operation, 'json-object') }
-                ],
-                response_format: {
-                    type: 'json_schema',
-                    json_schema: {
-                        name: 'operation_result',
-                        schema: resultJsonSchema(operation.kind)
-                    }
-                },
-                stream: false
-            })
+            body: JSON.stringify(body)
         }
     },
 

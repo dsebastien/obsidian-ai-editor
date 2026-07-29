@@ -18,6 +18,15 @@ import {
  * `tool_choice` — the model cannot answer except by producing a
  * schema-conforming tool input. The CORS opt-in header enables direct
  * renderer `fetch` from Obsidian (no backend proxy).
+ *
+ * Extended thinking (config.thinking === 'on'): the request carries
+ * `thinking: { type: 'enabled', budget_tokens }` and, because the API
+ * rejects forced tool use while thinking is enabled, `tool_choice` relaxes
+ * to `auto` — the prompt still demands the tool call, and the parser's
+ * text-block JSON fallback covers a model that answers in prose. The
+ * thinking budget is added ON TOP of the output budget so the API
+ * constraint `budget_tokens < max_tokens` holds by construction. Response
+ * `thinking`/`redacted_thinking` blocks are skipped by the parser.
  */
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com'
@@ -50,6 +59,31 @@ export const anthropicAdapter: ProviderAdapter = {
         const baseUrl = trimTrailingSlash(
             config.baseUrl.length > 0 ? config.baseUrl : DEFAULT_BASE_URL
         )
+        const thinkingOn = config.thinking === 'on'
+        const body: Record<string, unknown> = {
+            model,
+            // With thinking on, the budget counts against max_tokens — adding
+            // it on top keeps the full output budget for the actual result.
+            max_tokens: thinkingOn
+                ? MAX_OUTPUT_TOKENS + config.thinkingBudgetTokens
+                : MAX_OUTPUT_TOKENS,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: buildUserMessage(operation, 'tool-input') }],
+            tools: [
+                {
+                    name: RESULT_TOOL_NAME,
+                    description: 'Report the structured result of the requested operation.',
+                    input_schema: resultJsonSchema(operation.kind)
+                }
+            ],
+            // Forced tool use is rejected while extended thinking is enabled
+            // (only 'auto'/'none' are allowed) — relax to auto and rely on
+            // the prompt + the parser's text fallback.
+            tool_choice: thinkingOn ? { type: 'auto' } : { type: 'tool', name: RESULT_TOOL_NAME }
+        }
+        if (thinkingOn) {
+            body['thinking'] = { type: 'enabled', budget_tokens: config.thinkingBudgetTokens }
+        }
         return {
             url: `${baseUrl}/v1/messages`,
             method: 'POST',
@@ -60,20 +94,7 @@ export const anthropicAdapter: ProviderAdapter = {
                 // Anthropic requires this opt-in for browser-origin requests.
                 'anthropic-dangerous-direct-browser-access': 'true'
             },
-            body: JSON.stringify({
-                model,
-                max_tokens: MAX_OUTPUT_TOKENS,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: buildUserMessage(operation, 'tool-input') }],
-                tools: [
-                    {
-                        name: RESULT_TOOL_NAME,
-                        description: 'Report the structured result of the requested operation.',
-                        input_schema: resultJsonSchema(operation.kind)
-                    }
-                ],
-                tool_choice: { type: 'tool', name: RESULT_TOOL_NAME }
-            })
+            body: JSON.stringify(body)
         }
     },
 
@@ -90,6 +111,9 @@ export const anthropicAdapter: ProviderAdapter = {
                 continue
             }
             const candidate = block as Record<string, unknown>
+            // Non-matching block types — including `thinking` and
+            // `redacted_thinking` emitted under extended thinking — are
+            // skipped: reasoning is never part of the operation result.
             if (candidate['type'] === 'tool_use' && candidate['name'] === RESULT_TOOL_NAME) {
                 return validateOperationResult(candidate['input'])
             }
