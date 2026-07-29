@@ -311,6 +311,7 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
         target,
         editorId: editor.id,
         editorName: editor.name,
+        actionLabel: verb.label,
         redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
         execute: createApiEditorExecutor({
             backendConfig: resolution.backend,

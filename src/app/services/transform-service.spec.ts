@@ -338,6 +338,8 @@ describe('startAction transform verbs', () => {
             to: SELECTION.to,
             spanText: 'The selected middle part.'
         })
+        // The verb's UI label rides on the handle for the preview widget.
+        expect(result.run.actionLabel).toBe('Rephrase')
         await result.run.settled
         const precondition = result.run.checkPrecondition(DOC_TEXT)
         expect(precondition.ok).toBe(true)

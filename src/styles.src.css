@@ -528,6 +528,12 @@
     animation: ai-editor-pulse 1.2s ease-in-out infinite;
 }
 
+/* A transform/generate action in flight on this editor: same liveliness as
+   an active review (the chip tooltip says "transforming"). */
+.ai-editor-rail-dot-transforming {
+    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+}
+
 .ai-editor-rail-dot-error {
     border-color: var(--text-error);
     opacity: 0.7;
@@ -565,6 +571,7 @@
 @media (prefers-reduced-motion: reduce) {
     .ai-editor-rail-dot-pending,
     .ai-editor-rail-dot-running,
+    .ai-editor-rail-dot-transforming,
     .ai-editor-rail-daemon {
         animation: none;
     }
@@ -613,6 +620,84 @@
     text-decoration: underline dashed
         color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
     text-underline-offset: 3px;
+}
+
+/* ========================================
+   TRANSFORM PREVIEW (CM6 block widget,
+   src/app/ui/editor/transform-preview.ts)
+   Non-destructive inline diff below the
+   transformed span: word-level del (red,
+   struck) / ins (green) segments, rationale,
+   Accept / Reject. The persona color arrives
+   via --ai-editor-editor-color.
+   ======================================== */
+
+.ai-editor-transform-preview {
+    @apply my-1 flex flex-col gap-2 rounded p-3 text-sm;
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-transform-preview:focus {
+    outline: none;
+    border-color: var(--background-modifier-border-focus, var(--interactive-accent));
+    border-left-color: var(--ai-editor-editor-color, var(--text-accent));
+}
+
+.ai-editor-transform-preview-header {
+    @apply flex items-center gap-2;
+}
+
+.ai-editor-transform-preview-dot {
+    @apply inline-block shrink-0 rounded-full;
+    width: 10px;
+    height: 10px;
+    background-color: var(--ai-editor-editor-color, var(--text-accent));
+}
+
+.ai-editor-transform-preview-title {
+    @apply text-sm font-medium;
+    color: var(--text-normal);
+}
+
+/* Word-level diff body: segments flow as inline text; whitespace (incl.
+   newlines inside segments) must render verbatim. */
+.ai-editor-transform-preview-diff {
+    @apply rounded p-2 text-sm;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-transform-preview-del {
+    border-radius: 2px;
+    color: var(--color-red, var(--text-error));
+    background-color: color-mix(in srgb, var(--color-red, #e93147) 12%, transparent);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--color-red, #e93147) 70%, transparent);
+}
+
+.ai-editor-transform-preview-ins {
+    border-radius: 2px;
+    color: var(--color-green, var(--text-success));
+    background-color: color-mix(in srgb, var(--color-green, #08b94e) 12%, transparent);
+    text-decoration: none;
+}
+
+.ai-editor-transform-preview-rationale {
+    @apply m-0 text-xs italic;
+    color: var(--text-muted);
+}
+
+.ai-editor-transform-preview-actions {
+    @apply flex items-center gap-2;
+}
+
+.ai-editor-transform-preview-hint {
+    @apply ml-auto text-xs;
+    color: var(--text-faint);
 }
 
 /* ========================================

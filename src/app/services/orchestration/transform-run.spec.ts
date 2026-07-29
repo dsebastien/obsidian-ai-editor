@@ -145,6 +145,15 @@ describe('TransformRunHandle results', () => {
         expect(state.error).toBeNull()
         expect(run.isSettled()).toBe(true)
         expect(notifications).toContain('done')
+        // No label provided → null; the UI falls back to a kind-based title.
+        expect(run.actionLabel).toBeNull()
+    })
+
+    it('exposes the caller-provided action label on the handle', () => {
+        const controller = new TransformController()
+        const run = controller.startTransform(makeInput({ actionLabel: 'Rephrase' }))
+        expect(run.actionLabel).toBe('Rephrase')
+        run.cancel()
     })
 
     it('runs an insert-at operation and surfaces the insertion as the outcome', async () => {

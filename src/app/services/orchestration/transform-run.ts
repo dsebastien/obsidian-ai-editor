@@ -101,6 +101,8 @@ export interface StartTransformInput {
     readonly target: TransformTarget
     readonly editorId: string
     readonly editorName: string
+    /** Sentence-case verb label ("Rephrase") shown by the preview UI. */
+    readonly actionLabel?: string
     /** Secret redaction for error messages (Business Rules #12). */
     readonly redactError?: (message: string) => string
     readonly execute: TransformExecutor
@@ -114,6 +116,8 @@ export interface TransformRunHandle {
     readonly target: TransformTarget
     readonly editorId: string
     readonly editorName: string
+    /** Verb label for UI surfaces; null when the caller provided none. */
+    readonly actionLabel: string | null
     /** Resolves once the run reaches a terminal state. */
     readonly settled: Promise<void>
     getState(): TransformRunState
@@ -140,6 +144,7 @@ class TransformRunHandleImpl implements TransformRunHandle {
     readonly target: TransformTarget
     readonly editorId: string
     readonly editorName: string
+    readonly actionLabel: string | null
     readonly settled: Promise<void>
 
     private readonly abort = new AbortController()
@@ -162,6 +167,7 @@ class TransformRunHandleImpl implements TransformRunHandle {
         this.target = input.target
         this.editorId = input.editorId
         this.editorName = input.editorName
+        this.actionLabel = input.actionLabel ?? null
         this.settled = this.consume(requestGate).then(
             () => undefined,
             () => undefined
