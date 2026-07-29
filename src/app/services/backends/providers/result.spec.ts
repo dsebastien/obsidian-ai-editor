@@ -66,3 +66,33 @@ describe('validateOperationResult', () => {
         expect(() => validateOperationResult(crossKind)).toThrow(ProviderError)
     })
 })
+
+describe('validateOperationResult — advisory field clamping', () => {
+    it('clamps an over-long prefix to its tail and suffix to its head', () => {
+        const longPrefix = 'x'.repeat(300) + 'near the quote'
+        const longSuffix = 'right after' + 'y'.repeat(250)
+        const result = validateOperationResult({
+            kind: 'review',
+            findings: [
+                {
+                    quote: 'the quoted span',
+                    critique: 'too verbose',
+                    prefix: longPrefix,
+                    suffix: longSuffix
+                }
+            ]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        const finding = result.findings[0]!
+        expect(finding.prefix!.length).toEqual(200)
+        expect(finding.prefix!.endsWith('near the quote')).toBeTrue()
+        expect(finding.suffix!.length).toEqual(200)
+        expect(finding.suffix!.startsWith('right after')).toBeTrue()
+    })
+
+    it('still rejects structurally wrong findings', () => {
+        expect(() =>
+            validateOperationResult({ kind: 'review', findings: [{ prefix: 'x'.repeat(999) }] })
+        ).toThrow()
+    })
+})

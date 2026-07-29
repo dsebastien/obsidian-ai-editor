@@ -49,7 +49,10 @@ export const ollamaAdapter: ProviderAdapter = {
                     { role: 'user', content: buildUserMessage(operation, 'json-object') }
                 ],
                 format: 'json',
-                stream: false
+                stream: false,
+                // Thinking-family models (qwen3, deepseek-r1) otherwise burn the
+                // whole budget on reasoning before emitting the JSON payload.
+                think: false
             })
         }
     },
