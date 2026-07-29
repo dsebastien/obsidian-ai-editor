@@ -17,7 +17,7 @@ import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerReviewCli } from './cli/register-review-cli'
-import { registerWhatsNewDialog } from './whats-new'
+import { registerWhatsNewView } from './whats-new'
 import { log } from '../utils/log'
 
 /**
@@ -53,7 +53,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
-        registerWhatsNewDialog(this)
+        registerWhatsNewView(this)
         await this.loadPluginSettings()
 
         this.addSettingTab(new AIEditorPluginSettingTab(this.app, this))

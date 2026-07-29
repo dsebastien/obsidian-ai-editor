@@ -44,15 +44,17 @@ describe('build constants', () => {
 
 describe('stylesheet ↔ runtime class contract', () => {
     /**
-     * The What's New modal (src/app/ui/whats-new-modal.ts) builds its class
+     * The What's New view (src/app/ui/whats-new-view.ts) builds its class
      * names at runtime from `manifest.id` (`${id}-whats-new-*`). The
      * stylesheet must target that exact prefix — a stale template prefix
-     * (e.g. `my-plugin-`) ships dead rules and an unstyled dialog.
+     * (e.g. `my-plugin-`) ships dead rules and an unstyled tab.
      */
     test('whats-new selectors use the manifest.id prefix', async () => {
         const manifest = (await Bun.file('manifest.json').json()) as { id: string }
         const styles = await Bun.file(STYLES_SRC).text()
-        expect(styles).toContain(`.${manifest.id}-whats-new-dialog`)
+        expect(styles).toContain(`.${manifest.id}-whats-new-view`)
+        expect(styles).toContain(`.${manifest.id}-whats-new-content`)
+        expect(styles).toContain(`.${manifest.id}-whats-new-body`)
         expect(styles).toContain(`.${manifest.id}-whats-new-notes`)
         expect(styles).not.toContain('my-plugin-')
     })
