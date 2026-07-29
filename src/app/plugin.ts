@@ -74,12 +74,45 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             reviewController.editorExtension(),
             findingCardExtension(reviewController.findingLookup())
         ])
-        this.registerView(
-            REVIEW_PANEL_VIEW_TYPE,
-            (leaf) => new ReviewSidePanelView(leaf, () => reviewController.getPanelBinding())
-        )
+        this.registerReviewPanelView(reviewController)
         reviewController.initialize()
         registerReviewCommands(this, reviewController)
+    }
+
+    /**
+     * Registers the side-panel view, healing the double-load race: when two
+     * loads overlap (hot-reload + manual reload), the dying instance's view
+     * registration can still be up, and `registerView` throws — which used
+     * to abort `onload` and leave the plugin dead. If that happens, drop the
+     * stale registration (private `viewRegistry` API, guarded defensively)
+     * and retry once so the creator is bound to THIS instance.
+     */
+    private registerReviewPanelView(reviewController: ReviewController): void {
+        const doRegister = (): void => {
+            this.registerView(
+                REVIEW_PANEL_VIEW_TYPE,
+                (leaf) => new ReviewSidePanelView(leaf, () => reviewController.getPanelBinding())
+            )
+        }
+        try {
+            doRegister()
+        } catch (error) {
+            log(
+                `View type still registered from a previous load — healing (${String(error)})`,
+                'warn'
+            )
+            const registry = (
+                this.app as unknown as {
+                    viewRegistry?: { unregisterView?: (type: string) => void }
+                }
+            ).viewRegistry
+            if (typeof registry?.unregisterView === 'function') {
+                registry.unregisterView(REVIEW_PANEL_VIEW_TYPE)
+                doRegister()
+            }
+            // Without the private API the panel stays bound to the dead
+            // instance for this session; everything else keeps working.
+        }
     }
 
     override onunload(): void {
