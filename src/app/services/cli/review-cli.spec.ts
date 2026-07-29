@@ -304,6 +304,33 @@ describe('shapeRunOutput', () => {
         expect(output.error?.code).toBe('backend-error')
     })
 
+    it('reports a mid-retry editor as a retrying skip instead of dropping it', () => {
+        // `settled` keeps first-settle semantics; a per-editor retry started
+        // from the rail/panel can flip an editor back to pending/running by
+        // the time the one-shot output is shaped.
+        const run = new FakeRunHandle([
+            makeState({ summary: 'Solid draft' }),
+            makeState({ editorId: 'editor-2', editorName: 'Retried One', status: 'pending' }),
+            makeState({ editorId: 'editor-3', editorName: 'Streaming One', status: 'running' })
+        ])
+        const output = shapeRunOutput('Notes/Test.md', run, [])
+        expect(output.ok).toBe(true)
+        expect(output.skips).toEqual([
+            { editor: 'Retried One', reason: 'retrying' },
+            { editor: 'Streaming One', reason: 'retrying' }
+        ])
+    })
+
+    it('names the in-flight retry instead of claiming a cancel when nothing completed', () => {
+        const run = new FakeRunHandle([makeState({ status: 'pending' })])
+        const output = shapeRunOutput('Notes/Test.md', run, [])
+        expect(output.ok).toBe(false)
+        expect(output.error?.code).toBe('backend-error')
+        expect(output.error?.message).toContain('ai-editor:status')
+        expect(output.error?.message).not.toContain('cancelled')
+        expect(output.skips).toEqual([{ editor: 'Hater', reason: 'retrying' }])
+    })
+
     it('stays ok when at least one editor completed despite failures', () => {
         const run = new FakeRunHandle([
             makeState(),

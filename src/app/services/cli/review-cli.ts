@@ -86,7 +86,10 @@ export type ReviewCliFinding = CliFinding
 /**
  * One editor that produced no findings and why: pre-run skips carry the
  * review service's `SkipReason` codes; editors that failed after the run
- * started are reported as `backend-error`, `timeout`, or `cancelled`.
+ * started are reported as `backend-error`, `timeout`, or `cancelled`; an
+ * editor whose per-editor retry is still in flight when the one-shot output
+ * is shaped is reported as `retrying` (read its outcome via
+ * `ai-editor:status`).
  */
 export interface ReviewCliSkip {
     readonly editor: string
@@ -278,6 +281,13 @@ function toCliSkips(skips: readonly EditorSkip[]): ReviewCliSkip[] {
  * did, the overall error code is `timeout` only if every failure was a
  * timeout, `backend-error` otherwise — with the (already redacted,
  * Business Rules #12) per-editor messages joined.
+ *
+ * Non-terminal editors are possible here even though the CLI awaits the
+ * run's settle: `settled` keeps FIRST-settle semantics (a promise cannot
+ * un-resolve), while a per-editor retry started from the rail/panel of an
+ * open note flips that editor back to pending/running. Such an editor is
+ * reported as a `retrying` skip — never silently dropped — and its final
+ * findings stay readable via `ai-editor:status`.
  */
 export function shapeRunOutput(
     file: string,
@@ -297,6 +307,9 @@ export function shapeRunOutput(
             })
         } else if (state.status === 'cancelled') {
             allSkips.push({ editor: state.editorName, reason: 'cancelled' })
+        } else if (state.status !== 'done') {
+            // pending/running = a retry in flight (see the doc comment).
+            allSkips.push({ editor: state.editorName, reason: 'retrying' })
         }
     }
 
@@ -306,6 +319,9 @@ export function shapeRunOutput(
     }
 
     const failed = states.filter((state) => state.status === 'error')
+    const retrying = states.some(
+        (state) => state.status === 'pending' || state.status === 'running'
+    )
     const code: ReviewCliErrorCode =
         failed.length > 0 && failed.every((state) => state.error?.code === 'timeout')
             ? 'timeout'
@@ -315,7 +331,9 @@ export function shapeRunOutput(
             ? failed
                   .map((state) => `${state.editorName}: ${state.error?.message ?? 'failed'}`)
                   .join('; ')
-            : 'The run was cancelled before any editor completed'
+            : retrying
+              ? 'A retry is still in flight — read the final result with ai-editor:status'
+              : 'The run was cancelled before any editor completed'
     return {
         ok: false,
         file,
