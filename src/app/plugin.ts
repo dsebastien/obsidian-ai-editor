@@ -15,7 +15,7 @@ import { registerFileMenu } from './ui/menus/file-menu'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
-import { registerReviewCommands } from './commands/review-current-note'
+import { registerReviewCommands } from './commands/review-commands'
 import { registerWhatsNewDialog } from './whats-new'
 import { log } from '../utils/log'
 

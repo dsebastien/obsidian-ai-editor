@@ -3,6 +3,8 @@ import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidia
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
+import { navigableFindings, stepFinding } from '../commands/finding-navigation'
+import type { NavigationDirection } from '../commands/finding-navigation'
 import { asFindingId } from '../domain/ids'
 import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
@@ -359,6 +361,26 @@ export class ReviewController {
         })
     }
 
+    /**
+     * Selection-capture contract entry (design §1) shared by the editor
+     * context menu and the `Review selection` command: the selection range is
+     * read synchronously in the invoking callback and rides into the review
+     * pipeline as `requestedSelection`; the service re-validates it against
+     * the fresh snapshot at run start and falls back to whole-note scope
+     * (with a Notice) when it went stale. If the selection collapsed between
+     * gating and dispatch, there is no range to request — the review runs on
+     * the whole note.
+     */
+    startSelectionReview(view: MarkdownView, editor: Editor): void {
+        const from = editor.posToOffset(editor.getCursor('from'))
+        const to = editor.posToOffset(editor.getCursor('to'))
+        if (from === to) {
+            void this.startReview(view)
+            return
+        }
+        void this.startReview(view, false, { from, to })
+    }
+
     /** Cancels the active run for the view's note (rail Cancel button). */
     cancelReview(view: MarkdownView): void {
         const path = view.file?.path
@@ -366,6 +388,48 @@ export class ReviewController {
             return
         }
         this.deps.runController.getRun(path)?.cancelRun()
+    }
+
+    /**
+     * The run bound to the (last) active markdown file, if any — the run the
+     * ambient surfaces follow. Command gates (`Cancel review`) read run state
+     * through this instead of duplicating the sticky-file resolution.
+     */
+    getActiveRun(): RunHandle | null {
+        const path = this.resolveActiveFilePath()
+        return path ? this.deps.runController.getRun(path) : null
+    }
+
+    /** `Next/previous finding` gate: the active run has revealable findings. */
+    canNavigateFindings(): boolean {
+        const run = this.getActiveRun()
+        return run !== null && navigableFindings(run.findings.list()).length > 0
+    }
+
+    /**
+     * Steps to the next/previous navigable finding of the active file's run,
+     * ordered by anchor position with wrap-around (pure logic in
+     * `finding-navigation.ts`). The step is cursor-relative when the note is
+     * open in an editor; the reveal then moves the cursor onto the target, so
+     * repeated invocations cycle through all findings.
+     */
+    navigateFinding(direction: NavigationDirection): void {
+        const path = this.resolveActiveFilePath()
+        const run = path ? this.deps.runController.getRun(path) : null
+        if (!path || !run) {
+            return
+        }
+        const ordered = navigableFindings(run.findings.list())
+        const view = this.findMarkdownView(path)
+        const cursorOffset =
+            view && view.file?.path === path
+                ? view.editor.posToOffset(view.editor.getCursor('from'))
+                : null
+        const target = stepFinding(ordered, cursorOffset, direction)
+        if (!target) {
+            return
+        }
+        void this.revealFinding(path, asFindingId(target.id))
     }
 
     /** Opens (or reveals) the side panel leaf and pushes the current binding. */
