@@ -376,7 +376,7 @@ describe('formatTextOutput', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleReviewCli', () => {
-    it('returns file-not-found when the file flag is missing', async () => {
+    it('returns bad-args when the file flag is missing', async () => {
         const output = parseOutput(await handleReviewCli({}, makeDeps()))
         expect(output).toMatchObject({
             ok: false,
@@ -384,7 +384,7 @@ describe('handleReviewCli', () => {
             findings: [],
             skips: [],
             summaryByEditor: {},
-            error: { code: 'file-not-found', message: 'Missing required flag: file' }
+            error: { code: 'bad-args', message: 'Missing required flag: file' }
         })
     })
 
@@ -525,7 +525,7 @@ describe('handleReviewCli', () => {
 
     it('renders errors in text format too', async () => {
         const text = await handleReviewCli({ format: 'text' }, makeDeps())
-        expect(text).toBe('Error (file-not-found): Missing required flag: file')
+        expect(text).toBe('Error (bad-args): Missing required flag: file')
     })
 
     it('maps unexpected pipeline failures to a status-only backend-error', async () => {

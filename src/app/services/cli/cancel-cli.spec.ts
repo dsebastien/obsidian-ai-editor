@@ -30,13 +30,13 @@ function parseOutput(rendered: string): CancelCliOutput {
 // ---------------------------------------------------------------------------
 
 describe('handleCancelCli', () => {
-    it('returns file-not-found when the file flag is missing', () => {
+    it('returns bad-args when the file flag is missing', () => {
         const output = parseOutput(handleCancelCli({}, makeDeps()))
         expect(output).toEqual({
             ok: false,
             file: '',
             cancelled: false,
-            error: { code: 'file-not-found', message: 'Missing required flag: file' }
+            error: { code: 'bad-args', message: 'Missing required flag: file' }
         })
     })
 

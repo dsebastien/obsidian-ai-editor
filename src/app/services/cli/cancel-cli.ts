@@ -45,7 +45,7 @@ export const CANCEL_CLI_FLAGS: Record<string, CliFlagSpec> = {
 // Output shape
 // ---------------------------------------------------------------------------
 
-export type CancelCliErrorCode = 'file-not-found'
+export type CancelCliErrorCode = 'bad-args' | 'file-not-found'
 
 export interface CancelCliError {
     readonly code: CancelCliErrorCode
@@ -106,12 +106,15 @@ export function handleCancelCli(
 ): string {
     const file = parseFileFlag(params)
     if (file === null) {
-        return renderError('', 'Missing required flag: file')
+        // Distinct from file-not-found so scripts can tell "I forgot the
+        // flag" from "the note does not exist" by code alone. Mostly
+        // defensive: Obsidian enforces required flags before the handler.
+        return renderError('bad-args', '', 'Missing required flag: file')
     }
 
     const path = deps.resolveFile(file)
     if (path === null) {
-        return renderError(file, `File not found: ${file}`)
+        return renderError('file-not-found', file, `File not found: ${file}`)
     }
 
     const run = deps.getRun(path)
@@ -126,12 +129,12 @@ export function handleCancelCli(
     return render({ ok: true, file: path, cancelled: true })
 }
 
-function renderError(file: string, message: string): string {
+function renderError(code: CancelCliErrorCode, file: string, message: string): string {
     return render({
         ok: false,
         file,
         cancelled: false,
-        error: { code: 'file-not-found', message }
+        error: { code, message }
     })
 }
 

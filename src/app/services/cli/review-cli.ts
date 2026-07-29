@@ -69,6 +69,7 @@ export const REVIEW_CLI_FLAGS: Record<string, CliFlagSpec> = {
 // ---------------------------------------------------------------------------
 
 export type ReviewCliErrorCode =
+    | 'bad-args'
     | 'file-not-found'
     | 'excluded'
     | 'needs-confirmation'
@@ -373,7 +374,9 @@ export async function handleReviewCli(
     const args = parseReviewCliArgs(params)
 
     if (args.file === null) {
-        return render(errorOutput('', 'file-not-found', 'Missing required flag: file'), args.format)
+        // Distinct from file-not-found so scripts can tell "I forgot the
+        // flag" from "the note does not exist" by code alone.
+        return render(errorOutput('', 'bad-args', 'Missing required flag: file'), args.format)
     }
 
     const path = deps.resolveFile(args.file)

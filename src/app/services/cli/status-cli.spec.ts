@@ -94,6 +94,21 @@ describe('shapeStatusRun', () => {
         expect(shaped.editors.map((editor) => editor.status)).toEqual(['running', 'pending'])
     })
 
+    it('reports settled from editor states during the cancel-to-settle window', () => {
+        // cancelRun marks every editor terminal synchronously, but the run's
+        // settle promise resolves only after the aborted loops unwind. A
+        // status poll in that window must not claim the run is in progress.
+        const run = new FakeRunHandle(
+            [
+                makeState({ status: 'cancelled' }),
+                makeState({ editorId: 'editor-2', editorName: 'Second', status: 'cancelled' })
+            ],
+            [],
+            { settled: false }
+        )
+        expect(shapeStatusRun(run).settled).toBe(true)
+    })
+
     it('shapes findings byte-identically to the review output', () => {
         // Lockstep guarantee: an agent that parsed `ai-editor:review`
         // findings must be able to parse `ai-editor:status` findings with
@@ -205,13 +220,13 @@ describe('formatStatusText', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleStatusCli', () => {
-    it('returns file-not-found when the file flag is missing', () => {
+    it('returns bad-args when the file flag is missing', () => {
         const output = parseOutput(handleStatusCli({}, makeDeps()))
         expect(output).toEqual({
             ok: false,
             file: '',
             run: null,
-            error: { code: 'file-not-found', message: 'Missing required flag: file' }
+            error: { code: 'bad-args', message: 'Missing required flag: file' }
         })
     })
 
@@ -232,7 +247,7 @@ describe('handleStatusCli', () => {
 
     it('reports the full run document for a tracked run without mutating it', () => {
         const run = new FakeRunHandle(
-            [makeState({ summary: 'Solid draft' })],
+            [makeState({ status: 'running', summary: 'Solid draft' })],
             [{ editorId: 'editor-1', quote: 'Hello', critique: 'Weak opener', suggestion: 'Hi' }],
             { settled: false }
         )
@@ -243,7 +258,7 @@ describe('handleStatusCli', () => {
             file: 'Notes/Test.md',
             run: {
                 settled: false,
-                editors: [{ id: 'editor-1', name: 'Hater', status: 'done', error: null }],
+                editors: [{ id: 'editor-1', name: 'Hater', status: 'running', error: null }],
                 findings: [
                     {
                         editor: 'Hater',
@@ -292,7 +307,7 @@ describe('handleStatusCli', () => {
 
     it('renders errors and the no-run case in text format too', () => {
         expect(handleStatusCli({ format: 'text' }, makeDeps())).toBe(
-            'Error (file-not-found): Missing required flag: file'
+            'Error (bad-args): Missing required flag: file'
         )
         expect(handleStatusCli({ file: 'Notes/Test.md', format: 'text' }, makeDeps())).toBe(
             'No run for Notes/Test.md.'

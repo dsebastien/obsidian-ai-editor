@@ -58,7 +58,7 @@ export const STATUS_CLI_FLAGS: Record<string, CliFlagSpec> = {
 // Output shape
 // ---------------------------------------------------------------------------
 
-export type StatusCliErrorCode = 'file-not-found'
+export type StatusCliErrorCode = 'bad-args' | 'file-not-found'
 
 export interface StatusCliError {
     readonly code: StatusCliErrorCode
@@ -113,11 +113,19 @@ export interface StatusCliDeps {
 // Output shaping
 // ---------------------------------------------------------------------------
 
+/** Editor statuses that count as terminal for the `settled` report. */
+const TERMINAL_STATUSES: ReadonlySet<EditorRunStatus> = new Set(['done', 'error', 'cancelled'])
+
 /** Shapes a (possibly still running) run into the status report document. */
 export function shapeStatusRun(run: RunHandle): StatusCliRun {
     const states = run.getEditorStates()
     return {
-        settled: run.isSettled(),
+        // Derived from the editor states, not `run.isSettled()`: cancelRun
+        // marks every editor terminal synchronously, but the settle promise
+        // resolves only after the aborted loops unwind — a cancel followed
+        // quickly by a status poll must not report "in progress" while every
+        // editor already shows cancelled.
+        settled: states.length > 0 && states.every((state) => TERMINAL_STATUSES.has(state.status)),
         editors: states.map((state) => ({
             id: state.editorId,
             name: state.editorName,
@@ -200,12 +208,15 @@ export function handleStatusCli(
 
     const file = parseFileFlag(params)
     if (file === null) {
-        return render(errorOutput('', 'Missing required flag: file'), format)
+        // Distinct from file-not-found so scripts can tell "I forgot the
+        // flag" from "the note does not exist" by code alone. Mostly
+        // defensive: Obsidian enforces required flags before the handler.
+        return render(errorOutput('bad-args', '', 'Missing required flag: file'), format)
     }
 
     const path = deps.resolveFile(file)
     if (path === null) {
-        return render(errorOutput(file, `File not found: ${file}`), format)
+        return render(errorOutput('file-not-found', file, `File not found: ${file}`), format)
     }
 
     const run = deps.getRun(path)
@@ -215,6 +226,6 @@ export function handleStatusCli(
     return render({ ok: true, file: path, run: shapeStatusRun(run), error: null }, format)
 }
 
-function errorOutput(file: string, message: string): StatusCliOutput {
-    return { ok: false, file, run: null, error: { code: 'file-not-found', message } }
+function errorOutput(code: StatusCliErrorCode, file: string, message: string): StatusCliOutput {
+    return { ok: false, file, run: null, error: { code, message } }
 }
