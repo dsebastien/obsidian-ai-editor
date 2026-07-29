@@ -399,6 +399,11 @@ describe('createApiEditorExecutor — cancellation and timeout', () => {
             throw new Error('expected error')
         }
         expect(terminal.error.code).toBe('timeout')
+        // The message states the elapsed bound in seconds AND names the
+        // 'Request timeout' setting — the user's fix must be in the message.
+        expect(terminal.error.message).toBe(
+            "Provider did not answer within 0.02 s — raise 'Request timeout' in settings if your model needs longer."
+        )
     })
 
     it('a signal already aborted before start terminates with cancelled', async () => {

@@ -16,10 +16,12 @@ import {
     createEditorSpec,
     isRequestedSelectionValid,
     resolveApiBackend,
+    reviewTimeoutMs,
     skipReasonLabel,
     startReview
 } from './review-service'
 import type { AssembledContext } from './context/context-assembler'
+import { reviewOperation } from './backends/providers/spec-fixtures'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -305,6 +307,15 @@ describe('augmentSystemPrompt', () => {
 // backends/api-editor-backend.spec.ts — this seam binds identity + redaction)
 // ---------------------------------------------------------------------------
 
+describe('reviewTimeoutMs', () => {
+    it('converts the behavior setting from seconds to milliseconds', () => {
+        const behavior = makeSettings().behavior
+        expect(behavior.requestTimeoutSeconds).toBe(600)
+        expect(reviewTimeoutMs(behavior)).toBe(600_000)
+        expect(reviewTimeoutMs({ ...behavior, requestTimeoutSeconds: 45 })).toBe(45_000)
+    })
+})
+
 describe('createEditorSpec', () => {
     it('binds editor identity and the key-redaction seam', () => {
         const spec = createEditorSpec({
@@ -312,6 +323,7 @@ describe('createEditorSpec', () => {
             backend: makeBackend(),
             model: 'claude-test-1',
             systemPrompt: 'Be harsh.',
+            timeoutMs: 5_000,
             fetchImpl: fetchReturning(anthropicReviewBody())
         })
         expect(spec.editorId).toBe('editor-1')
@@ -319,6 +331,41 @@ describe('createEditorSpec', () => {
         expect(spec.redactError?.(`401 body echoing ${API_KEY}`)).toBe(
             '401 body echoing [redacted]'
         )
+    })
+
+    it('threads timeoutMs into the transport; expiry names the setting', async () => {
+        // A fetch that never resolves until its signal aborts — the only way
+        // the executor can terminate is the transport-level timeout.
+        const hangingFetch = ((_url: string | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener(
+                    'abort',
+                    () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'))
+                    },
+                    { once: true }
+                )
+            })) as unknown as typeof fetch
+        const spec = createEditorSpec({
+            editor: makeEditor(),
+            backend: makeBackend(),
+            model: 'claude-test-1',
+            systemPrompt: 'Be harsh.',
+            timeoutMs: 20,
+            fetchImpl: hangingFetch
+        })
+
+        const events = []
+        for await (const event of spec.execute(reviewOperation(), new AbortController().signal)) {
+            events.push(event)
+        }
+
+        const terminal = events.at(-1)
+        if (terminal?.type !== 'error') {
+            throw new Error('expected a terminal error event')
+        }
+        expect(terminal.error.code).toBe('timeout')
+        expect(terminal.error.message).toContain("raise 'Request timeout' in settings")
     })
 })
 

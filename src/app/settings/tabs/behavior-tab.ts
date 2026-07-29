@@ -70,6 +70,16 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
         }
     )
     renderIntField(
+        'Request timeout (seconds)',
+        "How long a single editor's backend request may run — raise this for slow local models.",
+        settings.behavior.requestTimeoutSeconds,
+        30,
+        3_600,
+        (draft, next) => {
+            draft.behavior.requestTimeoutSeconds = next
+        }
+    )
+    renderIntField(
         'Context budget (characters)',
         'Total budget per run across the note, linked notes, and referenced notes.',
         settings.behavior.contextBudgetChars,

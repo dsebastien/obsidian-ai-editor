@@ -49,7 +49,12 @@ export interface CreateApiEditorExecutorInput {
     readonly model: string
     /** Fully assembled system prompt (voice profile + persona + context). */
     readonly systemPrompt: string
-    /** Upper bound for the whole operation, connect + stream, in ms. */
+    /**
+     * Upper bound for the whole operation, connect + stream, in ms.
+     * Sourced from `behavior.requestTimeoutSeconds` (the 'Request timeout'
+     * setting) via `reviewTimeoutMs`; the timeout error message names that
+     * setting, so keep the wiring intact.
+     */
     readonly timeoutMs: number
     /** Injectable transport for tests; defaults to the global `fetch`. */
     readonly fetchImpl?: typeof fetch
@@ -537,7 +542,12 @@ function normalizeError(
         return { code: 'cancelled', message: 'Run cancelled' }
     }
     if (timedOut) {
-        return { code: 'timeout', message: `Provider did not answer within ${timeoutMs} ms` }
+        // Name the setting: a user hitting this (slow local model, long
+        // note) must learn the fix from the message itself, not from docs.
+        return {
+            code: 'timeout',
+            message: `Provider did not answer within ${timeoutMs / 1_000} s — raise 'Request timeout' in settings if your model needs longer.`
+        }
     }
     if (cause instanceof TransportError) {
         return { code: cause.code, message: cause.message }

@@ -1,4 +1,9 @@
-import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
+import type {
+    ApiBackend,
+    BehaviorSettings,
+    EditorConfig,
+    PluginSettingsV1
+} from '../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../domain/snapshot'
 import { createApiEditorExecutor } from './backends/api-editor-backend'
 import { redactSecret } from './backends/providers'
@@ -285,13 +290,14 @@ export function augmentSystemPrompt(basePrompt: string, instruction: string): st
 // ---------------------------------------------------------------------------
 
 /**
- * Upper bound for one API review operation (connect + full stream), in ms.
- * API backends have no per-backend timeout setting yet (only CLI backends
- * expose `timeoutSeconds`); this constant is deliberately generous — long
- * notes against slow models stream for minutes. SEAM: promote to a behavior
- * setting if field reports need tuning.
+ * Converts the behavior-level request timeout (seconds, user-facing) to the
+ * milliseconds the transport consumes. One editor's whole API operation
+ * (connect + full stream) is bounded by this — the setting exists precisely
+ * because slow local models (Ollama on a laptop) stream for many minutes.
  */
-export const API_REVIEW_TIMEOUT_MS = 300_000
+export function reviewTimeoutMs(behavior: BehaviorSettings): number {
+    return behavior.requestTimeoutSeconds * 1_000
+}
 
 /**
  * Builds the `RunEditorSpec` bridging one editor persona to its API backend.
@@ -307,6 +313,7 @@ export function createEditorSpec(input: {
     readonly backend: ApiBackend
     readonly model: string
     readonly systemPrompt: string
+    readonly timeoutMs: number
     readonly fetchImpl: typeof fetch
 }): RunEditorSpec {
     return {
@@ -317,7 +324,7 @@ export function createEditorSpec(input: {
             backendConfig: input.backend,
             model: input.model,
             systemPrompt: input.systemPrompt,
-            timeoutMs: API_REVIEW_TIMEOUT_MS,
+            timeoutMs: input.timeoutMs,
             fetchImpl: input.fetchImpl
         })
     }
@@ -416,6 +423,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                         instruction && participant.editor.id === instruction.editorId
                             ? augmentSystemPrompt(composedPrompt, instruction.text)
                             : composedPrompt,
+                    timeoutMs: reviewTimeoutMs(behavior),
                     fetchImpl
                 })
             )

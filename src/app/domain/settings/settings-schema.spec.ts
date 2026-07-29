@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
     DEFAULT_PLUGIN_SETTINGS,
     SETTINGS_SCHEMA_VERSION,
+    behaviorSettingsSchema,
     checkReferentialIntegrity,
     loadSettings,
     loadSettingsDetailed,
@@ -41,12 +42,23 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         const behavior = DEFAULT_PLUGIN_SETTINGS.behavior
         expect(behavior.sizeWarningWords).toEqual(8_000)
         expect(behavior.maxConcurrentRequests).toEqual(3)
+        expect(behavior.requestTimeoutSeconds).toEqual(600)
         expect(behavior.contextBudgetChars).toEqual(200_000)
         expect(behavior.excludedFolders).toEqual([])
         expect(behavior.excludedTags).toEqual([])
         expect(behavior.respectFrontmatterOptOut).toEqual(true)
         expect(behavior.stripFrontmatter).toEqual(false)
         expect(behavior.defaultCommentEditorId).toEqual('')
+    })
+
+    it('bounds the request timeout to 30-3600 seconds, integers only', () => {
+        const parse = (requestTimeoutSeconds: unknown) =>
+            behaviorSettingsSchema.safeParse({ requestTimeoutSeconds }).success
+        expect(parse(30)).toEqual(true)
+        expect(parse(3_600)).toEqual(true)
+        expect(parse(29)).toEqual(false)
+        expect(parse(3_601)).toEqual(false)
+        expect(parse(90.5)).toEqual(false)
     })
 
     it('is itself schema-valid', () => {

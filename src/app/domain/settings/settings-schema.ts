@@ -194,6 +194,13 @@ export const behaviorSettingsSchema = z.object({
     /** Word count above which Review asks for confirmation. */
     sizeWarningWords: z.number().int().min(100).max(1_000_000).default(8_000),
     maxConcurrentRequests: z.number().int().min(1).max(10).default(3),
+    /**
+     * Upper bound for one editor's backend request (connect + full stream),
+     * in seconds. Applies to API reviews from any entry point (UI and the
+     * `ai-editor:review` CLI alike). The default is laptop-realistic: slow
+     * local models (Ollama on CPU) legitimately stream for many minutes.
+     */
+    requestTimeoutSeconds: z.number().int().min(30).max(3_600).default(600),
     /** Total context budget per run, in characters (proxy for tokens). */
     contextBudgetChars: z.number().int().min(1_000).max(2_000_000).default(200_000),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
