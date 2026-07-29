@@ -2,6 +2,16 @@
 
 > Status: DRAFT — everything below is directional. The requirements were gathered as brainstorming; each feature is a candidate, not a contract. The one non-negotiable: **awesome UI/UX**. When a trade-off arises between feature count and interaction quality, interaction quality wins.
 
+## 0. Execution status (update after EVERY step — agents switch mid-stream)
+
+| Milestone | Status | Notes |
+|---|---|---|
+| M0 contracts & spikes | **DONE (code)** / spikes partially open | Canonical docs filled; operation contract (`src/app/domain/operations/contract.ts`); anchoring engine (`src/app/domain/anchoring/`); snapshots+hash; SSE decoder (`src/app/services/backends/transport/sse.ts`); `isDesktopOnly: true`. OPEN: CM6 dual-mode decoration spike + CLI protocol probe — need a live Obsidian runtime (manual). |
+| M1 provider & settings slice | **IN PROGRESS** | Next: settings schema (Zod, schemaVersion, migrations scaffold) + starter pack + provider request builders (pure, tested). |
+| M2-M9 | not started | See milestone list §6. |
+
+Working conventions for any agent picking this up: read `documentation/history/` (latest day) + `AGENTS.md` first; definition of done = tsc+lint+test+build green + history updated + this table updated; commit per logical chunk (Conventional Commits, hooks never bypassed); `git push` is hook-blocked — push via `bash "$CLAUDE_JOB_DIR/tmp/push-ai-editor.sh"`-style script only when Sébastien asks. Adversarial codex review (`gpt-5.6-sol`, xhigh) after implementation phases (M9) — see `documentation/reviews/` for the plan review already done.
+
 ## 1. Vision
 
 Bring AI editing/reviewing/QA **into** the Obsidian editor itself — not a chat sidebar bolted onto a note, but AI personas that live in the margins of the text, highlight what they care about, argue with you, and propose surgical edits you accept or reject inline.
@@ -283,6 +293,7 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 - **M7 — CLI backends (opt-in)**: Claude Code + Codex adapters behind the security boundary (stdin content, isolated cwd, allowlisted env, read-only sandbox, process-tree kill, protocol conformance tests), separate consent for tool/research mode.
 - **M8 — Durable margin comments**: sidecar repository (schema version, migrations, rename handling, corruption recovery), interrupted-job semantics on restart (Retry, never fake resumption), background runs with live timers, margin column UI.
 - **M9 — Polish & release**: theming via Obsidian CSS vars, reduced-motion + ARIA + non-color persona indicators, performance passes (large notes, many findings), docs (README, docs/ user guide), community-review checklist sweep, marketplace submission. **Post-implementation adversarial codex review (same model/effort) before release.**
+    - **Support CTAs (fleet-wide convention, 2026-07-29)**: the README and the docs site must carry the same support calls to action as the "What's new" dialog — newsletter, YouTube channel, Knowii community, GitHub Sponsors, Buy me a coffee. Concretely: (a) `README.md` and `docs/README.md` end with a `## News & support` section preceded by a `<!-- support-cta -->` marker (the marker delimits the generated block, from the marker to the next `##` heading, so the whole plugin fleet can be regenerated at once); (b) `docs/_config.yml` sets `footer_content` so just-the-docs renders the links at the bottom of every documentation page. Copy the exact wording from `obsidian-plugin-template` (see its `TEMPLATE_USAGE.md` §4.2 "Support CTAs"), which is the canonical source. Every other plugin repo was updated on 2026-07-29; this repo was skipped to avoid interrupting in-flight work.
 
 ## 7. Risks & mitigations
 
