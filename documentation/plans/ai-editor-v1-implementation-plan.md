@@ -355,6 +355,7 @@ Additional post-v1 features (each a GitHub issue):
 8. **Publish gates** — settings to define gates (designate a panel as gate, optionally per note-type rule); a public plugin API other plugins can call ("latest gate verdict for file X", "run gate"); status-bar verdict badge. First consumer: obsidian-ghost-publish ("Style Guard failed" warning before publishing).
 9. **Metadata review** — editors propose frontmatter improvements: first description/title/aliases (prose-ish, publishing value), later any property as a structured, schema-aware diff (OSK type definitions when available). Companion of the tag-review issue.
 10. **Session summary** — on-demand command: distill a review session (per-editor accepted/rejected counts, key changes) into a formatted digest, copied to clipboard or appended to a chosen note (e.g. the daily note).
+11. **AI Providers plugin integration** — optional, feature-detected backend source: when https://github.com/pfrankov/obsidian-ai-providers is installed, its centrally-configured providers appear as selectable backends (configure keys once across plugins). Never required. GitHub issue #10.
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
