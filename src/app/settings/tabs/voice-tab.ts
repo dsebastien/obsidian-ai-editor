@@ -35,6 +35,13 @@ export function renderVoiceTab(containerEl: HTMLElement, ctx: TabContext): void 
         setPaths: (paths) =>
             ctx.facade.update((draft) => {
                 draft.voiceProfile.notePaths = paths
-            })
+            }),
+        followLinks: {
+            get: () => ctx.facade.getSettings().voiceProfile.followLinks,
+            set: (value) =>
+                ctx.facade.update((draft) => {
+                    draft.voiceProfile.followLinks = value
+                })
+        }
     })
 }

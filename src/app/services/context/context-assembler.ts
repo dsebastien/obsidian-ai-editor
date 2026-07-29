@@ -18,7 +18,14 @@ import { extractWikilinks } from './wikilinks'
  */
 
 /** Why a note was attached; drives preview labeling and ordering. */
-export type AttachmentReason = 'prompt-ref' | 'wikilink-ref' | 'linked-note'
+export type AttachmentReason = 'prompt-ref' | 'wikilink-ref' | 'followed-link' | 'linked-note'
+
+/**
+ * Upper bound on followed links attached PER referenced note when a prompt
+ * source has `followLinks` on (plan §0 "Live-testing feedback #2"): depth 1,
+ * deterministic link order, stop at the cap.
+ */
+export const FOLLOWED_LINKS_CAP = 20
 
 export interface ContextAttachment {
     readonly path: string
@@ -94,10 +101,13 @@ export class ExcludedTargetError extends Error {
  *
  * Attachment order (deterministic, mirrors the prompt order): voice-profile
  * note refs → persona note refs → memory note (`prompt-ref`), then wikilinks
- * found in the prompt text fields (`wikilink-ref`), then outgoing links of
- * the reviewed note when the editor opts in, capped at `maxLinkedNotes`
- * (`linked-note`). Each note is attached at most once, under its first
- * reason; the reviewed note itself is never attached.
+ * found in the prompt text fields (`wikilink-ref`), then — for each prompt
+ * source with `followLinks` on — the notes linked FROM that source's
+ * referenced notes, depth 1, in link order, capped at `FOLLOWED_LINKS_CAP`
+ * per referenced note (`followed-link`), then outgoing links of the reviewed
+ * note when the editor opts in, capped at `maxLinkedNotes` (`linked-note`).
+ * Each note is attached at most once, under its first reason; the reviewed
+ * note itself is never attached.
  *
  * Excluded notes are dropped from EVERY source before their content is read,
  * and an excluded review TARGET aborts assembly with `ExcludedTargetError`
@@ -157,6 +167,56 @@ export async function assembleContext(input: AssembleContextInput): Promise<Asse
         const resolved = vault.resolveLink(target, notePath)
         if (resolved !== null && eligible(resolved)) {
             candidates.push({ path: resolved, reason: 'wikilink-ref' })
+        }
+    }
+
+    // -- Follow links of referenced notes (per-source opt-in, depth 1) --------
+    // Roots are the notes each followLinks-enabled source references —
+    // notePaths first, then wikilinks in its text — in reference order,
+    // deduplicated. Excluded roots are never followed (their links are part
+    // of a note the user opted out of AI processing). The memory note is not
+    // a prompt source and is never followed.
+    const followSources: readonly { readonly notePaths: readonly string[]; readonly text: string }[] =
+        [
+            ...(editor.injectVoiceProfile && voiceProfile.followLinks
+                ? [{ notePaths: voiceProfile.notePaths, text: voiceText }]
+                : []),
+            ...(editor.prompt.followLinks
+                ? [{ notePaths: editor.prompt.notePaths, text: personaText }]
+                : [])
+        ]
+    const rootSeen = new Set<string>()
+    const followRoots: string[] = []
+    const addRoot = (path: string): void => {
+        if (rootSeen.has(path)) {
+            return
+        }
+        rootSeen.add(path)
+        if (!isExcluded(path, vault.getNoteMetadata(path), behavior)) {
+            followRoots.push(path)
+        }
+    }
+    for (const source of followSources) {
+        for (const path of source.notePaths) {
+            addRoot(path)
+        }
+        for (const target of extractWikilinks(source.text)) {
+            const resolved = vault.resolveLink(target, notePath)
+            if (resolved !== null) {
+                addRoot(resolved)
+            }
+        }
+    }
+    for (const root of followRoots) {
+        let followed = 0
+        for (const path of vault.getOutgoingLinks(root)) {
+            if (followed >= FOLLOWED_LINKS_CAP) {
+                break
+            }
+            if (eligible(path)) {
+                candidates.push({ path, reason: 'followed-link' })
+                followed++
+            }
         }
     }
 

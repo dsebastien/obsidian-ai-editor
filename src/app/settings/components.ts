@@ -247,6 +247,15 @@ export interface NoteRefsEditorOptions {
     desc: string
     getPaths(): readonly string[]
     setPaths(paths: string[]): void | Promise<void>
+    /**
+     * When provided, renders a 'Follow links' toggle under the list wired to
+     * `PromptSource.followLinks` (also include the notes the referenced
+     * notes link to — one level).
+     */
+    followLinks?: {
+        get(): boolean
+        set(value: boolean): void | Promise<void>
+    }
 }
 
 /**
@@ -349,6 +358,21 @@ export function renderNoteRefsEditor(
             .addButton((button) => {
                 button.setButtonText('Add note').onClick(submit)
             })
+
+        const followLinks = options.followLinks
+        if (followLinks) {
+            new Setting(wrapper)
+                .setName('Follow links')
+                .setDesc(
+                    'Also include the notes these notes link to (one level). Linked notes count against the context budget.'
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(followLinks.get())
+                    toggle.onChange((value) => {
+                        void Promise.resolve(followLinks.set(value))
+                    })
+                })
+        }
     }
     render()
 }

@@ -81,6 +81,12 @@ export class EditorModal extends Modal {
             getPaths: () => this.draft.prompt.notePaths,
             setPaths: (paths) => {
                 this.draft.prompt.notePaths = paths
+            },
+            followLinks: {
+                get: () => this.draft.prompt.followLinks,
+                set: (value) => {
+                    this.draft.prompt.followLinks = value
+                }
             }
         })
 

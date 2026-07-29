@@ -5,10 +5,12 @@ User-facing configuration of the plugin (persisted in `data.json`, schema-versio
 ## Settings tabs
 
 1. **Backends** — 1-n provider instances (Anthropic, OpenAI, OpenAI-compatible with custom base URL, Azure OpenAI deployment-based, Ollama), each with label, credentials, default model, test button; CLI agents (explicit executable selection, consented health check). Global default backend. First-use setup wizard.
-2. **Editors** — persona gallery: name, color, prompt (textarea + ordered note-ref control), backend/model override, context policy (opt-in linked notes + cap), capabilities, optional learning memory (settings | vault note), enabled. Import/export (validated, ID-remapped).
-3. **Panels** — compose 1-n editors, charter (textarea + note refs), aggregation backend/model. Distinct visual identity.
+2. **Editors** — persona gallery: name, color, prompt (textarea + ordered note-ref control + follow-links toggle), backend/model override, context policy (opt-in linked notes + cap), capabilities, optional learning memory (settings | vault note), enabled. Import/export (validated, ID-remapped).
+3. **Panels** — compose 1-n editors, charter (textarea + note refs + follow-links toggle), aggregation backend/model. Distinct visual identity.
 4. **Actions** — built-in verbs + custom actions, each bound to an editor or panel; hotkeys via Obsidian's hotkey system.
-5. **Voice & Style** — global voice profile (textarea + note refs), per-editor injection opt-out.
+5. **Voice & Style** — global voice profile (textarea + note refs + follow-links toggle), per-editor injection opt-out.
+
+Every prompt source (voice profile, editor prompt, panel charter) carries a `followLinks` flag ("Follow links" toggle on its note-refs block): when on, context assembly also inlines the notes linked FROM each referenced note — depth 1 only, embeds count, deduped against already-included notes, capped at 20 per referenced note (deterministic link order), subject to `contextBudgetChars`; unresolved/non-markdown links skipped silently, excluded referenced notes never followed. Default ON for the voice profile (its motivating case: `[[My Voice Profile]]` linking out to style notes), OFF elsewhere.
 6. **Rules** — ordered binding rules (folder/tag/frontmatter → editors/panel/bindings or disabled); OSK note-type targets when the Starter Kit plugin is detected (optional, feature-detected, never required).
 7. **Behavior** — size-warning threshold, concurrency, request timeout, token/byte context budget, daemon mode (off by default; toggle + idle delay — automatic review refresh after the user pauses editing, cost implication stated in the toggle copy, Business Rule #1 carve-out), exclusions (folders, tags, `ai_editor: false` frontmatter flag, strip-frontmatter toggle), default comment editor, language override.
 

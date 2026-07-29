@@ -119,6 +119,12 @@ export class PanelModal extends Modal {
             getPaths: () => this.draft.charter.notePaths,
             setPaths: (paths) => {
                 this.draft.charter.notePaths = paths
+            },
+            followLinks: {
+                get: () => this.draft.charter.followLinks,
+                set: (value) => {
+                    this.draft.charter.followLinks = value
+                }
             }
         })
 

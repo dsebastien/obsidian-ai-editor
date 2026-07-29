@@ -2,12 +2,16 @@ import { describe, expect, it } from 'bun:test'
 import {
     DEFAULT_PLUGIN_SETTINGS,
     SETTINGS_SCHEMA_VERSION,
+    actionBindingSchema,
     apiBackendSchema,
     behaviorSettingsSchema,
     checkReferentialIntegrity,
+    editorConfigSchema,
     loadSettings,
     loadSettingsDetailed,
+    panelConfigSchema,
     pluginSettingsSchema,
+    promptSourceSchema,
     resolveIdCollisions,
     type PluginSettingsV1
 } from './settings-schema'
@@ -32,6 +36,26 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         expect(DEFAULT_PLUGIN_SETTINGS.actions).toEqual([])
         expect(DEFAULT_PLUGIN_SETTINGS.rules).toEqual([])
         expect(DEFAULT_PLUGIN_SETTINGS.defaultBackend).toBeNull()
+    })
+
+    it('defaults follow-links ON for the voice profile and OFF everywhere else', () => {
+        // Plan §0 "Live-testing feedback #2": the voice profile is the
+        // motivating case for following referenced-note links; editor
+        // prompts, panel charters, and custom instructions stay opt-in.
+        expect(DEFAULT_PLUGIN_SETTINGS.voiceProfile.followLinks).toEqual(true)
+        expect(promptSourceSchema.parse({}).followLinks).toEqual(false)
+        expect(editorConfigSchema.parse(validEditor('e-1')).prompt.followLinks).toEqual(false)
+        expect(
+            panelConfigSchema.parse({
+                id: 'p-1',
+                name: 'Panel',
+                memberEditorIds: ['e-1']
+            }).charter.followLinks
+        ).toEqual(false)
+        expect(
+            actionBindingSchema.parse({ id: 'a-1', actionId: 'rephrase' }).customInstruction
+                .followLinks
+        ).toEqual(false)
     })
 
     it('defaults the first-run flags to false', () => {

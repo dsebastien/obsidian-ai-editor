@@ -7,7 +7,7 @@ import {
     type EditorConfig,
     type PromptSource
 } from '../../domain/settings/settings-schema'
-import { ExcludedTargetError, assembleContext } from './context-assembler'
+import { ExcludedTargetError, FOLLOWED_LINKS_CAP, assembleContext } from './context-assembler'
 import type { NoteMetadata, VaultReader } from './vault-reader.intf'
 
 interface FakeNote {
@@ -208,6 +208,262 @@ describe('assembleContext — attachments and ordering', () => {
         })
         expect(result.attachments).toEqual([])
         expect(result.truncated).toEqual([])
+    })
+})
+
+describe('assembleContext — follow links (PromptSource.followLinks)', () => {
+    test('attaches the notes linked from a referenced note when the source opts in', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Style.md', 'Identity.md'] },
+            'Style.md': { content: 's' },
+            'Identity.md': { content: 'i' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments).toEqual([
+            { path: 'Voice.md', content: 'v', reason: 'prompt-ref' },
+            { path: 'Style.md', content: 's', reason: 'followed-link' },
+            { path: 'Identity.md', content: 'i', reason: 'followed-link' }
+        ])
+    })
+
+    test('does not follow links when the source leaves followLinks off (default)', async () => {
+        const vault = vaultOf({
+            'Persona.md': { content: 'p', links: ['Extra.md'] },
+            'Extra.md': { content: 'e' }
+        })
+        const result = await assembleContext({
+            editor: editor({ prompt: { text: 'P', notePaths: ['Persona.md'] } }),
+            voiceProfile: voice(),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments.map((a) => a.path)).toEqual(['Persona.md'])
+    })
+
+    test('follows notes referenced via wikilinks in the source text too (extraction reuse)', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Linked.md'] },
+            'Linked.md': { content: 'l' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ text: 'write like [[Voice]]', followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments).toEqual([
+            { path: 'Voice.md', content: 'v', reason: 'wikilink-ref' },
+            { path: 'Linked.md', content: 'l', reason: 'followed-link' }
+        ])
+    })
+
+    test('depth 1 only: links of followed notes are never followed', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Depth1.md'] },
+            'Depth1.md': { content: 'd1', links: ['Depth2.md'] },
+            'Depth2.md': { content: 'd2' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments.map((a) => a.path)).toEqual(['Voice.md', 'Depth1.md'])
+    })
+
+    test('dedupes followed notes against already-included attachments and other roots', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Persona.md', 'Shared.md'] },
+            'Persona.md': { content: 'p', links: ['Shared.md', 'Voice.md'] },
+            'Shared.md': { content: 's' }
+        })
+        const result = await assembleContext({
+            editor: editor({
+                prompt: { text: 'P', notePaths: ['Persona.md'], followLinks: true }
+            }),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        // Persona/Voice stay prompt-refs; Shared attaches exactly once.
+        expect(result.attachments).toEqual([
+            { path: 'Voice.md', content: 'v', reason: 'prompt-ref' },
+            { path: 'Persona.md', content: 'p', reason: 'prompt-ref' },
+            { path: 'Shared.md', content: 's', reason: 'followed-link' }
+        ])
+    })
+
+    test('caps followed notes per referenced note, deterministically in link order', async () => {
+        const links = Array.from({ length: FOLLOWED_LINKS_CAP + 3 }, (_, i) => `F${i}.md`)
+        const entries: Record<string, FakeNote> = {
+            'Voice.md': { content: 'v', links }
+        }
+        for (const link of links) {
+            entries[link] = { content: 'x' }
+        }
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault: vaultOf(entries),
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        const followed = result.attachments.filter((a) => a.reason === 'followed-link')
+        expect(followed.map((a) => a.path)).toEqual(links.slice(0, FOLLOWED_LINKS_CAP))
+    })
+
+    test('the cap applies per referenced note, not globally', async () => {
+        const linksA = Array.from({ length: FOLLOWED_LINKS_CAP }, (_, i) => `A${i}.md`)
+        const entries: Record<string, FakeNote> = {
+            'VoiceA.md': { content: 'a', links: linksA },
+            'VoiceB.md': { content: 'b', links: ['B0.md'] },
+            'B0.md': { content: 'x' }
+        }
+        for (const link of linksA) {
+            entries[link] = { content: 'x' }
+        }
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['VoiceA.md', 'VoiceB.md'], followLinks: true }),
+            behavior: behavior(),
+            vault: vaultOf(entries),
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        const followed = result.attachments.filter((a) => a.reason === 'followed-link')
+        expect(followed.map((a) => a.path)).toEqual([...linksA, 'B0.md'])
+    })
+
+    test('followed notes are subject to the context budget (truncated and dropped)', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Big.md', 'Late.md'] },
+            'Big.md': { content: 'X'.repeat(2_000) },
+            'Late.md': { content: 'late' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior({ contextBudgetChars: 1_000 }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: ''
+        })
+        // 1000 - 1 (Voice.md content 'v') = 999 chars remain for Big.md.
+        const big = result.attachments.find((a) => a.path === 'Big.md')
+        expect(big?.content).toBe('X'.repeat(999))
+        expect(result.truncated).toEqual(['Big.md', 'Late.md'])
+    })
+
+    test('never follows links of an excluded referenced note', async () => {
+        const vault = vaultOf({
+            'Private/Voice.md': { content: 'v', links: ['Leak.md'] },
+            'Leak.md': { content: 'leak' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Private/Voice.md'], followLinks: true }),
+            behavior: behavior({ excludedFolders: ['Private'] }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments).toEqual([])
+    })
+
+    test('skips excluded followed notes, the reviewed note, and missing targets silently', async () => {
+        const vault = vaultOf({
+            'Voice.md': {
+                content: 'v',
+                links: ['Private/Diary.md', NOTE_PATH, 'Missing.md', 'Fine.md']
+            },
+            'Private/Diary.md': { content: 'secret' },
+            'Fine.md': { content: 'fine' }
+        })
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior({ excludedFolders: ['Private'] }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments.map((a) => a.path)).toEqual(['Voice.md', 'Fine.md'])
+        expect(result.truncated).toEqual([])
+    })
+
+    test('a followLinks voice profile is ignored when the editor opts out of it', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Linked.md'] },
+            'Linked.md': { content: 'l' }
+        })
+        const result = await assembleContext({
+            editor: editor({ injectVoiceProfile: false }),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments).toEqual([])
+    })
+
+    test('the memory note is not a prompt source and is never followed', async () => {
+        const vault = vaultOf({
+            'Memory.md': { content: 'm', links: ['MemLinked.md'] },
+            'MemLinked.md': { content: 'x' }
+        })
+        const result = await assembleContext({
+            editor: editor({
+                prompt: { text: 'P', notePaths: [], followLinks: true },
+                memory: 'note',
+                memoryNotePath: 'Memory.md'
+            }),
+            voiceProfile: voice({ followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments.map((a) => a.path)).toEqual(['Memory.md'])
+    })
+
+    test('followed notes come before the reviewed note’s linked notes', async () => {
+        const vault = vaultOf({
+            'Voice.md': { content: 'v', links: ['Followed.md'] },
+            'Followed.md': { content: 'f' },
+            'TargetLink.md': { content: 't' },
+            [NOTE_PATH]: { content: 'body', links: ['TargetLink.md'] }
+        })
+        const result = await assembleContext({
+            editor: editor({ includeLinkedNotes: true }),
+            voiceProfile: voice({ notePaths: ['Voice.md'], followLinks: true }),
+            behavior: behavior(),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments.map((a) => [a.path, a.reason])).toEqual([
+            ['Voice.md', 'prompt-ref'],
+            ['Followed.md', 'followed-link'],
+            ['TargetLink.md', 'linked-note']
+        ])
     })
 })
 

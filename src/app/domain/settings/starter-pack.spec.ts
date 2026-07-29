@@ -30,6 +30,14 @@ describe('seedStarterPack', () => {
         expect(pluginSettingsSchema.safeParse(seeded).success).toEqual(true)
     })
 
+    it('leaves follow-links OFF on starter prompts and the panel charter', () => {
+        const seeded = seedStarterPack(freshSettings())
+        for (const editor of seeded.editors) {
+            expect(editor.prompt.followLinks).toEqual(false)
+        }
+        expect(seeded.panels[0]?.charter.followLinks).toEqual(false)
+    })
+
     it('does not mutate the input settings', () => {
         const input = freshSettings()
         seedStarterPack(input)

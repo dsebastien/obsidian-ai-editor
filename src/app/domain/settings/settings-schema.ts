@@ -23,7 +23,16 @@ export const SETTINGS_SCHEMA_VERSION = 1
 export const promptSourceSchema = z.object({
     text: z.string().max(100_000).default(''),
     /** Vault-relative note paths, resolved fresh at run time, in order. */
-    notePaths: z.array(z.string().max(1_000)).max(50).default([])
+    notePaths: z.array(z.string().max(1_000)).max(50).default([]),
+    /**
+     * When true, context assembly also inlines the notes LINKED from each
+     * note this source references (notePaths + wikilinks in its text):
+     * depth 1 only, embeds count, deduped against already-included notes,
+     * capped per referenced note, and subject to `contextBudgetChars`.
+     * Default off; the root voice profile defaults ON (its motivating case:
+     * `[[My Voice Profile]]` linking out to style/identity notes).
+     */
+    followLinks: z.boolean().default(false)
 })
 export type PromptSource = z.infer<typeof promptSourceSchema>
 
@@ -125,7 +134,7 @@ export const editorConfigSchema = z.object({
     name: z.string().min(1).max(100),
     /** CSS color for rail dot / highlights (Obsidian CSS vars allowed). */
     color: z.string().max(100).default('var(--color-accent)'),
-    prompt: promptSourceSchema.default({ text: '', notePaths: [] }),
+    prompt: promptSourceSchema.default({ text: '', notePaths: [], followLinks: false }),
     /** null → inherit the global default backend. */
     backend: backendRefSchema.nullable().default(null),
     includeLinkedNotes: z.boolean().default(false),
@@ -155,7 +164,7 @@ export const panelConfigSchema = z.object({
     name: z.string().min(1).max(100),
     color: z.string().max(100).default('var(--color-accent)'),
     memberEditorIds: z.array(z.string().min(1)).min(1).max(20),
-    charter: promptSourceSchema.default({ text: '', notePaths: [] }),
+    charter: promptSourceSchema.default({ text: '', notePaths: [], followLinks: false }),
     aggregationBackend: backendRefSchema.nullable().default(null),
     enabled: z.boolean().default(true)
 })
@@ -190,7 +199,7 @@ export const actionBindingSchema = z.object({
     actionId: z.string().min(1),
     /** Custom actions carry their own display name + instruction prompt. */
     customName: z.string().max(100).default(''),
-    customInstruction: promptSourceSchema.default({ text: '', notePaths: [] }),
+    customInstruction: promptSourceSchema.default({ text: '', notePaths: [], followLinks: false }),
     binding: actionTargetSchema.nullable().default(null)
 })
 export type ActionBinding = z.infer<typeof actionBindingSchema>
@@ -273,7 +282,8 @@ export const pluginSettingsSchema = z.object({
     panels: z.array(panelConfigSchema).max(50).default([]),
     actions: z.array(actionBindingSchema).max(200).default([]),
     rules: z.array(bindingRuleSchema).max(200).default([]),
-    voiceProfile: promptSourceSchema.default({ text: '', notePaths: [] }),
+    /** Follow-links defaults ON here — see `promptSourceSchema.followLinks`. */
+    voiceProfile: promptSourceSchema.default({ text: '', notePaths: [], followLinks: true }),
     behavior: behaviorSettingsSchema.default(behaviorSettingsSchema.parse({})),
     /** True once the starter pack has been seeded (idempotence). */
     starterPackSeeded: z.boolean().default(false),
