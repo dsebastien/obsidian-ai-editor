@@ -9,9 +9,14 @@
  *   set is a projection only — the authoritative anchor store lives in the
  *   domain (`mapAnchorThroughChanges`), fed by `changesFromTransaction`
  *   (see `changes-adapter.ts`), which iterates the same `ChangeSet` this
- *   field maps through. Stale detection is a domain decision: the
- *   orchestrator dispatches `markStaleEffect` when a domain anchor goes
- *   stale; this field never decides staleness on its own.
+ *   field maps through. Stale detection is a domain decision; this field
+ *   never decides staleness on its own. Today staleness reaches the
+ *   decorations via the deferred full `setFindingsEffect` rebuild in
+ *   `ReviewController.dispatchDecorations`. `markStaleEffect` is the
+ *   incremental alternative (mark N ids stale without rebuilding the whole
+ *   set) — supported and spec-covered here, but NOT dispatched anywhere
+ *   yet; M3 (live stale-marking while the user types) is where it gets
+ *   wired. Do not assume it runs today.
  *
  * Rendering: each finding is a `Decoration.mark` with class
  * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale) and the

@@ -308,6 +308,11 @@ class FindingCardPlugin implements PluginValue {
         doc.addEventListener('mousedown', this.onDocPointerDown, true)
         doc.addEventListener('keydown', this.onDocKeyDown, true)
         this.view.scrollDOM.addEventListener('scroll', this.onScroll)
+        // The card is position-fixed at coordinates computed once from a cached
+        // anchor rect: a window/popout resize moves the anchor without moving
+        // the card, which can strand it outside the viewport. Same remedy as
+        // scrolling — close it.
+        doc.defaultView?.addEventListener('resize', this.onScroll)
     }
 
     private closeCard(): void {
@@ -319,6 +324,7 @@ class FindingCardPlugin implements PluginValue {
         doc.removeEventListener('mousedown', this.onDocPointerDown, true)
         doc.removeEventListener('keydown', this.onDocKeyDown, true)
         this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
+        doc.defaultView?.removeEventListener('resize', this.onScroll)
         card.remove()
         this.cardEl = null
         this.sectionIds = []

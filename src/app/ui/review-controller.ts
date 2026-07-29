@@ -1,4 +1,4 @@
-import { MarkdownView, Modal, Notice, Setting } from 'obsidian'
+import { MarkdownView, Modal, Notice, Setting, TFile } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -151,6 +151,33 @@ export class ReviewController {
         plugin.registerEvent(
             app.workspace.on('file-open', () => {
                 this.trackActiveFile()
+                this.scheduleRefresh()
+            })
+        )
+        // Runs and skip reports are keyed by file path, so both must follow the
+        // file: without these, a renamed file orphans its run (holding the full
+        // snapshot text forever) and a deleted file leaves skip notices that a
+        // later, unrelated run on the same path would inherit.
+        plugin.registerEvent(
+            app.vault.on('rename', (file, oldPath) => {
+                if (!(file instanceof TFile)) {
+                    return
+                }
+                this.deps.runController.discardRun(oldPath)
+                this.skipsByFile.delete(oldPath)
+                if (this.lastActiveMarkdownFile === oldPath) {
+                    this.lastActiveMarkdownFile = file.path
+                }
+                this.scheduleRefresh()
+            })
+        )
+        plugin.registerEvent(
+            app.vault.on('delete', (file) => {
+                this.deps.runController.discardRun(file.path)
+                this.skipsByFile.delete(file.path)
+                if (this.lastActiveMarkdownFile === file.path) {
+                    this.lastActiveMarkdownFile = null
+                }
                 this.scheduleRefresh()
             })
         )
@@ -319,15 +346,7 @@ export class ReviewController {
 
     /** Current side-panel binding for the (last) active markdown file. */
     getPanelBinding(): SidePanelBinding | null {
-        // Sticky tracking is event-fed; after a plugin (re)load no event has
-        // fired yet, so fall back to the live active view — a panel opened
-        // right after a reload must still find the current note's run.
-        let path = this.lastActiveMarkdownFile
-        if (!path) {
-            const view = this.deps.app.workspace.getActiveViewOfType(MarkdownView)
-            path = view?.file?.path ?? null
-            this.lastActiveMarkdownFile = path
-        }
+        const path = this.resolveActiveFilePath()
         if (!path) {
             return null
         }
@@ -674,8 +693,28 @@ export class ReviewController {
         }
     }
 
+    /**
+     * The file whose run the ambient surfaces (status bar, side panel) follow.
+     *
+     * Sticky tracking is event-fed, so it is empty until the first
+     * leaf/file-open event: right after a plugin (re)load, or when a review is
+     * started programmatically (CLI, another plugin) without the workspace
+     * emitting anything, the live active view is the only source of truth.
+     * Both ambient surfaces must use this — reading `lastActiveMarkdownFile`
+     * directly is what left the status-bar counter blank with findings on
+     * screen.
+     */
+    private resolveActiveFilePath(): string | null {
+        if (this.lastActiveMarkdownFile) {
+            return this.lastActiveMarkdownFile
+        }
+        const view = this.deps.app.workspace.getActiveViewOfType(MarkdownView)
+        this.lastActiveMarkdownFile = view?.file?.path ?? null
+        return this.lastActiveMarkdownFile
+    }
+
     private updateStatusBar(): void {
-        const path = this.lastActiveMarkdownFile
+        const path = this.resolveActiveFilePath()
         const run = path ? this.deps.runController.getRun(path) : null
         const count = run
             ? run.findings
@@ -730,6 +769,13 @@ export class ReviewController {
         const timer = window.setTimeout(() => {
             this.pendingTimers.delete(timer)
             if (this.disposed) {
+                return
+            }
+            // The leaf may have closed, switched file, or entered reading mode
+            // in the meantime: touching a detached editor can throw, and moving
+            // the cursor in a view that now shows a different note is worse.
+            const current = this.findMarkdownView(filePath)
+            if (!current || current.editor !== editor || current.file?.path !== filePath) {
                 return
             }
             if (
