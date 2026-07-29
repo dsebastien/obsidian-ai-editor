@@ -192,7 +192,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     override onunload(): void {
-        // Daemon timers first (no dispatch can start mid-teardown), then
+        // Daemon timers first (no NEW timer can fire mid-teardown; a dispatch
+        // already mid-flight in the review pipeline aborts via `abortWhen`'s
+        // disposed check before it could start a run), then
         // rails/subscriptions, then abort every in-flight backend request so
         // nothing outlives the plugin.
         this.daemonController?.dispose()

@@ -599,7 +599,13 @@ export class ReviewController {
      * - `abortWhen` guards the context-assembly awaits: if a user summon
      *   started a run meanwhile, the dispatch aborts WITHOUT starting a run —
      *   `startRun` would cancel the user's run, and explicit interactions
-     *   always win over the daemon.
+     *   always win over the daemon. The same guard aborts when daemon mode
+     *   was toggled OFF mid-flight (the toggle is the cost kill-switch — a
+     *   dispatch already past the timer must not bill the backends after it)
+     *   or when the controller was disposed (plugin unload — `cancelAll`
+     *   settles runs, so the run-in-flight check alone would let a mid-await
+     *   dispatch start a fresh run whose backend requests outlive the
+     *   plugin).
      */
     async startDaemonReview(
         filePath: string,
@@ -625,6 +631,9 @@ export class ReviewController {
                     ? this.snapshotView(view, filePath, 'whole-note')
                     : null,
             abortWhen: (): boolean => {
+                if (this.disposed || !this.deps.getSettings().behavior.daemonMode) {
+                    return true
+                }
                 const run = this.deps.runController.getRun(filePath)
                 return run !== null && !run.isSettled()
             },
@@ -1085,7 +1094,21 @@ export class ReviewController {
             glue.run = run
             glue.lastSpecsKey = ''
         }
+        const previousPath = glue.filePath
         glue.filePath = filePath
+        // Same-pane navigation (view rebound from note A to note B): clear
+        // A's daemon schedule when this was the LAST view showing A — the
+        // same last-view rule the removed-view sweep in `syncGlues` applies.
+        // Checked against live view paths, so loop order in `refreshAll`
+        // cannot matter.
+        if (previousPath !== null && previousPath !== filePath) {
+            const stillOpen = [...this.glues.values()].some(
+                (other) => other.view.file?.path === previousPath
+            )
+            if (!stillOpen) {
+                this.daemon?.fileClosed(previousPath)
+            }
+        }
 
         // Daemon glue rides the refresh cycle: run notifications and
         // workspace events land here, so the scheduler always sees the live

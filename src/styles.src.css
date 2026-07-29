@@ -552,6 +552,16 @@
     animation: ai-editor-pulse 2.4s ease-in-out infinite;
 }
 
+/* WCAG 2.3.3: the armed indicator can pulse for the whole idle window (up
+   to 600 s) on every note being edited — motion-sensitive users get static
+   dots (state stays visible through color/opacity alone). */
+@media (prefers-reduced-motion: reduce) {
+    .ai-editor-rail-dot-running,
+    .ai-editor-rail-daemon {
+        animation: none;
+    }
+}
+
 .ai-editor-rail-badge {
     @apply absolute rounded-full px-1 leading-tight;
     top: -7px;
