@@ -45,8 +45,8 @@ function insertRequest(runId = 'run-i1', text = DOC_TEXT): TransformOperationReq
 }
 
 function eventsExecutor(events: readonly OperationEvent[]) {
-    // eslint-disable-next-line @typescript-eslint/require-await
     return async function* execute(): AsyncGenerator<OperationEvent> {
+        await Promise.resolve()
         for (const event of events) {
             yield event
         }
@@ -325,8 +325,9 @@ describe('TransformRunHandle protocol', () => {
         const run = controller.startTransform(
             makeInput({
                 redactError: (message) => message.split('sk-secret').join('[redacted]'),
-                // eslint-disable-next-line @typescript-eslint/require-await
+                // eslint-disable-next-line require-yield
                 execute: async function* execute(): AsyncGenerator<OperationEvent> {
+                    await Promise.resolve()
                     throw new Error('boom sk-secret boom')
                 }
             })
@@ -422,6 +423,7 @@ describe('TransformRunHandle cancellation and concurrency', () => {
         // when cancel() terminates the run.
         const run = controller.startTransform(
             makeInput({
+                // eslint-disable-next-line require-yield
                 execute: async function* execute(): AsyncGenerator<OperationEvent> {
                     await new Promise(() => undefined) // hangs forever
                 }
@@ -526,9 +528,7 @@ describe('TransformController', () => {
         const pending = pendingExecutor('run-t1')
         const first = controller.startTransform(makeInput({ execute: pending.execute }))
         await tick()
-        const second = controller.startTransform(
-            makeInput({ request: transformRequest('run-t2') })
-        )
+        const second = controller.startTransform(makeInput({ request: transformRequest('run-t2') }))
         expect(first.getState().status).toBe('cancelled')
         expect(controller.getRun('Notes/Test.md')).toBe(second)
         pending.finish()

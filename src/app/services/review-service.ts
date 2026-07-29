@@ -39,6 +39,8 @@ import type { RunController, RunEditorSpec, RunHandle } from './orchestration/ru
 
 export type SkipReason =
     | 'no-review-capability'
+    /** Transform/generate actions only (transform-service): `capabilities.rewrite` is off. */
+    | 'no-rewrite-capability'
     | 'no-backend-configured'
     | 'backend-not-found'
     | 'backend-disabled'
@@ -57,6 +59,8 @@ export function skipReasonLabel(reason: SkipReason): string {
     switch (reason) {
         case 'no-review-capability':
             return 'review capability disabled'
+        case 'no-rewrite-capability':
+            return 'rewrite capability disabled'
         case 'no-backend-configured':
             return 'no backend configured (set a default backend or assign one)'
         case 'backend-not-found':
