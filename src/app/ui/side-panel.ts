@@ -71,14 +71,21 @@ function statusLabel(state: EditorRunState): string {
     }
 }
 
+/**
+ * Human labels for the wire verdict vocabulary. The wire tokens
+ * (publish/needs-work/kill) mirror the vault panels' scorecards and are what
+ * prompts instruct models to emit — but as a pill next to an editor's name,
+ * "Publish" reads like an action button and "Kill" is needlessly harsh, so
+ * the display says what the verdict MEANS for this note instead.
+ */
 function verdictLabel(verdict: NonNullable<EditorRunState['verdict']>): string {
     switch (verdict) {
         case 'publish':
-            return 'Publish'
+            return 'All good'
         case 'needs-work':
             return 'Needs work'
         case 'kill':
-            return 'Kill'
+            return 'Not ready'
     }
 }
 
