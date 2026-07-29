@@ -35,6 +35,8 @@ export interface SidePanelBinding {
     readonly editors: readonly SidePanelEditorInfo[]
     readonly skips: readonly EditorSkip[]
     readonly revealFinding: (findingId: FindingId) => void
+    /** Retry the one failed/cancelled editor inside the existing run. */
+    readonly retryEditor: (editorId: string) => void
 }
 
 /** Pulls the current binding when the panel (re)opens or refreshes itself. */
@@ -197,6 +199,18 @@ export class ReviewSidePanelView extends ItemView {
             header.createSpan({
                 cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${state.verdict}`,
                 text: verdictLabel(state.verdict)
+            })
+        }
+        if (state.status === 'error' || state.status === 'cancelled') {
+            // Per-editor retry (mirrors the rail chip): re-runs ONLY this
+            // editor inside the existing run against the current buffer text.
+            const retryLabel = `Retry ${state.editorName}`
+            const retryEl = header.createEl('button', { cls: 'ai-editor-panel-retry' })
+            setIcon(retryEl, 'rotate-ccw')
+            retryEl.setAttribute('aria-label', retryLabel)
+            retryEl.title = retryLabel
+            retryEl.addEventListener('click', () => {
+                binding.retryEditor(state.editorId)
             })
         }
 

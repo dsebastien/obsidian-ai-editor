@@ -478,6 +478,28 @@
     @apply flex flex-col items-center gap-1.5;
 }
 
+/* One editor chip: status dot + optional retry button (failed/cancelled). */
+.ai-editor-rail-chip {
+    @apply flex flex-col items-center gap-0.5;
+}
+
+.ai-editor-rail-retry {
+    @apply cursor-pointer rounded-full p-0;
+    width: 16px;
+    height: 16px;
+    font-size: 11px;
+    line-height: 1;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-rail-retry:hover {
+    color: var(--text-normal);
+    background-color: var(--interactive-hover);
+}
+
 .ai-editor-rail-dot {
     @apply relative cursor-pointer rounded-full p-0;
     width: 16px;
@@ -502,6 +524,11 @@
 .ai-editor-rail-dot-error {
     border-color: var(--text-error);
     opacity: 0.7;
+}
+
+.ai-editor-rail-dot-cancelled {
+    border-color: var(--text-muted);
+    opacity: 0.6;
 }
 
 @keyframes ai-editor-pulse {
@@ -616,6 +643,28 @@
 
 .ai-editor-panel-status-error {
     color: var(--text-error);
+}
+
+/* Per-editor retry (section header, mirrors the rail chip affordance). */
+.ai-editor-panel-retry {
+    @apply flex cursor-pointer items-center justify-center rounded p-0;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+    flex-shrink: 0;
+}
+
+.ai-editor-panel-retry:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.ai-editor-panel-retry .svg-icon {
+    width: var(--icon-xs, 14px);
+    height: var(--icon-xs, 14px);
 }
 
 .ai-editor-panel-verdict {

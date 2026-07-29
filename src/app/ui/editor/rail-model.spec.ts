@@ -94,11 +94,29 @@ describe('buildRailViewModel', () => {
             expect(byStatus(editor({ status: 'error' }))?.ariaLabel).toBe(
                 'Concision Editor: failed'
             )
+            expect(byStatus(editor({ status: 'cancelled' }))?.ariaLabel).toBe(
+                'Concision Editor: cancelled'
+            )
         })
 
         it('uses the aria-label as the hover title', () => {
             const vm = buildRailViewModel(state())
             expect(vm.dots[0]?.title).toBe(vm.dots[0]?.ariaLabel ?? '')
+        })
+
+        it('offers a retry affordance only on failed and cancelled editors', () => {
+            const byStatus = (s: RailEditorState) =>
+                buildRailViewModel(state({ editors: [s] })).dots[0]
+
+            expect(byStatus(editor({ status: 'error' }))?.retryAriaLabel).toBe(
+                'Retry Concision Editor'
+            )
+            expect(byStatus(editor({ status: 'cancelled' }))?.retryAriaLabel).toBe(
+                'Retry Concision Editor'
+            )
+            expect(byStatus(editor({ status: 'idle' }))?.retryAriaLabel).toBeNull()
+            expect(byStatus(editor({ status: 'running' }))?.retryAriaLabel).toBeNull()
+            expect(byStatus(editor({ status: 'done' }))?.retryAriaLabel).toBeNull()
         })
     })
 })

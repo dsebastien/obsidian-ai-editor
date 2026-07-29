@@ -11,8 +11,12 @@ import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
 import { isReviewable, reviewCapableEditors } from '../services/reviewability'
-import type { RunController, RunHandle } from '../services/orchestration/run-controller'
-import type { EditorRunStatus } from '../services/orchestration/run-controller'
+import type {
+    EditorRunStatus,
+    RetryEditorResult,
+    RunController,
+    RunHandle
+} from '../services/orchestration/run-controller'
 import { skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
 import { AskEditorModal } from './ask-editor-modal'
@@ -551,6 +555,51 @@ export class ReviewController {
     }
 
     /**
+     * Per-editor retry entry shared by the rail chip and the side-panel
+     * section header: re-runs ONE failed/cancelled editor inside the note's
+     * EXISTING run. The fresh anchor-base text is the CURRENT live buffer of
+     * the canonical view, read synchronously in the same block as the retry
+     * start so no keystroke can interleave between capture and the resumed
+     * per-editor edit recording (Business Rules #3/#4 — edit forwarding is
+     * already active because the run stays bound to the view glue after
+     * settle). Without an open view (run kept alive for the panel after the
+     * note was closed) the vault state IS the current text; no forwarding
+     * happens without a view, and Accept re-verifies against the live text
+     * anyway.
+     */
+    retryEditor(filePath: string, editorId: string): void {
+        if (this.disposed) {
+            return
+        }
+        const run = this.deps.runController.getRun(filePath)
+        if (!run) {
+            return
+        }
+        const view = this.findMarkdownView(filePath)
+        if (view && view.file?.path === filePath) {
+            this.reportRetry(run.retryEditor(editorId, view.editor.getValue()))
+            return
+        }
+        void this.vaultReader.readNote(filePath).then((text) => {
+            if (this.disposed || text === null) {
+                return
+            }
+            // The run may have been replaced or discarded during the await.
+            if (this.deps.runController.getRun(filePath) !== run) {
+                return
+            }
+            this.reportRetry(run.retryEditor(editorId, text))
+        })
+    }
+
+    /** Retry refusals surface as a Notice; success updates via run notify. */
+    private reportRetry(result: RetryEditorResult): void {
+        if (!result.ok) {
+            new Notice('This editor cannot be retried right now.')
+        }
+    }
+
+    /**
      * The run bound to the (last) active markdown file, if any — the run the
      * ambient surfaces follow. Command gates (`Cancel review`) read run state
      * through this instead of duplicating the sticky-file resolution.
@@ -631,6 +680,9 @@ export class ReviewController {
             skips: this.skipsByFile.get(path) ?? [],
             revealFinding: (findingId: FindingId): void => {
                 void this.revealFinding(path, findingId)
+            },
+            retryEditor: (editorId: string): void => {
+                this.retryEditor(path, editorId)
             }
         }
     }
@@ -872,6 +924,14 @@ export class ReviewController {
                 },
                 onEditorClick: (): void => {
                     void this.activateSidePanel()
+                },
+                onRetry: (editorId): void => {
+                    // Resolve the path at click time: the view may have
+                    // switched notes since the rail was mounted.
+                    const path = view.file?.path
+                    if (path) {
+                        this.retryEditor(path, editorId)
+                    }
                 }
             },
             doc
@@ -1119,7 +1179,9 @@ function railStatusOf(status: EditorRunStatus): RailEditorStatus {
         case 'error':
             return 'error'
         case 'cancelled':
-            return 'idle'
+            // Distinct from 'idle' so the rail can offer the per-editor
+            // retry affordance on cancelled editors too.
+            return 'cancelled'
     }
 }
 

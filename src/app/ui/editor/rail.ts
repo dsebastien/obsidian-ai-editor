@@ -21,6 +21,8 @@ export interface RailCallbacks {
     readonly onReview: () => void
     readonly onCancel: () => void
     readonly onEditorClick: (editorId: string) => void
+    /** Retry the one failed/cancelled editor inside the existing run. */
+    readonly onRetry: (editorId: string) => void
 }
 
 export class PersonaRail {
@@ -72,7 +74,7 @@ export class PersonaRail {
         dotsEl.setAttribute('role', 'group')
         dotsEl.setAttribute('aria-label', 'Editors')
         for (const dot of viewModel.dots) {
-            dotsEl.appendChild(this.renderDot(dot))
+            dotsEl.appendChild(this.renderChip(dot))
         }
         this.rootEl.appendChild(dotsEl)
     }
@@ -80,6 +82,30 @@ export class PersonaRail {
     /** Removes the rail from the DOM. The instance must not be reused. */
     destroy(): void {
         this.rootEl.remove()
+    }
+
+    /**
+     * One editor chip: the status dot, plus a retry icon-button when the
+     * editor's attempt failed or was cancelled (`retryAriaLabel` non-null).
+     */
+    private renderChip(dot: RailDotViewModel): HTMLElement {
+        const chipEl = this.doc.createElement('div')
+        chipEl.classList.add('ai-editor-rail-chip')
+        chipEl.appendChild(this.renderDot(dot))
+        if (dot.retryAriaLabel !== null) {
+            const retryEl = this.doc.createElement('button')
+            retryEl.classList.add('ai-editor-rail-retry')
+            // Text glyph on purpose: the rail is Obsidian-free DOM (no
+            // setIcon) and must not use innerHTML.
+            retryEl.textContent = '↻'
+            retryEl.setAttribute('aria-label', dot.retryAriaLabel)
+            retryEl.title = dot.retryAriaLabel
+            retryEl.addEventListener('click', () => {
+                this.callbacks.onRetry(dot.editorId)
+            })
+            chipEl.appendChild(retryEl)
+        }
+        return chipEl
     }
 
     private renderDot(dot: RailDotViewModel): HTMLElement {

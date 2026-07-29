@@ -7,7 +7,7 @@
  * the view-owned DOM keeps the DOM layer trivial and disposable.
  */
 
-export type RailEditorStatus = 'idle' | 'running' | 'done' | 'error'
+export type RailEditorStatus = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
 
 /** Per-editor input state, projected by the run orchestrator. */
 export interface RailEditorState {
@@ -41,6 +41,13 @@ export interface RailDotViewModel {
     readonly badge: string | null
     readonly ariaLabel: string
     readonly title: string
+    /**
+     * Accessible label for the retry affordance, or null when the editor is
+     * not retryable. Only editors whose run attempt ended in failure
+     * (`error`) or was cancelled get one — retry re-runs exactly that editor
+     * inside the existing run (plan §0 "Slow & thinking models" piece 1).
+     */
+    readonly retryAriaLabel: string | null
 }
 
 export interface RailViewModel {
@@ -73,7 +80,13 @@ function statusLabel(editor: RailEditorState): string {
             return findingsLabel(editor.findingCount)
         case 'error':
             return 'failed'
+        case 'cancelled':
+            return 'cancelled'
     }
+}
+
+function isRetryable(status: RailEditorStatus): boolean {
+    return status === 'error' || status === 'cancelled'
 }
 
 function buildDot(editor: RailEditorState): RailDotViewModel {
@@ -84,7 +97,8 @@ function buildDot(editor: RailEditorState): RailDotViewModel {
         status: editor.status,
         badge: formatBadge(editor.findingCount),
         ariaLabel: label,
-        title: label
+        title: label,
+        retryAriaLabel: isRetryable(editor.status) ? `Retry ${editor.name}` : null
     }
 }
 
