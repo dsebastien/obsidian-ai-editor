@@ -308,7 +308,7 @@
 .ai-editor-finding-card {
     @apply fixed flex flex-col overflow-y-auto rounded;
     z-index: var(--layer-menu, 25);
-    width: min(360px, 92vw);
+    width: min(560px, 94vw);
     max-height: 60vh;
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
@@ -316,7 +316,7 @@
 }
 
 .ai-editor-finding-card-section {
-    @apply flex flex-col gap-2 p-3;
+    @apply flex flex-col gap-3 p-4;
 }
 
 .ai-editor-finding-card-section + .ai-editor-finding-card-section {

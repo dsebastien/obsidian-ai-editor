@@ -319,7 +319,15 @@ export class ReviewController {
 
     /** Current side-panel binding for the (last) active markdown file. */
     getPanelBinding(): SidePanelBinding | null {
-        const path = this.lastActiveMarkdownFile
+        // Sticky tracking is event-fed; after a plugin (re)load no event has
+        // fired yet, so fall back to the live active view — a panel opened
+        // right after a reload must still find the current note's run.
+        let path = this.lastActiveMarkdownFile
+        if (!path) {
+            const view = this.deps.app.workspace.getActiveViewOfType(MarkdownView)
+            path = view?.file?.path ?? null
+            this.lastActiveMarkdownFile = path
+        }
         if (!path) {
             return null
         }
