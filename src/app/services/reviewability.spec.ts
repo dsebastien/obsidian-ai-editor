@@ -6,7 +6,12 @@ import {
 } from '../domain/settings/settings-schema'
 import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
 import type { NoteMetadata } from './context/vault-reader.intf'
-import { hasReviewCapableEditor, isExcluded, isReviewable } from './reviewability'
+import {
+    hasReviewCapableEditor,
+    isExcluded,
+    isReviewable,
+    reviewCapableEditors
+} from './reviewability'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -104,6 +109,35 @@ describe('hasReviewCapableEditor', () => {
             ]
         })
         expect(hasReviewCapableEditor(settings)).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// reviewCapableEditors
+// ---------------------------------------------------------------------------
+
+describe('reviewCapableEditors', () => {
+    it('lists only dispatchable editors, in settings order', () => {
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'editor-off', enabled: false }),
+                makeEditor({ id: 'editor-a', name: 'Mentor' }),
+                makeEditor({
+                    id: 'editor-no-review',
+                    capabilities: { review: false, rewrite: true, research: false }
+                }),
+                makeEditor({ id: 'editor-b', name: 'Hater' })
+            ]
+        })
+        expect(reviewCapableEditors(settings).map((editor) => editor.id)).toEqual([
+            'editor-a',
+            'editor-b'
+        ])
+    })
+
+    it('is empty when no backend resolves for any editor', () => {
+        const settings = makeSettings({ defaultBackend: null })
+        expect(reviewCapableEditors(settings)).toEqual([])
     })
 })
 

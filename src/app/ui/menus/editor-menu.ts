@@ -41,6 +41,20 @@ export function registerEditorMenu(plugin: Plugin, controller: ReviewController)
                                 })
                         })
                         break
+                    case 'ask-editor':
+                        menu.addItem((menuItem) => {
+                            menuItem
+                                .setTitle('Ask an editor…')
+                                .setIcon('message-circle-question')
+                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .onClick(() => {
+                                    // Selection + capture-time hash are read
+                                    // synchronously in this callback; the
+                                    // modal then owns the dispatch.
+                                    controller.openAskEditorModal(info, editor)
+                                })
+                        })
+                        break
                 }
             }
         })

@@ -1,4 +1,4 @@
-import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
+import type { EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { isExcluded } from './context/exclusions'
 import type { NoteMetadata } from './context/vault-reader.intf'
 import { resolveApiBackend } from './review-service'
@@ -20,17 +20,27 @@ import { resolveApiBackend } from './review-service'
 export { isExcluded } from './context/exclusions'
 
 /**
- * Whether at least one editor could participate in a review run: enabled,
+ * Every editor that could participate in a review run right now: enabled,
  * review capability on, and its backend resolves to an enabled API backend
- * with a model (mirrors the participant selection in `startReview`).
- * Surfaces gated on this never offer non-functional UI (design rule: no
- * placeholder commands or menu items).
+ * with a model (mirrors the participant selection in `startReview`). In
+ * settings order — surfaces that offer an editor choice (the "Ask an
+ * editor" modal) list exactly these, so the user can never pick an editor
+ * `startReview` would refuse.
  */
-export function hasReviewCapableEditor(settings: PluginSettingsV1): boolean {
-    return settings.editors.some(
+export function reviewCapableEditors(settings: PluginSettingsV1): EditorConfig[] {
+    return settings.editors.filter(
         (editor) =>
             editor.enabled && editor.capabilities.review && resolveApiBackend(settings, editor).ok
     )
+}
+
+/**
+ * Whether at least one editor could participate in a review run. Surfaces
+ * gated on this never offer non-functional UI (design rule: no placeholder
+ * commands or menu items).
+ */
+export function hasReviewCapableEditor(settings: PluginSettingsV1): boolean {
+    return reviewCapableEditors(settings).length > 0
 }
 
 /**

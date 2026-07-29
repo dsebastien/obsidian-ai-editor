@@ -29,18 +29,20 @@ export interface EditorMenuState {
     readonly reviewable: boolean
 }
 
-export type EditorMenuItemId = 'review-selection'
+export type EditorMenuItemId = 'review-selection' | 'ask-editor'
 
 /**
- * Items for the editor context menu. "Review selection" appears only when
- * there is something selected in an editable view AND a review could actually
- * start (not excluded + ≥1 dispatchable review-capable editor).
+ * Items for the editor context menu. Both items share the same gate: they
+ * appear only when there is something selected in an editable view AND a
+ * review could actually start (not excluded + ≥1 dispatchable review-capable
+ * editor). "Ask an editor…" opens the freeform modal (design §6 decision 1 —
+ * the item was hidden until the modal existed; it does now).
  */
 export function editorMenuItems(state: EditorMenuState): readonly EditorMenuItemId[] {
     if (!state.editable || !state.hasSelection || !state.reviewable) {
         return []
     }
-    return ['review-selection']
+    return ['review-selection', 'ask-editor']
 }
 
 // ---------------------------------------------------------------------------

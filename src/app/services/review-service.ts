@@ -64,6 +64,21 @@ export function skipReasonLabel(reason: SkipReason): string {
 }
 
 // ---------------------------------------------------------------------------
+// Per-run instruction (freeform "Ask an editor", design §6 decision 1)
+// ---------------------------------------------------------------------------
+
+/**
+ * One-run-only instruction for a single editor: the run is narrowed to
+ * exactly `editorId` and that editor's composed system prompt is augmented
+ * with `text` via `augmentSystemPrompt`. Nothing is persisted — settings are
+ * never mutated, the next run assembles its prompt from scratch.
+ */
+export interface RunInstruction {
+    readonly editorId: string
+    readonly text: string
+}
+
+// ---------------------------------------------------------------------------
 // Start result (discriminated: callers must handle every refusal)
 // ---------------------------------------------------------------------------
 
@@ -135,6 +150,17 @@ export interface StartReviewInput {
         readonly to: number
         readonly capturedHash: string
     }
+    /**
+     * Freeform "Ask an editor" scope (design §6 decision 1): when set, ONLY
+     * the named editor participates (the other editors were not asked — they
+     * are neither run nor reported as skips), and its fully composed system
+     * prompt is augmented with the instruction text for this run only (see
+     * `augmentSystemPrompt`; settings stay untouched). The instruction is
+     * user content riding in the prompt — it cannot change the operation
+     * contract: findings still stream through the same tool schema and
+     * validate through the same Zod parsing as any review.
+     */
+    readonly instruction?: RunInstruction
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +255,31 @@ export function composeSystemPrompt(context: AssembledContext): string {
         .join('\n\n')
 }
 
+/**
+ * Appends a one-run user instruction to a fully composed system prompt (the
+ * "Ask an editor" seam). Applied AFTER `composeSystemPrompt` so the
+ * instruction lands last — after persona text and context attachments —
+ * where it is most salient to the model. The text is user content: it is
+ * framed as review focus inside a delimited block (XML-style tag, consistent
+ * with the attachment serialization) and explicitly subordinated to the
+ * output contract — and even a hostile instruction cannot break that
+ * contract structurally, because findings are emitted through the tool
+ * schema and validated with Zod regardless of what the prompt says.
+ * Blank instructions leave the prompt untouched.
+ */
+export function augmentSystemPrompt(basePrompt: string, instruction: string): string {
+    const trimmed = instruction.trim()
+    if (trimmed.length === 0) {
+        return basePrompt
+    }
+    const block = [
+        'The user asked you to focus this review on the following instruction.',
+        'It only directs WHAT to look at — the required output format is unchanged:',
+        `<user-instruction>\n${trimmed}\n</user-instruction>`
+    ].join('\n')
+    return [basePrompt, block].filter((segment) => segment.length > 0).join('\n\n')
+}
+
 // ---------------------------------------------------------------------------
 // API editor specs
 // ---------------------------------------------------------------------------
@@ -309,10 +360,18 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // -- Resolve participants -------------------------------------------------
     // SEAM (M6): binding rules (folder/tag/frontmatter → default editors or
     // disabled) will narrow this selection per note. Until then every enabled
-    // review-capable editor participates.
+    // review-capable editor participates — unless a per-run instruction
+    // narrows the run to the one editor the user asked (the others are not
+    // candidates at all, so they never appear in the skip report). An
+    // instruction whose editor no longer exists, is disabled, or cannot
+    // dispatch yields `no-editors` like any other empty selection.
+    const instruction = input.instruction
+    const editorPool = instruction
+        ? settings.editors.filter((editor) => editor.id === instruction.editorId)
+        : settings.editors
     const skips: EditorSkip[] = []
     const participants: { editor: EditorConfig; backend: ApiBackend; model: string }[] = []
-    for (const editor of settings.editors) {
+    for (const editor of editorPool) {
         if (!editor.enabled) {
             continue
         }
@@ -347,12 +406,16 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                 notePath: snapshot.filePath,
                 noteText: snapshot.text
             })
+            const composedPrompt = composeSystemPrompt(context)
             editorSpecs.push(
                 createEditorSpec({
                     editor: participant.editor,
                     backend: participant.backend,
                     model: participant.model,
-                    systemPrompt: composeSystemPrompt(context),
+                    systemPrompt:
+                        instruction && participant.editor.id === instruction.editorId
+                            ? augmentSystemPrompt(composedPrompt, instruction.text)
+                            : composedPrompt,
                     fetchImpl
                 })
             )

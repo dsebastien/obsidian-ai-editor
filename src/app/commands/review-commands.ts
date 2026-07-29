@@ -14,6 +14,8 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  *   (not excluded + ≥1 dispatchable editor; service re-checks fail-closed).
  * - `Review selection` — non-empty selection in an editable reviewable view;
  *   captures the range synchronously (selection-capture contract, design §1).
+ * - `Ask an editor` — same gate as `Review selection`; captures the range +
+ *   hash synchronously, then opens the freeform modal (design §6 decision 1).
  * - `Open review panel` — reveals the side-panel leaf.
  * - `Cancel review` — the active file's run is still unsettled.
  * - `Next finding` / `Previous finding` — cursor-relative stepping through
@@ -61,6 +63,32 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
                 return true
             }
             controller.startSelectionReview(ctx, editor)
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'ask-editor',
+        name: 'Ask an editor',
+        editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
+            // Same availability as `Review selection`: the modal dispatches a
+            // selection-scoped review, so the gates must agree with what
+            // `startReview` would accept.
+            if (!(ctx instanceof MarkdownView)) {
+                return false
+            }
+            const allowed = canReviewSelection({
+                editable: ctx.getMode() !== 'preview',
+                hasSelection: editor.somethingSelected(),
+                reviewable: controller.canReview(ctx)
+            })
+            if (!allowed) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.openAskEditorModal(ctx, editor)
             return true
         }
     })

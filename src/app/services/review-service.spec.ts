@@ -10,6 +10,7 @@ import { createSnapshot, hashText } from '../domain/snapshot'
 import { RunController } from './orchestration/run-controller'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
+    augmentSystemPrompt,
     composeSystemPrompt,
     countWords,
     createEditorSpec,
@@ -270,6 +271,36 @@ describe('composeSystemPrompt', () => {
 })
 
 // ---------------------------------------------------------------------------
+// augmentSystemPrompt
+// ---------------------------------------------------------------------------
+
+describe('augmentSystemPrompt', () => {
+    it('appends the instruction as a framed, delimited block after the base prompt', () => {
+        const prompt = augmentSystemPrompt('Be harsh.', 'Is this argument convincing?')
+        expect(prompt).toStartWith('Be harsh.')
+        expect(prompt).toContain(
+            '<user-instruction>\nIs this argument convincing?\n</user-instruction>'
+        )
+        // The framing subordinates the instruction to the output contract.
+        expect(prompt).toContain('the required output format is unchanged')
+    })
+
+    it('trims the instruction and leaves the prompt untouched when blank', () => {
+        expect(augmentSystemPrompt('Be harsh.', '   \n\t ')).toBe('Be harsh.')
+        expect(augmentSystemPrompt('Be harsh.', '')).toBe('Be harsh.')
+        expect(augmentSystemPrompt('Be harsh.', '  focus here  ')).toContain(
+            '<user-instruction>\nfocus here\n</user-instruction>'
+        )
+    })
+
+    it('yields only the block for an empty base prompt', () => {
+        const prompt = augmentSystemPrompt('', 'focus here')
+        expect(prompt).toStartWith('The user asked you')
+        expect(prompt).toContain('focus here')
+    })
+})
+
+// ---------------------------------------------------------------------------
 // createEditorSpec (transport/protocol behavior is covered by
 // backends/api-editor-backend.spec.ts — this seam binds identity + redaction)
 // ---------------------------------------------------------------------------
@@ -452,6 +483,65 @@ describe('startReview', () => {
         ])
         await result.run.settled
         expect(result.run.getEditorStates()).toHaveLength(1)
+    })
+
+    it('narrows an instruction run to the chosen editor with an augmented prompt', async () => {
+        const captured: string[] = []
+        const fetchImpl = ((url: string, init: { body: string }) => {
+            captured.push(init.body)
+            void url
+            return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
+        }) as unknown as typeof fetch
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ prompt: { text: 'Persona one.', notePaths: [] } }),
+                makeEditor({
+                    id: 'editor-2',
+                    name: 'Mentor',
+                    prompt: { text: 'Persona two.', notePaths: [] }
+                })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl,
+            instruction: { editorId: 'editor-2', text: 'Is this argument convincing?' }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // The un-asked editor is neither run nor reported as a skip.
+        expect(result.skips).toEqual([])
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['editor-2'])
+        await result.run.settled
+        expect(captured).toHaveLength(1)
+        const body = captured[0] ?? ''
+        expect(body).toContain('Persona two.')
+        expect(body).toContain('Is this argument convincing?')
+        expect(body).toContain('user-instruction')
+        expect(body).not.toContain('Persona one.')
+        // Findings still flow through the unchanged operation contract.
+        expect(result.run.findings.list()).toHaveLength(1)
+    })
+
+    it('returns no-editors when the instruction names an unknown or disabled editor', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Off', enabled: false })]
+        })
+        for (const editorId of ['ghost', 'editor-2']) {
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody()),
+                instruction: { editorId, text: 'focus' }
+            })
+            expect(result.status).toBe('no-editors')
+        }
     })
 
     it('excludes attached context notes without failing the run', async () => {

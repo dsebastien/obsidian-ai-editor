@@ -8,13 +8,14 @@ import type { NavigationDirection } from '../commands/finding-navigation'
 import { asFindingId } from '../domain/ids'
 import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
-import { createSnapshot } from '../domain/snapshot'
+import { createSnapshot, hashText } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
-import { isReviewable } from '../services/reviewability'
+import { isReviewable, reviewCapableEditors } from '../services/reviewability'
 import type { RunController, RunHandle } from '../services/orchestration/run-controller'
 import type { EditorRunStatus } from '../services/orchestration/run-controller'
 import { skipReasonLabel, startReview } from '../services/review-service'
-import type { EditorSkip } from '../services/review-service'
+import type { EditorSkip, RunInstruction } from '../services/review-service'
+import { AskEditorModal } from './ask-editor-modal'
 import { changesFromTransaction } from './editor/changes-adapter'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
 import {
@@ -291,7 +292,8 @@ export class ReviewController {
         view: MarkdownView,
         confirmedLargeNote = false,
         requestedSelection?: RequestedSelection,
-        scope: SnapshotScope = 'auto'
+        scope: SnapshotScope = 'auto',
+        instruction?: RunInstruction
     ): Promise<void> {
         const file = view.file
         if (!file || this.disposed) {
@@ -327,7 +329,8 @@ export class ReviewController {
             // command-time snapshot.
             refreshSnapshot: (): DocumentSnapshot | null =>
                 view.file?.path === file.path ? this.snapshotView(view, file.path, scope) : null,
-            ...(requested ? { requestedSelection: requested } : {})
+            ...(requested ? { requestedSelection: requested } : {}),
+            ...(instruction ? { instruction } : {})
         })
 
         switch (result.status) {
@@ -339,8 +342,9 @@ export class ReviewController {
                     // The originally captured selection rides along WITH its
                     // capture-time hash; the service re-validates it after
                     // the confirmation delay and falls back to whole-note
-                    // scope when the note was edited meanwhile.
-                    void this.startReview(view, true, requested, scope)
+                    // scope when the note was edited meanwhile. A per-run
+                    // instruction survives the round trip unchanged.
+                    void this.startReview(view, true, requested, scope, instruction)
                 }).open()
                 return
             case 'no-editors': {
@@ -431,6 +435,44 @@ export class ReviewController {
             return
         }
         void this.startReview(view, false, { from, to })
+    }
+
+    /**
+     * Freeform "Ask an editor" entry (design §6 decision 1), shared by the
+     * editor context menu and the `Ask an editor` command. The selection AND
+     * its capture-time hash are read synchronously HERE, in the invoking
+     * callback — the modal introduces an arbitrarily long gap before
+     * dispatch, so unlike `startSelectionReview` the capture-time hash cannot
+     * be derived from the dispatch-time snapshot (the service would validate
+     * stale offsets against themselves). On submit the review runs through
+     * the exact same `startReview` path, narrowed to the chosen editor with
+     * its prompt augmented for this run only; a selection invalidated while
+     * the modal was open falls back to whole-note scope with the usual
+     * Notice. A collapsed selection at capture time (gate raced the click)
+     * simply asks about the whole note.
+     */
+    openAskEditorModal(view: MarkdownView, editor: Editor): void {
+        if (!view.file || this.disposed) {
+            return
+        }
+        const choices = reviewCapableEditors(this.deps.getSettings()).map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name
+        }))
+        if (choices.length === 0) {
+            // Unreachable behind the `canReviewSelection` gates; fail closed.
+            return
+        }
+        const from = editor.posToOffset(editor.getCursor('from'))
+        const to = editor.posToOffset(editor.getCursor('to'))
+        const requested: RequestedSelection | undefined =
+            from !== to ? { from, to, capturedHash: hashText(editor.getValue()) } : undefined
+        new AskEditorModal(this.deps.app, choices, (editorId, instruction) => {
+            void this.startReview(view, false, requested, 'auto', {
+                editorId,
+                text: instruction
+            })
+        }).open()
     }
 
     // -- CLI dispatch seam ----------------------------------------------------

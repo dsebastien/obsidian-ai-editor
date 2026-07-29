@@ -412,6 +412,18 @@
     @apply my-2 pl-5;
 }
 
+/* "Ask an editor" modal (src/app/ui/ask-editor-modal.ts) */
+.ai-editor-ask-textarea {
+    @apply my-2 w-full;
+    min-height: 6em;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.ai-editor-ask-single-editor {
+    color: var(--text-normal);
+}
+
 /* ========================================
    PERSONA RAIL (src/app/ui/editor/rail.ts,
    mounted by src/app/ui/review-controller.ts)

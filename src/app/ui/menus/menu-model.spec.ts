@@ -19,8 +19,8 @@ function fileState(overrides: Partial<FileMenuState> = {}): FileMenuState {
 // ---------------------------------------------------------------------------
 
 describe('editorMenuItems', () => {
-    it('offers review selection for a reviewable selection in an editable view', () => {
-        expect(editorMenuItems(editorState())).toEqual(['review-selection'])
+    it('offers review selection and ask editor for a reviewable selection in an editable view', () => {
+        expect(editorMenuItems(editorState())).toEqual(['review-selection', 'ask-editor'])
     })
 
     it('offers nothing without a selection', () => {
