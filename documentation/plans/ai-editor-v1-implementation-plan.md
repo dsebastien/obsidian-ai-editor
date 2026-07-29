@@ -147,6 +147,29 @@ Key invariants:
 - Note refs are resolved at run time (fresh read), so editing [[My Voice Profile]] immediately affects every subsequent run — the vault is the config.
 - Panels are visually distinguishable from Editors in every surface (rail, context menu, cards): distinct shape/badge (e.g. editors = solid dots, panels = ringed/stacked dots).
 
+## 4b. Note-type awareness
+
+- **Binding rules** (settings): ordered rules `[match: folder / tag / frontmatter property → default editors/panel + default action bindings]`. The Review button "does the right thing" per note type; rules only pick WHO reviews, never auto-run anything.
+- **Optional OSK integration**: when the Obsidian Starter Kit plugin is installed, note types are auto-discovered via a feature-detected adapter (port of `starter-kit.service.ts` from obsidian-kanban-action-planner: `isStarterKitAvailable` / `listNoteTypes` / `recognizeNoteType`, defensive normalization, graceful `null`/`[]` degradation). Rules can then target a recognized note type directly instead of hand-configured folders/tags. **Never mandatory** — everything works without OSK.
+- **Kill switch per scope**: rules can also map a note type / folder / tag to **"disabled"** — the plugin's UI (rail, context menu, actions) fully deactivates for those notes (e.g. daily notes, private folders). Complements the privacy exclusions in §5.7.
+
+## 4c. Adversarial review outcomes (2026-07-29)
+
+An adversarial review by codex (`gpt-5.6-sol`, xhigh) — full findings in `documentation/reviews/2026-07-29-plan-review-codex-gpt-5.6-sol.md` — surfaced 8 blockers / 24 majors. Adopted into this plan:
+
+1. **Operation-shaped contract, not one `review()`**: versioned discriminated operations — `Review`, `TransformSelection`, `InsertAt` (continuation), `RefineProposal`, `ThreadTurn`, `AggregatePanel` — each with its own result schema, stable IDs, and a typed `PanelResult` (member verdicts, top fixes, dissent, provenance).
+2. **Live Preview / Source mode = equivalent semantics, not identical rendering** (widgets hide syntax in LP). Mode detection via `editorLivePreviewField`; a markdown fixture corpus exercises marks across links/embeds/headings/callouts in both modes.
+3. **Snapshot & concurrency model**: every run pins a content snapshot + hash; anchors map through every CM6 `ChangeDesc`; a proposal whose range was edited goes **stale** (never silently fuzzy-relocated); Accept verifies the precondition text still matches.
+4. **Transport reality**: Obsidian's `requestUrl` doesn't stream; renderer `fetch` has CORS caveats per provider. M0 includes a transport spike per provider; **buffered structured output is the first-class baseline**, streaming is a per-provider progressive enhancement ("first insight in seconds" is an aspiration, not a requirement).
+5. **CLI backends are a security boundary**: spawn without shell, content via stdin, isolated working directory (not the vault), allowlisted env, read-only sandbox flags, tools/session persistence off by default, process-tree kill on cancel/unload, versioned protocol conformance tests, separate consent flow for tool/research mode. CLI support is **opt-in and late** in the milestone order.
+6. **`isDesktopOnly: true` from M0** (manifest currently says false — fix immediately).
+7. **Provider adapters are explicit profiles** (native OpenAI, narrowly-defined OpenAI-compatible, Anthropic, Ollama, Azure OpenAI deployment-based), each with capability negotiation (streaming? JSON schema? usage?), normalized errors, `AbortSignal`, health check, and exactly-once terminal events.
+8. **Context assembly is budgeted and previewable**: token/byte budget across the whole context graph (not note counts), dedup/cycle handling, and a per-run "what will be sent" preview; exclusions are enforced before context resolution (excluded notes can't ride in via wikilinks).
+9. **Settings integrity**: stable UUIDs, schema versions + migrations, referential integrity on delete (impact dialogs), import validation/remapping, idempotent starter-pack seeding.
+10. **Wikilink references via a dedicated note-ref control** (`AbstractInputSuggest`-based) or a purpose-built contenteditable prompt editor — not naive textarea autocomplete.
+11. **Key storage disclosure**: keys live in `data.json` (may sync) — documented prominently; keys/prompts redacted from logs; warning on non-loopback HTTP endpoints.
+12. **Canonical docs** (`Architecture.md`, `Domain Model.md`, `Configuration.md`, `Business Rules.md`) get the locked invariants at M0, before feature code.
+
 ## 5. Architecture
 
 ### 5.1 Backend abstraction
@@ -236,16 +259,18 @@ Drawn from Maggie's epistemic roles + the user's OSK skills/agents:
 
 Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Beginner Reader + Humanizer → scorecard with publish / needs-work / kill verdicts (mirrors osk-panel-publish).
 
-## 6. Milestones (what, not when; each lands green: tsc + lint + test + build)
+## 6. Milestones (what, not when; each lands green: tsc + lint + test + build; reordered per the adversarial review)
 
-- **M0 — Foundations**: domain types + Zod schemas; settings store (Immer); backend abstraction with ApiBackend (Anthropic + OpenAI-compatible + Ollama); finding contract + anchoring pipeline with exhaustive spec tests (anchoring is the risk — de-risk first).
-- **M1 — Core review loop**: editor rail + Review/Cancel + spinners + live count badges (streaming findings); span highlights; review cards (critique, Suggest/Apply/Dismiss, push-back input with per-finding thread); inline diff with Accept/Reject/Refine; keyboard triage commands (next/prev/accept/reject/dismiss). Single editor, whole-note scope + selection override. Verified in Live Preview AND Source mode.
-- **M2 — Editors & settings**: persona CRUD UI (gallery, colors, prompt textarea + note-ref picker with wikilink autocomplete), 1-n provider instances (incl. Azure AI Foundry), per-editor backend/model override, voice profile section, exclusions, starter pack seeding, import/export, setup wizard.
-- **M3 — Actions & context menu**: selection context menu + command palette commands; action→editor/panel bindings in settings; custom actions; "Generate more" continuation affordance.
-- **M4 — Panels**: panel CRUD (1-n members, charter, aggregation), panel run orchestration (parallel member runs + aggregation call), scorecard in side panel; visual distinction editors-vs-panels everywhere.
-- **M5 — CLI backends**: Claude Code + Codex adapters (headless streaming), health checks, per-editor backend override UI; research-grade actions light up.
-- **M6 — Async margin comments**: sidecar store, fuzzy re-anchoring, background runs with live timers, margin/side-panel comment UI.
-- **M7 — Polish & release**: theming (light/dark, Obsidian CSS vars only), animations (dot spinners, card transitions, diff reveal), performance passes (large notes), docs (README, docs/ user guide), marketplace submission, release workflow.
+- **M0 — Contracts & spikes**: locked invariants written into `documentation/` canonical docs; operation contract (discriminated ops + JSON Schemas + Zod, stable IDs, versioning); anchoring pipeline (snapshot hash, occurrence disambiguation, `ChangeDesc` mapping, stale detection) with property/fuzz tests; **three de-risking spikes**: (a) transport per provider (streaming vs buffered, CORS), (b) CM6 decorations + rail + tooltip in Live Preview AND Source mode against a markdown fixture corpus, (c) CLI headless protocol probe. `isDesktopOnly: true`.
+- **M1 — Provider & settings vertical slice**: 1-n provider instances (Anthropic, OpenAI, OpenAI-compatible, Azure OpenAI, Ollama) with capability negotiation, health checks, normalized errors, `AbortSignal`; tabbed settings shell; minimal editor entity + starter pack seeding.
+- **M2 — Buffered single-editor review**: Review/Cancel from the rail, span highlights, side panel findings list (also the narrow-layout fallback), whole-note + selection scope, size warning + confirm, exclusions + per-type kill switch.
+- **M3 — Streaming & anchors under edit**: per-provider streaming decoders where verified, live badges, cancellation races, stale-marking while the user types, precondition-checked apply.
+- **M4 — Cards, diffs & keyboard triage**: floating review cards (single active tooltip, collision-aware), non-destructive inline diff (source stays visible; CM6-undo-integrated Accept), per-finding threads, full keyboard triage state machine, adaptive layout via `ResizeObserver`.
+- **M5 — Editors/actions/context CRUD**: persona gallery (colors, prompt textarea + dedicated note-ref control), voice profile section, action→editor/panel bindings, custom actions, note-type binding rules + optional OSK auto-discovery adapter, `[[link]]`-in-inputs context with budget + "what will be sent" preview, import/export with validation, setup wizard.
+- **M6 — Panels**: panel CRUD (1-n members, charter, per-panel aggregation backend), parallel member runs + typed `PanelResult` scorecard (verdicts, top fixes, dissent, partial-failure policy), editors-vs-panels visual distinction, "Generate more" / `InsertAt` continuation affordance.
+- **M7 — CLI backends (opt-in)**: Claude Code + Codex adapters behind the security boundary (stdin content, isolated cwd, allowlisted env, read-only sandbox, process-tree kill, protocol conformance tests), separate consent for tool/research mode.
+- **M8 — Durable margin comments**: sidecar repository (schema version, migrations, rename handling, corruption recovery), interrupted-job semantics on restart (Retry, never fake resumption), background runs with live timers, margin column UI.
+- **M9 — Polish & release**: theming via Obsidian CSS vars, reduced-motion + ARIA + non-color persona indicators, performance passes (large notes, many findings), docs (README, docs/ user guide), community-review checklist sweep, marketplace submission. **Post-implementation adversarial codex review (same model/effort) before release.**
 
 ## 7. Risks & mitigations
 
@@ -257,6 +282,17 @@ Starter panel: **Pre-publish Review** = Devil's Advocate + Flow & Structure + Be
 | Cost runaway (N editors × long notes) | Scope control (selection/section), per-run token caps, count badge = findings only after completion, explicit Summon (never auto-run by default) |
 | Findings spam / annoying UX | Severity filter, per-editor max findings, "fade on dismiss" everywhere, ignorable-by-design |
 | Obsidian review guidelines (no `innerHTML`, sentence-case UI, no "Obsidian" in name/desc) | Template conventions + review-lint before submission |
+
+## 7b. Later: knowledge-integration features (post-v1, tracked as GitHub issues)
+
+Beyond reviewing prose, editors should help integrate the note into the vault's knowledge graph:
+
+1. **Tag review** — an editor reviews/improves the note's tags: suggests existing vault tags that fit (never inventing new ones without flagging), flags redundant/missing ones. Respects vault tag conventions.
+2. **Related-notes discovery** — find vault notes relevant to the current note and propose them as wikilinks, targeted at a specific section (e.g. `## Related`); accept/reject per suggestion, like findings.
+3. **References management** — add/update a full references list at the end of the note:
+   - **Internal**: every vault note mentioned/linked in the body, consolidated.
+   - **External**: URLs the user added manually + **every external source an LLM used as input/reference while editing/writing** (source-citation tracking: backends must report the sources behind their suggestions so citations are effortless and honest).
+4. Prerequisite plumbing: the operation contract's evidence entries (review finding #27) double as the citation source for external references.
 
 ## 8. Open questions (park for later; don't block M0-M1)
 
