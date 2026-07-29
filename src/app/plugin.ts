@@ -17,6 +17,9 @@ import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerReviewCli } from './cli/register-review-cli'
+import { registerCancelCli } from './cli/register-run-cli'
+import { CANCEL_CLI_COMMAND } from './services/cli/cancel-cli'
+import { REVIEW_CLI_COMMAND } from './services/cli/review-cli'
 import { registerWhatsNewView } from './whats-new'
 import { log } from '../utils/log'
 
@@ -96,21 +99,30 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             // `registerCliHandler` throws when the command is still
             // registered by a dying instance (double-load race — same
             // failure mode `registerReviewPanelView` heals). There is no
-            // public unregister API, so degrade: skip the CLI surface for
-            // this session instead of failing the whole plugin load.
-            try {
+            // public unregister API, so degrade per subcommand: skip that
+            // CLI surface for this session instead of failing the whole
+            // plugin load.
+            const guardCliRegistration = (command: string, register: () => void): void => {
+                try {
+                    register()
+                } catch (error) {
+                    log(
+                        `CLI command ${command} still registered from a previous load — continuing without it (${String(error)})`,
+                        'warn'
+                    )
+                }
+            }
+            guardCliRegistration(REVIEW_CLI_COMMAND, () =>
                 registerReviewCli({
                     plugin: this,
                     runController,
                     reviewController,
                     getSettings: () => this.settings
                 })
-            } catch (error) {
-                log(
-                    `CLI command still registered from a previous load — continuing without the CLI surface (${String(error)})`,
-                    'warn'
-                )
-            }
+            )
+            guardCliRegistration(CANCEL_CLI_COMMAND, () =>
+                registerCancelCli({ plugin: this, runController })
+            )
         }
     }
 
