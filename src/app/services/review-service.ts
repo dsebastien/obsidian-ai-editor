@@ -926,6 +926,13 @@ function createPanelSpec(input: {
     return {
         panelId: panel.id,
         panelName: panel.name,
+        // The scorecard obeys the same context budget the reviews do — the
+        // aggregation is a request like any other, and a panel over a long
+        // note is exactly where an unbounded payload would hurt.
+        budget: {
+            contextBudgetChars: settings.behavior.contextBudgetChars,
+            charterChars: input.charterText.length
+        },
         redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
         aggregate: createApiEditorExecutor({
             backendConfig: resolution.backend,

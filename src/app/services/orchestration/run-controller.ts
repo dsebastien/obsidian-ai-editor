@@ -16,7 +16,11 @@ import type {
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
-import type { PanelAggregationPlan, PanelMemberReview } from '../../domain/panels/panel-aggregation'
+import type {
+    PanelAggregationBudget,
+    PanelAggregationPlan,
+    PanelMemberReview
+} from '../../domain/panels/panel-aggregation'
 import { resolveThreadOutcome } from '../../domain/operations/thread'
 import type { ThreadBeginFailure } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
@@ -98,6 +102,12 @@ export interface RunPanelSpec {
      * rather than the run pretending there was nothing to aggregate.
      */
     readonly aggregate?: PanelAggregationExecutor
+    /**
+     * What the aggregation request may spend (plan M6). Absent leaves the
+     * operation contract's caps as the only limit — fine for a test double,
+     * never for a real run over a long note.
+     */
+    readonly budget?: PanelAggregationBudget
 }
 
 /**
@@ -991,7 +1001,7 @@ class ReviewRunHandle implements RunHandle {
         if (!panel || panel.status !== 'waiting' || !this.isSettled()) {
             return
         }
-        const plan = planPanelAggregation(this.memberReviews())
+        const plan = planPanelAggregation(this.memberReviews(), this.panelSpec?.budget)
         panel.missingMembers = [...plan.missingMembers]
         if (plan.kind === 'skip') {
             panel.status = 'skipped'
