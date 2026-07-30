@@ -255,7 +255,9 @@ describe('perf: word diff on a large replacement', () => {
             const changed = segments.filter((segment) => segment.kind !== 'same').length
             // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
             console.log(`  ⏱  wordDiff 30k chars granularity: ${changed} changed segments`)
-            expect(changed).toBeGreaterThanOrEqual(2)
+            // Before the anchor split this was 2 — the whole selection struck,
+            // the whole replacement inserted.
+            expect(changed).toBeGreaterThan(500)
         },
         BENCH_TIMEOUT_MS
     )

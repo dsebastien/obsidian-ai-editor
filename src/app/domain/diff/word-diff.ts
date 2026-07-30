@@ -26,9 +26,26 @@
  * segment — the reconstruction invariants above still hold.
  *
  * Cost guard: LCS is O(m·n) over token counts. Above `LCS_TOKEN_BUDGET`
- * (product of token counts, after common prefix/suffix trimming) the middle
- * degrades to one del + one ins block — still correct, just coarser. Typical
- * selection-sized transforms are far below the budget.
+ * (product of token counts, after common prefix/suffix trimming) the region
+ * is SPLIT on unique common tokens and each gap is diffed on its own; only a
+ * region with no unique common token left degrades to one del + one ins block.
+ *
+ * ## Why the split exists
+ *
+ * The coarse fallback alone is fast and useless. A whole-note "humanize" of a
+ * 30 000-character note is ~8 700 tokens per side — product 76 M, thirty times
+ * the budget — so the preview showed the ENTIRE selection struck through and
+ * the ENTIRE replacement inserted: two segments, measured (`perf.bench.spec.ts`).
+ * That is not a diff, it is a before/after, and the user has to find the
+ * changes themselves. The threshold bites early, too: ~1 400 words is enough.
+ *
+ * Splitting on tokens that occur EXACTLY ONCE on each side (the patience-diff
+ * idea) fixes both axes at once. Such a token can only align one way, so it is
+ * a safe anchor; taking the longest increasing subsequence of those pairs
+ * keeps the anchors monotone; and each gap between anchors is small enough to
+ * diff properly. Prose is full of unique tokens — names, numbers, rare
+ * words — so a real rewrite splits into hundreds of tiny LCS problems instead
+ * of one impossible one, and gets FASTER as well as finer.
  */
 
 export type DiffSegmentKind = 'same' | 'del' | 'ins'
@@ -125,6 +142,162 @@ function lcsOps(oldTokens: readonly string[], newTokens: readonly string[]): Tok
         ops.push({ kind: 'ins', text: newTokens[j] as string })
         j += 1
     }
+    return ops
+}
+
+/**
+ * How many times an over-budget region may be split before its remainder is
+ * given the coarse treatment.
+ *
+ * Each split strictly shrinks the region, so recursion terminates on its own;
+ * the cap only bounds STACK DEPTH against an adversarial input that keeps
+ * yielding exactly one anchor per level. In practice one split is enough — the
+ * gaps it produces are orders of magnitude under the budget — so this never
+ * fires on real text.
+ */
+const MAX_SPLIT_DEPTH = 12
+
+/** One token that occurs exactly once on each side: a safe alignment point. */
+interface Anchor {
+    readonly oldIndex: number
+    readonly newIndex: number
+}
+
+/**
+ * Tokens occurring EXACTLY ONCE in both lists, paired and kept in an order
+ * that increases on both sides (longest increasing subsequence by new index).
+ *
+ * Whitespace runs are never anchors: they are the most repeated tokens in any
+ * text, a lone one aligns nothing, and anchoring on one would cut a change
+ * region in half around a space.
+ */
+function uniqueCommonAnchors(oldTokens: readonly string[], newTokens: readonly string[]): Anchor[] {
+    const oldPositions = new Map<string, number>()
+    const oldDuplicates = new Set<string>()
+    for (let index = 0; index < oldTokens.length; index += 1) {
+        const token = oldTokens[index] as string
+        if (oldPositions.has(token)) {
+            oldDuplicates.add(token)
+        } else {
+            oldPositions.set(token, index)
+        }
+    }
+    const newPositions = new Map<string, number>()
+    const newDuplicates = new Set<string>()
+    for (let index = 0; index < newTokens.length; index += 1) {
+        const token = newTokens[index] as string
+        if (newPositions.has(token)) {
+            newDuplicates.add(token)
+        } else {
+            newPositions.set(token, index)
+        }
+    }
+
+    // Candidates in OLD order, so the LIS below only has to make the NEW
+    // indexes increase.
+    const candidates: Anchor[] = []
+    for (const [token, oldIndex] of oldPositions) {
+        if (oldDuplicates.has(token) || newDuplicates.has(token) || /^\s+$/u.test(token)) {
+            continue
+        }
+        const newIndex = newPositions.get(token)
+        if (newIndex !== undefined) {
+            candidates.push({ oldIndex, newIndex })
+        }
+    }
+    candidates.sort((left, right) => left.oldIndex - right.oldIndex)
+    return longestIncreasingByNewIndex(candidates)
+}
+
+/**
+ * Longest strictly-increasing (by `newIndex`) subsequence of anchors already
+ * sorted by `oldIndex`. Patience algorithm, O(n log n), deterministic.
+ */
+function longestIncreasingByNewIndex(candidates: readonly Anchor[]): Anchor[] {
+    if (candidates.length === 0) {
+        return []
+    }
+    // `tailIndexes[length - 1]` = index into `candidates` of the smallest
+    // possible tail of an increasing subsequence of that length.
+    const tailIndexes: number[] = []
+    const previous = new Array<number>(candidates.length).fill(-1)
+    for (let index = 0; index < candidates.length; index += 1) {
+        const value = candidates[index]?.newIndex ?? 0
+        let low = 0
+        let high = tailIndexes.length
+        while (low < high) {
+            const middle = (low + high) >> 1
+            const candidateIndex = tailIndexes[middle] ?? 0
+            if ((candidates[candidateIndex]?.newIndex ?? 0) < value) {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        if (low > 0) {
+            previous[index] = tailIndexes[low - 1] ?? -1
+        }
+        tailIndexes[low] = index
+    }
+    const result: Anchor[] = []
+    let cursor = tailIndexes[tailIndexes.length - 1] ?? -1
+    while (cursor >= 0) {
+        const anchor = candidates[cursor]
+        if (anchor === undefined) {
+            break
+        }
+        result.push(anchor)
+        cursor = previous[cursor] ?? -1
+    }
+    return result.reverse()
+}
+
+/**
+ * Diffs one region: LCS when it fits the budget, otherwise split on unique
+ * common tokens and diff each gap. A region with nothing to split on becomes
+ * one del + one ins block — correct, coarse, and the only case where the
+ * output stops being word-level.
+ */
+function diffRegion(
+    oldTokens: readonly string[],
+    newTokens: readonly string[],
+    depth: number
+): TokenOp[] {
+    if (oldTokens.length === 0 && newTokens.length === 0) {
+        return []
+    }
+    if (oldTokens.length === 0) {
+        return [{ kind: 'ins', text: newTokens.join('') }]
+    }
+    if (newTokens.length === 0) {
+        return [{ kind: 'del', text: oldTokens.join('') }]
+    }
+    if (oldTokens.length * newTokens.length <= LCS_TOKEN_BUDGET) {
+        return lcsOps(oldTokens, newTokens)
+    }
+    const anchors = depth >= MAX_SPLIT_DEPTH ? [] : uniqueCommonAnchors(oldTokens, newTokens)
+    if (anchors.length === 0) {
+        return [
+            { kind: 'del', text: oldTokens.join('') },
+            { kind: 'ins', text: newTokens.join('') }
+        ]
+    }
+    const ops: TokenOp[] = []
+    let oldCursor = 0
+    let newCursor = 0
+    for (const anchor of anchors) {
+        ops.push(
+            ...diffRegion(
+                oldTokens.slice(oldCursor, anchor.oldIndex),
+                newTokens.slice(newCursor, anchor.newIndex),
+                depth + 1
+            )
+        )
+        ops.push({ kind: 'same', text: oldTokens[anchor.oldIndex] as string })
+        oldCursor = anchor.oldIndex + 1
+        newCursor = anchor.newIndex + 1
+    }
+    ops.push(...diffRegion(oldTokens.slice(oldCursor), newTokens.slice(newCursor), depth + 1))
     return ops
 }
 
@@ -235,17 +408,7 @@ export function wordDiff(oldText: string, newText: string): DiffSegment[] {
     const oldMiddle = oldTokens.slice(prefix, oldTokens.length - suffix)
     const newMiddle = newTokens.slice(prefix, newTokens.length - suffix)
     const ops: TokenOp[] = oldTokens.slice(0, prefix).map((text) => ({ kind: 'same', text }))
-    if (oldMiddle.length * newMiddle.length > LCS_TOKEN_BUDGET) {
-        // Cost-guard fallback: one coarse replacement block for the middle.
-        if (oldMiddle.length > 0) {
-            ops.push({ kind: 'del', text: oldMiddle.join('') })
-        }
-        if (newMiddle.length > 0) {
-            ops.push({ kind: 'ins', text: newMiddle.join('') })
-        }
-    } else {
-        ops.push(...lcsOps(oldMiddle, newMiddle))
-    }
+    ops.push(...diffRegion(oldMiddle, newMiddle, 0))
     ops.push(
         ...oldTokens.slice(oldTokens.length - suffix).map(
             (text): TokenOp => ({

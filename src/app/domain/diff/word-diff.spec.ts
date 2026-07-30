@@ -257,3 +257,78 @@ describe('wordDiff', () => {
         }
     })
 })
+
+describe('wordDiff — splitting an over-budget region on unique anchors', () => {
+    /**
+     * Two ~3 000-token sides (product ~9 M, over the 4 M budget) where every
+     * sentence carries a unique marker. Real prose looks like this: names,
+     * numbers and rare words are everywhere.
+     */
+    function overBudgetRewrite(): { oldText: string; newText: string } {
+        const oldParts: string[] = []
+        const newParts: string[] = []
+        for (let index = 0; index < 700; index += 1) {
+            oldParts.push(`marker${index} the quick brown fox jumped`)
+            // One word rewritten per sentence; the marker is the anchor.
+            newParts.push(`marker${index} the quick brown fox leapt`)
+        }
+        return { oldText: oldParts.join(' '), newText: newParts.join(' ') }
+    }
+
+    it('stays word-level instead of degrading to one struck block', () => {
+        const { oldText, newText } = overBudgetRewrite()
+        const oldTokens = tokenizeWords(oldText).length
+        const newTokens = tokenizeWords(newText).length
+        expect(oldTokens * newTokens).toBeGreaterThan(LCS_TOKEN_BUDGET)
+
+        const segments = expectInvariants(oldText, newText)
+        // The coarse fallback would produce exactly one del and one ins.
+        const deletions = segments.filter((segment) => segment.kind === 'del')
+        expect(deletions.length).toBeGreaterThan(500)
+        // And what it struck is the changed WORD, not the whole text.
+        expect(deletions.every((segment) => segment.text.trim() === 'jumped')).toBeTrue()
+    })
+
+    it('keeps the unchanged text as `same` rather than re-inserting it', () => {
+        const { oldText, newText } = overBudgetRewrite()
+        const segments = wordDiff(oldText, newText)
+        const sameChars = segments
+            .filter((segment) => segment.kind === 'same')
+            .reduce((total, segment) => total + segment.text.length, 0)
+        expect(sameChars).toBeGreaterThan(oldText.length * 0.8)
+    })
+
+    it('never anchors on whitespace', () => {
+        // A single unique whitespace run (the only `\t` in the text) must not
+        // become an alignment point and cut the change region around it.
+        const filler = Array.from({ length: 1_500 }, (_, i) => `old${i}`).join(' ')
+        const newFiller = Array.from({ length: 1_500 }, (_, i) => `new${i}`).join(' ')
+        const segments = expectInvariants(`a\tb ${filler}`, `a\tb ${newFiller}`)
+        expect(
+            segments.some((segment) => segment.kind === 'same' && /\t/u.test(segment.text))
+        ).toBeTrue()
+    })
+
+    it('does not cross anchors when unique tokens are transposed', () => {
+        // `alpha` and `omega` swap places. Only a monotone subset may anchor,
+        // so the diff must still reconstruct both texts exactly.
+        const filler = Array.from({ length: 1_100 }, (_, i) => `w${i}`).join(' ')
+        const changedFiller = Array.from({ length: 1_100 }, (_, i) => `v${i}`).join(' ')
+        expectInvariants(`alpha ${filler} omega`, `omega ${changedFiller} alpha`)
+    })
+
+    it('still degrades coarsely when the region shares no unique token', () => {
+        // Already covered above for the trimmed case; here the two sides have
+        // NOTHING in common, which is the only situation left where a
+        // before/after block is the honest answer.
+        const oldText = Array.from({ length: 2_100 }, (_, i) => `old${i}`).join(' ')
+        const newText = Array.from({ length: 2_100 }, (_, i) => `new${i}`).join(' ')
+        const segments = expectInvariants(oldText, newText)
+        expect(segments.map((segment) => segment.kind)).toEqual(['del', 'ins'])
+    })
+
+    it('is deterministic across runs at over-budget size', () => {
+        const { oldText, newText } = overBudgetRewrite()
+        expect(wordDiff(oldText, newText)).toEqual(wordDiff(oldText, newText))
+    })
+})
