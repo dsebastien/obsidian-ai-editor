@@ -8,6 +8,12 @@
  */
 export { BoundedCapture, DEFAULT_MAX_STDERR_BYTES, DEFAULT_MAX_STDOUT_BYTES } from './capture'
 export type { StderrDiagnostics } from './capture'
+export { cliTimeoutMs, createCliEditorExecutor, resolveCliModel } from './cli-editor-backend'
+export type {
+    CliEditorExecutor,
+    CreateCliEditorExecutorInput,
+    SpawnCliProcessFn
+} from './cli-editor-backend'
 export { buildCliEnv } from './env'
 export type { CliEnvResult, EnvProblem } from './env'
 export { validateExecutablePath } from './executable'
