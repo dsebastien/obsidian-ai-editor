@@ -7,9 +7,22 @@
    `theme(inline reference)` inlines the resolved values into each generated
    utility instead of emitting `:root { --spacing: …; --text-xs: …; }` theme
    variables that could collide with community themes.
+
+   `source(none)` on the utilities import is load-bearing and must NOT be
+   dropped. Without it Tailwind v4 auto-detects the repo as a source and emits
+   every utility it finds used anywhere — `.hidden`, `.container`, `.outline`,
+   `.table`, `.flex`, `.shadow`, ~70 more — as STANDALONE global rules in the
+   shipped styles.css, which Obsidian loads app-wide. Obsidian's own app.css
+   already uses `.hidden` and `.outline`, so enabling the plugin would restyle
+   the app (and any theme or sibling plugin using those names). This plugin
+   never puts a bare utility class on an element: every class it writes is
+   `ai-editor-*` (plus `.support-header-margin`), and utilities reach the
+   output through `@apply` inside those rules, which `source(none)` does not
+   affect. If a bare utility class is ever needed in TypeScript, add it to a
+   plugin-prefixed class here with `@apply` instead of re-enabling scanning.
 */
 @import 'tailwindcss/theme.css' layer(theme) theme(inline reference);
-@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
 
 /* ========================================
    SUPPORT & UI SECTIONS
