@@ -22,11 +22,12 @@ Dependency direction: `ui`/`commands` → `services` → `domain` → `types`. T
 ## Core flow (a review run)
 
 1. User triggers Review (command/rail). The active note is snapshotted (`DocumentSnapshot`: text + hash + id).
-2. Context is assembled per editor: system prompt (voice profile + persona prompt text + resolved note refs), the snapshot text, optional selection, resolved `[[wikilink]]` context — all within a token/byte budget, after privacy exclusions.
-3. Each enabled editor's backend runs an `Operation` (see contract in `src/app/domain/operations/`). Backends emit `OperationEvent`s: findings (as they complete, when streaming is verified for the provider), progress, exactly one terminal event (result/error), all tagged with the run id.
-4. Findings are anchored against the snapshot (exact → normalized → contextual; ambiguous/fuzzy = display-only) and projected into CM6 decorations. User edits remap positions via change-mapping; edits intersecting a finding's range mark it stale.
-5. Triage: cards, diffs, threads, keyboard commands, bulk operations. Accept re-verifies the precondition text, applies as a single undoable transaction.
-6. Panel runs add an aggregation operation over member results, producing a typed `PanelResult` scorecard.
+2. Binding rules are consulted (`domain/rules/`): a kill-switch rule refuses the run with its own typed status (distinct from a privacy exclusion) and suppresses every surface for that note; an assign rule supplies the default participant pool. An explicit ask/bound action, and a daemon re-dispatch, both override the rule's pool.
+3. Context is assembled per editor: system prompt (voice profile + persona prompt text + resolved note refs), the snapshot text, optional selection, resolved `[[wikilink]]` context — all within a token/byte budget, after privacy exclusions.
+4. Each enabled editor's backend runs an `Operation` (see contract in `src/app/domain/operations/`). Backends emit `OperationEvent`s: findings (as they complete, when streaming is verified for the provider), progress, exactly one terminal event (result/error), all tagged with the run id.
+5. Findings are anchored against the snapshot (exact → normalized → contextual; ambiguous/fuzzy = display-only) and projected into CM6 decorations. User edits remap positions via change-mapping; edits intersecting a finding's range mark it stale.
+6. Triage: cards, diffs, threads, keyboard commands, bulk operations. Accept re-verifies the precondition text, applies as a single undoable transaction.
+7. Panel runs add an aggregation operation over member results, producing a typed `PanelResult` scorecard.
 
 ## Backends
 
