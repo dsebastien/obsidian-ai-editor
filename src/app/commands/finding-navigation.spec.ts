@@ -4,7 +4,9 @@ import {
     cycleFinding,
     navigableEditorFindings,
     navigableFindings,
-    stepFinding
+    stepFinding,
+    triageCurrent,
+    triageStep
 } from './finding-navigation'
 import type {
     EditorScopedSourceFinding,
@@ -198,6 +200,129 @@ describe('cycleFinding', () => {
             last = next.id
         }
         expect(visited).toEqual(['a', 'b', 'c', 'a'])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// triageStep — memory-based stepping (the shared engine)
+// ---------------------------------------------------------------------------
+
+describe('triageStep', () => {
+    const ordered = [target('a', 10), target('b', 20), target('c', 30)]
+
+    it('returns null with nothing to step through', () => {
+        expect(triageStep([], null, 'next')).toBeNull()
+        expect(triageStep([], { id: 'a', from: 10 }, 'prev')).toBeNull()
+    })
+
+    it('starts at the first (next) / last (prev) target without memory', () => {
+        expect(triageStep(ordered, null, 'next')?.id).toBe('a')
+        expect(triageStep(ordered, null, 'prev')?.id).toBe('c')
+    })
+
+    it('steps to the neighbor of a remembered target in anchor order', () => {
+        expect(triageStep(ordered, { id: 'a', from: 10 }, 'next')?.id).toBe('b')
+        expect(triageStep(ordered, { id: 'b', from: 20 }, 'next')?.id).toBe('c')
+        expect(triageStep(ordered, { id: 'c', from: 30 }, 'prev')?.id).toBe('b')
+        expect(triageStep(ordered, { id: 'b', from: 20 }, 'prev')?.id).toBe('a')
+    })
+
+    it('wraps around at both ends', () => {
+        expect(triageStep(ordered, { id: 'c', from: 30 }, 'next')?.id).toBe('a')
+        expect(triageStep(ordered, { id: 'a', from: 10 }, 'prev')?.id).toBe('c')
+    })
+
+    it('steps a single target onto itself', () => {
+        const single = [target('only', 10)]
+        expect(triageStep(single, { id: 'only', from: 10 }, 'next')?.id).toBe('only')
+        expect(triageStep(single, { id: 'only', from: 10 }, 'prev')?.id).toBe('only')
+    })
+
+    it('auto-advances past an evicted target onto the next remaining one', () => {
+        // 'b' was accepted/dismissed: next from its old position lands on
+        // the finding that followed it — the triage loop's auto-advance.
+        const remaining = [target('a', 10), target('c', 30)]
+        expect(triageStep(remaining, { id: 'b', from: 20 }, 'next')?.id).toBe('c')
+    })
+
+    it('lands on a target sitting exactly at the evicted position (next)', () => {
+        // Two findings started at the same offset; judging one must land on
+        // its same-position sibling, not skip past it.
+        const remaining = [target('a', 10), target('sibling', 20), target('c', 30)]
+        expect(triageStep(remaining, { id: 'gone', from: 20 }, 'next')?.id).toBe('sibling')
+    })
+
+    it('wraps to the first when the evicted target was the last one', () => {
+        const remaining = [target('a', 10), target('b', 20)]
+        expect(triageStep(remaining, { id: 'c', from: 30 }, 'next')?.id).toBe('a')
+    })
+
+    it('prev from an evicted target lands on the last one strictly before it', () => {
+        const remaining = [target('a', 10), target('c', 30)]
+        expect(triageStep(remaining, { id: 'b', from: 20 }, 'prev')?.id).toBe('a')
+        // A sibling at the evicted position is NOT "before" it.
+        const siblings = [target('sibling', 20), target('c', 30)]
+        expect(triageStep(siblings, { id: 'gone', from: 20 }, 'prev')?.id).toBe('c')
+    })
+
+    it('wraps to the last when the evicted target was the first one', () => {
+        const remaining = [target('b', 20), target('c', 30)]
+        expect(triageStep(remaining, { id: 'a', from: 10 }, 'prev')?.id).toBe('c')
+    })
+
+    it('interleaves findings from multiple editors purely by anchor order', () => {
+        // The triage set spans ALL editors: build it through the real
+        // pipeline (navigableFindings over mixed-editor findings) and step
+        // across the interleave.
+        const mixed = navigableFindings([
+            makeEditorFinding({ id: 'hater-1', editorId: 'hater', from: 25 }),
+            makeEditorFinding({ id: 'style-1', editorId: 'style', from: 10 }),
+            makeEditorFinding({ id: 'hater-2', editorId: 'hater', from: 40 }),
+            makeEditorFinding({ id: 'style-2', editorId: 'style', from: 30 })
+        ])
+        expect(mixed.map((entry) => entry.id)).toEqual(['style-1', 'hater-1', 'style-2', 'hater-2'])
+        expect(triageStep(mixed, { id: 'style-1', from: 10 }, 'next')?.id).toBe('hater-1')
+        expect(triageStep(mixed, { id: 'hater-1', from: 25 }, 'next')?.id).toBe('style-2')
+        expect(triageStep(mixed, { id: 'style-2', from: 30 }, 'prev')?.id).toBe('hater-1')
+    })
+
+    it('walks the full loop: next → judge (evict) → auto-advance → wrap', () => {
+        // Simulates the triage loop over three findings judged in order.
+        let targets = [target('a', 10), target('b', 20), target('c', 30)]
+        const visited: string[] = []
+        let memory: { id: string; from: number } | null = null
+        while (targets.length > 0) {
+            const current = triageStep(targets, memory, 'next')
+            if (!current) {
+                break
+            }
+            visited.push(current.id)
+            memory = { id: current.id, from: current.from }
+            targets = targets.filter((entry) => entry.id !== current.id) // judged
+        }
+        expect(visited).toEqual(['a', 'b', 'c'])
+        expect(triageStep(targets, memory, 'next')).toBeNull()
+    })
+})
+
+// ---------------------------------------------------------------------------
+// triageCurrent — cursor validity
+// ---------------------------------------------------------------------------
+
+describe('triageCurrent', () => {
+    const ordered = [target('a', 10), target('b', 20)]
+
+    it('returns null without memory', () => {
+        expect(triageCurrent(ordered, null)).toBeNull()
+    })
+
+    it('returns the remembered target while it is still navigable', () => {
+        expect(triageCurrent(ordered, { id: 'b', from: 20 })).toEqual(target('b', 20))
+    })
+
+    it('returns null once the remembered finding left the set (stale/terminal)', () => {
+        expect(triageCurrent(ordered, { id: 'gone', from: 15 })).toBeNull()
+        expect(triageCurrent([], { id: 'a', from: 10 })).toBeNull()
     })
 })
 

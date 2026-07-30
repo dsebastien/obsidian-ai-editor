@@ -77,6 +77,79 @@ export function navigableEditorFindings(
 }
 
 /**
+ * Remembered stepping position: the finding the previous step (chip click,
+ * triage next/prev, accept/dismiss auto-advance) landed on, plus the
+ * document position it sat at when remembered. The position is the eviction
+ * fallback — when the remembered finding leaves the navigable set (accepted,
+ * dismissed, went stale), stepping resumes from where it USED to be instead
+ * of restarting arbitrarily.
+ */
+export interface TriageMemory {
+    readonly id: string
+    readonly from: number
+}
+
+/**
+ * THE memory-based stepping engine (plan §0 stage D slice 1) shared by chip
+ * cycling (`cycleFinding`), the `next-finding`/`prev-finding` triage
+ * commands, and the accept/dismiss auto-advance:
+ *
+ * - No memory: `next` starts at the first target, `prev` at the last.
+ * - Memory still in the set: step to the neighbor in anchor order, wrapping
+ *   around at either end.
+ * - Memory evicted (the remembered finding is no longer navigable — it was
+ *   accepted, dismissed, went stale, or the run changed its ids): resume
+ *   position-based. `next` lands on the first target at or after the
+ *   remembered position (the "next remaining finding" — this IS the
+ *   auto-advance after judging the current one), `prev` on the last target
+ *   strictly before it; both wrap when nothing lies in that direction.
+ */
+export function triageStep(
+    ordered: readonly NavigationTarget[],
+    memory: TriageMemory | null,
+    direction: NavigationDirection
+): NavigationTarget | null {
+    const first = ordered[0]
+    const last = ordered[ordered.length - 1]
+    if (!first || !last) {
+        return null
+    }
+    if (memory === null) {
+        return direction === 'next' ? first : last
+    }
+    const index = ordered.findIndex((target) => target.id === memory.id)
+    if (index !== -1) {
+        const offset = direction === 'next' ? 1 : ordered.length - 1
+        return ordered[(index + offset) % ordered.length] ?? first
+    }
+    if (direction === 'next') {
+        return ordered.find((target) => target.from >= memory.from) ?? first
+    }
+    for (let position = ordered.length - 1; position >= 0; position -= 1) {
+        const target = ordered[position]
+        if (target && target.from < memory.from) {
+            return target
+        }
+    }
+    return last
+}
+
+/**
+ * The remembered finding, when it is still navigable — the triage commands'
+ * "current finding". `null` when there is no memory or the finding left the
+ * set (its cursor is invalid until the next step re-establishes one).
+ */
+export function triageCurrent(
+    ordered: readonly NavigationTarget[],
+    memory: TriageMemory | null
+): NavigationTarget | null {
+    if (memory === null) {
+        return null
+    }
+    return ordered.find((target) => target.id === memory.id) ?? null
+}
+
+/**
  * The target a chip click lands on. Memory-based rather than cursor-based on
  * purpose: the contract says the FIRST click reveals the FIRST finding
  * regardless of where the cursor happens to sit, and subsequent clicks cycle
@@ -84,23 +157,20 @@ export function navigableEditorFindings(
  * previous chip click revealed; when it is null or no longer in the cycle
  * set (accepted, dismissed, went stale, new run) the cycle restarts at the
  * first target.
+ *
+ * Thin special case of {@link triageStep}: chip memory carries no position,
+ * and a remembered position of 0 makes the eviction fallback resolve to the
+ * first target — exactly the locked "restart at the first target" contract.
  */
 export function cycleFinding(
     ordered: readonly NavigationTarget[],
     lastRevealedId: string | null
 ): NavigationTarget | null {
-    const first = ordered[0]
-    if (!first) {
-        return null
-    }
-    if (lastRevealedId === null) {
-        return first
-    }
-    const index = ordered.findIndex((target) => target.id === lastRevealedId)
-    if (index === -1) {
-        return first
-    }
-    return ordered[(index + 1) % ordered.length] ?? first
+    return triageStep(
+        ordered,
+        lastRevealedId === null ? null : { id: lastRevealedId, from: 0 },
+        'next'
+    )
 }
 
 /**
