@@ -21,6 +21,8 @@ nav_order: 2
 | Review current note | Sends the current note to every enabled editor and streams their findings in as highlights. Unavailable for excluded notes. |
 | Open review panel   | Opens the review side panel listing each editor's status, findings, summary, and verdict for the active note.               |
 
+More commands (review selection, ask an editor, cancel, triage, bulk operations, severity filter) are listed under the sections below. None of them ship a default hotkey — assign your own in **Settings → Hotkeys**.
+
 ## The review flow
 
 - A **persona rail** sits in the top-right corner of every markdown editor: a Review/Cancel button plus one colored dot per enabled editor. Dots pulse while reviewing and show a live finding-count badge. Hover any dot for the editor's name and live status — for example "Concision Editor — 3 findings", "Devil's Advocate — waiting", or "Fact Checker — failed (timeout)".
@@ -30,6 +32,27 @@ nav_order: 2
 - The **status bar** shows the number of open findings for the active note.
 - Notes above the configured word threshold ask for confirmation before anything is sent.
 - Editors that cannot run (no backend, disabled backend, no model…) are reported, never silently skipped.
+
+## Triaging findings
+
+Reviewing is meant to feel like resolving merge conflicts: step, judge, move on. Every command below works from the palette (or your own hotkey).
+
+- **Next finding / Previous finding** walk the note's findings in document order, across all editors, wrapping around. Each step scrolls to the finding, rings it as the current one, and opens its card.
+- **Accept current finding / Dismiss current finding** judge the ringed finding and jump straight to the next one — accept applies the replacement as a single undo step (and only while the text still matches), dismiss just clears it. When nothing is left, the ring and card disappear.
+- **Escape** closes an open card while keeping your place in the loop; pressing it again leaves triage (the ring disappears).
+- Clicking an editor's dot in the rail cycles through that editor's findings and briefly flashes its highlights.
+
+## Bulk operations
+
+- **Accept all (n)** in a side-panel section applies every non-conflicting suggestion of that editor at once, as **one** undoable edit. Two suggestions covering the same span cannot both apply: the first one wins and the other is reported as skipped, so you can re-review that span. Suggestions whose text you changed in the meantime are skipped too. A notice always says what was applied and what was skipped.
+- **Dismiss all (m)** clears that editor's findings for the note. It never touches your text.
+- The palette has the same per editor (**Accept all from &lt;Editor&gt;**, **Dismiss all from &lt;Editor&gt;**) plus **Accept all non-conflicting findings** for every editor of the note at once.
+
+## Severity filter
+
+Findings come in three severities: warning, suggestion, and info. **Cycle severity filter** (or the **Show** button at the top of the side panel) narrows what you look at: all severities → warnings and suggestions → warnings only → all again.
+
+The filter is a lens per note, not a deletion: hidden findings come back untouched when you cycle around. While a filter is active, hidden findings disappear from the highlights and the panel list, triage steps skip them, and bulk operations leave them alone — the panel tells you how many are hidden.
 
 ## Actions
 
