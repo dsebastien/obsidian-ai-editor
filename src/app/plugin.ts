@@ -15,6 +15,9 @@ import {
 } from './services/comments/comment-repository'
 import type { MarginCommentRepository } from './services/comments/comment-repository'
 import { createCommentRepository, registerCommentStoreHooks } from './ui/comment-store'
+import { CommentJobRegistry } from './services/comments/comment-job-registry'
+import { BackgroundRequestGate } from './services/orchestration/background-gate'
+import { CommentRunController } from './services/orchestration/comment-run'
 import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
 import { transformPreviewField } from './ui/editor/transform-preview'
@@ -74,6 +77,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     /** Durable margin comments (plan §5.5 / M8); sidecar, not `data.json`. */
     private commentRepository: MarginCommentRepository | null = null
 
+    /** Background comment jobs (plan §5.5 / M8): live runs joined to the store. */
+    private commentJobs: CommentJobRegistry | null = null
+
+    private backgroundGate: BackgroundRequestGate | null = null
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
@@ -102,13 +110,16 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // actions together never exceed `maxConcurrentRequests`.
         const transformController = new TransformController(runController.requestGate)
         this.transformController = transformController
+        const commentJobs = this.createCommentJobRegistry(runController)
+        this.commentJobs = commentJobs
         const reviewController = new ReviewController({
             app: this.app,
             plugin: this,
             getSettings: () => this.settings,
             runController,
             transformController,
-            setFindingCount: (count) => this.setFindingCount(count)
+            setFindingCount: (count) => this.setFindingCount(count),
+            ...(commentJobs ? { commentJobs } : {})
         })
         this.reviewController = reviewController
         this.registerEditorExtension([
@@ -260,7 +271,17 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     override onunload(): void {
-        // Durable comments first: `flush` cancels the deferred write and
+        // Background comment jobs first, and in this order: every in-flight
+        // job dies with the process, so it is recorded as `interrupted` BEFORE
+        // the store is flushed. A job written as `running` would come back
+        // next session claiming to be alive; `interrupted` is the state that
+        // offers Retry and never fakes a resumption (plan M8).
+        this.commentJobs?.interruptAll()
+        this.commentJobs?.dispose()
+        this.commentJobs = null
+        this.backgroundGate?.dispose()
+        this.backgroundGate = null
+        // Then the durable store: `flush` cancels the deferred write and
         // performs it now. `onunload` is synchronous in Obsidian, so this can
         // only be fire-and-forget — which is why the debounce is short.
         void this.commentRepository?.flush()
@@ -382,6 +403,40 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             log(notice, 'warn')
             new Notice(notice)
         }
+    }
+
+    /**
+     * Builds the background comment-job registry over the loaded store.
+     *
+     * `null` when the store could not be created at all — the plugin keeps
+     * working, it simply has no background comments. The background gate wraps
+     * the SAME plugin-wide request gate the reviews use, so a parked comment
+     * counts against `behavior.maxConcurrentRequests` while never queueing
+     * ahead of a review the user is watching.
+     */
+    private createCommentJobRegistry(runController: RunController): CommentJobRegistry | null {
+        const repository = this.commentRepository
+        if (!repository) {
+            return null
+        }
+        const gate = new BackgroundRequestGate({
+            gate: runController.requestGate,
+            getLimit: () => this.settings.behavior.maxConcurrentRequests,
+            // Timers per AGENTS.md: `window.*`, declared as plain numbers.
+            setTimer: (callback, ms) => window.setTimeout(callback, ms),
+            clearTimer: (handle) => {
+                window.clearTimeout(handle)
+            }
+        })
+        this.backgroundGate = gate
+        return new CommentJobRegistry({
+            repository,
+            runs: new CommentRunController(gate),
+            setTicker: (callback, ms) => window.setInterval(callback, ms),
+            clearTicker: (handle) => {
+                window.clearInterval(handle)
+            }
+        })
     }
 
     private async persistSettings(): Promise<void> {

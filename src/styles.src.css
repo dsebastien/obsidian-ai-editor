@@ -1176,6 +1176,64 @@
     color: var(--text-muted);
 }
 
+/* --- Background comment jobs (plan §5.5 / M8) -----------------------------
+   Parked questions that outlive the session. Rendered in the side panel
+   rather than the status bar: a per-second timer in global chrome would
+   animate permanently for a feature the user is deliberately not watching. */
+
+.ai-editor-panel-comments {
+    @apply flex flex-col gap-1.5;
+}
+
+.ai-editor-panel-comments-heading {
+    @apply text-xs font-medium;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-comment {
+    @apply flex flex-col gap-1 rounded p-2 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-panel-comment-head {
+    @apply flex flex-wrap items-center justify-between gap-1.5;
+}
+
+.ai-editor-panel-comment-editor {
+    @apply font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-comment-status {
+    /* Tabular figures so a ticking timer does not shift the row every second. */
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-comment-question {
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-comment-detail {
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-comment-actions {
+    @apply flex flex-wrap gap-1.5;
+}
+
+.ai-editor-panel-comment-action {
+    @apply cursor-pointer rounded px-2 py-1;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    color: var(--text-normal);
+}
+
+.ai-editor-panel-comment-action:hover {
+    background-color: var(--interactive-hover);
+}
+
 /* --- Panel scorecard (plan M6) --------------------------------------------
    Sits at the top of a panel run. The double border is the panel's "ringed"
    signature (Business Rules #11: editors are solid, panels are ringed), so

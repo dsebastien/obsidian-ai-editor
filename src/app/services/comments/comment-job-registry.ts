@@ -234,6 +234,11 @@ export class CommentJobRegistry {
         )
     }
 
+    /** Every stored comment on a note, in stored order. */
+    commentsFor(notePath: string): readonly MarginComment[] {
+        return this.deps.repository.listFor(notePath)
+    }
+
     /** The stored comment, or `null` when it is not (or no longer) there. */
     commentFor(notePath: string, commentId: string): MarginComment | null {
         return this.find(notePath, commentId)

@@ -7,6 +7,7 @@ import type { EditorRunState, RunHandle } from '../services/orchestration/run-co
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
+import type { CommentJobRow, CommentJobsSection } from './comment-jobs-model'
 import { entityName } from './entity-label'
 import { generateMoreView } from './generate-more'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
@@ -89,10 +90,34 @@ export interface PanelReviewTarget {
     readonly startReview: () => void
 }
 
+/**
+ * Background comment jobs for the bound note (plan §5.5 / M8).
+ *
+ * The side panel is where they surface — see the decision recorded in
+ * `services/comments/comment-job-registry.ts`: the status bar was rejected as
+ * global chrome that would animate a per-second timer for a feature the user
+ * is deliberately not watching.
+ *
+ * `section` is a THUNK, not a value: the registry's ticker re-renders the
+ * panel once a second while something is in flight, and a captured section
+ * would freeze every elapsed timer at the moment the state was pushed.
+ */
+export interface SidePanelCommentJobs {
+    readonly section: () => CommentJobsSection
+    /** Re-asks an interrupted or failed comment. Never a resumption. */
+    readonly retry: (commentId: string) => void
+    /** Aborts an in-flight job. */
+    readonly cancel: (commentId: string) => void
+    /** Closes a comment without acting on it. */
+    readonly dismiss: (commentId: string) => void
+}
+
 /** Everything the panel renders: the bound note's header + its run, if any. */
 export interface SidePanelState {
     readonly review: PanelReviewTarget
     readonly binding: SidePanelBinding | null
+    /** Null when the plugin has no comment store (headless/test callers). */
+    readonly commentJobs: SidePanelCommentJobs | null
 }
 
 /** Pulls the current state when the panel (re)opens or refreshes itself. */
@@ -218,8 +243,13 @@ export class ReviewSidePanelView extends ItemView {
                     busy: state.review.isBusy()
                 })
             })
+            // Parked comments outlive every run, so they are rendered even
+            // when the note has no findings on screen — that IS the state a
+            // background job is usually observed in.
+            this.renderCommentJobs(root, state)
             return
         }
+        this.renderCommentJobs(root, state)
 
         this.renderScorecard(root, binding)
         this.renderSeverityFilter(root, binding)
@@ -282,6 +312,86 @@ export class ReviewSidePanelView extends ItemView {
         button.addEventListener('click', () => {
             state.review.startReview()
         })
+    }
+
+    /**
+     * Background comment jobs for the bound note (plan §5.5 / M8).
+     *
+     * One row per live comment: who was asked, what was asked, the state, and
+     * the live elapsed timer while it runs. Every affordance is a real
+     * `<button>` (keyboard reachable, accessible name carries the state), and
+     * the section is absent entirely when there is nothing parked.
+     */
+    private renderCommentJobs(root: HTMLElement, state: SidePanelState): void {
+        const jobs = state.commentJobs
+        if (!jobs) {
+            return
+        }
+        const section = jobs.section()
+        if (section.heading === null) {
+            return
+        }
+        const box = root.createDiv({ cls: 'ai-editor-panel-comments' })
+        box.createDiv({ cls: 'ai-editor-panel-comments-heading', text: section.heading })
+        for (const row of section.rows) {
+            this.renderCommentJobRow(box, jobs, row)
+        }
+    }
+
+    private renderCommentJobRow(
+        box: HTMLElement,
+        jobs: SidePanelCommentJobs,
+        row: CommentJobRow
+    ): void {
+        const item = box.createDiv({ cls: 'ai-editor-panel-comment' })
+        item.setAttribute('aria-label', row.accessibleName)
+        const head = item.createDiv({ cls: 'ai-editor-panel-comment-head' })
+        head.createSpan({ cls: 'ai-editor-panel-comment-editor', text: row.editorName })
+        const status = head.createSpan({ cls: 'ai-editor-panel-comment-status' })
+        status.setText(
+            row.view.timer === null
+                ? row.view.statusLabel
+                : `${row.view.statusLabel} ${row.view.timer}`
+        )
+        item.createDiv({ cls: 'ai-editor-panel-comment-question', text: row.question })
+        if (row.view.detail !== null) {
+            item.createDiv({ cls: 'ai-editor-panel-comment-detail', text: row.view.detail })
+        }
+        const actions = item.createDiv({ cls: 'ai-editor-panel-comment-actions' })
+        if (row.view.canRetry) {
+            // Never "Resume": the request died with the session, and the word
+            // would promise continuity this cannot deliver (plan M8).
+            this.commentActionButton(actions, 'Retry', row.editorName, () => {
+                jobs.retry(row.commentId)
+            })
+        }
+        if (row.view.canCancel) {
+            this.commentActionButton(actions, 'Cancel', row.editorName, () => {
+                jobs.cancel(row.commentId)
+            })
+        }
+        if (row.view.canDismiss) {
+            this.commentActionButton(actions, 'Dismiss', row.editorName, () => {
+                jobs.dismiss(row.commentId)
+            })
+        }
+    }
+
+    private commentActionButton(
+        actions: HTMLElement,
+        label: string,
+        editorName: string,
+        onClick: () => void
+    ): void {
+        const button = actions.createEl('button', {
+            cls: 'ai-editor-panel-comment-action',
+            text: label,
+            attr: { type: 'button' }
+        })
+        // Several rows carry identically-labelled buttons; the accessible name
+        // has to say which comment this one acts on (WCAG 2.4.6).
+        button.setAttribute('aria-label', `${label} the comment asked of ${editorName}`)
+        button.addEventListener('click', onClick)
     }
 
     /**

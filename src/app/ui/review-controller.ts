@@ -102,7 +102,10 @@ import type { SeverityFilterMode } from './severity-filter'
 import { scorecardStatusKind } from './panel-scorecard'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
 import { verdictLabel } from './verdict-label'
-import type { SidePanelBinding, SidePanelState } from './side-panel'
+import type { SidePanelBinding, SidePanelCommentJobs, SidePanelState } from './side-panel'
+import { commentJobsSection, commentRetryNotice } from './comment-jobs-model'
+import type { CommentJobRegistry } from '../services/comments/comment-job-registry'
+import { retryCommentJob } from '../services/comments/comment-job-service'
 
 /**
  * Per-view glue between the review pipeline and the Obsidian editor UI:
@@ -219,6 +222,12 @@ export interface ReviewControllerDeps {
     readonly transformController: TransformController
     /** Status-bar projection (open finding count for the active note). */
     readonly setFindingCount: (count: number) => void
+    /**
+     * Background margin-comment jobs (plan §5.5 / M8). Optional: headless and
+     * test callers run without a comment store, and every surface degrades to
+     * "no section" rather than to a crash.
+     */
+    readonly commentJobs?: CommentJobRegistry
 }
 
 /** One markdown view's UI attachments. */
@@ -326,6 +335,8 @@ export class ReviewController {
      * panel's filter control says how much it is hiding.
      */
     private readonly severityFilters = new SeverityFilterStore()
+    /** Unsubscribes the background-comment registry listener on dispose. */
+    private commentJobsUnsubscribe: (() => void) | null = null
     /** Sticky: survives focus moving to the side panel itself. */
     private lastActiveMarkdownFile: string | null = null
     private refreshTimer: number | null = null
@@ -352,6 +363,15 @@ export class ReviewController {
     /** Registers workspace listeners; call once from `onload`. */
     initialize(): void {
         const { plugin, app } = this.deps
+        // Background comment jobs push their own updates (including the
+        // once-a-second elapsed-timer tick while something is in flight), so
+        // the panel never has to poll for a live timer.
+        this.commentJobsUnsubscribe =
+            this.deps.commentJobs?.subscribe(() => {
+                if (!this.disposed) {
+                    this.updatePanels()
+                }
+            }) ?? null
         plugin.registerEvent(app.workspace.on('layout-change', () => this.scheduleRefresh()))
         plugin.registerEvent(
             app.workspace.on('active-leaf-change', () => {
@@ -476,6 +496,8 @@ export class ReviewController {
         this.glues.clear()
         this.triageCursors.clearAll()
         this.severityFilters.clearAll()
+        this.commentJobsUnsubscribe?.()
+        this.commentJobsUnsubscribe = null
     }
 
     /**
@@ -1908,8 +1930,92 @@ export class ReviewController {
                     this.startPanelReview()
                 }
             },
-            binding: this.getPanelBinding()
+            binding: this.getPanelBinding(),
+            commentJobs: this.getPanelCommentJobs(path)
         }
+    }
+
+    /**
+     * Background comment jobs for the note the panel is bound to.
+     *
+     * `section` is a thunk so the once-a-second registry tick re-reads the
+     * elapsed timers instead of rendering the ones captured when the state was
+     * pushed. The callbacks close over the PANEL'S path rather than
+     * re-resolving the active file, for the same reason the bulk actions do
+     * (stage D fix pass): a click must act on the note the panel is showing.
+     */
+    private getPanelCommentJobs(path: string | null): SidePanelCommentJobs | null {
+        const registry = this.deps.commentJobs
+        if (!registry || path === null) {
+            return null
+        }
+        const notePath = path
+        return {
+            section: () =>
+                commentJobsSection({
+                    comments: registry.commentsFor(notePath),
+                    views: registry.viewsFor(notePath),
+                    editorName: (editorId) =>
+                        this.deps.getSettings().editors.find((entry) => entry.id === editorId)
+                            ?.name ?? null
+                }),
+            retry: (commentId: string): void => {
+                void this.retryComment(notePath, commentId)
+            },
+            cancel: (commentId: string): void => {
+                registry.cancel(commentId)
+                this.updatePanels()
+            },
+            dismiss: (commentId: string): void => {
+                registry.dismiss(notePath, commentId)
+                this.updatePanels()
+            }
+        }
+    }
+
+    /**
+     * Re-asks an interrupted or failed comment. A brand-new request every
+     * time — nothing is resumed (plan M8, Business Rules #1/#13) — against the
+     * note's LIVE text, so the span is re-anchored before the question goes
+     * out and a span that is gone refuses instead of drifting.
+     */
+    private async retryComment(notePath: string, commentId: string): Promise<void> {
+        const registry = this.deps.commentJobs
+        if (!registry || this.disposed) {
+            return
+        }
+        const noteText = await this.readNoteText(notePath)
+        if (noteText === null) {
+            new Notice('That note is no longer in the vault.')
+            return
+        }
+        const result = await retryCommentJob({
+            settings: this.deps.getSettings(),
+            vault: this.vaultReader,
+            registry,
+            notePath,
+            noteText,
+            commentId
+        })
+        const message = commentRetryNotice(result.status)
+        if (message !== null) {
+            new Notice(message)
+        }
+        this.updatePanels()
+    }
+
+    /** Live buffer text when the note is open, else its vault state. */
+    private async readNoteText(notePath: string): Promise<string | null> {
+        for (const glue of this.glues.values()) {
+            if (glue.filePath === notePath) {
+                return glue.view.editor.getValue()
+            }
+        }
+        const file = this.deps.app.vault.getFileByPath(notePath)
+        if (!file) {
+            return null
+        }
+        return this.deps.app.vault.cachedRead(file)
     }
 
     /** The shared reviewability answer for a note, reasons included. */
