@@ -294,7 +294,8 @@ describe('previewActionChoices', () => {
                     label: 'Critique',
                     verbClass: 'review',
                     kind: 'built-in',
-                    editorIds: ['e1']
+                    editorIds: ['e1'],
+                    panelId: null
                 }
             ])
         ).toEqual([PREVIEW_NO_ACTION, { id: 'a1', name: 'Critique' }])

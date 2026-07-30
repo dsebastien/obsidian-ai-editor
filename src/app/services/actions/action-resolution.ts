@@ -28,12 +28,13 @@ import { resolveApiBackend } from '../review-service'
  *   transform/generate), and their backend must resolve — mirroring the
  *   participant checks in `startReview`/`startAction` via the same
  *   `resolveApiBackend`.
- * - Panel targets are valid ONLY for review-class verbs (v1 panel dispatch:
- *   the run fans out to EACH member editor with the verb instruction; the
- *   charter/aggregation scorecard is M6). A transform or generate verb
- *   produces exactly one replacement/insertion, so a panel binding is
- *   invalid for it — built-in or custom alike; the settings UI refuses to
- *   create one, and resolution refuses any that predates that rule.
+ * - Panel targets are valid ONLY for review-class verbs, and dispatch ONE
+ *   panel run (plan M6): the members review in parallel with the charter in
+ *   their prompts and the verb instruction on top, then the run aggregates.
+ *   A transform or generate verb produces exactly one replacement/insertion,
+ *   so a panel binding is invalid for it — built-in or custom alike; the
+ *   settings UI refuses to create one, and resolution refuses any that
+ *   predates that rule.
  *
  * An action that cannot dispatch is simply not offered (design rule: no
  * non-functional UI) — `resolveActions` returns only the dispatchable ones.
@@ -60,6 +61,13 @@ export interface ResolvedAction {
      * instead of silently shrinking the panel.
      */
     readonly editorIds: readonly string[]
+    /**
+     * The panel this action convenes, or `null` for an editor binding. A
+     * panel-bound action dispatches ONE panel run (plan M6): the charter briefs
+     * every member and the run owns the aggregation step — it is not N
+     * independent reviews that happen to start together.
+     */
+    readonly panelId: string | null
 }
 
 export type ActionInvalidReason =
@@ -161,7 +169,10 @@ export function resolveActionBinding(
         return { ok: false, reason: 'unbound' }
     }
 
-    const resolved = (editorIds: readonly string[]): ActionResolution => ({
+    const resolved = (
+        editorIds: readonly string[],
+        panelId: string | null = null
+    ): ActionResolution => ({
         ok: true,
         action: {
             bindingId: binding.id,
@@ -169,7 +180,8 @@ export function resolveActionBinding(
             label,
             verbClass,
             kind: verb ? 'built-in' : 'custom',
-            editorIds
+            editorIds,
+            panelId
         }
     })
 
@@ -191,7 +203,7 @@ export function resolveActionBinding(
         if (!anyMember) {
             return { ok: false, reason: 'no-dispatchable-member' }
         }
-        return resolved(panel.memberEditorIds)
+        return resolved(panel.memberEditorIds, panel.id)
     }
 
     const editor = settings.editors.find((candidate) => candidate.id === target.targetId)

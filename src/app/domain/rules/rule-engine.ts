@@ -304,8 +304,19 @@ export type RuleEditorPool =
     /**
      * The rule names these editors. They are NAMED participants, so a member
      * that cannot run must be reported as a skip rather than silently dropped.
+     *
+     * `panelId` is set when the rule assigned an ENABLED panel: the review then
+     * runs as a first-class panel run (charter on every member, one aggregation
+     * step). A DISABLED panel still yields its members here with `panelId`
+     * null — the flag governs the panel as an aggregation entity, and a rule
+     * naming a panel means "these editors review this note", so turning the
+     * panel off drops the scorecard, not the reviewers.
      */
-    | { readonly kind: 'editors'; readonly editorIds: readonly string[] }
+    | {
+          readonly kind: 'editors'
+          readonly editorIds: readonly string[]
+          readonly panelId: string | null
+      }
     /**
      * The rule's target is gone: a deleted editor, a deleted panel, or a panel
      * none of whose members still exist. All three mean the same thing — the
@@ -326,11 +337,13 @@ export type RuleEditorPool =
  * "does nothing". `target-missing` is the honest answer for both kinds, and it
  * lets the refusal name the rule.
  *
- * A panel's own `enabled` flag is deliberately NOT consulted: it governs the
- * panel as an aggregation entity (M6), while a rule naming a panel means "these
- * editors review this note". Each member's own enabled/capability/backend state
- * is checked downstream and reported as a skip — a member that is merely
- * turned off is a skip, not a missing target.
+ * A panel's own `enabled` flag does NOT decide whether its members review: it
+ * governs the panel as an aggregation entity (M6), while a rule naming a panel
+ * means "these editors review this note". A disabled panel therefore still
+ * supplies its members, but the run is not a panel run (`panelId` null — no
+ * charter, no scorecard). Each member's own enabled/capability/backend state is
+ * checked downstream and reported as a skip — a member that is merely turned
+ * off is a skip, not a missing target.
  */
 export function resolveRuleEditorPool(
     settings: PluginSettingsV1,
@@ -344,12 +357,16 @@ export function resolveRuleEditorPool(
         settings.editors.some((editor) => editor.id === editorId)
     if (target.targetType === 'editor') {
         return exists(target.targetId)
-            ? { kind: 'editors', editorIds: [target.targetId] }
+            ? { kind: 'editors', editorIds: [target.targetId], panelId: null }
             : { kind: 'target-missing', targetId: target.targetId }
     }
     const panel = settings.panels.find((candidate) => candidate.id === target.targetId)
     if (!panel || !panel.memberEditorIds.some(exists)) {
         return { kind: 'target-missing', targetId: target.targetId }
     }
-    return { kind: 'editors', editorIds: panel.memberEditorIds }
+    return {
+        kind: 'editors',
+        editorIds: panel.memberEditorIds,
+        panelId: panel.enabled ? panel.id : null
+    }
 }

@@ -529,7 +529,8 @@ export class ReviewController {
         confirmedLargeNote = false,
         requestedSelection?: RequestedSelection,
         scope: SnapshotScope = 'auto',
-        instruction?: RunInstruction
+        instruction?: RunInstruction,
+        panelId?: string
     ): Promise<void> {
         const file = view.file
         if (!file || this.disposed) {
@@ -566,7 +567,8 @@ export class ReviewController {
             refreshSnapshot: (): DocumentSnapshot | null =>
                 view.file?.path === file.path ? this.snapshotView(view, file.path, scope) : null,
             ...(requested ? { requestedSelection: requested } : {}),
-            ...(instruction ? { instruction } : {})
+            ...(instruction ? { instruction } : {}),
+            ...(panelId === undefined ? {} : { panel: { panelId } })
         })
 
         switch (result.status) {
@@ -586,7 +588,7 @@ export class ReviewController {
                     // the confirmation delay and falls back to whole-note
                     // scope when the note was edited meanwhile. A per-run
                     // instruction survives the round trip unchanged.
-                    void this.startReview(view, true, requested, scope, instruction)
+                    void this.startReview(view, true, requested, scope, instruction, panelId)
                 }).open()
                 return
             case 'no-editors': {
@@ -600,6 +602,16 @@ export class ReviewController {
                 )
                 return
             }
+            case 'panel-unavailable':
+                // The members may be fine — the panel is not there to convene
+                // them, so the message points at the Panels tab, not the
+                // Editors tab.
+                new Notice(
+                    result.reason === 'panel-missing'
+                        ? 'That panel no longer exists — check the Panels settings tab.'
+                        : 'That panel is disabled — enable it in the Panels settings tab.'
+                )
+                return
             case 'started':
                 if (result.selectionFallback) {
                     new Notice('Selection changed — reviewing the whole note')
@@ -742,7 +754,10 @@ export class ReviewController {
                 confirmedLargeNote,
                 selection.from !== selection.to ? selection : undefined,
                 'auto',
-                { editorIds: resolved.editorIds, text: verb.instruction }
+                { editorIds: resolved.editorIds, text: verb.instruction },
+                // A panel-bound review verb convenes the panel: ONE run, the
+                // charter on every member, one scorecard afterwards.
+                resolved.panelId ?? undefined
             )
             return
         }
@@ -1079,7 +1094,9 @@ export class ReviewController {
      * - whole-note scope — a live selection must never narrow an automatic
      *   refresh;
      * - `editorIds` re-dispatches the note's previous run's editor set (null
-     *   = never reviewed → all enabled review-capable editors);
+     *   = never reviewed → all enabled review-capable editors), and `panelId`
+     *   carries that run's panel identity so a refresh of a panel run is
+     *   itself a panel run rather than a bag of loose editors;
      * - SILENT on every refusal: no Notices, no size-confirmation modal (the
      *   daemon pre-checks size and skips oversized notes with one log line),
      *   no side-panel activation — an automatic refresh must not rearrange
@@ -1097,7 +1114,8 @@ export class ReviewController {
      */
     async startDaemonReview(
         filePath: string,
-        editorIds: readonly string[] | null
+        editorIds: readonly string[] | null,
+        panelId: string | null
     ): Promise<'started' | 'refused'> {
         if (this.disposed) {
             return 'refused'
@@ -1125,7 +1143,8 @@ export class ReviewController {
                 const run = this.deps.runController.getRun(filePath)
                 return run !== null && !run.isSettled()
             },
-            ...(editorIds ? { editorIds } : {})
+            ...(editorIds ? { editorIds } : {}),
+            ...(panelId === null ? {} : { panel: { panelId } })
         })
         if (result.status !== 'started') {
             return 'refused'

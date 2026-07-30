@@ -75,6 +75,7 @@ export type ReviewCliErrorCode =
     | 'rule-disabled'
     | 'needs-confirmation'
     | 'no-editors'
+    | 'panel-unavailable'
     | 'backend-error'
     | 'timeout'
 
@@ -499,6 +500,17 @@ export async function handleReviewCli(
                 args.format
             )
         }
+        case 'panel-unavailable':
+            return render(
+                errorOutput(
+                    path,
+                    'panel-unavailable',
+                    start.reason === 'panel-missing'
+                        ? 'The requested panel no longer exists'
+                        : 'The requested panel is disabled'
+                ),
+                args.format
+            )
         case 'started': {
             // Shape BEFORE releasing: the output reads the run's finding
             // store, which the release may discard.

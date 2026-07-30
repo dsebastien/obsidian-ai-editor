@@ -2,8 +2,10 @@ import { resolveRuleEditorPool } from '../domain/rules/rule-engine'
 import type { RuleOutcome } from '../domain/rules/rule-engine'
 import type {
     ApiBackend,
+    BackendRef,
     BehaviorSettings,
     EditorConfig,
+    PanelConfig,
     PluginSettingsV1
 } from '../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../domain/snapshot'
@@ -13,7 +15,13 @@ import { ExcludedTargetError, assembleContext } from './context/context-assemble
 import type { AssembledContext } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
-import type { RunController, RunEditorSpec, RunHandle } from './orchestration/run-controller'
+import type {
+    RunController,
+    RunEditorSpec,
+    RunHandle,
+    RunPanelSpec
+} from './orchestration/run-controller'
+import { resolvePanelCharter } from './panels/panel-charter'
 import { noteRuleOutcome } from './rules/note-rules'
 
 /**
@@ -29,7 +37,8 @@ import { noteRuleOutcome } from './rules/note-rules'
  *   never reaches context assembly or a backend (Business Rules #7).
  * - Binding rules are checked next (plan §4b): a note a rule switches the
  *   plugin off for is refused with its own status, and a rule that assigns a
- *   reviewer supplies the default participant pool.
+ *   reviewer supplies the default participant pool — an enabled panel target
+ *   making the run a first-class panel run (plan M6).
  * - Nothing runs without an explicit user action (Business Rules #1): the
  *   invokers are the Review command / rail button / menus / CLI — plus daemon
  *   refreshes, authorized by the rule's documented carve-out (the explicit
@@ -102,8 +111,8 @@ export function skipReasonLabel(reason: SkipReason): string {
  * augmented with `text` via `augmentSystemPrompt`. Nothing is persisted —
  * settings are never mutated, the next run assembles its prompt from
  * scratch. "Ask an editor" passes one id; a review-class action bound to a
- * panel passes every member editor id (v1 panel dispatch — each member runs
- * the instruction independently; charter aggregation is M6).
+ * panel passes every member editor id AND `panel`, so the instruction rides
+ * on top of the charter inside one panel run (plan M6).
  */
 export interface RunInstruction {
     readonly editorIds: readonly string[]
@@ -140,6 +149,17 @@ export type ReviewStart =
     | { readonly status: 'rule-disabled'; readonly notePath: string; readonly ruleLabel: string }
     /** No editor could run; `skips` explains each candidate. */
     | { readonly status: 'no-editors'; readonly skips: readonly EditorSkip[] }
+    /**
+     * A panel run was requested for a panel that is gone or switched off (plan
+     * M6). Distinct from `no-editors`: the members may all be perfectly
+     * healthy — the panel itself is not there to convene them, and the fix is
+     * in the Panels tab, not the Editors tab.
+     */
+    | {
+          readonly status: 'panel-unavailable'
+          readonly panelId: string
+          readonly reason: 'panel-missing' | 'panel-disabled'
+      }
     /**
      * The note exceeds `behavior.sizeWarningWords`; the caller must show a
      * confirmation dialog and retry with `confirmedLargeNote: true`.
@@ -209,6 +229,16 @@ export interface StartReviewInput {
      */
     readonly instruction?: RunInstruction
     /**
+     * Runs this review AS a panel (plan M6): the panel's members are the
+     * participant pool, its charter augments every member's system prompt, and
+     * the run owns the aggregation step that follows them. Set by the surfaces
+     * that dispatch a panel explicitly (an action bound to a panel, a daemon
+     * refresh of a previous panel run). A binding rule that assigns an enabled
+     * panel produces a panel run WITHOUT this — the rule outcome is resolved
+     * here, so every surface gets panel behavior for free.
+     */
+    readonly panel?: { readonly panelId: string }
+    /**
      * Restricts the participant pool to these editor ids (daemon refreshes
      * re-dispatch the note's PREVIOUS run's editor set): editors outside the
      * set were not asked — neither run nor reported as skips — while editors
@@ -265,20 +295,21 @@ export type BackendResolution =
     | { readonly ok: false; readonly reason: SkipReason }
 
 /**
- * Resolves the API backend an editor runs on: the editor's own binding, or
- * the global default when set to inherit. Only enabled API-family backends
- * with a resolvable model are usable — anything else is a reported skip,
- * never a silent drop.
+ * Resolves a backend reference (an editor's binding, a panel's aggregation
+ * backend) to a usable API backend, falling back to the global default when
+ * the reference is null (inherit). Only enabled API-family backends with a
+ * resolvable model are usable — anything else is a typed reason, never a
+ * silent drop.
  */
-export function resolveApiBackend(
+export function resolveBackendRef(
     settings: PluginSettingsV1,
-    editor: EditorConfig
+    ref: BackendRef | null
 ): BackendResolution {
-    const ref = editor.backend ?? settings.defaultBackend
-    if (!ref) {
+    const resolved = ref ?? settings.defaultBackend
+    if (!resolved) {
         return { ok: false, reason: 'no-backend-configured' }
     }
-    const instance = settings.backends.find((backend) => backend.id === ref.backendId)
+    const instance = settings.backends.find((backend) => backend.id === resolved.backendId)
     if (!instance) {
         return { ok: false, reason: 'backend-not-found' }
     }
@@ -291,11 +322,22 @@ export function resolveApiBackend(
         // exists. Until then they are reported, never silently dropped.
         return { ok: false, reason: 'cli-backend-unsupported' }
     }
-    const model = ref.model.length > 0 ? ref.model : instance.defaultModel
+    const model = resolved.model.length > 0 ? resolved.model : instance.defaultModel
     if (model.length === 0) {
         return { ok: false, reason: 'no-model-configured' }
     }
     return { ok: true, backend: instance, model }
+}
+
+/**
+ * Resolves the API backend an editor runs on: its own binding, or the global
+ * default when set to inherit.
+ */
+export function resolveApiBackend(
+    settings: PluginSettingsV1,
+    editor: EditorConfig
+): BackendResolution {
+    return resolveBackendRef(settings, editor.backend)
 }
 
 /**
@@ -527,10 +569,18 @@ export interface ReviewParticipant {
 export interface ReviewParticipantPool {
     readonly participants: readonly ReviewParticipant[]
     readonly skips: readonly EditorSkip[]
+    /**
+     * The panel the pool came from — a caller-requested panel run, or an
+     * enabled panel a binding rule assigned. `null` for an ordinary run: the
+     * participants are then editors in their own right, not members.
+     */
+    readonly panelId: string | null
 }
 
 /** Editors a caller explicitly named, if any (see the precedence below). */
 export interface ReviewPoolRequest {
+    /** A panel run: its members are the pool (plan M6). */
+    readonly panelId?: string | undefined
     /** A per-run instruction's editors (ask-an-editor, a bound review verb). */
     readonly instructionEditorIds?: readonly string[] | undefined
     /** A KNOWN set being re-dispatched (a daemon refresh of a previous run). */
@@ -550,20 +600,23 @@ export interface ReviewPoolRequest {
  * promising a review — and then refused on click, every time.
  *
  * Precedence, highest first:
- * 1. A per-run instruction narrows the run to the editor(s) the user asked
+ * 1. A requested panel run: its members ARE the pool (plan M6). It outranks a
+ *    per-run instruction because the panel is the authoritative membership —
+ *    the instruction then only augments the members it names.
+ * 2. A per-run instruction narrows the run to the editor(s) the user asked
  *    for. The others were not asked at all, so they are not candidates and
  *    never appear as skips.
- * 2. `editorIds` re-dispatches a known set.
- * 3. A matching `assign` binding rule (plan §4b): its editor, or every member
+ * 3. `editorIds` re-dispatches a known set.
+ * 4. A matching `assign` binding rule (plan §4b): its editor, or every member
  *    of its panel. Rules supply the DEFAULT pool only — a user or daemon
  *    choice wins.
- * 4. Otherwise every editor in the settings.
+ * 5. Otherwise every editor in the settings.
  *
- * Pools that NAME editors (1 and 3) report every named editor that cannot run
- * — deleted ids and disabled editors included — instead of silently shrinking
- * the ask / panel / rule (the resolution contract in `action-resolution.ts`).
- * Pools 2 and 4 stay silent about disabled editors: the user turned them off on
- * purpose, and a daemon refresh must not nag about them.
+ * Pools that NAME editors (1, 2 and 4) report every named editor that cannot
+ * run — deleted ids and disabled editors included — instead of silently
+ * shrinking the ask / panel / rule (the resolution contract in
+ * `action-resolution.ts`). Pools 3 and 5 stay silent about disabled editors:
+ * the user turned them off on purpose, and a daemon refresh must not nag.
  */
 export function resolveReviewParticipants(
     settings: PluginSettingsV1,
@@ -573,7 +626,16 @@ export function resolveReviewParticipants(
     const skips: EditorSkip[] = []
     let pool: readonly string[] | null = null
     let namedPool = false
-    if (requested.instructionEditorIds) {
+    let panelId: string | null = null
+    if (requested.panelId !== undefined) {
+        // Callers validate the panel's existence first (`startReview` refuses
+        // with its own status); an unknown id here degrades to an empty named
+        // pool, which surfaces as the usual `no-editors` refusal.
+        const panel = settings.panels.find((candidate) => candidate.id === requested.panelId)
+        pool = panel ? panel.memberEditorIds : []
+        namedPool = true
+        panelId = requested.panelId
+    } else if (requested.instructionEditorIds) {
         pool = requested.instructionEditorIds
         namedPool = true
     } else if (requested.editorIds) {
@@ -588,6 +650,7 @@ export function resolveReviewParticipants(
             // every editor the rule was meant to replace.
             return {
                 participants: [],
+                panelId: null,
                 skips: [
                     {
                         editorId: rulePool.targetId,
@@ -601,6 +664,7 @@ export function resolveReviewParticipants(
         if (rulePool.kind === 'editors') {
             pool = rulePool.editorIds
             namedPool = true
+            panelId = rulePool.panelId
         }
     }
     const editorPool =
@@ -642,7 +706,7 @@ export function resolveReviewParticipants(
         }
         participants.push({ editor, backend: resolution.backend, model: resolution.model })
     }
-    return { participants, skips }
+    return { participants, skips, panelId }
 }
 
 /**
@@ -687,17 +751,47 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         return { status: 'needs-confirmation', wordCount, limit: behavior.sizeWarningWords }
     }
 
+    // -- Panel identity ------------------------------------------------------
+    // An explicitly requested panel must exist and be enabled before anything
+    // else happens: refusing here names the panel, while letting it fall
+    // through would report an anonymous "no editors" against members that are
+    // perfectly healthy.
+    const requestedPanelId = input.panel?.panelId
+    if (requestedPanelId !== undefined) {
+        const requestedPanel = settings.panels.find((panel) => panel.id === requestedPanelId)
+        if (!requestedPanel) {
+            return {
+                status: 'panel-unavailable',
+                panelId: requestedPanelId,
+                reason: 'panel-missing'
+            }
+        }
+        if (!requestedPanel.enabled) {
+            return {
+                status: 'panel-unavailable',
+                panelId: requestedPanelId,
+                reason: 'panel-disabled'
+            }
+        }
+    }
+
     // -- Resolve participants -------------------------------------------------
     const instruction = input.instruction
-    const { participants, skips } = resolveReviewParticipants(settings, ruleOutcome, {
+    const { participants, skips, panelId } = resolveReviewParticipants(settings, ruleOutcome, {
+        panelId: requestedPanelId,
         instructionEditorIds: instruction?.editorIds,
         editorIds: input.editorIds
     })
     if (participants.length === 0) {
         return { status: 'no-editors', skips }
     }
+    const panel = panelId === null ? null : (settings.panels.find((p) => p.id === panelId) ?? null)
 
     // -- Assemble context and build executors --------------------------------
+    // The charter is resolved ONCE and briefs every member identically: it is
+    // the panel's shared brief, so a per-member re-read could only introduce
+    // divergence between members of the same run.
+    const charterText = panel ? await resolvePanelCharter(panel, vault, behavior) : ''
     const editorSpecs: RunEditorSpec[] = []
     try {
         for (const participant of participants) {
@@ -710,7 +804,8 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                 instructionText:
                     instruction && instruction.editorIds.includes(participant.editor.id)
                         ? instruction.text
-                        : undefined
+                        : undefined,
+                ...(panel ? { panelCharter: { panelName: panel.name, text: charterText } } : {})
             })
             editorSpecs.push(
                 createEditorSpec({
@@ -781,6 +876,63 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         }
     }
 
-    const run = runController.startRun({ snapshot: runSnapshot, editors: editorSpecs })
+    const run = runController.startRun({
+        snapshot: runSnapshot,
+        editors: editorSpecs,
+        ...(panel
+            ? {
+                  panel: createPanelSpec({
+                      panel,
+                      settings,
+                      charterText,
+                      timeoutMs: reviewTimeoutMs(behavior),
+                      fetchImpl
+                  })
+              }
+            : {})
+    })
     return { status: 'started', run, skips, selectionFallback }
+}
+
+/**
+ * Builds the run's panel spec: identity always, aggregation only when the
+ * panel's backend resolves.
+ *
+ * A panel whose aggregation backend is missing, disabled or model-less still
+ * runs as a panel — its members review with the charter and the scorecard
+ * reports `unavailable`. Refusing the whole run instead would be a strictly
+ * worse trade: the members' findings are the bulk of the value, and a
+ * misconfigured aggregation backend is a settings problem the user can fix
+ * after reading the reviews.
+ *
+ * The charter is the aggregation call's SYSTEM PROMPT. Everything the
+ * chairperson must produce (verdict per member, top fixes, dissent, never
+ * speak for a missing member) comes from the `aggregate-panel` operation
+ * prompt, which the contract already dictates — so the panel's one
+ * user-authored field says what the panel is for, in both of its roles.
+ */
+function createPanelSpec(input: {
+    readonly panel: PanelConfig
+    readonly settings: PluginSettingsV1
+    readonly charterText: string
+    readonly timeoutMs: number
+    readonly fetchImpl: typeof fetch
+}): RunPanelSpec {
+    const { panel, settings } = input
+    const resolution = resolveBackendRef(settings, panel.aggregationBackend)
+    if (!resolution.ok) {
+        return { panelId: panel.id, panelName: panel.name }
+    }
+    return {
+        panelId: panel.id,
+        panelName: panel.name,
+        redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
+        aggregate: createApiEditorExecutor({
+            backendConfig: resolution.backend,
+            model: resolution.model,
+            systemPrompt: input.charterText,
+            timeoutMs: input.timeoutMs,
+            fetchImpl: input.fetchImpl
+        })
+    }
 }

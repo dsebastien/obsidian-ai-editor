@@ -344,7 +344,7 @@ describe('resolveRuleEditorPool', () => {
                 ruleLabel: 'x',
                 target: EDITOR_TARGET
             })
-        ).toEqual({ kind: 'editors', editorIds: ['editor-1'] })
+        ).toEqual({ kind: 'editors', editorIds: ['editor-1'], panelId: null })
     })
 
     it('reports a deleted EDITOR target the same way as a deleted panel', () => {
@@ -378,7 +378,7 @@ describe('resolveRuleEditorPool', () => {
         ).toEqual({ kind: 'target-missing', targetId: 'panel-1' })
     })
 
-    it('names every member of a panel target, regardless of the panel enabled flag', () => {
+    it('names every member of a DISABLED panel target, but not as a panel run', () => {
         const settings = makeSettings({
             editors: [
                 { id: 'editor-1', name: 'One' },
@@ -400,7 +400,29 @@ describe('resolveRuleEditorPool', () => {
                 ruleLabel: 'x',
                 target: { targetType: 'panel', targetId: 'panel-1' }
             })
-        ).toEqual({ kind: 'editors', editorIds: ['editor-1', 'editor-2'] })
+            // The members still review; the disabled flag drops the panel's
+            // aggregation identity (no charter, no scorecard), not its people.
+        ).toEqual({ kind: 'editors', editorIds: ['editor-1', 'editor-2'], panelId: null })
+    })
+
+    it('makes an ENABLED panel target a panel run', () => {
+        const settings = makeSettings({
+            editors: [
+                { id: 'editor-1', name: 'One' },
+                { id: 'editor-2', name: 'Two' }
+            ],
+            panels: [
+                { id: 'panel-1', name: 'Pre-publish', memberEditorIds: ['editor-1', 'editor-2'] }
+            ]
+        })
+        expect(
+            resolveRuleEditorPool(settings, {
+                kind: 'assigned',
+                ruleId: 'r1',
+                ruleLabel: 'x',
+                target: { targetType: 'panel', targetId: 'panel-1' }
+            })
+        ).toEqual({ kind: 'editors', editorIds: ['editor-1', 'editor-2'], panelId: 'panel-1' })
     })
 
     it('reports a dangling panel target instead of silently emptying the pool', () => {

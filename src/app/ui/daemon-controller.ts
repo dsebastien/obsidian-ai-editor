@@ -38,7 +38,8 @@ export interface DaemonReviewPort {
      */
     startDaemonReview(
         path: string,
-        editorIds: readonly string[] | null
+        editorIds: readonly string[] | null,
+        panelId: string | null
     ): Promise<'started' | 'refused'>
 }
 
@@ -179,7 +180,11 @@ export class DaemonController {
                 // note runs all enabled review-capable editors (null = no
                 // filter, the pipeline's default pool).
                 const editorIds = run ? run.getEditorStates().map((state) => state.editorId) : null
-                void this.deps.port.startDaemonReview(path, editorIds)
+                // A panel run refreshes as a panel run: dropping the identity
+                // would silently downgrade the note to loose editors with no
+                // charter and no scorecard.
+                const panelId = run?.getPanelState()?.panelId ?? null
+                void this.deps.port.startDaemonReview(path, editorIds, panelId)
                 this.deps.onStateChange()
                 return
             }

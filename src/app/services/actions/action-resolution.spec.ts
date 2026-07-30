@@ -128,7 +128,8 @@ describe('resolveActionBinding', () => {
             label: 'Humanize',
             verbClass: 'transform',
             kind: 'built-in',
-            editorIds: ['editor-1']
+            editorIds: ['editor-1'],
+            panelId: null
         })
     })
 

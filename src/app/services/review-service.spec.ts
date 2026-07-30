@@ -1373,3 +1373,290 @@ describe('startReview', () => {
         await result.run.settled
     })
 })
+
+// ---------------------------------------------------------------------------
+// Panel runs (plan M6): one run, the charter on every member, one scorecard
+// ---------------------------------------------------------------------------
+
+/** Anthropic-shaped SSE stream carrying a valid panel scorecard. */
+function anthropicPanelBody(): string {
+    const resultInput = {
+        kind: 'aggregate-panel',
+        recommendation: 'needs-work',
+        memberVerdicts: [{ editorName: 'Member one', verdict: 'needs-work' }],
+        topFixes: ['Tighten the opening'],
+        missingMembers: []
+    }
+    const frames = [
+        {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'tool_use', name: 'emit_result', input: {} }
+        },
+        {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'input_json_delta', partial_json: JSON.stringify(resultInput) }
+        },
+        { type: 'message_stop' }
+    ]
+    return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('')
+}
+
+/**
+ * Records every outbound request body and answers each one with the payload
+ * matching the operation it carries (review vs aggregation).
+ */
+function recordingFetch(bodies: string[]): typeof fetch {
+    return ((_url: string, init?: RequestInit) => {
+        const body = typeof init?.body === 'string' ? init.body : ''
+        bodies.push(body)
+        return Promise.resolve(
+            new Response(
+                body.includes('aggregate-panel') ? anthropicPanelBody() : anthropicReviewBody(),
+                { status: 200 }
+            )
+        )
+    }) as unknown as typeof fetch
+}
+
+describe('startReview panel runs', () => {
+    const CHARTER = 'Weigh the reader above the prose.'
+
+    function panelSettings(overrides: Record<string, unknown> = {}): PluginSettingsV1 {
+        return makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', name: 'Member one' }),
+                makeEditor({ id: 'e-2', name: 'Member two' }),
+                makeEditor({ id: 'e-3', name: 'Outsider' })
+            ],
+            panels: [
+                {
+                    id: 'p-1',
+                    name: 'Pre-publish Review',
+                    memberEditorIds: ['e-1', 'e-2'],
+                    charter: { text: CHARTER, notePaths: [] }
+                }
+            ],
+            ...overrides
+        })
+    }
+
+    it('runs only the members, briefs every one of them with the charter', async () => {
+        const bodies: string[] = []
+        const result = await startReview({
+            settings: panelSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: recordingFetch(bodies),
+            panel: { panelId: 'p-1' }
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-1', 'e-2'])
+        await result.run.settled
+
+        const memberRequests = bodies.filter((body) => !body.includes('aggregate-panel'))
+        expect(memberRequests).toHaveLength(2)
+        // Every member carries the charter, and it names the panel it serves.
+        for (const body of memberRequests) {
+            expect(body).toContain(CHARTER)
+            expect(body).toContain('Pre-publish Review')
+        }
+    })
+
+    it('is a first-class panel run, and aggregates once the members settle', async () => {
+        const bodies: string[] = []
+        const result = await startReview({
+            settings: panelSettings(),
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: recordingFetch(bodies),
+            panel: { panelId: 'p-1' }
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.run.getPanelState()?.panelName).toBe('Pre-publish Review')
+        await result.run.panelSettled
+
+        const state = result.run.getPanelState()
+        expect(state?.status).toBe('done')
+        expect(state?.result?.recommendation).toBe('needs-work')
+        // The charter is the chairperson's system prompt too — one field, both
+        // roles (see services/panels/panel-charter.ts).
+        const aggregation = bodies.find((body) => body.includes('aggregate-panel'))
+        expect(aggregation).toBeDefined()
+        expect(aggregation).toContain(CHARTER)
+        // Findings keep their per-member identity — a panel does not merge them.
+        expect([...new Set(result.run.findings.list().map((f) => f.editorId))].sort()).toEqual([
+            'e-1',
+            'e-2'
+        ])
+    })
+
+    it('makes an enabled panel assigned by a binding rule a panel run', async () => {
+        const settings = panelSettings({
+            rules: [
+                {
+                    id: 'r1',
+                    match: { matchType: 'folder', value: '/' },
+                    effect: 'assign',
+                    defaultTarget: { targetType: 'panel', targetId: 'p-1' }
+                }
+            ]
+        })
+        const bodies: string[] = []
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: recordingFetch(bodies)
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.run.getPanelState()?.panelId).toBe('p-1')
+        await result.run.panelSettled
+        expect(result.run.getPanelState()?.status).toBe('done')
+    })
+
+    it('runs a rule-assigned DISABLED panel as loose editors, with no scorecard', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor({ id: 'e-1' }), makeEditor({ id: 'e-2' })],
+            panels: [
+                {
+                    id: 'p-1',
+                    name: 'Off',
+                    memberEditorIds: ['e-1', 'e-2'],
+                    charter: { text: CHARTER, notePaths: [] },
+                    enabled: false
+                }
+            ],
+            rules: [
+                {
+                    id: 'r1',
+                    match: { matchType: 'folder', value: '/' },
+                    effect: 'assign',
+                    defaultTarget: { targetType: 'panel', targetId: 'p-1' }
+                }
+            ]
+        })
+        const bodies: string[] = []
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: recordingFetch(bodies)
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // The members still review — the flag drops the aggregation identity.
+        expect(result.run.getEditorStates()).toHaveLength(2)
+        expect(result.run.getPanelState()).toBeNull()
+        await result.run.settled
+        expect(bodies.some((body) => body.includes(CHARTER))).toBeFalse()
+    })
+
+    it('refuses a requested panel that is gone or disabled, naming the panel', async () => {
+        const base = {
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody())
+        }
+        expect(
+            await startReview({ ...base, settings: panelSettings(), panel: { panelId: 'gone' } })
+        ).toEqual({ status: 'panel-unavailable', panelId: 'gone', reason: 'panel-missing' })
+
+        const disabled = makeSettings({
+            editors: [makeEditor({ id: 'e-1' })],
+            panels: [{ id: 'p-1', name: 'Off', memberEditorIds: ['e-1'], enabled: false }]
+        })
+        expect(
+            await startReview({ ...base, settings: disabled, panel: { panelId: 'p-1' } })
+        ).toEqual({ status: 'panel-unavailable', panelId: 'p-1', reason: 'panel-disabled' })
+    })
+
+    it('still runs the panel when its aggregation backend cannot resolve', async () => {
+        const settings = panelSettings({
+            panels: [
+                {
+                    id: 'p-1',
+                    name: 'Pre-publish Review',
+                    memberEditorIds: ['e-1', 'e-2'],
+                    charter: { text: CHARTER, notePaths: [] },
+                    aggregationBackend: { backendId: 'gone', model: '' }
+                }
+            ]
+        })
+        const bodies: string[] = []
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: recordingFetch(bodies),
+            panel: { panelId: 'p-1' }
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        await result.run.panelSettled
+        // The members' reviews are the bulk of the value: a misconfigured
+        // scorecard backend must not throw them away.
+        expect(result.run.getEditorStates()).toHaveLength(2)
+        expect(result.run.getPanelState()?.status).toBe('unavailable')
+        expect(bodies.some((body) => body.includes('aggregate-panel'))).toBeFalse()
+    })
+
+    it('completes with the survivors when a member fails, naming the missing one', async () => {
+        const settings = panelSettings()
+        const bodies: string[] = []
+        // The second member's backend answers 401; the first succeeds.
+        let memberCalls = 0
+        const fetchImpl = ((_url: string, init?: RequestInit) => {
+            const body = typeof init?.body === 'string' ? init.body : ''
+            bodies.push(body)
+            if (body.includes('aggregate-panel')) {
+                return Promise.resolve(new Response(anthropicPanelBody(), { status: 200 }))
+            }
+            memberCalls += 1
+            return Promise.resolve(
+                memberCalls === 1
+                    ? new Response(anthropicReviewBody(), { status: 200 })
+                    : new Response('nope', { status: 401 })
+            )
+        }) as unknown as typeof fetch
+
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(() => 1),
+            fetchImpl,
+            panel: { panelId: 'p-1' }
+        })
+
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        await result.run.panelSettled
+
+        expect(result.run.getPanelState()?.status).toBe('done')
+        expect(result.run.getPanelState()?.missingMembers).toEqual(['Member two'])
+        // The failed member is still there, still retryable inside the run.
+        expect(result.run.getEditorState('e-2')?.status).toBe('error')
+    })
+})
