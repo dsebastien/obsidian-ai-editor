@@ -8,6 +8,7 @@ import {
     type PromptSource
 } from '../../domain/settings/settings-schema'
 import { ExcludedTargetError, FOLLOWED_LINKS_CAP, assembleContext } from './context-assembler'
+import { ATTACHMENT_PRIORITY } from './context-budget'
 import type { NoteMetadata, VaultReader } from './vault-reader.intf'
 
 interface FakeNote {
@@ -158,23 +159,75 @@ describe('assembleContext — attachments and ordering', () => {
             { path: 'Wiki.md', content: 'w', reason: 'wikilink-ref' },
             { path: 'Linked.md', content: 'l', reason: 'linked-note' }
         ])
-        expect(result.truncated).toEqual([])
+        expect(result.budget.truncatedPaths).toEqual([])
+        expect(result.budget.droppedPaths).toEqual([])
     })
 
-    test('every attachment is listed in the preview with its char count', async () => {
+    test('attachment order is the documented budget priority order', async () => {
+        const result = await assembleContext({
+            editor: editor({
+                prompt: { text: 'See [[Wiki]]', notePaths: ['Persona.md'], followLinks: true },
+                includeLinkedNotes: true
+            }),
+            voiceProfile: voice(),
+            behavior: behavior(),
+            vault: vaultOf({
+                'Persona.md': { content: 'p', links: ['Followed.md'] },
+                'Wiki.md': { content: 'w' },
+                'Followed.md': { content: 'f' },
+                'Linked.md': { content: 'l' },
+                [NOTE_PATH]: { content: 'body', links: ['Linked.md'] }
+            }),
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        // Pinned against the policy, not a hand-written list: reordering
+        // ATTACHMENT_PRIORITY without reordering assembly must fail here.
+        expect(result.attachments.map((a) => a.reason)).toEqual([...ATTACHMENT_PRIORITY])
+    })
+
+    test('every section is reported in send order with its char counts', async () => {
         const vault = vaultOf({
             'Persona.md': { content: '12345' },
             [NOTE_PATH]: { content: 'body', links: [] }
         })
         const result = await assembleContext({
-            editor: editor({ prompt: { text: 'P', notePaths: ['Persona.md'] } }),
+            editor: editor({ prompt: { text: 'PP', notePaths: ['Persona.md'] } }),
             voiceProfile: voice(),
             behavior: behavior(),
             vault,
             notePath: NOTE_PATH,
             noteText: 'body'
         })
-        expect(result.preview).toEqual([{ path: 'Persona.md', chars: 5, reason: 'prompt-ref' }])
+        expect(result.sections).toEqual([
+            {
+                kind: 'system-prompt',
+                label: 'System prompt',
+                path: null,
+                sourceChars: 2,
+                sentChars: 2,
+                status: 'sent'
+            },
+            {
+                kind: 'reviewed-note',
+                label: 'Reviewed note',
+                path: NOTE_PATH,
+                sourceChars: 4,
+                sentChars: 4,
+                status: 'sent'
+            },
+            {
+                kind: 'prompt-ref',
+                label: 'Prompt note',
+                path: 'Persona.md',
+                sourceChars: 5,
+                sentChars: 5,
+                status: 'sent'
+            }
+        ])
+        expect(result.budget.totalChars).toBe(11)
+        expect(result.budget.budgetChars).toBe(behavior().contextBudgetChars)
+        expect(result.budget.overBudgetChars).toBe(0)
     })
 
     test('resolves wikilinks from voice and memory text fields too', async () => {
@@ -211,7 +264,9 @@ describe('assembleContext — attachments and ordering', () => {
             noteText: 'body'
         })
         expect(result.attachments).toEqual([])
-        expect(result.truncated).toEqual([])
+        // An unreadable note is not a section either: reporting it as
+        // "dropped" would blame the budget for a missing file.
+        expect(result.sections.map((s) => s.kind)).toEqual(['system-prompt', 'reviewed-note'])
     })
 })
 
@@ -372,7 +427,8 @@ describe('assembleContext — follow links (PromptSource.followLinks)', () => {
         // 1000 - 1 (Voice.md content 'v') = 999 chars remain for Big.md.
         const big = result.attachments.find((a) => a.path === 'Big.md')
         expect(big?.content).toBe('X'.repeat(999))
-        expect(result.truncated).toEqual(['Big.md', 'Late.md'])
+        expect(result.budget.truncatedPaths).toEqual(['Big.md'])
+        expect(result.budget.droppedPaths).toEqual(['Late.md'])
     })
 
     test('never follows links of an excluded referenced note', async () => {
@@ -409,7 +465,8 @@ describe('assembleContext — follow links (PromptSource.followLinks)', () => {
             noteText: 'body'
         })
         expect(result.attachments.map((a) => a.path)).toEqual(['Voice.md', 'Fine.md'])
-        expect(result.truncated).toEqual([])
+        expect(result.budget.truncatedPaths).toEqual([])
+        expect(result.budget.droppedPaths).toEqual([])
     })
 
     test('a followLinks voice profile is ignored when the editor opts out of it', async () => {
@@ -619,8 +676,19 @@ describe('assembleContext — budget', () => {
         const attached = result.attachments[0]
         expect(attached).toBeDefined()
         expect(attached?.content).toBe('X'.repeat(800))
-        expect(result.truncated).toEqual(['Big.md'])
-        expect(result.preview).toEqual([{ path: 'Big.md', chars: 800, reason: 'prompt-ref' }])
+        expect(result.budget.truncatedPaths).toEqual(['Big.md'])
+        expect(result.budget.droppedPaths).toEqual([])
+        expect(result.sections.at(-1)).toEqual({
+            kind: 'prompt-ref',
+            label: 'Prompt note',
+            path: 'Big.md',
+            sourceChars: 2_000,
+            sentChars: 800,
+            status: 'truncated'
+        })
+        // The whole budget is spent, and nothing overflows the fixed part.
+        expect(result.budget.totalChars).toBe(1_000)
+        expect(result.budget.overBudgetChars).toBe(0)
     })
 
     test('drops attachments entirely once the budget is exhausted', async () => {
@@ -637,8 +705,18 @@ describe('assembleContext — budget', () => {
             noteText: ''
         })
         expect(result.attachments.map((a) => a.path)).toEqual(['First.md'])
-        expect(result.truncated).toEqual(['First.md', 'Second.md'])
-        expect(result.preview.map((p) => p.path)).toEqual(['First.md'])
+        expect(result.budget.truncatedPaths).toEqual(['First.md'])
+        expect(result.budget.droppedPaths).toEqual(['Second.md'])
+        // A dropped note still reports its real size — that number is what
+        // tells the user whether to raise the budget or cut a reference.
+        expect(result.sections.at(-1)).toEqual({
+            kind: 'prompt-ref',
+            label: 'Prompt note',
+            path: 'Second.md',
+            sourceChars: 10,
+            sentChars: 0,
+            status: 'dropped'
+        })
     })
 
     test('attaches nothing when prompt + note already exceed the budget', async () => {
@@ -652,7 +730,12 @@ describe('assembleContext — budget', () => {
             noteText: 'N'.repeat(600)
         })
         expect(result.attachments).toEqual([])
-        expect(result.truncated).toEqual(['Ref.md'])
+        expect(result.budget.truncatedPaths).toEqual([])
+        expect(result.budget.droppedPaths).toEqual(['Ref.md'])
+        // 600 + 600 against a 1000 budget: the never-truncated sections
+        // overflow by 200, and the report says so instead of hiding it.
+        expect(result.budget.overBudgetChars).toBe(200)
+        expect(result.budget.totalChars).toBe(1_200)
     })
 
     test('fits attachments exactly at the boundary without truncation', async () => {
@@ -666,7 +749,9 @@ describe('assembleContext — budget', () => {
             noteText: ''
         })
         expect(result.attachments[0]?.content.length).toBe(900)
-        expect(result.truncated).toEqual([])
+        expect(result.budget.truncatedPaths).toEqual([])
+        expect(result.budget.droppedPaths).toEqual([])
+        expect(result.budget.totalChars).toBe(1_000)
     })
 })
 

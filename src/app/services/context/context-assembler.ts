@@ -3,6 +3,14 @@ import type {
     EditorConfig,
     PromptSource
 } from '../../domain/settings/settings-schema'
+import {
+    allocateAttachments,
+    sectionKindLabel,
+    summarizeBudget,
+    type AttachmentReason,
+    type ContextBudgetReport,
+    type ContextSection
+} from './context-budget'
 import { isExcluded } from './exclusions'
 import type { VaultReader } from './vault-reader.intf'
 import { extractWikilinks } from './wikilinks'
@@ -14,11 +22,15 @@ import { extractWikilinks } from './wikilinks'
  * every vault note that rides along as a context attachment, in a fixed,
  * deterministic order, under the global character budget, with privacy
  * exclusions enforced BEFORE any note content is read (Business Rules #7)
- * and every attachment accounted for in a send-preview (review major #8/#14).
+ * and every section accounted for in a send-preview (review major #8/#14).
+ *
+ * The budget POLICY — send order, priority, truncation arithmetic, labels —
+ * lives in `context-budget.ts`; this module collects candidates and applies
+ * it. `sections` + `budget` are what the "what will be sent" preview renders,
+ * and they describe exactly the request this assembly produces.
  */
 
-/** Why a note was attached; drives preview labeling and ordering. */
-export type AttachmentReason = 'prompt-ref' | 'wikilink-ref' | 'followed-link' | 'linked-note'
+export type { AttachmentReason } from './context-budget'
 
 /**
  * Upper bound on followed links attached PER referenced note when a prompt
@@ -29,17 +41,9 @@ export const FOLLOWED_LINKS_CAP = 20
 
 export interface ContextAttachment {
     readonly path: string
-    /** Note content, possibly truncated to fit the budget (see `truncated`). */
+    /** Note content, possibly truncated to fit the budget (see `sections`). */
     readonly content: string
     readonly reason: AttachmentReason
-}
-
-/** One row of the "what will be sent" preview. */
-export interface AttachmentPreview {
-    readonly path: string
-    /** Characters actually sent (post-truncation). */
-    readonly chars: number
-    readonly reason: string
 }
 
 export interface AssembledContext {
@@ -50,15 +54,20 @@ export interface AssembledContext {
      * the preview stay per-note.
      */
     readonly systemPrompt: string
-    /** Notes to send, in assembly order, deduplicated, budget-enforced. */
-    readonly attachments: ContextAttachment[]
-    /** Every attachment that will be sent, for user review before the run. */
-    readonly preview: AttachmentPreview[]
     /**
-     * Paths that hit the budget: truncated mid-content or dropped entirely
-     * (dropped notes appear here but not in `attachments`/`preview`).
+     * Notes to send, in assembly order, deduplicated, budget-enforced.
+     * Dropped notes are absent here and reported in `sections`.
      */
-    readonly truncated: string[]
+    readonly attachments: ContextAttachment[]
+    /**
+     * Everything this assembly accounts for, in send order: the system
+     * prompt, the reviewed note, then every attachment CANDIDATE — including
+     * the ones the budget dropped, which is the whole point of reporting
+     * sections instead of just listing what survived.
+     */
+    readonly sections: readonly ContextSection[]
+    /** Totals and what the budget cost, derived from `sections`. */
+    readonly budget: ContextBudgetReport
 }
 
 export interface AssembleContextInput {
@@ -116,10 +125,12 @@ export class ExcludedTargetError extends Error {
  * silently.
  *
  * Budget: `behavior.contextBudgetChars` covers system prompt + note text +
- * attachments. Attachments consume the remainder in order; the first one
- * that does not fit is truncated (recorded in `truncated`), later ones are
- * dropped (also recorded). The system prompt and the reviewed note are user
- * intent and are never truncated themselves.
+ * attachments, spent in the priority order documented in
+ * `context-budget.ts` — the system prompt and the reviewed note are never
+ * truncated, attachments consume the remainder in order, the first one that
+ * does not fit is truncated and later ones are dropped. Every candidate is
+ * reported in `sections` with what happened to it, so nothing disappears
+ * silently.
  */
 export async function assembleContext(input: AssembleContextInput): Promise<AssembledContext> {
     const { editor, voiceProfile, behavior, vault, notePath, noteText } = input
@@ -235,39 +246,78 @@ export async function assembleContext(input: AssembleContextInput): Promise<Asse
         }
     }
 
-    // -- Read content, enforce the budget in order ----------------------------
-    const attachments: ContextAttachment[] = []
-    const truncated: string[] = []
-    let remaining = Math.max(0, behavior.contextBudgetChars - systemPrompt.length - noteText.length)
-
+    // -- Read content, then apply the budget policy ---------------------------
+    // Reading happens for every candidate, including ones the budget will
+    // drop: the preview reports how big a dropped note WAS, which is the
+    // number that tells the user whether to raise the budget or cut a
+    // reference. A note that cannot be read at all never becomes a section.
+    const readable: {
+        readonly path: string
+        readonly reason: AttachmentReason
+        content: string
+    }[] = []
     for (const candidate of candidates) {
         const content = await vault.readNote(candidate.path)
         if (content === null) {
             continue
         }
-        if (remaining <= 0) {
-            truncated.push(candidate.path)
-            continue
-        }
-        if (content.length > remaining) {
-            attachments.push({
-                path: candidate.path,
-                content: content.slice(0, remaining),
-                reason: candidate.reason
-            })
-            truncated.push(candidate.path)
-            remaining = 0
-            continue
-        }
-        attachments.push({ path: candidate.path, content, reason: candidate.reason })
-        remaining -= content.length
+        readable.push({ path: candidate.path, reason: candidate.reason, content })
     }
 
-    const preview: AttachmentPreview[] = attachments.map((attachment) => ({
-        path: attachment.path,
-        chars: attachment.content.length,
-        reason: attachment.reason
-    }))
+    const budgetChars = behavior.contextBudgetChars
+    const fixedChars = systemPrompt.length + noteText.length
+    const { allocations, overBudgetChars } = allocateAttachments({
+        budgetChars,
+        fixedChars,
+        attachmentChars: readable.map((entry) => entry.content.length)
+    })
 
-    return { systemPrompt, attachments, preview, truncated }
+    const attachments: ContextAttachment[] = []
+    const sections: ContextSection[] = [
+        {
+            kind: 'system-prompt',
+            label: sectionKindLabel('system-prompt'),
+            path: null,
+            sourceChars: systemPrompt.length,
+            sentChars: systemPrompt.length,
+            status: 'sent'
+        },
+        {
+            kind: 'reviewed-note',
+            label: sectionKindLabel('reviewed-note'),
+            path: notePath,
+            sourceChars: noteText.length,
+            sentChars: noteText.length,
+            status: 'sent'
+        }
+    ]
+    readable.forEach((entry, index) => {
+        // `allocateAttachments` returns one allocation per input, same order.
+        const allocation = allocations[index] ?? { sentChars: 0, status: 'dropped' as const }
+        if (allocation.status !== 'dropped') {
+            attachments.push({
+                path: entry.path,
+                content:
+                    allocation.sentChars === entry.content.length
+                        ? entry.content
+                        : entry.content.slice(0, allocation.sentChars),
+                reason: entry.reason
+            })
+        }
+        sections.push({
+            kind: entry.reason,
+            label: sectionKindLabel(entry.reason),
+            path: entry.path,
+            sourceChars: entry.content.length,
+            sentChars: allocation.sentChars,
+            status: allocation.status
+        })
+    })
+
+    return {
+        systemPrompt,
+        attachments,
+        sections,
+        budget: summarizeBudget(sections, budgetChars, overBudgetChars)
+    }
 }

@@ -302,6 +302,13 @@ export function resolveApiBackend(
  * text fields followed by every attached vault note as a delimited block
  * (XML-style tags, consistent with the operation prompt serialization —
  * fences would break on markdown content).
+ *
+ * Each block is labelled with WHY the note is there (`role`), not just its
+ * path: a note the persona references is instruction material, while a note
+ * linked from the document under review is subject matter, and a model that
+ * cannot tell them apart will happily critique the reference material. The
+ * role vocabulary is the attachment reason (`context-budget.ts`), so the
+ * prompt, the preview and the budget all name the same thing.
  */
 export function composeSystemPrompt(context: AssembledContext): string {
     if (context.attachments.length === 0) {
@@ -309,7 +316,7 @@ export function composeSystemPrompt(context: AssembledContext): string {
     }
     const blocks = context.attachments.map((attachment) => {
         const path = attachment.path.replace(/"/g, "'")
-        return `<context-note path="${path}">\n${attachment.content}\n</context-note>`
+        return `<context-note role="${attachment.reason}" path="${path}">\n${attachment.content}\n</context-note>`
     })
     return [
         context.systemPrompt,

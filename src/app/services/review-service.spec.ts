@@ -85,6 +85,27 @@ class FakeVault implements VaultReader {
     }
 }
 
+/**
+ * Minimal `AssembledContext` for the pure prompt-composition tests. Sections
+ * and the budget report are the preview's business (covered in
+ * `context/context-assembler.spec.ts`); `composeSystemPrompt` reads neither.
+ */
+function assembled(overrides: Partial<AssembledContext> = {}): AssembledContext {
+    return {
+        systemPrompt: '',
+        attachments: [],
+        sections: [],
+        budget: {
+            budgetChars: 200_000,
+            totalChars: 0,
+            overBudgetChars: 0,
+            truncatedPaths: [],
+            droppedPaths: []
+        },
+        ...overrides
+    }
+}
+
 const DOC_TEXT = 'Hello world. This is a test document about writing well.'
 
 function makeSnapshot(text = DOC_TEXT, filePath = 'Notes/Test.md') {
@@ -253,29 +274,35 @@ describe('resolveApiBackend', () => {
 
 describe('composeSystemPrompt', () => {
     it('returns the bare system prompt without attachments', () => {
-        const context: AssembledContext = {
-            systemPrompt: 'Be harsh.',
-            attachments: [],
-            preview: [],
-            truncated: []
-        }
-        expect(composeSystemPrompt(context)).toBe('Be harsh.')
+        expect(composeSystemPrompt(assembled({ systemPrompt: 'Be harsh.' }))).toBe('Be harsh.')
     })
 
     it('appends attachments as delimited context blocks', () => {
-        const context: AssembledContext = {
-            systemPrompt: 'Be harsh.',
-            attachments: [
-                { path: 'Voice "Profile".md', content: 'Voice rules', reason: 'prompt-ref' }
-            ],
-            preview: [],
-            truncated: []
-        }
-        const prompt = composeSystemPrompt(context)
+        const prompt = composeSystemPrompt(
+            assembled({
+                systemPrompt: 'Be harsh.',
+                attachments: [
+                    { path: 'Voice "Profile".md', content: 'Voice rules', reason: 'prompt-ref' }
+                ]
+            })
+        )
         expect(prompt).toStartWith('Be harsh.')
-        expect(prompt).toContain('<context-note path="Voice \'Profile\'.md">')
+        expect(prompt).toContain('<context-note role="prompt-ref" path="Voice \'Profile\'.md">')
         expect(prompt).toContain('Voice rules')
         expect(prompt).toContain('</context-note>')
+    })
+
+    it('labels each block with WHY the note is attached', () => {
+        const prompt = composeSystemPrompt(
+            assembled({
+                attachments: [
+                    { path: 'Persona.md', content: 'p', reason: 'prompt-ref' },
+                    { path: 'Linked.md', content: 'l', reason: 'linked-note' }
+                ]
+            })
+        )
+        expect(prompt).toContain('<context-note role="prompt-ref" path="Persona.md">')
+        expect(prompt).toContain('<context-note role="linked-note" path="Linked.md">')
     })
 })
 
