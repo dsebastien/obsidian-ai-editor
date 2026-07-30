@@ -124,7 +124,11 @@ export class EditorModal extends Modal {
 
         new Setting(contentEl)
             .setName('Include linked notes')
-            .setDesc('Attach notes linked from the reviewed note as context (1 hop, capped).')
+            .setDesc(
+                'Attach the notes the reviewed note links to as context. Links and embeds, ' +
+                    'one hop only, capped below. Excluded notes are never attached, and the ' +
+                    'context budget applies.'
+            )
             .addToggle((toggle) => {
                 toggle.setValue(this.draft.includeLinkedNotes)
                 toggle.onChange((value) => {
