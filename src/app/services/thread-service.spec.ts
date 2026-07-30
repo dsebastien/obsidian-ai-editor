@@ -286,6 +286,30 @@ describe('startThreadTurn refusals', () => {
         ).toEqual({ status: 'no-run' })
     })
 
+    it('refuses when the run is detached while the context is assembled', async () => {
+        const controller = new RunController()
+        const { run, findingId } = await runWithFinding(controller)
+        const { fetchImpl, requests } = capturingFetch(
+            anthropicResultBody({ kind: 'thread-turn', reply: 'late', concede: false })
+        )
+        const pending = startThreadTurn({
+            settings: makeSettings(),
+            vault: new FakeVault(),
+            runController: controller,
+            findingId,
+            message: 'push',
+            currentText: DOC_TEXT,
+            fetchImpl
+        })
+        // The note is renamed/deleted (or the review restarted) while the
+        // persona context is being read: the handle is detached, so the turn
+        // must not open a stream nobody can cancel.
+        controller.discardRun(NOTE_PATH)
+        expect(await pending).toEqual({ status: 'no-run' })
+        expect(requests).toHaveLength(0)
+        expect(run.findings.get(findingId)?.threadTurn).toBeNull()
+    })
+
     it('fails closed on an excluded note before any backend call', async () => {
         const controller = new RunController()
         const { findingId } = await runWithFinding(controller)

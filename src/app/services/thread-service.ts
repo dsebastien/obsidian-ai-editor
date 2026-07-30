@@ -137,6 +137,17 @@ export async function startThreadTurn(input: StartThreadTurnServiceInput): Promi
         throw cause
     }
 
+    // -- The run must still be the live one AFTER the await --------------------
+    // Context assembly reads notes, so a review restart (`startRun` replaces
+    // and cancels), a rename/delete (`discardRun`) or an unload (`cancelAll`)
+    // can detach this handle while we wait. All three drop it from the
+    // controller, so re-resolving the finding is the check. A merely CANCELLED
+    // run stays registered on purpose: its findings remain inspectable and
+    // pushing back on them is still allowed (locked decision, slice 3).
+    if (runController.findRunWithFinding(findingId) !== run) {
+        return { status: 'no-run' }
+    }
+
     const started = run.startThreadTurn({
         findingId,
         message: input.message,
