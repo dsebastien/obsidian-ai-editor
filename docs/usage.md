@@ -5,7 +5,7 @@ nav_order: 2
 
 # Usage
 
-> The plugin is in early development. The review loop and action verbs below are working; full panel scorecards, push-back threads, and margin comments are coming next.
+> The plugin is in early development. The review loop, action verbs, push-back threads and panel scorecards below are working; margin comments and CLI backends are coming next.
 
 ## Getting started
 
@@ -73,11 +73,31 @@ Every finding card has a reply box: type your objection ("I disagree — this re
 - **Dismiss all (m)** clears that editor's findings for the note. It never touches your text.
 - The palette has the same per editor (**Accept all from &lt;Editor&gt;**, **Dismiss all from &lt;Editor&gt;**) plus **Accept all non-conflicting findings** for every editor of the note at once.
 
+## Asking for more
+
+When an editor has finished, its side-panel section gets a **Generate more (n)** button — `n` is how many findings it already reported. Pressing it asks that editor for **additional** findings on the note as it reads now; everything it already said stays exactly where it is, and the new findings are added to the list.
+
+- One press is one round. The button disables while its round runs, so you cannot buy two by double-clicking, and there is no automatic repeat — every round is a request you pay for.
+- The editor is told what it already reported and asked not to repeat itself; anything identical that comes back anyway is dropped before you see it. It is allowed to come back with nothing, and often should.
+- An editor that reported nothing still gets the button — "I found nothing" is worth challenging once.
+- If the extra round fails or you cancel it, the section says so next to the button and **your existing findings are untouched**. The editor stays finished rather than failed, precisely so that Retry — which replaces an editor's findings — is not offered to you at that moment.
+- **Generate more findings** in the palette does one round for every editor of the note that has finished.
+
 ## Severity filter
 
 Findings come in three severities: warning, suggestion, and info. **Cycle severity filter** (or the **Show** button at the top of the side panel) narrows what you look at: all severities → warnings and suggestions → warnings only → all again.
 
 The filter is a lens per note, not a deletion: hidden findings come back untouched when you cycle around. While a filter is active, hidden findings disappear from the highlights and the panel list, triage steps skip them, and bulk operations leave them alone — the panel tells you how many are hidden.
+
+## Panels
+
+A **panel** is a group of editors that review together and then get summed up. Compose one in **Settings → AI Editor → Panels**: pick the members, write a **charter** (the shared brief — it goes into every member's prompt _and_ is what the summary is written against), and choose the backend that writes the summary. The starter pack ships **Pre-publish Review** (Devil's Advocate + Flow & Structure + Beginner Reader + Humanizer).
+
+A panel run is **one** run, not four reviews that happen to start together: the members review in parallel exactly like ordinary editors — same highlights, same cards, same retry — and the run then produces a **scorecard** at the top of the side panel: an overall verdict with its reason, a verdict per member, ranked top fixes (select one to jump to the finding it came from), and where the members disagreed, kept as who said what.
+
+- **If a member fails**, the panel completes with the ones that did run, names the missing member, and says the summary did not see it. Retry that member from its section or its rail chip and the scorecard is rewritten.
+- **If the summary itself fails**, every member's findings are still there — the block above them says what went wrong and that the reviews below are unaffected.
+- **Telling a panel from an editor**: panels are drawn as a **ring** where editors are solid dots — on the rail the panel is one ringed chip with its members bracketed under it — and every place that names one also says "(panel)", so the distinction is not only visual.
 
 ## Actions
 
@@ -87,7 +107,7 @@ Actions are verbs you run on a selection: built-in ones (rephrase, summarize, si
 - **Command palette**: every bound action is also a command (for example "Humanize"), so you can assign hotkeys via Obsidian's hotkey settings. Commands appear and disappear as you change bindings — no reload needed — and hotkeys survive renames.
 - **Rewrite verbs** (rephrase, summarize, simplify, humanize) never touch your text directly: the proposal appears as an inline diff below the selection — old text struck through, new text highlighted — with **Accept** and **Reject** (Enter/Esc while the widget has focus). Accept is a single undo step, and only applies while the selected text is unchanged; editing it dismisses the stale proposal.
 - **Continue writing / Say more** insert a proposed continuation at the cursor, through the same preview.
-- **Critique, find evidence, identify assumptions** run as reviews: findings arrive as highlights, exactly like Review selection. These three can also be bound to a panel, in which case every panel member runs the action.
+- **Critique, find evidence, identify assumptions** run as reviews: findings arrive as highlights, exactly like Review selection. These three can also be bound to a panel, in which case the whole panel convenes — every member runs the action with the charter in its prompt, and you get a scorecard on top. A panel-bound action says so in the menu and the palette ("Critique (panel: Pre-publish Review)"), because one press is one request per member.
 - Excluded notes never dispatch actions, and an action whose editor is disabled or misconfigured is hidden rather than broken (the Actions tab tells you why).
 
 ### Custom actions
@@ -96,7 +116,7 @@ Actions are verbs you run on a selection: built-in ones (rephrase, summarize, si
 
 - **Rewrite the selection** — the answer replaces the selected text, through the same inline diff as rephrase or humanize.
 - **Write more at the cursor** — the answer is inserted after the selection or at the cursor, through the same preview.
-- **Report findings** — the answer arrives as highlights on the note, like critique. Only this kind can be bound to a panel, where every member runs it.
+- **Report findings** — the answer arrives as highlights on the note, like critique. Only this kind can be bound to a panel, where the whole panel convenes and produces a scorecard.
 
 There is no default for that last choice on purpose: the same instruction means very different things depending on it, and an action that quietly rewrote text you only asked it to check would be the worst kind of surprise. Until you pick one — and until the action has a name and an instruction — it stays out of the menu and the palette, and its row says why.
 
