@@ -4,29 +4,53 @@ nav_order: 1
 permalink: /
 ---
 
-# Plugin Name
+# AI Editor
 
-TODO: Add a brief description of what your plugin does.
+AI editing, reviewing and QA **inside the Obsidian editor** — not a chat sidebar. Configurable AI personas ("Editors") and groups of them ("Panels") highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
-## Key Features
+Nothing runs on its own, and nothing is written without a diff. Desktop only. Bring your own backend.
 
-TODO: List 3-5 key features of your plugin.
+## Key features
 
-- Feature 1
-- Feature 2
-- Feature 3
+- **Editors** — AI personas you define with a prompt. Six ship with the plugin, all editable.
+- **Panels** — groups of editors that review together and produce one scorecard: overall verdict, per-member verdicts, ranked top fixes, and where they disagreed.
+- **Review loop** — findings anchored to the exact words they quote, triaged from the keyboard, with push-back replies when you disagree.
+- **Actions** — rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions, plus your own custom verbs.
+- **Margin comments** — park a question on a passage and keep writing; the answer arrives in a column beside the text and survives restarts.
+- **Vault as configuration** — personas, charters and voice profile can live in your own notes, read fresh at every run.
+- **Bring your own backend** — Anthropic, OpenAI, OpenRouter, OpenAI-compatible endpoints, Azure OpenAI, Ollama, or the Claude Code and Codex CLIs running locally.
 
-## Quick Start
+## Quick start
 
-TODO: Add quick start instructions.
+1. Install the plugin and enable it (see [Install and quick start](install.md)).
+2. The **setup wizard** opens on first load: add a backend, select **Test connection**, choose your editors, point at a voice profile, decide when editors run. Nothing is saved until the last step.
+3. Open a note and run **Review current note**.
+4. Click a highlight to read a finding; **Accept** or **Dismiss** it.
 
-1. Install the plugin
-2. Configure settings
-3. Start using
+## The guide
+
+| Page                                            | What it covers                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| [Install and quick start](install.md)           | Requirements, install routes, the setup wizard, what gets seeded |
+| [Set up a backend](backends.md)                 | Providers, models, thinking modes, timeouts, test connection     |
+| [Review a note](usage.md)                       | The rail, findings, cards, keyboard triage, bulk operations      |
+| [Create and tune editors](editors.md)           | Personas, prompts, context, capabilities, the voice profile      |
+| [Run actions on a selection](actions.md)        | Built-in verbs, inline diffs, custom actions                     |
+| [Work with panels](panels.md)                   | Charters, scorecards, partial failures                           |
+| [Margin comments](margin-comments.md)           | Parked questions answered in the background                      |
+| [Binding rules](rules.md)                       | Per-folder, per-tag, per-note-type routing and kill switches     |
+| [Daemon mode](daemon-mode.md)                   | Automatic refreshes, and what they cost                          |
+| [CLI backends](cli-backends.md)                 | Claude Code and Codex, and their security model                  |
+| [The command line](command-line.md)             | `ai-editor:review`, `ai-editor:status`, `ai-editor:cancel`       |
+| [Move settings between vaults](transfer.md)     | Export, import, what never travels                               |
+| [Privacy and security](privacy-and-security.md) | What is sent, what is excluded, where keys live                  |
+| [Configuration reference](configuration.md)     | Every setting, its default, every command                        |
+| [Tips and best practices](tips.md)              | Getting good results without burning tokens                      |
+| [Troubleshooting](troubleshooting.md)           | Timeouts, CORS, unusable answers, unanchored findings            |
 
 ## About
 
-Created by [Your Name](https://your-website.com).
+Created by [Sébastien Dubois](https://dsebastien.net). Source on [GitHub](https://github.com/dsebastien/obsidian-ai-editor).
 
 <!-- other-plugins:start -->
 
