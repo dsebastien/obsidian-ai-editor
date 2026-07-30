@@ -88,6 +88,7 @@ import {
     setFindingsEffect
 } from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
+import { findingEdgeIndex } from './editor/finding-identity'
 import { nextLayoutMode } from './editor/layout-mode'
 import type { PaneLayoutMode } from './editor/layout-mode'
 import { MarginColumn } from './editor/margin-column'
@@ -3520,6 +3521,12 @@ export class ReviewController {
 
     private buildDecorationSpecs(run: RunHandle): FindingDecorationSpec[] {
         const colors = this.editorColors()
+        // Everything the highlight says WITHOUT its colour (plan M9): the
+        // persona's name and its bottom-edge shape slot. The slot is the
+        // editor's position in settings — stable for the life of the vault
+        // and the same order the rail lists its chips in.
+        const identities = this.editorIdentities()
+        const panelName = run.getPanelState()?.panelName ?? null
         // The triage cursor rides the specs so it survives full rebuilds
         // (see finding-decorations.ts). Reading through the store validates
         // run identity: a cursor left behind by a replaced run is evicted
@@ -3536,12 +3543,20 @@ export class ReviewController {
                 continue
             }
             const stale = finding.anchor.state === 'stale'
+            const identity = identities.get(finding.editorId)
             specs.push({
                 findingId: finding.id,
                 editorId: finding.editorId,
                 from: finding.anchor.from,
                 to: finding.anchor.to,
                 color: colors.get(finding.editorId) ?? 'var(--text-accent)',
+                // An editor deleted mid-triage keeps its findings on the note;
+                // the run still knows what it was called.
+                editorName:
+                    identity?.name ?? run.getEditorState(finding.editorId)?.editorName ?? 'Editor',
+                panelName,
+                severity: finding.raw.severity,
+                edgeIndex: findingEdgeIndex(identity?.index ?? -1),
                 stale,
                 current: cursor !== null && cursor.id === finding.id && !stale
             })
@@ -3551,6 +3566,15 @@ export class ReviewController {
 
     private editorColors(): Map<string, string> {
         return new Map(this.deps.getSettings().editors.map((editor) => [editor.id, editor.color]))
+    }
+
+    /** Editor id → its display name and its position in the settings list. */
+    private editorIdentities(): Map<string, { name: string; index: number }> {
+        return new Map(
+            this.deps
+                .getSettings()
+                .editors.map((editor, index) => [editor.id, { name: editor.name, index }])
+        )
     }
 
     // -- Transform preview (non-destructive inline diff, Business Rules #2/#3)

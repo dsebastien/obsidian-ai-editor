@@ -31,6 +31,10 @@ function findingSpec(overrides: Partial<FindingDecorationSpec> = {}): FindingDec
         from: 0,
         to: 5,
         color: '#ff0000',
+        editorName: 'Concision Editor',
+        panelName: null,
+        severity: 'suggestion',
+        edgeIndex: 0,
         stale: false,
         current: false,
         ...overrides

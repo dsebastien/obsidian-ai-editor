@@ -945,6 +945,30 @@
         color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
 }
 
+/* Per-persona bottom-edge STYLE (WCAG 1.4.1, plan M9). With three editors
+   reviewing one note the tint was the only thing telling three overlapping
+   opinions apart — invisible to a red/green deficiency and to a monochrome
+   display. The slot comes from the editor's position in settings
+   (finding-identity.ts), so it is stable and matches the rail's order.
+
+   Only the STYLE varies: width and colour stay put, so no persona's
+   highlight is louder than another's. `.ai-editor-finding-stale` below sets
+   `border-bottom: none` and comes later in the file, so a stale mark still
+   loses its edge entirely. */
+.ai-editor-finding-edge-1 {
+    border-bottom-style: dotted;
+    border-bottom-width: 3px;
+}
+
+.ai-editor-finding-edge-2 {
+    border-bottom-style: dashed;
+}
+
+.ai-editor-finding-edge-3 {
+    border-bottom-style: double;
+    border-bottom-width: 4px;
+}
+
 /* Chip-click emphasis (~2 s, auto-cleared by the controller): a stronger
    tint plus a gentle pulse on ONE editor's highlights so a rail-chip click
    visibly answers "which spans are yours?". The class is applied per-editor

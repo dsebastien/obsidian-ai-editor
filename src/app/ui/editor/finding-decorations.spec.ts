@@ -20,6 +20,7 @@ interface RenderedMark {
     readonly findingId: string
     readonly classes: string
     readonly style: string
+    readonly title: string
 }
 
 function renderedMarks(decorations: DecorationSet): RenderedMark[] {
@@ -36,7 +37,8 @@ function renderedMarks(decorations: DecorationSet): RenderedMark[] {
             to: cursor.to,
             findingId: spec.findingId ?? '',
             classes: spec.class ?? '',
-            style: spec.attributes?.['style'] ?? ''
+            style: spec.attributes?.['style'] ?? '',
+            title: spec.attributes?.['title'] ?? ''
         })
         cursor.next()
     }
@@ -50,6 +52,10 @@ function findingSpec(overrides: Partial<FindingDecorationSpec> = {}): FindingDec
         from: 0,
         to: 5,
         color: '#ff0000',
+        editorName: 'Concision Editor',
+        panelName: null,
+        severity: 'suggestion',
+        edgeIndex: 0,
         stale: false,
         current: false,
         ...overrides
@@ -522,6 +528,54 @@ describe('findingDecorationsField', () => {
             }
             expect(mapped.value[0]?.from).toBe(8)
             expect(mapped.value[0]?.to).toBe(12)
+        })
+    })
+
+    describe('non-colour identity on the mark (plan M9)', () => {
+        it('names the editor and the severity in the mark title', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ editorName: 'Fact Checker', severity: 'warning' })
+                ])
+            )
+            expect(marksOf(state)[0]?.title).toBe('Fact Checker — warning')
+        })
+
+        it('names the panel a member reviewed for', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ editorName: 'Hater', panelName: 'Pre-publish Review' })
+                ])
+            )
+            expect(marksOf(state)[0]?.title).toContain('member of Pre-publish Review (panel)')
+        })
+
+        it('re-derives the title when a mark goes stale in place', () => {
+            const opened = stateWith('alpha beta gamma', setFindingsEffect.of([findingSpec()]))
+            const staled = opened.update({ effects: markStaleEffect.of(['f-1']) }).state
+            const mark = marksOf(staled)[0]
+            expect(mark?.title).toContain('stale')
+            expect(mark?.classes).toContain('ai-editor-finding-stale')
+        })
+
+        it('emits no edge class for the first editor — slot 0 is the plain edge', () => {
+            const state = stateWith('alpha', setFindingsEffect.of([findingSpec()]))
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding')
+        })
+
+        it('carries a per-editor edge style class, clamped onto the defined slots', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'f-1', from: 0, to: 5, edgeIndex: 2 }),
+                    findingSpec({ findingId: 'f-2', from: 6, to: 10, edgeIndex: 7 })
+                ])
+            )
+            const marks = marksOf(state)
+            expect(marks[0]?.classes).toContain('ai-editor-finding-edge-2')
+            expect(marks[1]?.classes).toContain('ai-editor-finding-edge-3')
         })
     })
 })

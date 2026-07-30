@@ -26,6 +26,13 @@
  * CSS custom property via an inline style attribute, so the stylesheet
  * controls how the tint is applied.
  *
+ * The tint is never the only signal (plan M9): every mark also carries an
+ * `ai-editor-finding-edge-<n>` class — a per-editor bottom-edge STYLE, so two
+ * personas' highlights differ in shape as well as hue — and a `title` naming
+ * the editor, its panel, the severity and staleness. Both are derived in
+ * `finding-identity.ts`, which documents why the name rides a `title` rather
+ * than an `aria-label`.
+ *
  * Two transient visual states, two mechanisms on purpose:
  * - `current` (triage cursor) RIDES THE SPECS — it must survive the refresh
  *   cycle's full `setFindingsEffect` rebuilds for as long as the cursor
@@ -40,6 +47,9 @@ import type { EditorState, Range } from '@codemirror/state'
 import { Decoration, EditorView } from '@codemirror/view'
 import type { DecorationSet } from '@codemirror/view'
 
+import type { Severity } from '../../domain/operations/contract'
+import { FINDING_EDGE_STYLE_COUNT, findingMarkTitle } from './finding-identity'
+
 export { changesFromTransaction } from './changes-adapter'
 
 /** One finding span to render, expressed against the CURRENT document. */
@@ -50,6 +60,21 @@ export interface FindingDecorationSpec {
     readonly to: number
     /** Persona color (any CSS color value) used to tint the highlight. */
     readonly color: string
+    /**
+     * Who found this and how loudly. The mark turns it into its disclosure
+     * sentence via {@link findingMarkTitle} — the persona colour alone cannot
+     * say any of it (plan M9). Kept as PARTS rather than a finished string so
+     * that a mark going stale in place re-derives a sentence that says so.
+     */
+    readonly editorName: string
+    readonly panelName: string | null
+    readonly severity: Severity
+    /**
+     * Bottom-edge style slot (0…{@link FINDING_EDGE_STYLE_COUNT}-1), from the
+     * editor's position in settings. Shape, so two personas' highlights stay
+     * distinguishable without hue.
+     */
+    readonly edgeIndex: number
     /** Stale findings render dimmed and are no longer actionable. */
     readonly stale: boolean
     /**
@@ -101,6 +126,10 @@ interface FindingMarkSpec {
     readonly findingId: string
     readonly editorId: string
     readonly color: string
+    readonly editorName: string
+    readonly panelName: string | null
+    readonly severity: Severity
+    readonly edgeIndex: number
     readonly stale: boolean
     readonly emphasized: boolean
     readonly current: boolean
@@ -119,6 +148,12 @@ function sanitizeColor(color: string): string {
 
 function buildMark(spec: FindingMarkSpec): Decoration {
     const classes = ['ai-editor-finding']
+    const edge = edgeSlot(spec.edgeIndex)
+    if (edge > 0) {
+        // Slot 0 is the plain solid edge every mark starts with, so it needs
+        // no class of its own — a plugin with one editor emits none of these.
+        classes.push(`ai-editor-finding-edge-${edge}`)
+    }
     if (spec.stale) {
         classes.push('ai-editor-finding-stale')
     }
@@ -133,15 +168,30 @@ function buildMark(spec: FindingMarkSpec): Decoration {
         attributes: {
             'style': `--ai-editor-finding-color: ${sanitizeColor(spec.color)}`,
             'data-finding-id': spec.findingId,
-            'data-editor-id': spec.editorId
+            'data-editor-id': spec.editorId,
+            // The mark's own disclosure: the persona colour is not readable
+            // by everyone, and a `<span>` in contenteditable is `role=generic`
+            // and therefore cannot be NAMED (see finding-identity.ts). A
+            // `title` is a tooltip for every sighted user and the accessible
+            // description for the rest, without hijacking the note's text.
+            'title': findingMarkTitle(spec)
         },
         findingId: spec.findingId,
         editorId: spec.editorId,
         color: spec.color,
+        editorName: spec.editorName,
+        panelName: spec.panelName,
+        severity: spec.severity,
+        edgeIndex: spec.edgeIndex,
         stale: spec.stale,
         emphasized: spec.emphasized,
         current: spec.current
     })
+}
+
+/** Clamps an edge slot onto the styles the stylesheet actually defines. */
+function edgeSlot(index: number): number {
+    return Number.isFinite(index) && index > 0 ? Math.floor(index) % FINDING_EDGE_STYLE_COUNT : 0
 }
 
 function markSpecOf(decoration: Decoration): FindingMarkSpec {
@@ -150,6 +200,10 @@ function markSpecOf(decoration: Decoration): FindingMarkSpec {
         findingId: spec.findingId ?? '',
         editorId: spec.editorId ?? '',
         color: spec.color ?? '',
+        editorName: spec.editorName ?? '',
+        panelName: spec.panelName ?? null,
+        severity: spec.severity ?? 'suggestion',
+        edgeIndex: spec.edgeIndex ?? 0,
         stale: spec.stale ?? false,
         emphasized: spec.emphasized ?? false,
         current: spec.current ?? false
