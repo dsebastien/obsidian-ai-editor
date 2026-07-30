@@ -5,9 +5,10 @@ An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and
 - **Editors**: AI personas (Concision Editor, Devil's Advocate, Fact Checker…) you define with a prompt — typed directly or sourced from your own vault notes.
 - **Panels**: groups of 1-n editors producing an aggregated scorecard: verdicts, top fixes, dissenting opinions.
 - **Review loop**: summon your editors, watch findings land as highlighted spans, triage them with keyboard-first accept/reject, push back and argue, refine suggestions.
-- **Actions**: rephrase, critique, say more, find evidence, identify assumptions — each bound to the editor or panel of your choice.
+- **Actions**: rephrase, critique, say more, find evidence, identify assumptions — each bound to the editor or panel of your choice, plus your own custom actions (name, instruction, and whether the answer rewrites the selection, is inserted at the cursor, or comes back as findings).
 - **Async margin comments**: select text, leave an instruction, and a background agent works on it while you keep writing.
 - **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
+- **Portable configuration**: export the editors, panels, actions, rules, and voice profile you built to a JSON file (API keys never included) and import them into another vault, after confirming exactly what will be added.
 - **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI and compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
 
 Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff. The one opt-in exception is **daemon mode** — a settings toggle (off by default) that lets your editors watch your edits and refresh their recommendations after you pause; every refresh calls your configured backends, so the toggle states the cost implication plainly.

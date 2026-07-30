@@ -75,6 +75,30 @@ Actions are verbs you run on a selection: built-in ones (rephrase, summarize, si
 - **Critique, find evidence, identify assumptions** run as reviews: findings arrive as highlights, exactly like Review selection. These three can also be bound to a panel, in which case every panel member runs the action.
 - Excluded notes never dispatch actions, and an action whose editor is disabled or misconfigured is hidden rather than broken (the Actions tab tells you why).
 
+### Custom actions
+
+**Settings → AI Editor → Actions → Add custom action** gives you your own verb. Give it a name, an instruction (typed, and/or vault notes appended to it — with **Follow links** if those notes link out to more), pick the editor or panel that answers, and pick **what it does**:
+
+- **Rewrite the selection** — the answer replaces the selected text, through the same inline diff as rephrase or humanize.
+- **Write more at the cursor** — the answer is inserted after the selection or at the cursor, through the same preview.
+- **Report findings** — the answer arrives as highlights on the note, like critique. Only this kind can be bound to a panel, where every member runs it.
+
+There is no default for that last choice on purpose: the same instruction means very different things depending on it, and an action that quietly rewrote text you only asked it to check would be the worst kind of surprise. Until you pick one — and until the action has a name and an instruction — it stays out of the menu and the palette, and its row says why.
+
+## Moving your settings between vaults
+
+**Settings → AI Editor → Behavior → Import & export.**
+
+**Export…** lets you tick what to include (backends, editors, panels, actions, rules, voice profile) and writes it either to a JSON file in your vault or to the clipboard. **Your API keys are never exported**, so the file is safe to share, commit, or paste into a message.
+
+**Import…** takes a pasted document or a file from your vault — including a `data.json` copied from another vault's plugin folder. It shows you exactly what will happen before saving anything:
+
+- Everything is **added** to what you already have, never merged over it, and internal ids are regenerated — so importing the same file twice gives you two independent copies rather than a silent overwrite.
+- References inside the file are rewired to the imported entities. A reference to something that is not in the file survives only if it already exists here (importing panels back into the vault their member editors live in works); otherwise it arrives unbound, and the summary says so.
+- Anything that cannot come in is listed with its reason: an entity this version does not accept, a panel whose member editors are missing, an action verb you already bound, or a section that is full.
+- Your voice profile is the one thing that gets **replaced** rather than added, and the summary says so before you confirm.
+- **API keys are never imported either** — open the Backends tab and enter yours before running anything.
+
 ## Daemon mode (opt-in)
 
 By default nothing runs automatically: reviews only start when you trigger them. **Daemon mode** (Settings → AI Editor → Behavior → Daemon) changes that for the notes you edit: with the toggle on, your editors watch your edits and refresh their recommendations automatically after you pause editing for the configured idle delay.
