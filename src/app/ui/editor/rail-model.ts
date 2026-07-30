@@ -301,7 +301,17 @@ function buildPanel(panel: RailPanelState): RailPanelViewModel {
     // hold in the accessibility tree too). One author for the marker —
     // `entityName` (ui/entity-label.ts).
     const marked = entityName('panel', panel.name)
-    const label = `${marked} — ${PANEL_STATUS_LABELS[panel.status]}`
+    // The verdict goes in the NAME, not only in the badge. The badge is
+    // `aria-hidden` (it would otherwise be announced twice) and it is hidden
+    // entirely in compact mode — so a verdict that lived only there would be
+    // unreachable for a screen reader and invisible in a narrow pane, and the
+    // chip's only visible text would be absent from its accessible name
+    // (WCAG 2.5.3). The editor dots fold their finding count in for the same
+    // reason; this chip was copying the pattern without its precondition.
+    const label =
+        panel.verdictLabel === undefined
+            ? `${marked} — ${PANEL_STATUS_LABELS[panel.status]}`
+            : `${marked} — ${panel.verdictLabel}, ${PANEL_STATUS_LABELS[panel.status]}`
     return {
         name: panel.name,
         status: panel.status,

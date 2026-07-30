@@ -33,6 +33,7 @@ import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
 import type { Severity } from '../../domain/operations/contract'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
 import type { ThreadBeginFailure, ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
+import { entityName } from '../entity-label'
 import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
 import { cardMaxWidth, paneCardViewport } from './layout-mode'
 import type { LayoutBox } from './layout-mode'
@@ -45,6 +46,14 @@ import type { LayoutBox } from './layout-mode'
 export interface FindingCardData {
     readonly findingId: string
     readonly editorName: string
+    /**
+     * The panel this editor reviewed as a member of, or `null` for a solo run.
+     * The card names the EDITOR — a finding is one editor's, and a panel
+     * weighs its members rather than absorbing them — and carries the panel in
+     * the section's accessible name (Business Rules #11 lists cards among the
+     * surfaces that must distinguish the two), mirroring the side panel.
+     */
+    readonly panelName: string | null
     /** Persona color (any CSS color value) shown as the identity dot. */
     readonly editorColor: string
     readonly severity: Severity
@@ -756,6 +765,13 @@ class FindingCardPlugin implements PluginValue {
         const section = doc.createElement('section')
         section.classList.add('ai-editor-finding-card-section')
         section.dataset['findingId'] = data.findingId
+        if (data.panelName !== null) {
+            section.classList.add('is-panel-member')
+            section.setAttribute(
+                'aria-label',
+                `${data.editorName} — member of ${entityName('panel', data.panelName)}`
+            )
+        }
 
         const header = doc.createElement('header')
         header.classList.add('ai-editor-finding-card-header')

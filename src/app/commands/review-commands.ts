@@ -226,7 +226,10 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
 
     plugin.addCommand({
         id: 'generate-more',
-        name: 'Generate more findings',
+        // The fan-out is in the NAME: one press is one backend request per
+        // finished editor, and the palette is the one surface that cannot
+        // show the count the per-editor button carries.
+        name: 'Generate more findings from every finished editor',
         checkCallback: (checking: boolean): boolean => {
             if (!controller.canGenerateMore()) {
                 return false

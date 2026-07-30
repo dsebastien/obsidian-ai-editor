@@ -21,9 +21,12 @@ describe('generateMoreView', () => {
         const view = generateMoreView(state(), 3)
         expect(view.visible).toBeTrue()
         expect(view.text).toBe('Generate more (3)')
+        // WCAG 2.5.3: the accessible name starts with the visible label, so
+        // "click generate more" matches what is on screen.
         expect(view.ariaLabel).toBe(
-            'Ask Hater for more findings, on top of the 3 it already reported'
+            'Generate more (3) — ask Hater for more findings, on top of the 3 it already reported'
         )
+        expect(view.ariaLabel.startsWith(view.text)).toBeTrue()
         expect(view.disabled).toBeFalse()
     })
 
@@ -41,6 +44,7 @@ describe('generateMoreView', () => {
         expect(view.busy).toBeTrue()
         expect(view.disabled).toBeTrue()
         expect(view.text).toBe('Generating…')
+        expect(view.ariaLabel.startsWith(view.text)).toBeTrue()
     })
 
     it('is absent for an editor that never finished — there is nothing to extend', () => {

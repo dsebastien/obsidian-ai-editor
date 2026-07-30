@@ -81,7 +81,7 @@ When an editor has finished, its side-panel section gets a **Generate more (n)**
 - The editor is told what it already reported and asked not to repeat itself; anything identical that comes back anyway is dropped before you see it. It is allowed to come back with nothing, and often should.
 - An editor that reported nothing still gets the button — "I found nothing" is worth challenging once.
 - If the extra round fails or you cancel it, the section says so next to the button and **your existing findings are untouched**. The editor stays finished rather than failed, precisely so that Retry — which replaces an editor's findings — is not offered to you at that moment.
-- **Generate more findings** in the palette does one round for every editor of the note that has finished.
+- **Generate more findings from every finished editor** in the palette does one round for every editor of the note that has finished — one backend request each, and a notice says how many were asked.
 
 ## Severity filter
 

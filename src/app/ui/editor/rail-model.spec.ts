@@ -310,6 +310,15 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
         expect(buildRailViewModel(withPanel()).panel?.badge).toBe('Needs work')
     })
 
+    it('carries the verdict in the accessible name too, not only in the badge', () => {
+        // The badge is aria-hidden and disappears in compact mode, so a
+        // verdict living only there reaches nobody in a narrow pane and no
+        // screen reader anywhere (WCAG 2.5.3 — the chip's only visible text).
+        const vm = buildRailViewModel(withPanel())
+        expect(vm.panel?.ariaLabel).toContain('Needs work')
+        expect(vm.panel?.title).toContain('Needs work')
+    })
+
     it('has no badge while the scorecard does not exist yet', () => {
         const vm = buildRailViewModel(
             state({

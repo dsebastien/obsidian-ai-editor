@@ -329,6 +329,13 @@
     border-top: 1px solid var(--background-modifier-border);
 }
 
+/* Same accent rail the side panel gives a panel member's section: the finding
+   belongs to one editor, and that editor reviewed as part of a panel. The
+   section's `aria-label` carries the fact; this is decoration only. */
+.ai-editor-finding-card-section.is-panel-member {
+    border-left: 2px solid var(--text-accent);
+}
+
 .ai-editor-finding-card-header {
     @apply flex items-center gap-2;
 }
@@ -718,6 +725,19 @@
     @apply opacity-60;
 }
 
+/* A ring that is actively producing a scorecard must not look identical to a
+   finished one — the rail is what the user watches while waiting. Same
+   vocabulary as the editor dots: slow pulse while queued, fast while working.
+   Both selectors are in the reduced-motion block below (that list is explicit,
+   so a new animation is silently exempt unless it is added there). */
+.ai-editor-rail-panel-waiting {
+    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+}
+
+.ai-editor-rail-panel-running {
+    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+}
+
 .ai-editor-rail-panel-failed {
     border-color: var(--text-error);
 }
@@ -832,6 +852,8 @@
     .ai-editor-rail-dot-pending,
     .ai-editor-rail-dot-running,
     .ai-editor-rail-dot-transforming,
+    .ai-editor-rail-panel-waiting,
+    .ai-editor-rail-panel-running,
     .ai-editor-rail-daemon {
         animation: none;
     }
@@ -1201,10 +1223,15 @@
     color: var(--text-normal);
 }
 
+/* The load-bearing negative state: this pill is the ENTIRE statement that a
+   member failed and was excluded from the synthesis. `--text-faint` is
+   Obsidian's lowest-contrast token (~2.6:1) and fails 4.5:1 for normal text —
+   fine for supplementary attribution, wrong for the thing the scorecard exists
+   to make non-silent. */
 .ai-editor-scorecard-missing {
     @apply rounded-full px-2 py-0.5 text-xs;
     border: 1px solid var(--background-modifier-border);
-    color: var(--text-faint);
+    color: var(--text-muted);
 }
 
 .ai-editor-scorecard-keypoint {
@@ -1229,7 +1256,12 @@
     color: var(--text-normal);
 }
 
-.ai-editor-scorecard-fix-button:hover {
+/* Keyboard path from a ranked fix to the member finding it came from. The
+   button strips border and box-shadow and sits in a list of similar-looking
+   underlined text, so the focus ring has to be explicit — every sibling
+   control in this panel has one. */
+.ai-editor-scorecard-fix-button:hover,
+.ai-editor-scorecard-fix-button:focus-visible {
     color: var(--text-accent);
 }
 

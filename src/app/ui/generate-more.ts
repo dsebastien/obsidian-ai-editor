@@ -17,6 +17,12 @@ import type { EditorRunState } from '../services/orchestration/run-controller'
  * There is no auto-repeat and no "keep going" mode. The button disables while
  * its own pass is in flight rather than queueing a second one, so a double
  * click cannot buy two rounds.
+ *
+ * ## The accessible name starts with the visible text
+ *
+ * WCAG 2.5.3 (Label in Name): a voice-control user says what they see. The
+ * name therefore leads with the label on screen and only then explains what
+ * the press does — the same rule the severity filter follows.
  */
 
 export interface GenerateMoreView {
@@ -68,7 +74,7 @@ export function generateMoreView(
         return {
             visible: true,
             text: 'Generating…',
-            ariaLabel: `Asking ${state.editorName} for more findings`,
+            ariaLabel: `Generating… — asking ${state.editorName} for more findings`,
             busy: true,
             disabled: true,
             error: null
@@ -77,13 +83,14 @@ export function generateMoreView(
     if (state.status !== 'done') {
         return HIDDEN
     }
+    const text = `Generate more (${findingCount})`
     return {
         visible: true,
-        text: `Generate more (${findingCount})`,
+        text,
         ariaLabel:
             findingCount === 1
-                ? `Ask ${state.editorName} for more findings, on top of the 1 it already reported`
-                : `Ask ${state.editorName} for more findings, on top of the ${findingCount} it already reported`,
+                ? `${text} — ask ${state.editorName} for more findings, on top of the 1 it already reported`
+                : `${text} — ask ${state.editorName} for more findings, on top of the ${findingCount} it already reported`,
         busy: false,
         disabled: false,
         error: state.continuationError

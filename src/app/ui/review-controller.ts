@@ -1309,6 +1309,15 @@ export class ReviewController {
             new Notice('No completed review to add to on this note.')
             return
         }
+        // The per-editor button prices itself in its label ("Generate more
+        // (3)"); this one fans out, so the cost is stated at the moment of
+        // dispatch — one request per finished editor, and the palette entry
+        // cannot show a count before it is invoked.
+        new Notice(
+            ids.length === 1
+                ? 'Asking 1 editor for more findings.'
+                : `Asking ${ids.length} editors for more findings.`
+        )
         for (const editorId of ids) {
             this.continueEditor(context.path, editorId)
         }
@@ -2062,6 +2071,11 @@ export class ReviewController {
             findingId: finding.id,
             editorName:
                 editor?.name ?? run.getEditorState(finding.editorId)?.editorName ?? 'Editor',
+            // Business Rules #11 lists cards among the surfaces that must
+            // distinguish an editor from a panel. A finding always belongs to
+            // ONE editor — so the card keeps naming the editor and adds which
+            // panel it was a member of, exactly like the side-panel section.
+            panelName: run.getPanelState()?.panelName ?? null,
             editorColor: editor?.color ?? 'var(--text-accent)',
             severity: finding.raw.severity,
             critique: finding.raw.critique,
