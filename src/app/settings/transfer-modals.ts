@@ -232,7 +232,7 @@ export class ImportSettingsModal extends Modal {
         const { contentEl } = this
 
         contentEl.createEl('p', {
-            text: 'Imported entities are ADDED to what you already have, with new internal ids — nothing you configured is overwritten. You confirm a summary before anything is saved.'
+            text: 'Imported entities are added to what you already have, with new internal ids — nothing you configured is overwritten. You confirm a summary before anything is saved.'
         })
 
         new Setting(contentEl)

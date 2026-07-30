@@ -35,7 +35,7 @@ export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void 
 
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',
-        text: '“Disable plugin” is a kill switch: no rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.'
+        text: 'The “Disable plugin” action is a kill switch: no rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.'
     })
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',

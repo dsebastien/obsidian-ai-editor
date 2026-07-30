@@ -224,7 +224,7 @@ export class BackendModal extends Modal {
         if (kind === 'openai' || kind === 'azure-openai' || kind === 'openrouter') {
             new Setting(contentEl)
                 .setName('Reasoning effort')
-                .setDesc("How hard reasoning models think. 'Default' sends nothing.")
+                .setDesc("How hard reasoning models think. The 'Default' option sends nothing.")
                 .addDropdown((dropdown) => {
                     dropdown.addOption('default', 'Default')
                     dropdown.addOption('minimal', 'Minimal')
