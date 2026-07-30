@@ -47,12 +47,34 @@ import type { CommentStore, MarginComment } from '../../domain/comments/margin-c
  * the adapter refuses the rename the repository degrades in explicit steps
  * rather than silently — see `writeStoreFile`.
  *
+ * A write that fails re-arms itself with a backoff instead of waiting for the
+ * next mutation: a transient failure (a sync client holding the file, a full
+ * disk) must not turn into "nothing is written for the rest of the session"
+ * the moment the user stops adding comments. Repeated failures escalate to the
+ * glue, which tells the user — nobody reads a console.
+ *
  * ## Corruption
  *
  * A store that cannot be read is PRESERVED (copied aside), never overwritten,
  * and the load reports what happened so the user can be told. If the copy
  * itself fails, the repository refuses to write for the rest of the session:
  * losing the file is worse than losing the session's comments.
+ *
+ * ## The two windows where the store is not the only copy
+ *
+ * 1. **An interrupted write.** `writeStoreFile` may have to remove the store
+ *    before renaming the temp file over it, so there is a moment where the
+ *    ONLY copy of every comment is `comments.json.tmp`. `load()` is therefore
+ *    the recovery point: a missing store with a readable temp beside it is an
+ *    interrupted write, not a first run, and is adopted rather than reported
+ *    as `missing` (which is deliberately silent).
+ * 2. **Another writer.** The file syncs, so another device — or another
+ *    Obsidian instance on this one — can replace it while this session holds
+ *    the whole store in memory. Every write therefore re-reads the file first
+ *    and refuses to overwrite content this session has not seen: the two sides
+ *    are UNIONED by comment id (this session wins a shared id, the other
+ *    writer's additions are adopted) and the glue is told. A blind overwrite
+ *    would silently revert whatever the other device parked.
  */
 
 /**
@@ -82,13 +104,14 @@ export function commentStorePathIn(pluginDir: string): string {
 }
 
 /**
- * Where a corrupt store is preserved. Timestamped so a second corruption never
- * overwrites the evidence of the first, and suffixed `.json` so the user can
- * open it in anything.
+ * Where a store is preserved before anything can overwrite it. Timestamped so
+ * a second incident never overwrites the evidence of the first, and suffixed
+ * `.json` so the user can open it in anything. `label` names WHY it was kept —
+ * `corrupt` for an unreadable file, `conflict` for one another writer changed.
  */
-export function backupPathFor(storePath: string, stamp: string): string {
+export function backupPathFor(storePath: string, stamp: string, label = 'corrupt'): string {
     const base = storePath.replace(/\.json$/, '')
-    return `${base}.corrupt-${stamp}.json`
+    return `${base}.${label}-${stamp}.json`
 }
 
 /** `YYYYMMDD-HHMMSS` in UTC — sortable, filename-safe, no locale surprises. */
@@ -121,6 +144,12 @@ export type CommentStoreLoadStatus =
     /** No store yet (first run, or nothing ever commented). */
     | 'missing'
     | 'ok'
+    /**
+     * The store was gone but its temp file was there: a write was interrupted
+     * and the comments were recovered from it. Never silent — a `missing`
+     * store is reported as a first run, and this is not one.
+     */
+    | 'recovered'
     /** Read, but entries were left out — the file was preserved. */
     | 'salvaged'
     /** Not readable at all — the file was preserved and the store starts empty. */
@@ -159,7 +188,25 @@ export interface CommentRepositoryDeps {
     readonly saveDelayMs?: number
     /** Reports a write failure (the glue logs it). */
     readonly onWriteError?: (message: string) => void
+    /**
+     * Reports that writes have failed {@link WRITE_ALARM_FAILURES} times in a
+     * row. The glue raises a Notice: a user whose comments have stopped being
+     * saved must not have to open the console to find out.
+     */
+    readonly onWriteStalled?: (failures: number, message: string) => void
+    /**
+     * Reports that the file on disk had changed underneath this session and
+     * the two sides were merged rather than overwritten (see the module doc).
+     * `adopted` is how many comments came from the other writer.
+     */
+    readonly onExternalChange?: (adopted: number, backupPath: string | null) => void
 }
+
+/** Consecutive write failures before the user is told, not just the log. */
+export const WRITE_ALARM_FAILURES = 3
+
+/** Cap on the exponential backoff between write retries. */
+const MAX_RETRY_BACKOFF_FACTOR = 16
 
 /**
  * In-memory owner of the durable comments, with a debounced writer behind it.
@@ -178,10 +225,18 @@ export class MarginCommentRepository {
     private readOnly = false
     private dirty = false
     private timer: number | null = null
-    private writing = false
+    /** The write currently running, so `flush()` can await it (never a guess). */
+    private inFlight: Promise<void> | null = null
     /** A change landed while a write was in flight: exactly one follow-up. */
     private rewriteQueued = false
     private disposed = false
+    /** Consecutive failed writes, for the backoff and the alarm. */
+    private writeFailures = 0
+    /**
+     * The exact bytes this session last saw on disk (read at load, replaced by
+     * every successful write). Anything else means another writer got there.
+     */
+    private lastSeenText: string | null = null
 
     constructor(deps: CommentRepositoryDeps) {
         this.deps = deps
@@ -209,9 +264,20 @@ export class MarginCommentRepository {
             this.readOnly = true
             return this.report('unreadable', 0, [], [], null)
         }
+        // No store, but the temp file the atomic write stages through is
+        // still there: a write was interrupted in the one window where the
+        // temp holds the ONLY copy. Recover from it rather than reporting a
+        // first run — `missing` is deliberately silent, and silence here would
+        // present every durable comment in the vault as never having existed.
+        let recovered = false
         if (text === null) {
-            return this.report('missing', 0, [], [], null)
+            text = await this.readTemp()
+            if (text === null) {
+                return this.report('missing', 0, [], [], null)
+            }
+            recovered = true
         }
+        this.lastSeenText = text
 
         // Not even JSON: nothing to salvage, and `loadCommentStore` is never
         // asked to interpret garbage it was not given.
@@ -223,12 +289,18 @@ export class MarginCommentRepository {
         }
 
         if (loaded.store) {
-            for (const [path, comments] of Object.entries(loaded.store.notes)) {
-                this.notes.set(path, [...comments])
-            }
+            // Merged, not `set` over: a vault event that landed while this
+            // read was in flight has already mutated the map, and overwriting
+            // it here would undo the rename or delete it applied.
+            this.mergeIn(loaded.store)
         }
 
         if (!loaded.unreadable && loaded.dropped.length === 0) {
+            if (recovered) {
+                // Put the recovered payload back where the store belongs.
+                this.markDirty()
+                return this.report('recovered', this.count(), [], loaded.interrupted, null)
+            }
             return this.report('ok', this.count(), [], loaded.interrupted, null)
         }
 
@@ -324,11 +396,16 @@ export class MarginCommentRepository {
      *
      * A destination that already has comments keeps its own first and appends
      * the incoming ones (a sync-merge artifact, not a normal path); the
-     * per-note cap still holds.
+     * per-note cap still holds, and the overflow is REPORTED — the count comes
+     * back so the glue can tell the user. Dropping a user's parked questions
+     * because a rename landed on an occupied path is exactly the silent
+     * deletion this module forbids everywhere else (Business Rules #13).
+     *
+     * @returns how many comments the cap dropped (0 on the normal path).
      */
-    noteRenamed(oldPath: string, newPath: string): void {
+    noteRenamed(oldPath: string, newPath: string): number {
         if (oldPath === newPath) {
-            return
+            return 0
         }
         const moves: [string, string][] = []
         const prefix = `${oldPath}/`
@@ -340,15 +417,19 @@ export class MarginCommentRepository {
             }
         }
         if (moves.length === 0) {
-            return
+            return 0
         }
+        let dropped = 0
         for (const [from, to] of moves) {
             const moved = this.notes.get(from) ?? []
             this.notes.delete(from)
             const existing = this.notes.get(to) ?? []
-            this.notes.set(to, [...existing, ...moved].slice(0, MAX_COMMENTS_PER_NOTE))
+            const merged = [...existing, ...moved]
+            dropped += Math.max(0, merged.length - MAX_COMMENTS_PER_NOTE)
+            this.notes.set(to, merged.slice(0, MAX_COMMENTS_PER_NOTE))
         }
         this.markDirty()
+        return dropped
     }
 
     /**
@@ -383,7 +464,7 @@ export class MarginCommentRepository {
 
     /** Whether a deferred write is armed or in flight. */
     hasPendingWrite(): boolean {
-        return this.timer !== null || this.writing || this.rewriteQueued || this.dirty
+        return this.timer !== null || this.inFlight !== null || this.rewriteQueued || this.dirty
     }
 
     /** Whether writes are disabled for this session (unpreservable corruption). */
@@ -395,9 +476,25 @@ export class MarginCommentRepository {
      * Writes immediately if anything is pending. Called on unload — which is
      * synchronous in Obsidian, so the caller can only fire-and-forget it; the
      * short debounce is what keeps the exposure small.
+     *
+     * A write already in flight is AWAITED rather than skipped: returning
+     * before the follow-up has even started would make the contract ("writes
+     * immediately if anything is pending") false in exactly the case that
+     * matters — the debounce firing moments before quit. Awaiting it is
+     * enough, because its own loop picks up whatever queued behind it. Exactly
+     * one write is started here, so a failing adapter cannot spin the unload
+     * path — the re-armed retry covers a session that keeps running.
      */
     async flush(): Promise<void> {
         this.cancelTimer()
+        if (this.readOnly || this.disposed) {
+            return
+        }
+        const inFlight = this.inFlight
+        if (inFlight) {
+            await inFlight
+            return
+        }
         if (!this.dirty && !this.rewriteQueued) {
             return
         }
@@ -444,38 +541,156 @@ export class MarginCommentRepository {
      * Writes the store. At most one write is ever in flight; a change that
      * lands during one is coalesced into exactly ONE follow-up write, so a
      * burst of mutations can never queue a burst of disk writes.
+     *
+     * Returns the promise of the write that will cover the caller's changes —
+     * the in-flight one when there is one, since its loop picks the queued
+     * follow-up up before it resolves.
      */
-    private async persist(): Promise<void> {
+    private persist(): Promise<void> {
+        if (this.readOnly || this.disposed) {
+            return Promise.resolve()
+        }
+        const inFlight = this.inFlight
+        if (inFlight) {
+            this.rewriteQueued = true
+            return inFlight
+        }
+        const promise = this.runWrites().finally(() => {
+            this.inFlight = null
+        })
+        this.inFlight = promise
+        return promise
+    }
+
+    private async runWrites(): Promise<void> {
+        do {
+            this.rewriteQueued = false
+            this.dirty = false
+            // A mutation that landed during the previous iteration armed a
+            // deferred write; this loop is already covering it.
+            this.cancelTimer()
+            try {
+                if ((await this.reconcileExternalChange()) === 'refuse') {
+                    // Another writer's file could not be read OR preserved.
+                    // Overwriting it would destroy comments nothing else
+                    // holds, so this session stops writing instead.
+                    this.dirty = true
+                    return
+                }
+                const payload = `${JSON.stringify(this.snapshot(), null, 2)}\n`
+                await this.writeStoreFile(payload)
+                this.lastSeenText = payload
+                this.writeFailures = 0
+            } catch (error) {
+                // Keep the changes dirty AND re-arm: waiting for the next
+                // mutation would mean a transient failure silently ends
+                // persistence for a session where the user stops commenting.
+                this.dirty = true
+                this.noteWriteFailure(error)
+                return
+            }
+            // Mutations that landed WHILE this write was in flight are folded
+            // into exactly one more write — never one per mutation.
+        } while (this.dirty || this.rewriteQueued)
+    }
+
+    /** Logs a failed write, re-arms it with a backoff, and escalates repeats. */
+    private noteWriteFailure(error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error)
+        this.writeFailures += 1
+        this.deps.onWriteError?.(message)
+        if (this.writeFailures >= WRITE_ALARM_FAILURES) {
+            this.deps.onWriteStalled?.(this.writeFailures, message)
+        }
         if (this.readOnly || this.disposed) {
             return
         }
-        if (this.writing) {
-            this.rewriteQueued = true
-            return
-        }
-        this.writing = true
+        const factor = Math.min(2 ** (this.writeFailures - 1), MAX_RETRY_BACKOFF_FACTOR)
+        this.cancelTimer()
+        this.timer = this.deps.setTimer(() => {
+            this.timer = null
+            void this.persist()
+        }, this.saveDelayMs * factor)
+    }
+
+    /**
+     * Refuses to overwrite a store this session has not seen.
+     *
+     * The file syncs (module doc), so another device — or another Obsidian
+     * instance — can replace it between our load and our write. The two sides
+     * are UNIONED by comment id: this session wins a shared id (it is the one
+     * whose job actually ran) and every comment only the other writer has is
+     * adopted. A union never loses a parked question; propagating the other
+     * side's deletions would, and a delete is one click away anyway.
+     */
+    private async reconcileExternalChange(): Promise<'ok' | 'refuse'> {
+        let current: string | null
         try {
-            do {
-                this.rewriteQueued = false
-                this.dirty = false
-                // A mutation that landed during the previous iteration armed
-                // a deferred write; this loop is already covering it.
-                this.cancelTimer()
-                const payload = `${JSON.stringify(this.snapshot(), null, 2)}\n`
-                try {
-                    await this.writeStoreFile(payload)
-                } catch (error) {
-                    // Keep the changes dirty so the next mutation (or flush)
-                    // retries them; never lose them to a transient failure.
-                    this.dirty = true
-                    this.deps.onWriteError?.(error instanceof Error ? error.message : String(error))
-                    return
+            current = await this.deps.storage.read(this.deps.storePath)
+        } catch {
+            // We cannot tell what is there. Proceed: `writeStoreFile` stages
+            // through a temp file, so the worst case is the one we already
+            // accept, and refusing here would strand every write behind a
+            // read that may never succeed.
+            return 'ok'
+        }
+        if (current === null || current === this.lastSeenText) {
+            return 'ok'
+        }
+        let parsed: LoadedStore
+        try {
+            parsed = loadCommentStore(JSON.parse(current))
+        } catch {
+            parsed = { store: null, dropped: [], unreadable: true, interrupted: [] }
+        }
+        // Anything we cannot fold in has to survive as a file before we write.
+        const needsBackup = parsed.store === null || parsed.unreadable || parsed.dropped.length > 0
+        let backupPath: string | null = null
+        if (needsBackup) {
+            backupPath = await this.preserve(current, 'conflict')
+            if (backupPath === null) {
+                this.readOnly = true
+                return 'refuse'
+            }
+        }
+        const adopted = parsed.store === null ? 0 : this.mergeIn(parsed.store)
+        this.lastSeenText = current
+        this.deps.onExternalChange?.(adopted, backupPath)
+        return 'ok'
+    }
+
+    /**
+     * Folds a store read from disk into memory, keyed by comment id. Only ever
+     * ADDS: this session's copy of a shared id is the fresher one.
+     *
+     * @returns how many comments were adopted.
+     */
+    private mergeIn(store: CommentStore): number {
+        let adopted = 0
+        for (const [path, incoming] of Object.entries(store.notes)) {
+            const existing = this.notes.get(path) ?? []
+            const known = new Set(existing.map((entry) => entry.id))
+            const merged = [...existing]
+            for (const comment of incoming) {
+                if (known.has(comment.id) || merged.length >= MAX_COMMENTS_PER_NOTE) {
+                    continue
                 }
-                // Mutations that landed WHILE this write was in flight are
-                // folded into exactly one more write — never one per mutation.
-            } while (this.dirty || this.rewriteQueued)
-        } finally {
-            this.writing = false
+                merged.push(comment)
+                adopted += 1
+            }
+            if (merged.length > 0) {
+                this.notes.set(path, merged)
+            }
+        }
+        return adopted
+    }
+
+    /** The staged payload of an interrupted write, when there is one. */
+    private async readTemp(): Promise<string | null> {
+        try {
+            return await this.deps.storage.read(`${this.deps.storePath}${TEMP_SUFFIX}`)
+        } catch {
+            return null
         }
     }
 
@@ -520,8 +735,8 @@ export class MarginCommentRepository {
      * an existing one. Returns the path, or `null` when nothing could be
      * preserved (which puts the repository in read-only mode).
      */
-    private async preserve(text: string): Promise<string | null> {
-        const base = backupPathFor(this.deps.storePath, formatBackupStamp(this.now()))
+    private async preserve(text: string, label = 'corrupt'): Promise<string | null> {
+        const base = backupPathFor(this.deps.storePath, formatBackupStamp(this.now()), label)
         for (let attempt = 0; attempt < 10; attempt++) {
             const candidate = attempt === 0 ? base : base.replace(/\.json$/, `-${attempt}.json`)
             try {
@@ -559,6 +774,12 @@ export class MarginCommentRepository {
 export function commentStoreLoadNotice(report: CommentStoreLoadReport): string | null {
     if (report.status === 'ok' || report.status === 'missing') {
         return null
+    }
+    if (report.status === 'recovered') {
+        const count = report.comments
+        return `AI Editor: the last save of the margin comments was interrupted. ${count} ${
+            count === 1 ? 'comment was' : 'comments were'
+        } recovered.`
     }
     const preserved =
         report.backupPath === null

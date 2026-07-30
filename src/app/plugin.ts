@@ -395,8 +395,14 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     private async loadMarginComments(): Promise<void> {
         const repository = createCommentRepository(this)
         this.commentRepository = repository
-        registerCommentStoreHooks(this, repository)
+        // Load BEFORE the hooks: Obsidian replays renames and deletes made
+        // while it was closed, and a rename landing during the two async reads
+        // of `load()` would hit an empty map and then be undone by the load
+        // itself — the comments would come back under the OLD path, where
+        // nothing can ever reach them again. (`load()` merges rather than
+        // overwrites as a second line of defence.)
         const report = await repository.load()
+        registerCommentStoreHooks(this, repository, () => this.commentJobs)
         log(`Margin comments: ${commentStoreLoadSummary(report)}`, 'debug')
         const notice = commentStoreLoadNotice(report)
         if (notice !== null) {

@@ -369,11 +369,17 @@ export class CommentRunController {
     /**
      * Cancels every job for a note (the note was deleted, or a rule switched
      * the plugin off for it). Returns the comment ids that were cancelled.
+     *
+     * A FOLDER path matches everything under it, for the same reason the
+     * repository handles both shapes: Obsidian does not necessarily emit a
+     * per-child event for a folder delete, and a run whose note is gone has
+     * nowhere to deliver its answer.
      */
     cancelForNote(notePath: string): readonly string[] {
         const cancelled: string[] = []
+        const prefix = `${notePath}/`
         for (const run of [...this.runs.values()]) {
-            if (run.notePath === notePath) {
+            if (run.notePath === notePath || run.notePath.startsWith(prefix)) {
                 run.cancel()
                 this.runs.delete(run.commentId)
                 cancelled.push(run.commentId)

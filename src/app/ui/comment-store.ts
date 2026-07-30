@@ -1,10 +1,11 @@
-import { normalizePath } from 'obsidian'
+import { Notice, normalizePath } from 'obsidian'
 import type { Plugin } from 'obsidian'
 import {
     commentStorePathIn,
     MarginCommentRepository
 } from '../services/comments/comment-repository'
 import type { CommentStorageAdapter } from '../services/comments/comment-repository'
+import type { CommentJobRegistry } from '../services/comments/comment-job-registry'
 import { log } from '../../utils/log'
 
 /**
@@ -69,7 +70,25 @@ export function createCommentRepository(plugin: Plugin): MarginCommentRepository
         clearTimer: (handle) => {
             window.clearTimeout(handle)
         },
-        onWriteError: (message) => log(`Could not save margin comments: ${message}`, 'error')
+        onWriteError: (message) => log(`Could not save margin comments: ${message}`, 'error'),
+        // The log is not a user surface: a user whose parked questions have
+        // stopped being saved has to be told before they quit.
+        onWriteStalled: (failures, message) => {
+            log(`Margin comments have failed to save ${failures} times: ${message}`, 'error')
+            new Notice(
+                `AI Editor: margin comments could not be saved (${failures} attempts). Check that the vault is writable — the comments are kept in memory meanwhile.`
+            )
+        },
+        onExternalChange: (adopted, backupPath) => {
+            const kept =
+                backupPath === null ? '' : ` The file that was there was kept at ${backupPath}.`
+            log(`Margin comment store changed elsewhere; adopted ${adopted} comments`, 'warn')
+            if (adopted > 0 || backupPath !== null) {
+                new Notice(
+                    `AI Editor: the margin comment store was changed by another device (likely a sync) and the two were merged.${kept}`
+                )
+            }
+        }
     })
 }
 
@@ -81,19 +100,41 @@ export function createCommentRepository(plugin: Plugin): MarginCommentRepository
  * per-child event. The repository handles both the exact path and the folder
  * prefix, and doing both is idempotent — so this glue never has to know which
  * shape the vault chose to report.
+ *
+ * `getRegistry` is a GETTER, not a registry: the store loads before the job
+ * registry is built (the registry is built over it), and a delete has to
+ * cancel the note's in-flight runs before the record goes — otherwise the
+ * request runs to completion holding a permit, and its answer lands on a
+ * comment nothing tracks.
  */
 export function registerCommentStoreHooks(
     plugin: Plugin,
-    repository: MarginCommentRepository
+    repository: MarginCommentRepository,
+    getRegistry?: () => CommentJobRegistry | null
 ): void {
     plugin.registerEvent(
         plugin.app.vault.on('rename', (file, oldPath) => {
-            repository.noteRenamed(oldPath, file.path)
+            const registry = getRegistry?.() ?? null
+            const dropped =
+                registry === null
+                    ? repository.noteRenamed(oldPath, file.path)
+                    : registry.noteRenamed(oldPath, file.path)
+            if (dropped > 0) {
+                // Business Rules #13: a comment is never dropped silently.
+                new Notice(
+                    `AI Editor: ${dropped} margin ${dropped === 1 ? 'comment' : 'comments'} could not be moved to ${file.path} — it is already at the comment limit.`
+                )
+            }
         })
     )
     plugin.registerEvent(
         plugin.app.vault.on('delete', (file) => {
-            repository.noteDeleted(file.path)
+            const registry = getRegistry?.() ?? null
+            if (registry === null) {
+                repository.noteDeleted(file.path)
+                return
+            }
+            registry.noteDeleted(file.path)
         })
     )
 }

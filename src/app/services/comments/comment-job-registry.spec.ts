@@ -442,6 +442,51 @@ describe('following the vault', () => {
         expect(repository.listFor('Notes/Renamed.md')[0]?.status).toEqual('done')
     })
 
+    it('cancels the in-flight runs of a deleted note instead of paying for them', async () => {
+        const { registry, repository, runs } = setup()
+        registry.launch({
+            notePath: NOTE,
+            comment: comment(),
+            run: {
+                request: request(),
+                editorId: 'editor-1',
+                editorName: 'Fact Checker',
+                execute: hangingExecutor()
+            }
+        })
+        await settle()
+        expect(runs.get('c1')).not.toBeNull()
+        registry.noteDeleted(NOTE)
+        // The request is not left running: it would hold a permit from the
+        // plugin-wide budget and deliver its answer to nothing.
+        expect(runs.get('c1')).toBeNull()
+        expect(repository.listFor(NOTE)).toHaveLength(0)
+    })
+
+    it('cancels every run under a deleted FOLDER', async () => {
+        const { registry, runs } = setup()
+        registry.launch({
+            notePath: 'Drafts/Deep/One.md',
+            comment: comment(),
+            run: {
+                request: request(),
+                editorId: 'editor-1',
+                editorName: 'Fact Checker',
+                execute: hangingExecutor()
+            }
+        })
+        await settle()
+        registry.noteDeleted('Drafts')
+        expect(runs.get('c1')).toBeNull()
+    })
+
+    it('reports how many comments a rename merge had to drop', () => {
+        const { registry, repository } = setup()
+        repository.upsert('A.md', comment({ id: 'moved' }))
+        expect(registry.noteRenamed('A.md', 'B.md')).toEqual(0)
+        expect(repository.listFor('B.md')).toHaveLength(1)
+    })
+
     it('does not resurrect a comment whose note was deleted mid-flight', async () => {
         const { registry, repository } = setup()
         const req = request()

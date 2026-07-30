@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { marginCommentSchema } from '../../domain/comments/margin-comment'
+import { MAX_COMMENTS_PER_NOTE, marginCommentSchema } from '../../domain/comments/margin-comment'
 import type { MarginComment } from '../../domain/comments/margin-comment'
 import {
     backupPathFor,
@@ -81,6 +81,18 @@ class FakeStorage implements CommentStorageAdapter {
     }
 }
 
+/**
+ * Lets every queued microtask run. Deliberately not a fixed number of
+ * `await Promise.resolve()` hops: a write now re-reads the store before
+ * overwriting it (see `reconcileExternalChange`), so counting awaits would
+ * couple every spec to the number of adapter calls one write makes.
+ */
+async function settle(): Promise<void> {
+    for (let i = 0; i < 12; i++) {
+        await Promise.resolve()
+    }
+}
+
 /** Manual clock: nothing fires until the spec says so. */
 class FakeTimers {
     private handle = 0
@@ -115,6 +127,10 @@ interface Harness {
     readonly storage: FakeStorage
     readonly timers: FakeTimers
     readonly errors: string[]
+    readonly stalls: { failures: number; message: string }[]
+    readonly merges: { adopted: number; backupPath: string | null }[]
+    /** Delays the repository asked for, in order (backoff assertions). */
+    readonly delays: number[]
 }
 
 function harness(options: { readonly initial?: string; readonly now?: number } = {}): Harness {
@@ -124,15 +140,23 @@ function harness(options: { readonly initial?: string; readonly now?: number } =
     }
     const timers = new FakeTimers()
     const errors: string[] = []
+    const stalls: { failures: number; message: string }[] = []
+    const merges: { adopted: number; backupPath: string | null }[] = []
+    const delays: number[] = []
     const repository = new MarginCommentRepository({
         storage,
         storePath: STORE_PATH,
-        setTimer: timers.set,
+        setTimer: (callback, ms) => {
+            delays.push(ms)
+            return timers.set(callback, ms)
+        },
         clearTimer: timers.clear,
         now: () => options.now ?? 1_700_000_000_000,
-        onWriteError: (message) => errors.push(message)
+        onWriteError: (message) => errors.push(message),
+        onWriteStalled: (failures, message) => stalls.push({ failures, message }),
+        onExternalChange: (adopted, backupPath) => merges.push({ adopted, backupPath })
     })
-    return { repository, storage, timers, errors }
+    return { repository, storage, timers, errors, stalls, merges, delays }
 }
 
 function storedFile(storage: FakeStorage): { notes: Record<string, MarginComment[]> } {
@@ -229,8 +253,7 @@ describe('corruption recovery', () => {
         // only after the original is safely aside.
         expect(timers.armed).toEqual(1)
         timers.runAll()
-        await Promise.resolve()
-        await Promise.resolve()
+        await settle()
         expect(storedFile(storage).notes['A.md']?.map((entry) => entry.id)).toEqual(['good'])
     })
 
@@ -278,8 +301,7 @@ describe('write discipline', () => {
         expect(storage.files.has(STORE_PATH)).toBe(false)
 
         timers.runAll()
-        await Promise.resolve()
-        await Promise.resolve()
+        await settle()
         const file = storedFile(storage)
         expect(Object.keys(file.notes).sort()).toEqual(['A.md', 'B.md'])
         expect(file.notes['A.md']?.map((entry) => entry.id)).toEqual(['a', 'b'])
@@ -307,8 +329,7 @@ describe('write discipline', () => {
         await repository.load()
         repository.upsert('A.md', comment())
         timers.runAll()
-        await Promise.resolve()
-        await Promise.resolve()
+        await settle()
         expect(storage.calls).toContain(`write:${TEMP_PATH}`)
         expect(storage.calls).toContain(`rename:${TEMP_PATH}->${STORE_PATH}`)
         expect(storage.files.has(TEMP_PATH)).toBe(false)
@@ -430,8 +451,7 @@ describe('rename and delete', () => {
         await repository.load()
         repository.upsert('A.md', comment())
         timers.runAll()
-        await Promise.resolve()
-        await Promise.resolve()
+        await settle()
         repository.noteRenamed('Unrelated.md', 'Other.md')
         repository.noteRenamed('A.md', 'A.md')
         expect(timers.armed).toEqual(0)
@@ -454,8 +474,7 @@ describe('rename and delete', () => {
         repository.noteDeleted('A.md')
         expect(repository.notePaths()).toEqual(['B.md'])
         timers.runAll()
-        await Promise.resolve()
-        await Promise.resolve()
+        await settle()
         expect(Object.keys(storedFile(storage).notes)).toEqual(['B.md'])
     })
 
@@ -474,5 +493,163 @@ describe('rename and delete', () => {
         await repository.load()
         repository.noteDeleted('Nowhere.md')
         expect(timers.armed).toEqual(0)
+    })
+})
+
+describe('interrupted-write recovery', () => {
+    it('adopts the temp file when the store is gone, and says so', async () => {
+        const { repository, storage, timers } = harness()
+        // Exactly the state a crash between `remove` and `rename` leaves: no
+        // store, and the full payload staged in the temp file.
+        storage.files.set(
+            TEMP_PATH,
+            JSON.stringify({ schemaVersion: 1, notes: { 'A.md': [comment({ id: 'parked' })] } })
+        )
+        const report = await repository.load()
+        expect(report.status).toEqual('recovered')
+        expect(report.comments).toEqual(1)
+        expect(repository.listFor('A.md').map((entry) => entry.id)).toEqual(['parked'])
+        // Never silent: a `missing` store renders no Notice, and this is not a
+        // first run — it is every durable comment in the vault.
+        expect(commentStoreLoadNotice(report)).toContain('interrupted')
+        // And the store file is put back.
+        expect(timers.armed).toEqual(1)
+        timers.runAll()
+        await settle()
+        expect(storedFile(storage).notes['A.md']?.map((entry) => entry.id)).toEqual(['parked'])
+    })
+
+    it('still reports a genuine first run as missing', async () => {
+        const { repository } = harness()
+        const report = await repository.load()
+        expect(report.status).toEqual('missing')
+        expect(commentStoreLoadNotice(report)).toBeNull()
+    })
+
+    it('preserves an unreadable temp file rather than pretending it is a first run', async () => {
+        const { repository, storage } = harness()
+        storage.files.set(TEMP_PATH, '{ half-written')
+        const report = await repository.load()
+        expect(report.status).toEqual('unreadable')
+        expect(storage.files.get(report.backupPath ?? '')).toEqual('{ half-written')
+    })
+})
+
+describe('another writer', () => {
+    it('merges a store changed underneath the session instead of reverting it', async () => {
+        const { repository, storage, merges } = harness({
+            initial: JSON.stringify({ schemaVersion: 1, notes: { 'A.md': [comment({ id: 'a' })] } })
+        })
+        await repository.load()
+        repository.upsert('A.md', comment({ id: 'mine' }))
+        // Another device syncs its own copy in while this session holds the
+        // whole store in memory.
+        storage.files.set(
+            STORE_PATH,
+            JSON.stringify({
+                schemaVersion: 1,
+                notes: {
+                    'A.md': [comment({ id: 'a' }), comment({ id: 'theirs' })],
+                    'B.md': [comment({ id: 'other-note' })]
+                }
+            })
+        )
+        await repository.flush()
+        expect(merges).toEqual([{ adopted: 2, backupPath: null }])
+        expect(storedFile(storage).notes['A.md']?.map((entry) => entry.id)).toEqual([
+            'a',
+            'mine',
+            'theirs'
+        ])
+        expect(storedFile(storage).notes['B.md']?.map((entry) => entry.id)).toEqual(['other-note'])
+    })
+
+    it('never resurrects what THIS session deleted (the file is what we last wrote)', async () => {
+        const { repository, storage, merges } = harness()
+        await repository.load()
+        repository.upsert('A.md', comment({ id: 'a' }))
+        repository.upsert('A.md', comment({ id: 'b' }))
+        await repository.flush()
+        repository.remove('A.md', 'b')
+        await repository.flush()
+        expect(merges).toEqual([])
+        expect(storedFile(storage).notes['A.md']?.map((entry) => entry.id)).toEqual(['a'])
+    })
+
+    it('refuses to overwrite a foreign file it cannot read AND cannot preserve', async () => {
+        const { repository, storage } = harness()
+        await repository.load()
+        repository.upsert('A.md', comment({ id: 'a' }))
+        storage.files.set(STORE_PATH, '{ not json')
+        storage.failWrites.add(
+            backupPathFor(STORE_PATH, formatBackupStamp(1_700_000_000_000), 'conflict')
+        )
+        await repository.flush()
+        expect(repository.isReadOnly()).toBe(true)
+        expect(storage.files.get(STORE_PATH)).toEqual('{ not json')
+    })
+})
+
+describe('write failures re-arm themselves', () => {
+    it('retries with a backoff instead of waiting for the next mutation', async () => {
+        const { repository, storage, timers, delays, errors } = harness()
+        await repository.load()
+        storage.failWrites.add(TEMP_PATH)
+        repository.upsert('A.md', comment())
+        timers.runAll()
+        await settle()
+        expect(errors).toEqual(['ENOSPC'])
+        // Re-armed on its own: nothing else in the session has to happen.
+        expect(timers.armed).toEqual(1)
+        expect(delays).toEqual([DEFAULT_COMMENT_SAVE_DELAY_MS, DEFAULT_COMMENT_SAVE_DELAY_MS])
+
+        timers.runAll()
+        await settle()
+        expect(delays[2]).toEqual(DEFAULT_COMMENT_SAVE_DELAY_MS * 2)
+
+        storage.failWrites.clear()
+        timers.runAll()
+        await settle()
+        expect(Object.keys(storedFile(storage).notes)).toEqual(['A.md'])
+        expect(timers.armed).toEqual(0)
+    })
+
+    it('tells the user after repeated failures — not only the log', async () => {
+        const { repository, storage, timers, stalls } = harness()
+        await repository.load()
+        storage.failWrites.add(TEMP_PATH)
+        storage.failWrites.add(STORE_PATH)
+        repository.upsert('A.md', comment())
+        for (let attempt = 0; attempt < 3; attempt++) {
+            timers.runAll()
+            await settle()
+        }
+        expect(stalls).toEqual([{ failures: 3, message: 'ENOSPC' }])
+    })
+})
+
+describe('flush waits for the write that is actually running', () => {
+    it('does not resolve before an in-flight write has landed', async () => {
+        const { repository, storage, timers } = harness()
+        await repository.load()
+        repository.upsert('A.md', comment())
+        // The debounce fires moments before the unload flush.
+        timers.runAll()
+        expect(storage.files.has(STORE_PATH)).toBe(false)
+        await repository.flush()
+        expect(Object.keys(storedFile(storage).notes)).toEqual(['A.md'])
+    })
+})
+
+describe('rename overflow is reported, never silent', () => {
+    it('returns how many comments the cap dropped on a merge', async () => {
+        const { repository } = harness()
+        await repository.load()
+        for (let index = 0; index < MAX_COMMENTS_PER_NOTE; index++) {
+            repository.upsert('B.md', comment({ id: `b${index}` }))
+        }
+        repository.upsert('A.md', comment({ id: 'moved' }))
+        expect(repository.noteRenamed('A.md', 'B.md')).toEqual(1)
+        expect(repository.noteRenamed('B.md', 'C.md')).toEqual(0)
     })
 })

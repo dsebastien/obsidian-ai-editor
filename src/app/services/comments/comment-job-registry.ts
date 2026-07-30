@@ -217,6 +217,34 @@ export class CommentJobRegistry {
         return removed
     }
 
+    /**
+     * The note (or folder) is gone: cancel every job under it, THEN drop the
+     * comments — the same order `delete()` uses, and for the same reason.
+     *
+     * Dropping the record alone would leave the request running: it would keep
+     * a permit from the plugin-wide budget (so it could still delay a review
+     * the user is watching), and its terminal event would land on a comment
+     * nothing tracks and be discarded. The user paid for that request; the
+     * least this can do is not pay for it twice.
+     */
+    noteDeleted(path: string): void {
+        this.deps.runs.cancelForNote(path)
+        this.deps.repository.noteDeleted(path)
+        this.syncTicker()
+        this.notify()
+    }
+
+    /**
+     * Follows a vault rename. Returns how many comments the per-note cap
+     * dropped when the destination already held comments — never silent
+     * (Business Rules #13); the glue turns a non-zero count into a Notice.
+     */
+    noteRenamed(oldPath: string, newPath: string): number {
+        const dropped = this.deps.repository.noteRenamed(oldPath, newPath)
+        this.notify()
+        return dropped
+    }
+
     /** Closes a comment without acting on it. */
     dismiss(notePath: string, commentId: string): boolean {
         this.cancel(commentId)
@@ -268,6 +296,16 @@ export class CommentJobRegistry {
     /** The stored comment, or `null` when it is not (or no longer) there. */
     commentFor(notePath: string, commentId: string): MarginComment | null {
         return this.find(notePath, commentId)
+    }
+
+    /**
+     * Whether the durable store refuses to write for this session (a corrupt
+     * file that could not be preserved). Surfaces so the entry points can
+     * refuse BEFORE spending a backend request on a question that would not
+     * survive the quit — one startup Notice is not informed consent.
+     */
+    isReadOnly(): boolean {
+        return this.deps.repository.isReadOnly()
     }
 
     /** Whether anything is in flight right now (drives the ticker and chrome). */
