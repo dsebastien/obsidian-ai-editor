@@ -136,6 +136,15 @@ export function previewSummaryLines(preview: ContextPreview): string[] {
                 : `Instruction (${instruction.label}): ${formatChars(instruction.text.length)}, sent with the request — not part of the system prompt, and not counted in the budget above.`
         )
     }
+    const charter = preview.panelCharter
+    if (charter !== null) {
+        // A charter inlines whole vault notes and is NOT budgeted (it is a
+        // directive, truncated to its own cap), so it gets its own line rather
+        // than disappearing into the system prompt's total.
+        lines.push(
+            `Panel charter (${charter.panelName}): ${formatChars(charter.text.length)}, appended to the system prompt below — including every note the charter references.`
+        )
+    }
     if (preview.backendLabel !== null) {
         lines.push(`Backend: ${preview.backendLabel}.`)
     } else if (preview.backendIssue !== null) {
@@ -175,6 +184,7 @@ export function previewClipboardText(preview: ContextPreview): string {
         `Editor: ${preview.editorName}`,
         `Note: ${preview.notePath}`,
         ...(instruction === null ? [] : [`Action: ${instruction.label}`]),
+        ...(preview.panelCharter === null ? [] : [`Panel: ${preview.panelCharter.panelName}`]),
         '',
         ...previewSummaryLines(preview),
         '',

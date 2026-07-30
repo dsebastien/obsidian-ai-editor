@@ -258,6 +258,99 @@ describe('preview assembly equals dispatch assembly', () => {
         expect(sink.prompt).not.toBeNull()
         expect(preview.preview.systemPrompt).toBe(sink.prompt ?? '')
     })
+
+    it('accounts for the panel charter a binding rule brings with it', async () => {
+        // The charter inlines whole vault notes into every member's prompt.
+        // A preview that resolved the rule (it does) but dropped the charter
+        // would under-report what leaves the vault by up to 10 000 characters.
+        const vault = new FakeVault()
+        vault.notes.set('Meta/Charter.md', 'Weigh the reader first.')
+        const settings = makeSettings({
+            panels: [
+                {
+                    id: 'p-1',
+                    name: 'Pre-publish Review',
+                    memberEditorIds: ['editor-1'],
+                    charter: {
+                        text: 'Rank by what blocks publication.',
+                        notePaths: ['Meta/Charter.md']
+                    }
+                }
+            ],
+            rules: [
+                {
+                    id: 'r-1',
+                    match: { matchType: 'folder', value: '/' },
+                    effect: 'assign',
+                    defaultTarget: { targetType: 'panel', targetId: 'p-1' }
+                }
+            ]
+        })
+        const sink: { prompt: string | null } = { prompt: null }
+
+        const preview = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+
+        const started = await startReview({
+            settings,
+            snapshot: createSnapshot({ filePath: NOTE_PATH, text: NOTE_TEXT }),
+            vault,
+            runController: new RunController(() => 4),
+            fetchImpl: capturingFetch(sink)
+        })
+        if (started.status === 'started') {
+            await started.run.settled
+        }
+
+        expect(preview.status).toBe('ready')
+        if (preview.status !== 'ready') {
+            return
+        }
+        expect(preview.preview.panelCharter?.panelName).toBe('Pre-publish Review')
+        expect(preview.preview.panelCharter?.text).toContain('Weigh the reader first.')
+        expect(preview.preview.systemPrompt).toContain('<charter-note path="Meta/Charter.md">')
+        expect(preview.preview.systemPrompt).toBe(sink.prompt ?? '')
+    })
+
+    it('has no charter to account for when the rule\u2019s panel is disabled', async () => {
+        const settings = makeSettings({
+            panels: [
+                {
+                    id: 'p-1',
+                    name: 'Off',
+                    memberEditorIds: ['editor-1'],
+                    enabled: false,
+                    charter: { text: 'Never sent.', notePaths: [] }
+                }
+            ],
+            rules: [
+                {
+                    id: 'r-1',
+                    match: { matchType: 'folder', value: '/' },
+                    effect: 'assign',
+                    defaultTarget: { targetType: 'panel', targetId: 'p-1' }
+                }
+            ]
+        })
+        const preview = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault: new FakeVault(),
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(preview.status).toBe('ready')
+        if (preview.status !== 'ready') {
+            return
+        }
+        expect(preview.preview.panelCharter).toBeNull()
+        expect(preview.preview.systemPrompt).not.toContain('Never sent.')
+    })
 })
 
 describe('previewing a bound action', () => {

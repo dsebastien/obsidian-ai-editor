@@ -745,17 +745,14 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         }
     }
 
-    // -- Size guard: oversized notes need an explicit user confirmation ------
-    const wordCount = countWords(snapshot.text)
-    if (wordCount > behavior.sizeWarningWords && input.confirmedLargeNote !== true) {
-        return { status: 'needs-confirmation', wordCount, limit: behavior.sizeWarningWords }
-    }
-
     // -- Panel identity ------------------------------------------------------
     // An explicitly requested panel must exist and be enabled before anything
     // else happens: refusing here names the panel, while letting it fall
     // through would report an anonymous "no editors" against members that are
-    // perfectly healthy.
+    // perfectly healthy. Before the size guard, for the same reason as the
+    // rule kill switch above: a run that is going to be refused outright must
+    // not pop a confirmation dialog on its way there. It needs nothing from
+    // the size computation.
     const requestedPanelId = input.panel?.panelId
     if (requestedPanelId !== undefined) {
         const requestedPanel = settings.panels.find((panel) => panel.id === requestedPanelId)
@@ -773,6 +770,12 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                 reason: 'panel-disabled'
             }
         }
+    }
+
+    // -- Size guard: oversized notes need an explicit user confirmation ------
+    const wordCount = countWords(snapshot.text)
+    if (wordCount > behavior.sizeWarningWords && input.confirmedLargeNote !== true) {
+        return { status: 'needs-confirmation', wordCount, limit: behavior.sizeWarningWords }
     }
 
     // -- Resolve participants -------------------------------------------------

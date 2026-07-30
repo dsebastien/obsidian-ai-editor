@@ -32,6 +32,7 @@ function preview(overrides: Partial<ContextPreview> = {}): ContextPreview {
         editorName: 'Hater',
         notePath: 'Articles/Draft.md',
         instruction: null,
+        panelCharter: null,
         systemPrompt: 'Be harsh.',
         sections: [
             section({ kind: 'system-prompt', label: 'System prompt', path: null }),

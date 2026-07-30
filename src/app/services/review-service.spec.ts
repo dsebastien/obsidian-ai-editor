@@ -1588,6 +1588,22 @@ describe('startReview panel runs', () => {
         ).toEqual({ status: 'panel-unavailable', panelId: 'p-1', reason: 'panel-disabled' })
     })
 
+    it('refuses an unavailable panel before the size guard can ask for confirmation', async () => {
+        // Same ordering rule as the rule kill switch: a run that is going to
+        // be refused outright must not pop a confirmation dialog on its way.
+        const bigText = Array.from({ length: 101 }, (_, i) => `word${i}`).join(' ')
+        expect(
+            await startReview({
+                settings: panelSettings({ behavior: { sizeWarningWords: 100 } }),
+                snapshot: makeSnapshot(bigText),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody()),
+                panel: { panelId: 'gone' }
+            })
+        ).toEqual({ status: 'panel-unavailable', panelId: 'gone', reason: 'panel-missing' })
+    })
+
     it('still runs the panel when its aggregation backend cannot resolve', async () => {
         const settings = panelSettings({
             panels: [

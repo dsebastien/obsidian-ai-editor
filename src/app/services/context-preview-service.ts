@@ -1,10 +1,17 @@
 import type { VerbClass } from '../domain/actions/verb-registry'
-import type { EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
+import { resolveRuleEditorPool } from '../domain/rules/rule-engine'
+import type { RuleOutcome } from '../domain/rules/rule-engine'
+import type {
+    EditorConfig,
+    PanelConfig,
+    PluginSettingsV1
+} from '../domain/settings/settings-schema'
 import { resolveActionById, resolveBoundActionVerb } from './actions/action-resolution'
 import { ExcludedTargetError } from './context/context-assembler'
 import type { ContextBudgetReport, ContextSection } from './context/context-budget'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
+import { resolvePanelCharter } from './panels/panel-charter'
 import { buildEditorPrompt, resolveApiBackend } from './review-service'
 import type { SkipReason } from './review-service'
 import { noteRuleOutcome } from './rules/note-rules'
@@ -54,12 +61,26 @@ export interface PreviewInstruction {
     readonly inSystemPrompt: boolean
 }
 
+/** The panel brief this run would carry, when the editor runs as a member. */
+export interface PreviewPanelCharter {
+    readonly panelName: string
+    /** Resolved charter text, referenced notes already inlined. */
+    readonly text: string
+}
+
 export interface ContextPreview {
     readonly editorId: string
     readonly editorName: string
     readonly notePath: string
     /** Null when previewing a plain review (no bound action selected). */
     readonly instruction: PreviewInstruction | null
+    /**
+     * The panel charter appended to the system prompt, or `null` for a solo
+     * run. Resolved exactly as the dispatch resolves it — a charter inlines
+     * whole vault notes, so a preview that omitted it would under-report what
+     * leaves the vault by up to `PANEL_CHARTER_MAX_CHARS`.
+     */
+    readonly panelCharter: PreviewPanelCharter | null
     /** Exactly what the backend receives as its system prompt. */
     readonly systemPrompt: string
     /** Every accounted section, in send order (dropped ones included). */
@@ -148,6 +169,7 @@ export async function previewEditorContext(
     }
 
     let instruction: PreviewInstruction | null = null
+    let requestedPanelId: string | null = null
     if (input.actionBindingId !== undefined) {
         const resolved = resolveActionById(settings, input.actionBindingId)
         const verb =
@@ -155,6 +177,7 @@ export async function previewEditorContext(
         if (resolved === null || verb === null) {
             return { status: 'action-unavailable', label: resolved?.label ?? 'This action' }
         }
+        requestedPanelId = resolved.panelId
         instruction = {
             label: verb.label,
             verbClass: verb.verbClass,
@@ -162,6 +185,16 @@ export async function previewEditorContext(
             inSystemPrompt: verb.verbClass === 'review'
         }
     }
+
+    // Same precedence as `startReview` → `resolveReviewParticipants`: the
+    // action's own panel, else the panel a binding rule assigns.
+    const panel = previewPanel(settings, ruleOutcome, requestedPanelId)
+    const panelCharter: PreviewPanelCharter | null = panel
+        ? {
+              panelName: panel.name,
+              text: await resolvePanelCharter(panel, vault, settings.behavior)
+          }
+        : null
 
     let built
     try {
@@ -175,7 +208,15 @@ export async function previewEditorContext(
             // appended to the system prompt (`RunInstruction` → `startReview`),
             // a transform/generate verb's rides the operation payload.
             instructionText:
-                instruction !== null && instruction.inSystemPrompt ? instruction.text : undefined
+                instruction !== null && instruction.inSystemPrompt ? instruction.text : undefined,
+            ...(panelCharter === null
+                ? {}
+                : {
+                      panelCharter: {
+                          panelName: panelCharter.panelName,
+                          text: panelCharter.text
+                      }
+                  })
         })
     } catch (cause) {
         // Defense in depth: the upfront check already covered the target.
@@ -193,6 +234,7 @@ export async function previewEditorContext(
             editorName: editor.name,
             notePath,
             instruction,
+            panelCharter,
             systemPrompt: built.systemPrompt,
             sections: built.context.sections,
             budget: built.context.budget,
@@ -202,4 +244,29 @@ export async function previewEditorContext(
             backendIssue: resolution.ok ? null : resolution.reason
         }
     }
+}
+
+/**
+ * The panel whose charter this preview must account for: an explicitly
+ * requested one (a panel-bound action carries `panelId`) first, else the panel
+ * a binding rule assigns to this note. Same precedence — and the same
+ * enabled/exists checks — as the dispatch path, because the preview's whole
+ * job is to be the dispatch minus the request.
+ */
+function previewPanel(
+    settings: PluginSettingsV1,
+    ruleOutcome: RuleOutcome,
+    requestedPanelId: string | null
+): PanelConfig | null {
+    const panelId =
+        requestedPanelId ??
+        ((): string | null => {
+            const pool = resolveRuleEditorPool(settings, ruleOutcome)
+            return pool.kind === 'editors' ? pool.panelId : null
+        })()
+    if (panelId === null) {
+        return null
+    }
+    const panel = settings.panels.find((candidate) => candidate.id === panelId)
+    return panel && panel.enabled ? panel : null
 }
