@@ -16,6 +16,7 @@ import type {
     Verdict
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import { rawFindingIdentity } from '../../domain/operations/finding-identity'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
 import type {
     PanelAggregationBudget,
@@ -1128,19 +1129,11 @@ class ReviewRunHandle implements RunHandle {
      * the terminal result are deduped by content.
      */
     private ingestFinding(spec: RunEditorSpec, state: InternalEditorState, raw: RawFinding): void {
-        // The key must include the locating hints: the prompt instructs models to
-        // disambiguate repeated text via `occurrence`/`prefix`/`suffix`, so two
-        // findings on different occurrences of the same quote are legitimately
-        // distinct and must not collapse into one. Only true stream-vs-result
-        // duplicates (identical in every field) are deduped.
-        const key = JSON.stringify([
-            raw.quote,
-            raw.critique,
-            raw.suggestion ?? '',
-            raw.occurrence ?? null,
-            raw.prefix ?? '',
-            raw.suffix ?? ''
-        ])
+        // Shared identity rule (`rawFindingIdentity`): the key includes the
+        // locating hints, so two findings on different occurrences of the same
+        // quote stay distinct and only true stream-vs-result duplicates are
+        // deduped.
+        const key = rawFindingIdentity(raw)
         if (state.seenFindingKeys.has(key)) {
             return
         }
