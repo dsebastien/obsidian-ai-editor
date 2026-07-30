@@ -19,6 +19,7 @@ import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
 import { registerActionCommands } from './commands/action-commands'
+import { registerBulkCommands } from './commands/bulk-commands'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerReviewCli } from './cli/register-review-cli'
 import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
@@ -129,6 +130,15 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // follows the settings via the mutation observer — add/removeCommand
         // diffing keeps the palette in sync without a reload.
         registerActionCommands(
+            this,
+            reviewController,
+            () => this.settings,
+            (listener) => this.subscribe(listener)
+        )
+        // Dynamic `accept-all-<editorId>` / `dismiss-all-<editorId>` commands
+        // (design §3): registration follows the editor entities, availability
+        // is re-checked per invocation against the active note's run.
+        registerBulkCommands(
             this,
             reviewController,
             () => this.settings,

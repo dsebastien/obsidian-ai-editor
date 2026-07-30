@@ -874,6 +874,25 @@
     color: var(--text-faint);
 }
 
+/* Per-editor bulk triage row (accept all / dismiss all). */
+.ai-editor-panel-bulk {
+    @apply flex flex-wrap items-center gap-1.5;
+}
+
+.ai-editor-panel-bulk-button {
+    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-panel-bulk-button:hover,
+.ai-editor-panel-bulk-button:focus-visible {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
 .ai-editor-panel-subheader {
     @apply mt-1 text-xs font-medium uppercase;
     letter-spacing: 0.04em;

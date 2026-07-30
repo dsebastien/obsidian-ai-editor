@@ -15,6 +15,12 @@ import {
 } from '../commands/finding-navigation'
 import type { NavigationDirection, NavigationTarget } from '../commands/finding-navigation'
 import { TriageCursorStore } from '../commands/triage-cursor'
+import {
+    bulkAcceptNotice,
+    bulkDismissNotice,
+    dismissableFindingIds,
+    planBulkAccept
+} from '../commands/bulk-triage'
 import { getBuiltInVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
@@ -26,6 +32,7 @@ import type { DocumentSnapshot } from '../domain/snapshot'
 import { resolveActionById, resolveCustomInstruction } from '../services/actions/action-resolution'
 import type { ResolvedAction } from '../services/actions/action-resolution'
 import { isExcluded, isReviewable, reviewCapableEditors } from '../services/reviewability'
+import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type {
     EditorRunStatus,
     RetryEditorResult,
@@ -1134,8 +1141,8 @@ export class ReviewController {
 
     /** `Next/previous finding` gate: the active run has revealable findings. */
     canNavigateFindings(): boolean {
-        const run = this.getActiveRun()
-        return run !== null && navigableFindings(run.findings.list()).length > 0
+        const context = this.activeRunContext()
+        return context !== null && navigableFindings(context.run.findings.list()).length > 0
     }
 
     /**
@@ -1151,11 +1158,11 @@ export class ReviewController {
      * instead of restarting.
      */
     navigateFinding(direction: NavigationDirection): void {
-        const path = this.resolveActiveFilePath()
-        const run = path ? this.deps.runController.getRun(path) : null
-        if (!path || !run) {
+        const context = this.activeRunContext()
+        if (!context) {
             return
         }
+        const { path, run } = context
         const ordered = navigableFindings(run.findings.list())
         const memory = this.triageCursors.get(path, run)
         let target: NavigationTarget | null
@@ -1204,11 +1211,11 @@ export class ReviewController {
         run: RunHandle
         current: NavigationTarget
     } | null {
-        const path = this.resolveActiveFilePath()
-        const run = path ? this.deps.runController.getRun(path) : null
-        if (!path || !run) {
+        const context = this.activeRunContext()
+        if (!context) {
             return null
         }
+        const { path, run } = context
         const ordered = navigableFindings(run.findings.list())
         const current = triageCurrent(ordered, this.triageCursors.get(path, run))
         return current ? { path, run, current } : null
@@ -1313,6 +1320,126 @@ export class ReviewController {
         this.moveTriageCursor(path, run, target)
     }
 
+    // -- Bulk triage (plan M4 "Bulk triage") ----------------------------------
+
+    /**
+     * The (last) active markdown file and its run — the scope every ambient
+     * triage surface operates on (`null` when nothing is bound).
+     */
+    private activeRunContext(): { path: string; run: RunHandle } | null {
+        const path = this.resolveActiveFilePath()
+        const run = path ? this.deps.runController.getRun(path) : null
+        return path && run ? { path, run } : null
+    }
+
+    /**
+     * The findings a bulk operation may touch: the file's findings narrowed to
+     * one editor (`null` = every editor of the run).
+     */
+    private bulkCandidates(run: RunHandle, editorId: string | null): readonly TrackedFinding[] {
+        const findings = run.findings.list()
+        return editorId === null
+            ? findings
+            : findings.filter((finding) => finding.editorId === editorId)
+    }
+
+    /**
+     * `Accept all …` gate: the note is open in an editor to dispatch into and
+     * at least one candidate finding is actionable (the store is the
+     * authority; `planBulkAccept` may still skip it for a failed precondition
+     * or an overlap, which the Notice reports).
+     */
+    canAcceptAll(editorId: string | null): boolean {
+        const context = this.activeRunContext()
+        if (!context || this.editorViewFor(context.path) === null) {
+            return false
+        }
+        return this.bulkCandidates(context.run, editorId).some((finding) =>
+            context.run.findings.isActionable(asFindingId(finding.id))
+        )
+    }
+
+    /** `Dismiss all …` gate: at least one non-terminal candidate finding. */
+    canDismissAll(editorId: string | null): boolean {
+        const context = this.activeRunContext()
+        if (!context) {
+            return false
+        }
+        return dismissableFindingIds(this.bulkCandidates(context.run, editorId)).length > 0
+    }
+
+    /**
+     * Accept-all-non-conflicting (plan M4): applies every candidate finding
+     * that is actionable, still matches the live text (`FindingStore.accept`
+     * re-verifies each precondition — Business Rules #3) and does not overlap
+     * an earlier accepted span, as ONE undoable, history-isolated transaction
+     * — so a single Ctrl+Z restores the whole batch and neighbouring typing
+     * is never swallowed (`finding-accept.spec.ts`).
+     *
+     * Overlaps keep the EARLIER anchor and the later suggestion is skipped
+     * (applying both would compose two rewrites of the same span into
+     * nonsense); skipped counts — overlapping and no-longer-matching — are
+     * reported in one Notice so nothing is silently dropped.
+     *
+     * The dispatched edit reaches the domain anchor store through the
+     * canonical-view forwarding like any user edit, so every finding left in
+     * the run remaps (intersecting ones go stale).
+     */
+    acceptAllFindings(editorId: string | null): void {
+        const context = this.activeRunContext()
+        if (!context || this.disposed) {
+            return
+        }
+        const editorView = this.editorViewFor(context.path)
+        if (!editorView) {
+            new Notice('Open the note in an editor to apply findings.')
+            return
+        }
+        const currentText = editorView.state.doc.toString()
+        const plan = planBulkAccept(this.bulkCandidates(context.run, editorId), currentText)
+        const applied = plan.edits.filter(
+            (edit) => context.run.findings.accept(asFindingId(edit.findingId), currentText).ok
+        )
+        if (applied.length > 0) {
+            editorView.dispatch({
+                changes: applied.map((edit) => ({
+                    from: edit.from,
+                    to: edit.to,
+                    insert: edit.insert
+                })),
+                effects: removeFindingsEffect.of(applied.map((edit) => edit.findingId)),
+                annotations: isolateHistory.of('full')
+            })
+        }
+        new Notice(bulkAcceptNotice(applied.length, plan))
+        this.scheduleRefresh()
+    }
+
+    /**
+     * Dismiss-all: every non-terminal candidate finding goes terminal through
+     * the same store path as the card button (stale and unanchored ones
+     * included — dismissing is always allowed) and their marks are dropped in
+     * one dispatch. No document change, so nothing to undo; an open card is
+     * closed because its findings may no longer exist.
+     */
+    dismissAllFindings(editorId: string | null): void {
+        const context = this.activeRunContext()
+        if (!context || this.disposed) {
+            return
+        }
+        const ids = dismissableFindingIds(this.bulkCandidates(context.run, editorId))
+        for (const id of ids) {
+            context.run.findings.dismiss(asFindingId(id))
+        }
+        if (ids.length > 0) {
+            this.editorViewFor(context.path)?.dispatch({
+                effects: [removeFindingsEffect.of(ids), showFindingCardEffect.of(null)]
+            })
+        }
+        new Notice(bulkDismissNotice(ids.length))
+        this.scheduleRefresh()
+    }
+
     /** The CM6 view of an open markdown view showing `path`, if any. */
     private editorViewFor(path: string): EditorView | null {
         const view = this.findMarkdownView(path)
@@ -1379,6 +1506,12 @@ export class ReviewController {
             },
             retryEditor: (editorId: string): void => {
                 this.retryEditor(path, editorId)
+            },
+            acceptAll: (editorId: string): void => {
+                this.acceptAllFindings(editorId)
+            },
+            dismissAll: (editorId: string): void => {
+                this.dismissAllFindings(editorId)
             }
         }
     }

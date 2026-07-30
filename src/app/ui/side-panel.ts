@@ -37,6 +37,10 @@ export interface SidePanelBinding {
     readonly revealFinding: (findingId: FindingId) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly retryEditor: (editorId: string) => void
+    /** Accept every non-conflicting finding of one editor (one undo step). */
+    readonly acceptAll: (editorId: string) => void
+    /** Dismiss every open finding of one editor. */
+    readonly dismissAll: (editorId: string) => void
 }
 
 /** Pulls the current binding when the panel (re)opens or refreshes itself. */
@@ -255,6 +259,8 @@ export class ReviewSidePanelView extends ItemView {
             section.createDiv({ cls: 'ai-editor-panel-none', text: 'Nothing to report.' })
         }
 
+        this.renderBulkActions(section, binding, state, findings)
+
         const list = section.createDiv({ cls: 'ai-editor-panel-findings' })
         for (const finding of anchored) {
             this.renderFinding(list, binding, finding, true)
@@ -266,6 +272,55 @@ export class ReviewSidePanelView extends ItemView {
                 this.renderFinding(orphanList, binding, finding, false)
             }
         }
+    }
+
+    /**
+     * Per-editor bulk triage (plan M4): "Accept all (n)" applies every
+     * non-conflicting suggestion of this editor as ONE undoable transaction,
+     * "Dismiss all (m)" clears them. Counts come from the findings this
+     * section actually shows, so the buttons never promise more than the user
+     * can see; each button is hidden when its count is zero (no dead UI).
+     */
+    private renderBulkActions(
+        section: HTMLElement,
+        binding: SidePanelBinding,
+        state: EditorRunState,
+        findings: readonly TrackedFinding[]
+    ): void {
+        const acceptable = findings.filter((finding) =>
+            binding.run.findings.isActionable(finding.id)
+        ).length
+        if (acceptable === 0 && findings.length === 0) {
+            return
+        }
+        const row = section.createDiv({ cls: 'ai-editor-panel-bulk' })
+        if (acceptable > 0) {
+            this.addBulkButton(
+                row,
+                `Accept all (${acceptable})`,
+                `Accept all ${acceptable} non-conflicting findings from ${state.editorName}`,
+                () => binding.acceptAll(state.editorId)
+            )
+        }
+        if (findings.length > 0) {
+            this.addBulkButton(
+                row,
+                `Dismiss all (${findings.length})`,
+                `Dismiss all ${findings.length} findings from ${state.editorName}`,
+                () => binding.dismissAll(state.editorId)
+            )
+        }
+    }
+
+    private addBulkButton(
+        row: HTMLElement,
+        text: string,
+        ariaLabel: string,
+        onClick: () => void
+    ): void {
+        const button = row.createEl('button', { cls: 'ai-editor-panel-bulk-button', text })
+        button.setAttribute('aria-label', ariaLabel)
+        button.addEventListener('click', onClick)
     }
 
     private renderFinding(

@@ -28,8 +28,10 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  *   one. Hidden unless a current finding exists (and, for accept, is
  *   actionable with its note open in an editor).
  *
- * Dynamic per-editor accept/dismiss-all and the severity filter are
- * deferred until their pipelines exist — no non-functional commands.
+ * - `accept-all` — accept every non-conflicting finding of the active run
+ *   (all editors) as ONE undoable transaction; overlapping and no-longer-
+ *   matching suggestions are skipped and reported. The per-editor variants
+ *   are dynamic commands (`bulk-commands.ts`).
  */
 export function registerReviewCommands(plugin: Plugin, controller: ReviewController): void {
     plugin.addCommand({
@@ -164,6 +166,21 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
                 return true
             }
             controller.acceptCurrentFinding()
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'accept-all',
+        name: 'Accept all non-conflicting findings',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canAcceptAll(null)) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.acceptAllFindings(null)
             return true
         }
     })
