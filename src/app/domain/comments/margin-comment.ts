@@ -36,6 +36,12 @@ import { rawFindingSchema } from '../operations/contract'
  * there are no migrations (plan §0 no-users policy) — the field ships anyway
  * because after release a migration hook needs somewhere to read the version
  * from, and adding it later would mean guessing at unversioned files.
+ *
+ * Deliberately NOT bumped by slice 2's `failed` status: widening an enum
+ * leaves every file written under version 1 a valid file under this schema,
+ * nothing reads the version to branch on yet, and a bump with no migration
+ * and no reader would record a compatibility break that did not happen. The
+ * version moves when a file stops loading unchanged.
  */
 export const COMMENT_STORE_SCHEMA_VERSION = 1
 
@@ -59,6 +65,12 @@ export const MAX_COMMENTS_PER_NOTE = 500
  * session. Reading either back from disk means the session died mid-job, which
  * `loadCommentStore` normalizes to `interrupted` — the store never claims a
  * job is running that nothing is running.
+ *
+ * `failed` and `interrupted` are deliberately DISTINCT even though both offer
+ * Retry: a failed job knows why it ended (`error` holds the redacted message
+ * and the UI shows it), while an interrupted one knows nothing at all — the
+ * session died and there is no outcome to report. Collapsing them would force
+ * the margin to either invent a failure reason or hide a real one.
  */
 export const marginCommentStatusSchema = z.enum([
     /** Queued: recorded, backend request not started yet. */
@@ -69,6 +81,8 @@ export const marginCommentStatusSchema = z.enum([
     'interrupted',
     /** The editor answered. */
     'done',
+    /** The backend request ended badly; `error` says how. Offers Retry. */
+    'failed',
     /** The user closed it without acting. Kept so it is not re-asked. */
     'dismissed'
 ])
