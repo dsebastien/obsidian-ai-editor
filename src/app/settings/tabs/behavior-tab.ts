@@ -1,15 +1,17 @@
 import { Setting } from 'obsidian'
 import type { Draft } from 'immer'
 import type { PluginSettingsV1 } from '../../domain/settings/settings-schema'
+import { applyImportPlan } from '../../domain/settings/settings-transfer'
 import { renderChipList } from '../components'
 import { clampInt, normalizeChipValue } from '../helpers'
+import { ExportSettingsModal, ImportSettingsModal } from '../transfer-modals'
 import { commit } from './shared'
 import type { TabContext } from './shared'
 
 /**
  * Behavior tab: run guardrails (size warning, concurrency, context budget),
  * privacy exclusions (folders, tags, frontmatter opt-out — absolute, per
- * Business Rule #7), and response/comment defaults.
+ * Business Rule #7), response/comment defaults, and settings import/export.
  */
 export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
@@ -208,6 +210,38 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
                 commit(ctx, (draft) => {
                     draft.behavior.defaultCommentEditorId = value
                 })
+            })
+        })
+
+    new Setting(containerEl).setName('Import & export').setHeading()
+    containerEl.createEl('p', {
+        cls: 'ai-editor-tab-intro',
+        text: 'Move your configuration between vaults, or keep a copy in this one. API keys are never included — the vault that imports the file enters its own.'
+    })
+    new Setting(containerEl)
+        .setName('Export settings')
+        .setDesc('Write the sections you pick to a JSON file in the vault, or to the clipboard.')
+        .addButton((button) => {
+            button.setButtonText('Export…').onClick(() => {
+                new ExportSettingsModal(ctx.app, () => ctx.facade.getSettings()).open()
+            })
+        })
+    new Setting(containerEl)
+        .setName('Import settings')
+        .setDesc(
+            'Add entities from an exported file. You confirm a summary before anything is saved.'
+        )
+        .addButton((button) => {
+            button.setButtonText('Import…').onClick(() => {
+                new ImportSettingsModal(ctx.app, {
+                    getSettings: () => ctx.facade.getSettings(),
+                    commitPlan: async (plan) => {
+                        await ctx.facade.update((draft) => {
+                            applyImportPlan(draft, plan)
+                        })
+                        ctx.refresh()
+                    }
+                }).open()
             })
         })
 }

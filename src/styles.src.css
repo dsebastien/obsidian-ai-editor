@@ -554,6 +554,39 @@
     user-select: text;
 }
 
+/* Import / export dialogs (src/app/settings/transfer-modals.ts) */
+.ai-editor-transfer-notice {
+    @apply my-2 text-sm;
+    color: var(--text-muted);
+}
+
+.ai-editor-transfer-summary {
+    @apply my-3 text-sm font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-transfer-review {
+    @apply my-2 text-sm;
+}
+
+.ai-editor-transfer-review h4 {
+    @apply mt-3 mb-1 text-sm;
+}
+
+.ai-editor-transfer-summary-list {
+    @apply my-2 pl-5 font-medium;
+}
+
+.ai-editor-transfer-lines {
+    @apply my-1 pl-5;
+    color: var(--text-muted);
+}
+
+.ai-editor-transfer-error {
+    @apply my-2 text-sm;
+    color: var(--text-error, var(--color-red, red));
+}
+
 /* ========================================
    PERSONA RAIL (src/app/ui/editor/rail.ts,
    mounted by src/app/ui/review-controller.ts)
