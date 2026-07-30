@@ -51,6 +51,10 @@ class FakeVaultReader implements VaultReader {
         }
         return { tags: note.tags ?? [], frontmatter: note.frontmatter ?? {} }
     }
+
+    getNoteTypeIds(): readonly string[] {
+        return [] // context assembly never consults binding rules
+    }
 }
 
 /**

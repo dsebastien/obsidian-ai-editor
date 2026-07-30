@@ -40,4 +40,17 @@ export interface VaultReader {
      * checks.
      */
     getNoteMetadata(path: string): NoteMetadata | null
+
+    /**
+     * Note-type identifiers of the note (plan §4b), for binding rules that
+     * match on a note type: the OSK registry's canonical names when the
+     * Obsidian Starter Kit plugin is installed, plus the `type/<x>` tag
+     * convention, which needs no plugin. `[]` when the note has no recognizable
+     * type — see `domain/rules/note-type.ts`.
+     *
+     * Resolving these means a cross-plugin call, so callers ask only when a
+     * rule actually matches on note types (`rulesNeedNoteTypes`); everything
+     * else passes `[]`.
+     */
+    getNoteTypeIds(path: string): readonly string[]
 }

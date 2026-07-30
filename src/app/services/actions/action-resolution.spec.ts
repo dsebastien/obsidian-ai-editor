@@ -78,6 +78,7 @@ function makeSettings(overrides: Record<string, unknown> = {}): PluginSettingsV1
 class FakeVault implements VaultReader {
     readonly notes = new Map<string, string>()
     readonly metadata = new Map<string, NoteMetadata>()
+    readonly noteTypeIds = new Map<string, readonly string[]>()
 
     async readNote(path: string): Promise<string | null> {
         return this.notes.get(path) ?? null
@@ -93,6 +94,10 @@ class FakeVault implements VaultReader {
 
     getNoteMetadata(path: string): NoteMetadata | null {
         return this.metadata.get(path) ?? { tags: [], frontmatter: {} }
+    }
+
+    getNoteTypeIds(path: string): readonly string[] {
+        return this.noteTypeIds.get(path) ?? []
     }
 }
 

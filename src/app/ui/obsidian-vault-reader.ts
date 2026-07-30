@@ -1,5 +1,7 @@
 import type { App, CachedMetadata, TFile } from 'obsidian'
+import { resolveNoteTypeIds } from '../domain/rules/note-type'
 import type { NoteMetadata, VaultReader } from '../services/context/vault-reader.intf'
+import { readOskNoteTypes } from './osk-note-types'
 
 /**
  * Obsidian-backed implementation of the `VaultReader` seam (see
@@ -200,5 +202,19 @@ export class ObsidianVaultReader implements VaultReader {
         } catch {
             return null
         }
+    }
+
+    /**
+     * Note-type identifiers for binding rules: the optional OSK registry
+     * (`readOskNoteTypes` — `[]` when the Starter Kit is not installed) matched
+     * against the note's path and tags, plus the `type/<x>` tag convention.
+     * `[]` when the metadata cache has not resolved the note.
+     */
+    getNoteTypeIds(path: string): readonly string[] {
+        const metadata = this.getNoteMetadata(path)
+        if (!metadata) {
+            return []
+        }
+        return resolveNoteTypeIds({ path, tags: metadata.tags }, readOskNoteTypes(this.app))
     }
 }
