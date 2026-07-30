@@ -70,7 +70,28 @@ import type {
  * - `--bare` — it does disable hooks, plugins and CLAUDE.md discovery, which
  *   is appealing, but its documented side effect is that authentication
  *   becomes `ANTHROPIC_API_KEY`-only, breaking every subscription user. Not a
- *   default the plugin gets to make on a user's behalf.
+ *   default the plugin gets to make on a user's behalf. `--safe-mode` disables
+ *   the same set and more; it is admin-policy shaped and equally not ours to
+ *   impose.
+ * - `--setting-sources` — it exists (2.1.220) and an empty list is accepted by
+ *   the binary, so it looks like the way to drop user settings without the
+ *   OAuth breakage `--bare` causes. It is NOT emitted, because what it drops
+ *   could not be demonstrated from outside: the help documents it as loading
+ *   `user, project, local` settings and says nothing about plugins, hooks or
+ *   skills, and prompt caching makes a token-count comparison between runs
+ *   meaningless. Shipping a flag as a security control on the strength of its
+ *   name is how a false guarantee gets written down. Revisit with a real
+ *   before/after against a machine with plugins and pre-approved permission
+ *   rules configured.
+ *
+ * **What is therefore NOT bounded, and is said so in the README, the user
+ * guide and the consent dialog:** the user's own Claude Code configuration is
+ * loaded — `CLAUDE.md`, skills, plugins, hooks and `settings.json`. That last
+ * one matters most: `--permission-mode manual` sets the interactive default,
+ * it does not overrule `permissions.allow` rules the user wrote, so a user
+ * with broad rules of their own gets those tools in a headless run. There is
+ * also no read-only sandbox flag for Claude Code the way there is for Codex;
+ * the containment here is the throwaway directory and the empty environment.
  */
 
 /** Not `--print`: the long form is what the help documents and is greppable. */

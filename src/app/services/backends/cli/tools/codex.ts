@@ -70,7 +70,12 @@ import type {
  *   would silently redirect the run away from the setup the user tested,
  *   which is a correctness bug dressed as a security measure. The user's
  *   config is theirs, exactly like the credential store `HOME` grants access
- *   to.
+ *   to. **The consequence is stated rather than glossed:** that same file is
+ *   where `[mcp_servers.*]` is declared, so a Codex run loads whatever MCP
+ *   servers the user configured. Codex has no `--strict-mcp-config`
+ *   equivalent, so "no inherited MCP servers" is true of the Claude Code
+ *   adapter and NOT of this one — the README and the user guide say which is
+ *   which.
  * - `--output-schema` — takes a FILE path, and the boundary owns the only
  *   directory the run has. The operation's JSON Schema is embedded in the
  *   prompt instead; Zod is the enforcement boundary either way.

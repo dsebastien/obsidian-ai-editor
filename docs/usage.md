@@ -156,10 +156,17 @@ You do not have to trust these; they are how the code is written, and you can re
 - **You name the exact binary.** An absolute path to an existing executable file. A bare name (`claude`) or a relative path is refused, because it would be resolved through `PATH` or the working directory — a writable directory ahead of the real one would silently change what runs.
 - **Your note never appears in the arguments.** Standard input only. Arguments are visible to every process on the machine; notes are not.
 - **A throwaway working directory**, created for the run and deleted when it ends. Never your vault, and not the plugin's own folder either — that lives inside the vault and syncs.
-- **A minimal environment.** Built from nothing, with only what the tool needs to start. Injection variables (`LD_PRELOAD`, `NODE_OPTIONS`, `BASH_ENV`, proxy variables…) are refused even if you configure them.
-- **No session written to disk**, so reviewing a note does not leave a copy of it outside the vault.
-- **No inherited MCP servers**, plugins, or extra directories.
-- **Cancelling stops the whole process tree**, and if something survives, the plugin says so rather than hiding it.
+- **A minimal environment.** Built from nothing: a home directory (so the tool finds its own login), a `PATH` for its sub-tools, a locale, and a temporary directory redirected into the throwaway folder. Nothing else in Obsidian's environment reaches it, and there is no setting that can widen the list.
+- **No session written to disk.** Claude Code runs with `--no-session-persistence` and Codex with `--ephemeral`, so the conversation is not saved and cannot be resumed. That covers the transcript; it is not a claim that the tool writes nothing at all.
+- **No inherited MCP servers — for Claude Code.** `--strict-mcp-config` is passed without an MCP config, so none are loaded. Codex is the exception: its `~/.codex/config.toml` is deliberately read (it holds your provider, endpoint and model, and ignoring it would redirect the run away from the setup you tested), so MCP servers declared there are loaded.
+- **Every run ends with the process tree killed**, cancelled or not — a tool that exits 0 can leave a background helper running, so the tree is probed on every path. If something survives, the run fails and says so rather than reporting a success.
+
+### What the plugin does not bound
+
+Said plainly, because the consent you are asked for is meaningful only if it is accurate:
+
+- **The tool's own configuration is loaded.** Claude Code reads your `CLAUDE.md`, skills, plugins, hooks and `settings.json`; Codex reads `~/.codex/config.toml`. Suppressing them would break subscription authentication or change which model answers, so the plugin does not try. If you have pre-approved permission rules in your own Claude Code settings, those still apply — `--permission-mode manual` sets the interactive default, it does not overrule rules you wrote.
+- **Claude Code has no read-only sandbox to run under.** Codex gets `--sandbox read-only`; there is no equivalent flag for Claude Code, so its containment here is the throwaway directory, the minimal environment, and the permission mode.
 
 ### The two consents
 
