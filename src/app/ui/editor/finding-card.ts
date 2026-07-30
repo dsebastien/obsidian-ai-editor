@@ -24,6 +24,7 @@
  *   in the view plugin's `destroy` (CM6 lifecycle).
  */
 
+import { isolateHistory } from '@codemirror/commands'
 import { StateEffect } from '@codemirror/state'
 import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
@@ -549,10 +550,17 @@ class FindingCardPlugin implements PluginValue {
 
     /**
      * Accept: re-verified by the lookup against the CURRENT text (Business
-     * Rules #3); on success the replacement is dispatched as one regular
-     * transaction (naturally undoable) and the mark is removed in the same
-     * dispatch. On failure (stale race) the card re-renders with fresh data
-     * so the Accept button reflects reality instead of silently no-oping.
+     * Rules #3); on success the replacement is dispatched as one undoable
+     * transaction and the mark is removed in the same dispatch. On failure
+     * (stale race) the card re-renders with fresh data so the Accept button
+     * reflects reality instead of silently no-oping.
+     *
+     * `isolateHistory.of('full')` keeps that transaction its OWN undo event:
+     * an annotation-less transaction joins the previous history event when
+     * adjacent and within `newGroupDelay` (and later typing joins it
+     * symmetrically), so without it Ctrl+Z after accepting next to recent
+     * typing would revert the accept AND the keystrokes. Contract pinned in
+     * `finding-accept.spec.ts`.
      */
     private acceptSection(findingId: string): void {
         const outcome = this.lookup.acceptFinding(findingId, this.view.state.doc.toString())
@@ -563,7 +571,8 @@ class FindingCardPlugin implements PluginValue {
         this.closeCard()
         this.view.dispatch({
             changes: { from: outcome.from, to: outcome.to, insert: outcome.insert },
-            effects: removeFindingsEffect.of([findingId])
+            effects: removeFindingsEffect.of([findingId]),
+            annotations: isolateHistory.of('full')
         })
         this.view.focus()
     }

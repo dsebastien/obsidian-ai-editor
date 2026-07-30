@@ -1242,10 +1242,11 @@ export class ReviewController {
     /**
      * Accepts the CURRENT finding through the exact card-button path:
      * `FindingStore.accept` re-verifies the precondition against the live
-     * document (Business Rules #3), then ONE regular undoable transaction
-     * applies the replacement and drops the mark — the canonical-view
-     * forwarding remaps every other anchor exactly like a user edit. Then
-     * the triage loop auto-advances onto the next remaining finding.
+     * document (Business Rules #3), then ONE undoable, history-isolated
+     * transaction applies the replacement and drops the mark — the
+     * canonical-view forwarding remaps every other anchor exactly like a user
+     * edit. Then the triage loop auto-advances onto the next remaining
+     * finding.
      */
     acceptCurrentFinding(): void {
         const context = this.currentTriageContext()
@@ -1266,7 +1267,8 @@ export class ReviewController {
         }
         editorView.dispatch({
             changes: { from: outcome.from, to: outcome.to, insert: outcome.insert },
-            effects: removeFindingsEffect.of([context.current.id])
+            effects: removeFindingsEffect.of([context.current.id]),
+            annotations: isolateHistory.of('full')
         })
         this.advanceTriage(context.path, context.run, context.current)
     }
