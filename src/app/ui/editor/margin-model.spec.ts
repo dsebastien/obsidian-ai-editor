@@ -7,7 +7,9 @@ import {
     isMarginVisible,
     marginCardView,
     marginColumnModel,
+    marginCardStatusText,
     marginModelKey,
+    marginRenderedCards,
     orphanHeading,
     MARGIN_BODY_MAX
 } from './margin-model'
@@ -175,9 +177,12 @@ describe('marginCardView', () => {
 })
 
 describe('marginColumnModel', () => {
-    it('is empty when there is nothing to render', () => {
+    it('renders nothing when there is nothing to render', () => {
         const model = marginColumnModel({ groups: [], orphans: [], orphansExpanded: false })
-        expect(model.empty).toBe(true)
+        expect(model.groups).toEqual([])
+        // No empty orphan group, ever — and no `empty` flag either: a column
+        // with nothing in view is the normal case while the note is scrolled
+        // past its comments, not a column that should disappear.
         expect(model.orphans).toBeNull()
     })
 
@@ -241,7 +246,6 @@ describe('marginColumnModel', () => {
             orphans: [entry({ id: 'o1' }, 'orphaned'), entry({ id: 'o2' }, 'orphaned')],
             orphansExpanded: false
         })
-        expect(model.empty).toBe(false)
         expect(model.orphans?.heading).toBe('2 comments lost their text')
         expect(model.orphans?.expanded).toBe(false)
         // Collapsed: nothing rendered, but the group itself is visible.
@@ -256,6 +260,39 @@ describe('marginColumnModel', () => {
         })
         expect(model.orphans?.heading).toBe('1 comment lost its text')
         expect(model.orphans?.cards.map((card) => card.commentId)).toEqual(['o1'])
+    })
+})
+
+describe('the live text a rebuild would otherwise be needed for', () => {
+    it('composes the status line with the elapsed time when one is running', () => {
+        const value = comment({ status: 'running' })
+        const card = marginCardView({
+            comment: value,
+            view: commentJobView({ comment: value, startedAt: 1_000, now: 8_000 }),
+            outcome: 'exact',
+            color: '#ff0000',
+            editorName: 'Fact Checker',
+            expanded: false
+        })
+        expect(marginCardStatusText(card)).toBe(`${card.statusLabel} ${card.timer ?? ''}`)
+        expect(marginCardStatusText(marginCardView(entry()))).toBe('Nothing to report')
+    })
+
+    it('lists every rendered card, orphans first, and skips collapsed ones', () => {
+        const model = marginColumnModel({
+            groups: [
+                { key: 'c1', anchorTop: 10, expanded: false, comments: [entry({ id: 'c1' })] },
+                {
+                    key: 'c2',
+                    anchorTop: 20,
+                    expanded: false,
+                    comments: [entry({ id: 'c2' }), entry({ id: 'c3' })]
+                }
+            ],
+            orphans: [entry({ id: 'o1' }, 'orphaned')],
+            orphansExpanded: true
+        })
+        expect(marginRenderedCards(model).map((card) => card.commentId)).toEqual(['o1', 'c1'])
     })
 })
 
@@ -286,6 +323,40 @@ describe('marginModelKey', () => {
         expect(marginModelKey(modelWith({ status: 'running' }, 40))).not.toBe(
             marginModelKey(modelWith({ status: 'interrupted' }, 40))
         )
+    })
+
+    it('ignores the elapsed timer — a running job must not rebuild the column every second', () => {
+        // The timer ticks once a second for as long as a job runs, and a
+        // rebuild takes the keyboard user's focus with it. `marginCardStatusText`
+        // is what the column writes in place instead.
+        const running = (now: number): ReturnType<typeof marginColumnModel> => {
+            const value = comment({ status: 'running' })
+            return marginColumnModel({
+                groups: [
+                    {
+                        key: 'c1',
+                        anchorTop: 40,
+                        expanded: false,
+                        comments: [
+                            {
+                                comment: value,
+                                view: commentJobView({ comment: value, startedAt: 1_000, now }),
+                                outcome: 'exact',
+                                color: '#ff0000',
+                                editorName: 'Fact Checker',
+                                expanded: false
+                            }
+                        ]
+                    }
+                ],
+                orphans: [],
+                orphansExpanded: false
+            })
+        }
+        const first = running(4_000)
+        const later = running(48_000)
+        expect(first.groups[0]?.cards[0]?.timer).not.toBe(later.groups[0]?.cards[0]?.timer)
+        expect(marginModelKey(first)).toBe(marginModelKey(later))
     })
 
     it('changes when the answer arrives', () => {

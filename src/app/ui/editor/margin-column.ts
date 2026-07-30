@@ -1,4 +1,4 @@
-import { marginModelKey } from './margin-model'
+import { marginCardStatusText, marginModelKey, marginRenderedCards } from './margin-model'
 import type { MarginCardView, MarginColumnModel, MarginGroupView } from './margin-model'
 import type { MarginSlotInput, MarginSlotPosition } from './margin-layout'
 
@@ -57,6 +57,9 @@ export class MarginColumn {
     private readonly orphansEl: HTMLElement
     private readonly groupsEl: HTMLElement
     private readonly groupEls = new Map<string, HTMLElement>()
+    /** Per-card handles for the ONE thing that changes without a rebuild. */
+    private readonly cardEls = new Map<string, HTMLElement>()
+    private readonly statusEls = new Map<string, HTMLElement>()
     private groupOrder: readonly MarginGroupView[] = []
     private renderedKey = ''
 
@@ -100,10 +103,17 @@ export class MarginColumn {
     render(model: MarginColumnModel): boolean {
         const key = marginModelKey(model)
         if (key === this.renderedKey) {
+            // The elapsed timers still move — once a second, for as long as a
+            // job runs. Writing them in place is the whole reason `timer` is
+            // out of the key: rebuilding here would take the keyboard user's
+            // focus off whatever they were on, every second.
+            this.syncLiveText(model)
             return false
         }
         this.renderedKey = key
         this.groupEls.clear()
+        this.cardEls.clear()
+        this.statusEls.clear()
         this.orphansEl.replaceChildren()
         this.groupsEl.replaceChildren()
         this.groupOrder = model.groups
@@ -189,13 +199,40 @@ export class MarginColumn {
     /** Removes the column from the DOM. The instance must not be reused. */
     destroy(): void {
         this.groupEls.clear()
+        this.cardEls.clear()
+        this.statusEls.clear()
         this.rootEl.remove()
     }
 
     // -- internals ----------------------------------------------------------
 
+    /** Rewrites the status line and the card's announced sentence in place. */
+    private syncLiveText(model: MarginColumnModel): void {
+        for (const card of marginRenderedCards(model)) {
+            const status = this.statusEls.get(card.commentId)
+            if (status) {
+                status.textContent = marginCardStatusText(card)
+            }
+            this.cardEls.get(card.commentId)?.setAttribute('aria-label', card.accessibleName)
+        }
+    }
+
     private applyTooltip(el: HTMLElement, tooltip: string, ariaLabel: string = tooltip): void {
         el.setAttribute('aria-label', ariaLabel)
+        if (this.tooltipSetter) {
+            this.tooltipSetter(el, tooltip)
+        } else {
+            el.title = tooltip
+        }
+    }
+
+    /**
+     * Tooltip without an accessible name: for controls whose VISIBLE text is
+     * already their name. Overriding it with `aria-label` would break WCAG
+     * 2.5.3 (label in name) and, on the reveal button, hide the question the
+     * user can see behind a sentence they cannot.
+     */
+    private applyHint(el: HTMLElement, tooltip: string): void {
         if (this.tooltipSetter) {
             this.tooltipSetter(el, tooltip)
         } else {
@@ -225,6 +262,13 @@ export class MarginColumn {
         }
         cardEl.style.setProperty('--ai-editor-editor-color', card.color)
         cardEl.dataset['commentId'] = card.commentId
+        // The composed sentence belongs on the CARD, which is a `group` and can
+        // therefore carry a name. It used to ride on the question element —
+        // fine while that was a button, silently dropped when it was a plain
+        // `div` (ARIA forbids naming `role=generic`), which is exactly the
+        // orphan case: no status, no editor, no indication anything is wrong.
+        cardEl.setAttribute('role', 'group')
+        cardEl.setAttribute('aria-label', card.accessibleName)
 
         const head = this.doc.createElement('div')
         head.classList.add('ai-editor-margin-head')
@@ -234,22 +278,21 @@ export class MarginColumn {
         head.appendChild(name)
         const status = this.doc.createElement('span')
         status.classList.add('ai-editor-margin-status')
-        status.textContent =
-            card.timer === null ? card.statusLabel : `${card.statusLabel} ${card.timer}`
-        // The composed sentence on the reveal control already announces both.
+        status.textContent = marginCardStatusText(card)
+        // The card's own name already announces the editor and the state.
         status.setAttribute('aria-hidden', 'true')
         head.appendChild(status)
         cardEl.appendChild(head)
 
         // The question is the card's primary control: keyboard-reachable, and
-        // its accessible name is the whole composed sentence. A card whose
-        // span is gone has nothing to reveal, so it is plain text instead.
+        // named by its own visible text. A card whose span is gone has nothing
+        // to reveal, so it is plain text instead.
         if (card.actions.canReveal) {
             const reveal = this.doc.createElement('button')
             reveal.classList.add('ai-editor-margin-question', 'ai-editor-margin-reveal')
             reveal.type = 'button'
             reveal.textContent = card.question
-            this.applyTooltip(reveal, 'Go to the text this comment is about', card.accessibleName)
+            this.applyHint(reveal, 'Go to the text this comment is about')
             reveal.addEventListener('click', () => {
                 this.callbacks.onReveal(card.commentId)
             })
@@ -257,7 +300,6 @@ export class MarginColumn {
         } else {
             const question = this.doc.createElement('div')
             question.classList.add('ai-editor-margin-question')
-            question.setAttribute('aria-label', card.accessibleName)
             question.textContent = card.question
             cardEl.appendChild(question)
         }
@@ -314,6 +356,8 @@ export class MarginColumn {
         if (actions.childElementCount > 0) {
             cardEl.appendChild(actions)
         }
+        this.cardEls.set(card.commentId, cardEl)
+        this.statusEls.set(card.commentId, status)
         return cardEl
     }
 

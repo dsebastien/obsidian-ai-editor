@@ -370,6 +370,9 @@ export class ReviewSidePanelView extends ItemView {
         row: CommentJobRow
     ): void {
         const item = box.createDiv({ cls: 'ai-editor-panel-comment' })
+        // `role=generic` cannot be named (ARIA 1.2), so the composed sentence
+        // needs a role that supports one — same fix as the margin card.
+        item.setAttribute('role', 'group')
         item.setAttribute('aria-label', row.accessibleName)
         const head = item.createDiv({ cls: 'ai-editor-panel-comment-head' })
         head.createSpan({ cls: 'ai-editor-panel-comment-editor', text: row.editorName })

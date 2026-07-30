@@ -142,8 +142,6 @@ export interface MarginColumnModel {
     readonly groups: readonly MarginGroupView[]
     /** `null` when nothing is orphaned — no empty group, ever. */
     readonly orphans: MarginOrphanGroupView | null
-    /** True when there is nothing at all to render (the column is not shown). */
-    readonly empty: boolean
 }
 
 export interface MarginColumnModelInput {
@@ -170,11 +168,14 @@ export function marginColumnModel(input: MarginColumnModelInput): MarginColumnMo
                   expanded: input.orphansExpanded,
                   cards: input.orphansExpanded ? orphanCards : []
               }
-    return {
-        groups,
-        orphans,
-        empty: groups.length === 0 && orphans === null
-    }
+    // No `empty` flag. It read as an invariant ("the column is not shown when
+    // there is nothing to render") that nothing could enforce: the column
+    // stays mounted while the note has ANY comment, precisely so scrolling
+    // past the last visible one never removes the reserved space and reflows
+    // the prose. A model with no groups in view is the normal case, not an
+    // empty column, and a field advertising otherwise invites a caller to act
+    // on it.
+    return { groups, orphans }
 }
 
 /**
@@ -185,6 +186,13 @@ export function marginColumnModel(input: MarginColumnModelInput): MarginColumnMo
  * excluded — scrolling changes every anchor on every frame, and rebuilding
  * there would throw away keyboard focus, re-collapse expanded answers and
  * flicker the whole margin. Scrolling repositions; it never re-renders.
+ *
+ * `timer` is excluded for the same reason and it matters more: it changes
+ * ONCE A SECOND while any job on the note is in flight, so including it put a
+ * full `replaceChildren()` on a one-second interval — destroying whatever the
+ * keyboard user had focused inside the column, every second. The elapsed time
+ * is live text, so {@link import('./margin-column').MarginColumn} updates it
+ * in place instead.
  */
 export function marginModelKey(model: MarginColumnModel): string {
     const parts: string[] = []
@@ -220,7 +228,6 @@ function cardKey(card: MarginCardView): string {
         card.color,
         card.question,
         card.statusLabel,
-        card.timer ?? '',
         card.body ?? '',
         card.expanded ? '1' : '0',
         card.truncated ? '1' : '0',
@@ -228,6 +235,25 @@ function cardKey(card: MarginCardView): string {
         card.drifted ? '1' : '0',
         actions
     ].join(' ')
+}
+
+/**
+ * The card's status line: the state, plus the elapsed time while it runs. The
+ * ONE piece of a card that changes without the model changing (see
+ * {@link marginModelKey}), so the column writes it in place on every refresh
+ * rather than rebuilding to show a new second.
+ */
+export function marginCardStatusText(card: MarginCardView): string {
+    return card.timer === null ? card.statusLabel : `${card.statusLabel} ${card.timer}`
+}
+
+/** Every card the model actually renders, in DOM order. */
+export function marginRenderedCards(model: MarginColumnModel): readonly MarginCardView[] {
+    const cards: MarginCardView[] = [...(model.orphans?.cards ?? [])]
+    for (const group of model.groups) {
+        cards.push(...group.cards)
+    }
+    return cards
 }
 
 /**

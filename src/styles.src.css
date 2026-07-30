@@ -1624,7 +1624,7 @@
    events on its empty area — the note underneath must stay clickable, since
    in `overlay` mode the column sits over the readable-line-length margin. */
 .ai-editor-margin {
-    @apply pointer-events-none absolute flex flex-col overflow-hidden;
+    @apply pointer-events-none absolute overflow-hidden;
     top: 0;
     bottom: 0;
     right: 0;
@@ -1633,15 +1633,29 @@
     padding: 8px 8px 8px 0;
 }
 
+/* Pinned at the top and OUT OF FLOW on purpose. In flow it consumed the
+   anchored groups' box, and that box is the coordinate space every anchored
+   card is positioned and clipped in (see MarginColumn.groupsBox): expanding a
+   few orphan cards shrank it to nothing, so every comment whose line was
+   plainly visible silently disappeared as "off-screen". Capped and scrollable
+   so it can never cover the whole column either. */
 .ai-editor-margin-orphans {
-    @apply pointer-events-auto relative shrink-0;
+    @apply pointer-events-auto absolute overflow-y-auto;
+    top: 8px;
+    left: 0;
+    right: 8px;
+    max-height: 50%;
+    z-index: 1;
 }
 
-/* The positioning context for the anchored groups: what is left of the column
-   once the pinned orphan box has taken its space. Its client rect IS the
-   coordinate space the stacker works in (see MarginColumn.groupsBox). */
+/* The positioning context for the anchored groups: the WHOLE column, so the
+   anchors the host computes are measured against the pane and not against a
+   box some other element's height controls. */
 .ai-editor-margin-groups {
-    @apply relative flex-1;
+    @apply absolute;
+    /* The column's own padding, applied here: an absolutely positioned child
+       is laid out against the padding box, not the content box. */
+    inset: 8px 8px 8px 0;
 }
 
 /* Absolutely positioned by the stacker; `transition` on `top` deliberately

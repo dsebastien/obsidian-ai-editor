@@ -98,6 +98,7 @@ A **margin comment** is a question you park on a piece of text — "is this clai
 - **Comments appear in a column beside the text**, each card aligned with the line it is about: who was asked, where the job stands (with a live timer while it runs), and the answer once there is one. Several comments on one line collapse into an **N comments** chip that expands.
 - **Resolve** closes a comment and keeps the record so the same question is not re-asked. **Delete** removes it for good, after a confirmation. **Retry** re-asks a comment that failed or was interrupted by a restart — always a new request, never a resumed one.
 - If you edit away the text a comment was about, the comment is **not deleted**. It moves to a collapsed group at the top of the column, with the text it originally quoted, so you can find it yourself.
+- **In Reading view the column is not shown** — the comments are still there and still listed in the review panel. Switch back to Live Preview or Source mode to see them beside the text.
 - The column needs room: it appears in panes of about 700px and wider. With **Readable line length** on (Obsidian's default) it uses the empty margin and your text does not move at all; with it off, the editor is padded once so the cards never sit on top of your prose. Turn the whole column off with **Toggle the margin comment column** or **Settings → Behavior → Margin comment column** — the comments then live in the review panel only.
 
 ## Panels
