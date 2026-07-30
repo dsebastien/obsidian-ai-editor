@@ -85,13 +85,20 @@ export interface FindingLookup {
     acceptFinding(findingId: string, currentText: string): CardAcceptOutcome
     dismissFinding(findingId: string): void
     /**
-     * Sends a push-back on the finding to the editor that produced it. Fire
-     * and forget: the reply lands in the FindingStore and reaches the card
-     * through `refreshFindingCardEffect` (or the next time it is opened —
-     * closing the card does NOT cancel the turn). Refusals are surfaced by
-     * the controller as Notices, so the card does not need a return value.
+     * Sends a push-back on the finding to the editor that produced it. The
+     * reply lands in the FindingStore and reaches the card through
+     * `refreshFindingCardEffect` (or the next time it is opened — closing the
+     * card does NOT cancel the turn), and every refusal is surfaced by the
+     * controller as a Notice.
+     *
+     * Resolves when the DISPATCH attempt settled, not when the reply arrives:
+     * `true` once the store holds the pending turn, `false` when nothing was
+     * recorded (excluded note, unavailable editor, store refusal). The store
+     * write happens after an await (persona context assembly), so the card
+     * owns the "sending" feedback until this resolves and restores the typed
+     * message on `false`.
      */
-    pushBack(findingId: string, message: string): void
+    pushBack(findingId: string, message: string): Promise<boolean>
 }
 
 /**
@@ -284,6 +291,22 @@ export function threadView(data: {
 }
 
 /**
+ * What the reply input shows after a rebuild: the user's own draft when they
+ * have one, otherwise `ThreadView.restoreDraft` — the failed turn's message,
+ * put back so it can be re-sent without retyping.
+ *
+ * An empty draft is NOT a draft. Sending clears the input, and the rebuild
+ * that follows captures that empty value, so treating it as a draft would
+ * permanently shadow the restore and force the user to retype.
+ */
+export function replyInputValue(draft: string | undefined, restoreDraft: string | null): string {
+    if (draft !== undefined && draft.length > 0) {
+        return draft
+    }
+    return restoreDraft ?? ''
+}
+
+/**
  * Notice copy for a push-back the store refused. The card disables its input
  * for the cases it can see (turn in flight, cap reached), so these mostly
  * cover races — the finding was accepted or dismissed in another pane while
@@ -342,6 +365,15 @@ class FindingCardPlugin implements PluginValue {
      * Dropped when the card closes — the card is the draft's whole lifetime.
      */
     private readonly drafts = new Map<string, string>()
+    /**
+     * Messages sent but not yet recorded in the store, per finding. The store
+     * write happens after the persona context is assembled (vault reads), so
+     * without this the card would re-render as idle — input enabled, message
+     * gone — and a second Enter would start a second turn that the store then
+     * refuses. Cleared when the dispatch attempt resolves; the real
+     * `threadTurn` takes over from there.
+     */
+    private readonly sending = new Map<string, string>()
     /** Finding whose reply input had focus, restored after a re-render. */
     private focusedInput: { findingId: string; selectionStart: number } | null = null
 
@@ -478,6 +510,9 @@ class FindingCardPlugin implements PluginValue {
         const card = doc.createElement('div')
         card.classList.add('ai-editor-finding-card')
         card.setAttribute('role', 'dialog')
+        // Programmatically focusable (never in the tab order): focus parks
+        // here while the reply input is disabled mid-turn.
+        card.tabIndex = -1
         card.setAttribute(
             'aria-label',
             sections.length === 1 ? 'Review finding' : `${sections.length} review findings`
@@ -551,7 +586,7 @@ class FindingCardPlugin implements PluginValue {
         if (!card) {
             return
         }
-        this.focusedInput = null
+        let focused: { findingId: string; selectionStart: number } | null = null
         for (const input of Array.from(
             card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
         )) {
@@ -562,14 +597,35 @@ class FindingCardPlugin implements PluginValue {
             if (findingId === undefined) {
                 continue
             }
-            this.drafts.set(findingId, input.value)
+            // An EMPTY value is not a draft: storing it would shadow
+            // `ThreadView.restoreDraft`, which puts a failed turn's message
+            // back so it can be re-sent without retyping.
+            if (input.value.length > 0) {
+                this.drafts.set(findingId, input.value)
+            } else {
+                this.drafts.delete(findingId)
+            }
             if (input.ownerDocument.activeElement === input) {
-                this.focusedInput = {
+                focused = {
                     findingId,
                     selectionStart: input.selectionStart ?? input.value.length
                 }
             }
         }
+        // Focus memory survives a rebuild that DISABLED the focused input (the
+        // refresh right after sending): the browser dropped focus to the body,
+        // so re-reading `activeElement` would forget where the caret belongs.
+        // Only kept while focus is still inside the card or nowhere at all —
+        // if the user clicked into the document, their focus wins.
+        if (focused !== null || !this.cardOwnsFocus(card)) {
+            this.focusedInput = focused
+        }
+    }
+
+    /** Whether focus is still inside the card, or has fallen to nothing. */
+    private cardOwnsFocus(card: HTMLElement): boolean {
+        const active = card.ownerDocument.activeElement
+        return active === null || active === card.ownerDocument.body || card.contains(active)
     }
 
     /** Newest turn visible: the thread list is scrollable, so pin it to the end. */
@@ -583,6 +639,13 @@ class FindingCardPlugin implements PluginValue {
         }
     }
 
+    /**
+     * Puts the caret back where it was before a rebuild. When the matching
+     * input came back DISABLED (the refresh that follows a send), focus parks
+     * on the card itself instead of falling out of the dialog — keyboard and
+     * screen-reader users keep their place, and the memory is retained so the
+     * refresh that re-enables the input restores the caret for real.
+     */
     private restoreInputFocus(): void {
         const focused = this.focusedInput
         const card = this.cardEl
@@ -593,15 +656,19 @@ class FindingCardPlugin implements PluginValue {
             card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
         )) {
             if (
-                input instanceof HTMLInputElement &&
-                input.dataset['findingId'] === focused.findingId &&
-                !input.disabled
+                !(input instanceof HTMLInputElement) ||
+                input.dataset['findingId'] !== focused.findingId
             ) {
-                input.focus()
-                const caret = Math.min(focused.selectionStart, input.value.length)
-                input.setSelectionRange(caret, caret)
+                continue
+            }
+            if (input.disabled) {
+                card.focus()
                 return
             }
+            input.focus()
+            const caret = Math.min(focused.selectionStart, input.value.length)
+            input.setSelectionRange(caret, caret)
+            return
         }
     }
 
@@ -743,10 +810,17 @@ class FindingCardPlugin implements PluginValue {
      */
     private renderThread(data: FindingCardData): HTMLElement[] {
         const doc = this.view.dom.ownerDocument
+        // A just-sent message has no store turn yet (the dispatch assembles the
+        // persona context first), so the card supplies one — same projection,
+        // so the pending row, the spinner and the locked input are identical to
+        // the store-driven state.
+        const optimistic = this.sending.get(data.findingId)
         const view = threadView({
             editorName: data.editorName,
             thread: data.thread,
-            threadTurn: data.threadTurn
+            threadTurn:
+                data.threadTurn ??
+                (optimistic === undefined ? null : { status: 'pending', message: optimistic })
         })
         const elements: HTMLElement[] = []
 
@@ -792,7 +866,7 @@ class FindingCardPlugin implements PluginValue {
         input.disabled = !view.inputEnabled
         input.placeholder = view.placeholder
         input.setAttribute('aria-label', `Push back to ${data.editorName}`)
-        input.value = this.drafts.get(data.findingId) ?? view.restoreDraft ?? ''
+        input.value = replyInputValue(this.drafts.get(data.findingId), view.restoreDraft)
         const send = doc.createElement('button')
         send.classList.add('ai-editor-finding-card-pushback-send')
         send.textContent = 'Send'
@@ -802,12 +876,25 @@ class FindingCardPlugin implements PluginValue {
             if (message.length === 0 || !view.inputEnabled) {
                 return
             }
-            this.drafts.delete(data.findingId)
+            const findingId = data.findingId
+            this.drafts.delete(findingId)
             input.value = ''
-            this.lookup.pushBack(data.findingId, message)
-            // The store now holds a pending turn; re-render so the message
-            // shows with its spinner and the input locks.
+            // Optimistic pending state FIRST: the store write is asynchronous,
+            // so re-rendering off the store would show an idle row with an
+            // enabled input and let a second Enter start a second turn.
+            this.sending.set(findingId, message)
             this.refreshCard()
+            void this.lookup.pushBack(findingId, message).then((recorded) => {
+                if (!this.sending.delete(findingId)) {
+                    return
+                }
+                if (!recorded && this.cardEl !== null) {
+                    // Nothing was recorded (refusal, excluded note, no editor):
+                    // give the message back so it is not lost.
+                    this.drafts.set(findingId, message)
+                }
+                this.refreshCard()
+            })
         }
         input.addEventListener('input', () => {
             this.drafts.set(data.findingId, input.value)

@@ -1658,9 +1658,8 @@ export class ReviewController {
             dismissFinding: (findingId): void => {
                 this.dismissFinding(findingId)
             },
-            pushBack: (findingId, message): void => {
+            pushBack: (findingId, message): Promise<boolean> =>
                 this.pushBackOnFinding(findingId, message)
-            }
         }
     }
 
@@ -1699,18 +1698,23 @@ export class ReviewController {
      * so the turn discusses the span as it currently reads (`currentSpanText`),
      * then `startThreadTurn` resolves the persona/backend and dispatches.
      *
-     * Fire and forget on purpose: the reply lands on the finding in the store
-     * and reaches an open card through the refresh cycle — closing the card
-     * (or navigating away) never cancels the turn, only cancelling the run
-     * does. Every refusal and every completed turn is reported as a Notice,
-     * because the card may well be closed by the time the answer arrives.
+     * The REPLY is fire and forget: it lands on the finding in the store and
+     * reaches an open card through the refresh cycle — closing the card (or
+     * navigating away) never cancels the turn, only cancelling the run does.
+     * Every refusal and every completed turn is reported as a Notice, because
+     * the card may well be closed by the time the answer arrives.
+     *
+     * The returned promise settles on the DISPATCH, resolving `true` only when
+     * the store now holds a pending turn. The card needs that to hand its
+     * optimistic pending row over to the store — or to give the typed message
+     * back when nothing was recorded.
      */
-    private pushBackOnFinding(rawId: string, message: string): void {
+    private async pushBackOnFinding(rawId: string, message: string): Promise<boolean> {
         const id = asFindingId(rawId)
         const run = this.deps.runController.findRunWithFinding(id)
         if (!run) {
             new Notice('That finding is no longer available.')
-            return
+            return false
         }
         const finding = run.findings.get(id)
         const editorName =
@@ -1726,7 +1730,7 @@ export class ReviewController {
         const editorView = glue ? editorViewOf(glue.view) : null
         const currentText = editorView?.state.doc.toString() ?? run.snapshot.text
 
-        void startThreadTurn({
+        const start = await startThreadTurn({
             settings: this.deps.getSettings(),
             vault: this.vaultReader,
             runController: this.deps.runController,
@@ -1734,36 +1738,35 @@ export class ReviewController {
             message,
             currentText,
             fetchImpl: window.fetch.bind(window)
-        }).then((start) => {
-            if (this.disposed) {
-                return
-            }
-            switch (start.status) {
-                case 'started':
-                    this.scheduleRefresh()
-                    void start.settled.then((resolution) => {
-                        this.reportThreadResolution(editorName, resolution)
-                    })
-                    return
-                case 'no-run':
-                    new Notice('That finding is no longer available.')
-                    return
-                case 'excluded':
-                    new Notice(`${start.notePath} is excluded from AI review.`)
-                    return
-                case 'no-editor':
-                    new Notice(
-                        start.skip === null
-                            ? 'That finding’s editor is no longer available.'
-                            : `${start.skip.editorName} cannot answer: ${skipReasonLabel(start.skip.reason)}.`
-                    )
-                    return
-                case 'refused':
-                    new Notice(threadRefusalNotice(start.reason, editorName))
-                    this.scheduleRefresh()
-                    return
-            }
         })
+        if (this.disposed) {
+            return false
+        }
+        switch (start.status) {
+            case 'started':
+                this.scheduleRefresh()
+                void start.settled.then((resolution) => {
+                    this.reportThreadResolution(editorName, resolution)
+                })
+                return true
+            case 'no-run':
+                new Notice('That finding is no longer available.')
+                return false
+            case 'excluded':
+                new Notice(`${start.notePath} is excluded from AI review.`)
+                return false
+            case 'no-editor':
+                new Notice(
+                    start.skip === null
+                        ? 'That finding’s editor is no longer available.'
+                        : `${start.skip.editorName} cannot answer: ${skipReasonLabel(start.skip.reason)}.`
+                )
+                return false
+            case 'refused':
+                new Notice(threadRefusalNotice(start.reason, editorName))
+                this.scheduleRefresh()
+                return false
+        }
     }
 
     /** One Notice per completed turn — the card may be closed by then. */

@@ -4,6 +4,7 @@ import type { ThreadMessage } from '../../domain/operations/thread'
 import {
     CARD_GAP,
     computeCardPosition,
+    replyInputValue,
     selectFindingsAtPos,
     threadRefusalNotice,
     threadView
@@ -213,6 +214,25 @@ describe('threadView', () => {
         expect(view.inputEnabled).toBeFalse()
         expect(view.placeholder).toEqual('Push-back limit reached for this finding')
         expect(view.rows).toHaveLength(THREAD_MAX_TURNS * 2)
+    })
+})
+
+describe('replyInputValue', () => {
+    it('shows the user’s own draft when there is one', () => {
+        expect(replyInputValue('half typed', 'failed message')).toEqual('half typed')
+    })
+
+    it('restores a failed turn’s message when the draft is empty or absent', () => {
+        // Sending clears the input, so the rebuild that follows captures an
+        // empty value — it must not shadow the restore (the user would have to
+        // retype the message their turn failed on).
+        expect(replyInputValue('', 'failed message')).toEqual('failed message')
+        expect(replyInputValue(undefined, 'failed message')).toEqual('failed message')
+    })
+
+    it('falls back to an empty input', () => {
+        expect(replyInputValue(undefined, null)).toEqual('')
+        expect(replyInputValue('', null)).toEqual('')
     })
 })
 
