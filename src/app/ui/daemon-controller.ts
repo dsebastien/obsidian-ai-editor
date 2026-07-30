@@ -196,7 +196,7 @@ export class DaemonController {
         const run = this.deps.runController.getRun(path)
         const note = this.deps.port.probeDaemonNote(path)
         return {
-            runInFlight: run !== null && !run.isSettled(),
+            runInFlight: run !== null && run.isBusy(),
             // A note that is no longer open cannot be probed or dispatched —
             // fail closed exactly like a non-reviewable one.
             reviewable: note !== null && this.deps.port.canReviewPath(path),

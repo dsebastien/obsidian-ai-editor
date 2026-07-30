@@ -121,7 +121,7 @@ export function handleCancelCli(
     if (run === null) {
         return render({ ok: true, file: path, cancelled: false, reason: 'no-run' })
     }
-    if (run.isSettled()) {
+    if (!run.isBusy()) {
         return render({ ok: true, file: path, cancelled: false, reason: 'already-settled' })
     }
 

@@ -1144,7 +1144,7 @@ export class ReviewController {
                     return true
                 }
                 const run = this.deps.runController.getRun(filePath)
-                return run !== null && !run.isSettled()
+                return run !== null && run.isBusy()
             },
             ...(editorIds ? { editorIds } : {}),
             ...(panelId === null ? {} : { panel: { panelId } })
@@ -1923,7 +1923,7 @@ export class ReviewController {
             return true
         }
         const run = path === null ? null : this.deps.runController.getRun(path)
-        return canCancelRun({ hasRun: run !== null, settled: run?.isSettled() ?? true })
+        return canCancelRun({ hasRun: run !== null, settled: !(run?.isBusy() ?? false) })
     }
 
     /**
@@ -2546,7 +2546,7 @@ export class ReviewController {
         // in-flight state (summons, CLI runs, daemon runs, retries alike)
         // and re-arms after settle when edits happened mid-run.
         if (filePath !== null) {
-            this.daemon?.syncRunState(filePath, run !== null && !run.isSettled())
+            this.daemon?.syncRunState(filePath, run !== null && run.isBusy())
         }
 
         // Plugin kill switch (plan §4b) / privacy exclusion: the note gets NO
@@ -2574,7 +2574,7 @@ export class ReviewController {
             ...(railPanel === null ? {} : { panel: railPanel }),
             running:
                 !pluginDisabled &&
-                ((run !== null && !run.isSettled()) ||
+                ((run !== null && run.isBusy()) ||
                     (transformRun !== null && !transformRun.isSettled())),
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),

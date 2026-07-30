@@ -140,7 +140,10 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
             const transform = controller.getActiveTransformRun()
             const reviewCancellable = canCancelRun({
                 hasRun: run !== null,
-                settled: run?.isSettled() ?? true
+                // `isBusy`, not `isSettled`: a panel whose scorecard is being
+                // written has every editor terminal and a backend request in
+                // flight — the one moment Cancel must not disappear.
+                settled: !(run?.isBusy() ?? false)
             })
             const transformCancellable = canCancelRun({
                 hasRun: transform !== null,

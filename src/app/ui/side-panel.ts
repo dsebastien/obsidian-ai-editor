@@ -316,6 +316,15 @@ export class ReviewSidePanelView extends ItemView {
         }
 
         box.createDiv({ cls: 'ai-editor-scorecard-status', text: view.status.label })
+        if (view.stale) {
+            // The scorecard below is the previous round's. It is kept because
+            // every finding it weighed is still on the note — but a member is
+            // adding to them, so it must not read as current.
+            box.createDiv({
+                cls: 'ai-editor-scorecard-stale',
+                text: 'From the previous round — a member is generating more, so this will be rewritten.'
+            })
+        }
         if (view.status.detail !== null) {
             box.createDiv({ cls: 'ai-editor-scorecard-detail', text: view.status.detail })
         }
@@ -367,6 +376,13 @@ export class ReviewSidePanelView extends ItemView {
                 row.createSpan({
                     cls: 'ai-editor-scorecard-missing',
                     text: 'No review — not weighed'
+                })
+            } else if (member.unnamed) {
+                // It ran and produced a review; the scorecard just never
+                // mentions it. Saying so beats a row that looks half-rendered.
+                row.createSpan({
+                    cls: 'ai-editor-scorecard-missing',
+                    text: 'Not named in the scorecard'
                 })
             } else if (member.verdict !== null && member.verdictLabel !== null) {
                 row.createSpan({

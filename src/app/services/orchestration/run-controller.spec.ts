@@ -1831,8 +1831,108 @@ describe('RunHandle.continueEditor', () => {
 
         run.continueEditor('alpha', DOC)
         expect(run.getPanelState()?.status).toBe('waiting')
-        expect(run.getPanelState()?.result).toBeNull()
+        // KEPT, marked stale: a continuation only appends, so every finding
+        // the scorecard weighed is still on the note — discarding it would
+        // throw away a synthesis the user paid for.
+        expect(run.getPanelState()?.result).not.toBeNull()
+        expect(run.getPanelState()?.resultStale).toBeTrue()
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(run.getPanelState()?.status).toBe('done')
+        expect(run.getPanelState()?.resultStale).toBeFalse()
+    })
+
+    it('keeps the scorecard when the continuation it re-opened is cancelled', async () => {
+        // The failure the asymmetry exists for: the editor goes back to `done`
+        // with its findings intact, so the run must not end with no scorecard.
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()])],
+            (runId) => [result(runId, [])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [spec],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Pre-publish Review',
+                aggregate: async function* (request) {
+                    await Promise.resolve()
+                    yield {
+                        type: 'result',
+                        runId: request.runId,
+                        result: {
+                            kind: 'aggregate-panel',
+                            memberVerdicts: [],
+                            missingMembers: [],
+                            topFixes: [],
+                            dissent: [],
+                            recommendation: 'needs-work',
+                            rationale: 'Some work'
+                        }
+                    }
+                }
+            }
+        })
+        await run.panelSettled
+        run.continueEditor('alpha', DOC)
+        run.cancelRun()
+        expect(run.getEditorState('alpha')?.status).toBe('done')
+        expect(run.getPanelState()?.status).toBe('cancelled')
+        expect(run.getPanelState()?.result).not.toBeNull()
+        expect(run.getPanelState()?.resultStale).toBeTrue()
+    })
+
+    it('reports the run as busy while the scorecard is being written', async () => {
+        // Every cancel/busy gate keys on `isBusy`: during aggregation the
+        // editors are all terminal, so `isSettled` alone would hide Cancel and
+        // let a new run replace a request the user is paying for.
+        let releaseAggregation = (): void => undefined
+        const gate = new Promise<void>((resolve) => {
+            releaseAggregation = resolve
+        })
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [scriptedEditor('alpha', (runId) => [result(runId, [])])],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Pre-publish Review',
+                aggregate: async function* (request) {
+                    await gate
+                    yield {
+                        type: 'result',
+                        runId: request.runId,
+                        result: {
+                            kind: 'aggregate-panel',
+                            memberVerdicts: [],
+                            missingMembers: [],
+                            topFixes: [],
+                            dissent: [],
+                            recommendation: 'publish'
+                        }
+                    }
+                }
+            }
+        })
+        await run.settled
+        expect(run.isSettled()).toBeTrue()
+        expect(run.isBusy()).toBeTrue()
+        releaseAggregation()
+        await run.panelSettled
+        expect(run.isBusy()).toBeFalse()
+    })
+
+    it('carries the member roster so the scorecard can be checked against it', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [result(runId, [])]),
+                scriptedEditor('beta', (runId) => [result(runId, [])])
+            ],
+            panel: { panelId: 'panel-1', panelName: 'Pre-publish Review' }
+        })
+        await run.panelSettled
+        expect(run.getPanelState()?.memberNames).toEqual(['Editor alpha', 'Editor beta'])
     })
 })

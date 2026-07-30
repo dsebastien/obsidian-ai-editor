@@ -6,6 +6,7 @@ import { createSnapshot } from '../../domain/snapshot'
 import { FindingStore } from '../orchestration/finding-store'
 import type {
     EditorRunState,
+    PanelRunState,
     RunHandle,
     StartThreadTurnResult
 } from '../orchestration/run-controller'
@@ -55,12 +56,15 @@ export class FakeRunHandle implements RunHandle {
 
     private readonly settledFlag: boolean
 
+    private readonly panelState: PanelRunState | null
+
     constructor(
         private readonly states: readonly EditorRunState[],
         findingFixtures: readonly FindingFixture[] = [],
-        options: { readonly settled?: boolean } = {}
+        options: { readonly settled?: boolean; readonly panel?: PanelRunState } = {}
     ) {
         this.settledFlag = options.settled ?? true
+        this.panelState = options.panel ?? null
         for (const fixture of findingFixtures) {
             this.findings.add({
                 id: asFindingId(generateId()),
@@ -87,13 +91,21 @@ export class FakeRunHandle implements RunHandle {
         return this.states.find((state) => state.editorId === editorId) ?? null
     }
 
-    /** The CLI fixture is a solo run; panel CLI shaping is not wired yet. */
-    getPanelState(): null {
-        return null
+    /** Solo by default; specs pass a `panel` fixture to shape a panel run. */
+    getPanelState(): PanelRunState | null {
+        return this.panelState
     }
 
     isSettled(): boolean {
         return this.settledFlag
+    }
+
+    isBusy(): boolean {
+        const panel = this.panelState
+        return (
+            !this.settledFlag ||
+            (panel !== null && (panel.status === 'waiting' || panel.status === 'running'))
+        )
     }
 
     subscribe(): () => void {

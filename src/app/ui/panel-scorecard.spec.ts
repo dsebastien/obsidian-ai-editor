@@ -3,7 +3,7 @@ import { asFindingId } from '../domain/ids'
 import type { PanelResult } from '../domain/operations/contract'
 import { panelResultSchema } from '../domain/operations/contract'
 import type { PanelRunState } from '../services/orchestration/run-controller'
-import { buildScorecardView, resolveTopFixFinding, type TopFixCandidate } from './panel-scorecard'
+import { buildScorecardView, resolveTopFix, type TopFixCandidate } from './panel-scorecard'
 
 function result(overrides: Partial<PanelResult> = {}): PanelResult {
     return panelResultSchema.parse({
@@ -19,9 +19,11 @@ function panel(overrides: Partial<PanelRunState> = {}): PanelRunState {
     return {
         panelId: 'p-1',
         panelName: 'Pre-publish Review',
+        memberNames: ['Hater', 'Beginner'],
         status: 'done',
         missingMembers: [],
         result: result(),
+        resultStale: false,
         error: null,
         ...overrides
     }
@@ -75,7 +77,12 @@ describe('buildScorecardView status', () => {
 
     it('still names the missing members when aggregation never ran', () => {
         const view = buildScorecardView(
-            panel({ status: 'skipped', result: null, missingMembers: ['A', 'B'] }),
+            panel({
+                status: 'skipped',
+                result: null,
+                memberNames: ['A', 'B'],
+                missingMembers: ['A', 'B']
+            }),
             []
         )
         expect(view.missingMembers).toEqual(['A', 'B'])
@@ -122,6 +129,7 @@ describe('buildScorecardView verdicts', () => {
     it('appends a failed member the panel never mentioned, marked missing', () => {
         const view = buildScorecardView(
             panel({
+                memberNames: ['Hater', 'Fact Checker'],
                 missingMembers: ['Fact Checker'],
                 result: result({ memberVerdicts: [{ editorName: 'Hater', verdict: 'kill' }] })
             }),
@@ -135,6 +143,7 @@ describe('buildScorecardView verdicts', () => {
     it('marks a member the panel listed AND reported missing', () => {
         const view = buildScorecardView(
             panel({
+                memberNames: ['Hater'],
                 missingMembers: ['Hater'],
                 result: result({ memberVerdicts: [{ editorName: 'Hater' }] })
             }),
@@ -206,7 +215,7 @@ describe('buildScorecardView dissent and top fixes', () => {
     })
 })
 
-describe('resolveTopFixFinding', () => {
+describe('resolveTopFix', () => {
     const findings = [
         candidate('f-1', 'Hater', 'the   weak opening'),
         candidate('f-2', 'Beginner', 'the weak opening'),
@@ -214,19 +223,19 @@ describe('resolveTopFixFinding', () => {
     ]
 
     it('is null without a quote — a fix that points at nothing reveals nothing', () => {
-        expect(resolveTopFixFinding({ editorName: 'Hater' }, findings)).toBeNull()
-        expect(resolveTopFixFinding({ quote: '' }, findings)).toBeNull()
+        expect(resolveTopFix({ editorName: 'Hater' }, findings)).toBeNull()
+        expect(resolveTopFix({ quote: '' }, findings)).toBeNull()
     })
 
     it('prefers an exact match inside the credited member', () => {
         expect(
-            resolveTopFixFinding({ editorName: 'Hater', quote: 'the   weak opening' }, findings)
+            resolveTopFix({ editorName: 'Hater', quote: 'the   weak opening' }, findings)?.id
         ).toBe(asFindingId('f-1'))
     })
 
     it('falls back to an exact match from any member', () => {
         expect(
-            resolveTopFixFinding({ editorName: 'Fact Checker', quote: 'a second span' }, findings)
+            resolveTopFix({ editorName: 'Fact Checker', quote: 'a second span' }, findings)?.id
         ).toBe(asFindingId('f-3'))
     })
 
@@ -234,19 +243,106 @@ describe('resolveTopFixFinding', () => {
         // 'the weak opening' matches f-2 exactly and f-1 only after
         // normalization, even though f-1 belongs to the credited member.
         expect(
-            resolveTopFixFinding({ editorName: 'Hater', quote: 'the weak opening' }, findings)
+            resolveTopFix({ editorName: 'Hater', quote: 'the weak opening' }, findings)?.id
         ).toBe(asFindingId('f-2'))
     })
 
     it('normalizes whitespace and case only when nothing matched exactly', () => {
-        expect(resolveTopFixFinding({ quote: 'A SECOND\n  span' }, findings)).toBe(
-            asFindingId('f-3')
-        )
+        expect(resolveTopFix({ quote: 'A SECOND\n  span' }, findings)?.id).toBe(asFindingId('f-3'))
     })
 
     it('returns null rather than guessing at an unknown quote', () => {
         expect(
-            resolveTopFixFinding({ editorName: 'Hater', quote: 'never said this' }, findings)
+            resolveTopFix({ editorName: 'Hater', quote: 'never said this' }, findings)
         ).toBeNull()
+    })
+})
+
+describe('buildScorecardView roster reconciliation', () => {
+    it('drops a member the panel invented and keeps the one it hid', () => {
+        // `memberVerdicts` is model-authored text: a misspelled name must not
+        // produce a row for an editor that never ran, nor swallow the real one.
+        const view = buildScorecardView(
+            panel({
+                memberNames: ['Beginner', 'Hater'],
+                result: result({
+                    memberVerdicts: [
+                        { editorName: 'Beginner Reader', verdict: 'kill' },
+                        { editorName: 'Hater', verdict: 'needs-work' }
+                    ]
+                })
+            }),
+            []
+        )
+        expect(view.members.map((entry) => entry.editorName)).toEqual(['Hater', 'Beginner'])
+        expect(view.members[1]?.unnamed).toBeTrue()
+        expect(view.members[1]?.missing).toBeFalse()
+    })
+
+    it('marks a member the scorecard never mentions as unnamed, not missing', () => {
+        const view = buildScorecardView(
+            panel({
+                memberNames: ['Hater', 'Beginner'],
+                result: result({ memberVerdicts: [{ editorName: 'Hater', verdict: 'publish' }] })
+            }),
+            []
+        )
+        expect(view.members[0]?.unnamed).toBeFalse()
+        expect(view.members[1]).toMatchObject({
+            editorName: 'Beginner',
+            unnamed: true,
+            missing: false,
+            verdict: null
+        })
+    })
+})
+
+describe('buildScorecardView top-fix credit', () => {
+    it('credits the member whose finding the row actually reveals', () => {
+        // The pointer resolved OUTSIDE the credited member (cross-member
+        // fallback), so the row must name the owner of what the click shows.
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    topFixes: [
+                        { action: 'Rewrite it', editorName: 'Hater', quote: 'a jargon-heavy line' }
+                    ]
+                })
+            }),
+            [candidate('f-2', 'Beginner', 'a jargon-heavy line')]
+        )
+        expect(view.topFixes[0]?.findingId).toBe(asFindingId('f-2'))
+        expect(view.topFixes[0]?.editorName).toBe('Beginner')
+    })
+
+    it('keeps the panel’s credit when the fix resolves to nothing', () => {
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    topFixes: [{ action: 'Cut the second half', editorName: 'Hater' }]
+                })
+            }),
+            []
+        )
+        expect(view.topFixes[0]?.findingId).toBeNull()
+        expect(view.topFixes[0]?.editorName).toBe('Hater')
+    })
+})
+
+describe('buildScorecardView staleness', () => {
+    it('flags a scorecard kept across a continuation', () => {
+        const view = buildScorecardView(panel({ status: 'waiting', resultStale: true }), [])
+        expect(view.stale).toBeTrue()
+        // The verdict and fixes are still shown: they describe findings that
+        // are all still on the note.
+        expect(view.verdict).not.toBeNull()
+    })
+
+    it('is never stale without a scorecard to be stale about', () => {
+        const view = buildScorecardView(
+            panel({ status: 'waiting', result: null, resultStale: true }),
+            []
+        )
+        expect(view.stale).toBeFalse()
     })
 })

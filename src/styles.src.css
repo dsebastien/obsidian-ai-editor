@@ -1176,6 +1176,13 @@
     overflow-wrap: anywhere;
 }
 
+/* The scorecard below was written before the round now in flight: kept
+   (its findings are all still on the note) but never presented as current. */
+.ai-editor-scorecard-stale {
+    @apply text-xs italic;
+    color: var(--text-muted);
+}
+
 .ai-editor-scorecard-rationale {
     @apply text-xs;
     color: var(--text-normal);

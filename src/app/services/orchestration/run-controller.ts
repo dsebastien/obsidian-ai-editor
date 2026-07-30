@@ -147,12 +147,28 @@ export interface PanelRunState {
     readonly panelName: string
     readonly status: PanelAggregationStatus
     /**
+     * Every member editor name of this run, in run order. The roster the
+     * scorecard is checked against: `memberVerdicts` is model-authored text,
+     * so a chairperson that invents or misspells a member must not be able to
+     * add a row for an editor that never ran (Business Rules #4 applied to the
+     * synthesis — only what is verifiably ours is rendered as structure).
+     */
+    readonly memberNames: readonly string[]
+    /**
      * Member editor names that did not produce a review, in run order. Filled
      * as soon as the members settle — so the partial nature of a panel is
      * visible whether or not the aggregation itself succeeds.
      */
     readonly missingMembers: readonly string[]
     readonly result: PanelResult | null
+    /**
+     * True when `result` was produced by an EARLIER attempt that a
+     * continuation ("Generate more") has since re-opened: the scorecard is
+     * still accurate about what it weighed, but a member is adding to its
+     * findings, so the synthesis is about to be rewritten. Never true for a
+     * retry — a retry destroys the member findings the scorecard points at.
+     */
+    readonly resultStale: boolean
     /** Redacted failure message when `status` is `error`. */
     readonly error: string | null
 }
@@ -264,8 +280,23 @@ export interface RunHandle {
      * live editor state, so an in-flight retry flips it back to false and the
      * status surfaces (rail spinner/Cancel, side panel, `Cancel review` gate,
      * CLI status) all report the run as in progress again.
+     *
+     * EDITOR-ONLY on purpose: the aggregation step only opens once this is
+     * true (`maybeAggregate`), and the CLI's first-settle semantics are about
+     * the member streams. Surfaces asking "is anything still running" must use
+     * `isBusy()` — a run whose scorecard is being written is NOT idle.
      */
     isSettled(): boolean
+    /**
+     * Whether the run still has backend work in flight — every editor plus the
+     * panel's aggregation step. This is what the busy surfaces gate on (Cancel
+     * command, `ai-editor cancel`, the rail's Cancel/spinner, the side-panel
+     * Review button, the daemon's dispatch probe): during aggregation the
+     * editors are all terminal, so `isSettled()` alone would hide Cancel,
+     * report `already-settled`, and let a new run cancel-replace a scorecard
+     * the user is paying for mid-request.
+     */
+    isBusy(): boolean
     subscribe(listener: () => void): () => void
     /** Aborts all in-flight editor streams; late events are discarded. */
     cancelRun(): void
@@ -407,9 +438,11 @@ interface InternalEditorState {
 interface InternalPanelState {
     readonly panelId: string
     readonly panelName: string
+    readonly memberNames: readonly string[]
     status: PanelAggregationStatus
     missingMembers: string[]
     result: PanelResult | null
+    resultStale: boolean
     error: string | null
 }
 
@@ -456,9 +489,14 @@ class ReviewRunHandle implements RunHandle {
             ? {
                   panelId: input.panel.panelId,
                   panelName: input.panel.panelName,
+                  // The roster, captured from the specs the run was started
+                  // with: the scorecard is reconciled against it rather than
+                  // trusting the names the chairperson writes back.
+                  memberNames: input.editors.map((spec) => spec.editorName),
                   status: 'waiting',
                   missingMembers: [],
                   result: null,
+                  resultStale: false,
                   error: null
               }
             : null
@@ -521,9 +559,11 @@ class ReviewRunHandle implements RunHandle {
             ? {
                   panelId: panel.panelId,
                   panelName: panel.panelName,
+                  memberNames: [...panel.memberNames],
                   status: panel.status,
                   missingMembers: [...panel.missingMembers],
                   result: panel.result,
+                  resultStale: panel.resultStale,
                   error: panel.error
               }
             : null
@@ -538,6 +578,17 @@ class ReviewRunHandle implements RunHandle {
             }
         }
         return true
+    }
+
+    isBusy(): boolean {
+        if (!this.isSettled()) {
+            return true
+        }
+        // The aggregation is a backend request like any other: while it is
+        // pending or in flight the run is still working, and every cancel /
+        // busy gate has to see that (see `isBusy` on the interface).
+        const panel = this.panel
+        return panel !== null && (panel.status === 'waiting' || panel.status === 'running')
     }
 
     subscribe(listener: () => void): () => void {
@@ -664,7 +715,9 @@ class ReviewRunHandle implements RunHandle {
         state.anchorBase = { text: freshText, batches: [] }
         state.continuing = false
         state.continuationError = null
-        this.reopenPanel()
+        // A retry DESTROYS this editor's findings, so the scorecard's top
+        // fixes point at spans that no longer exist: it goes with them.
+        this.reopenPanel({ keepResult: false })
         const attempt = new AbortController()
         state.attemptAbort = attempt
         // Not tracked by `settled` (already resolved after the initial
@@ -701,7 +754,12 @@ class ReviewRunHandle implements RunHandle {
         // New findings anchor against the text as it reads NOW — which is also
         // the text the continuation pass is about to be sent.
         state.anchorBase = { text: freshText, batches: [] }
-        this.reopenPanel()
+        // A continuation KEEPS every existing finding, so the scorecard stays
+        // accurate about what it weighed — it is merely about to be rewritten.
+        // Discarding it here would throw away a synthesis the user paid for
+        // and, if the extra round is then cancelled, leave the run with no
+        // scorecard at all while every finding it described is still on screen.
+        this.reopenPanel({ keepResult: true })
         const attempt = new AbortController()
         state.attemptAbort = attempt
         void this.consume(spec, state, attempt.signal)
@@ -710,13 +768,18 @@ class ReviewRunHandle implements RunHandle {
     }
 
     /**
-     * A member going back to work invalidates the scorecard: it named which
-     * members it weighed and what they found, and both are about to change.
-     * The pending/in-flight aggregation is dropped (epoch-guarded, so a late
-     * settle from it cannot write) and re-derived when the run settles again.
-     * No-op for a solo run.
+     * A member going back to work re-opens the aggregation step: it named which
+     * members it weighed and what they found, and that is about to change. The
+     * pending/in-flight attempt is dropped (epoch-guarded, so a late settle
+     * from it cannot write) and re-derived when the run settles again. No-op
+     * for a solo run.
+     *
+     * `keepResult` is the retry/continuation asymmetry: a retry removes the
+     * member's findings, so the scorecard that points at them is invalid and
+     * goes; a continuation only ADDS, so the existing scorecard survives —
+     * marked `resultStale` — until a newer one replaces it.
      */
-    private reopenPanel(): void {
+    private reopenPanel(options: { readonly keepResult: boolean }): void {
         const panel = this.panel
         if (!panel) {
             return
@@ -725,9 +788,17 @@ class ReviewRunHandle implements RunHandle {
         this.panelAbort?.abort()
         this.panelAbort = null
         panel.status = 'waiting'
+        panel.error = null
+        if (options.keepResult && panel.result !== null) {
+            // `missingMembers` is kept with it: those members failed and are
+            // not the ones continuing, so the retained scorecard keeps saying
+            // which of its rows were never weighed.
+            panel.resultStale = true
+            return
+        }
         panel.missingMembers = []
         panel.result = null
-        panel.error = null
+        panel.resultStale = false
     }
 
     startThreadTurn(input: StartThreadTurnInput): StartThreadTurnResult {
@@ -1226,7 +1297,14 @@ class ReviewRunHandle implements RunHandle {
                 return
             }
             panel.status = status
-            panel.result = result
+            if (result !== null) {
+                panel.result = result
+                panel.resultStale = false
+            }
+            // A failed or cancelled attempt leaves whatever scorecard was
+            // already there (only a continuation can have retained one) —
+            // the same rule `cancelRun` states: an already-produced scorecard
+            // stays inspectable.
             panel.error = error
             this.resolvePanelSettled()
             this.notify()

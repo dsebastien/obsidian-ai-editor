@@ -64,10 +64,24 @@ export interface ScorecardMember {
     readonly keyPoint: string | null
     /** True when the member failed and the panel could not weigh it. */
     readonly missing: boolean
+    /**
+     * True when the panel's scorecard never mentioned this member — it ran,
+     * but the synthesis says nothing about it. Distinct from `missing` (which
+     * is the plugin's own record that the member produced no review): one is
+     * the run's fact, the other is the chairperson's silence.
+     */
+    readonly unnamed: boolean
 }
 
 export interface ScorecardView {
     readonly panelName: string
+    /**
+     * True when the scorecard on screen was produced BEFORE the round
+     * currently in flight ("Generate more" on a member). It is kept rather
+     * than discarded — every finding it weighed is still there — but it must
+     * say so, or it reads as a statement about findings it never saw.
+     */
+    readonly stale: boolean
     /**
      * The panel's name with the `(panel)` marker (`entityName`). The scorecard
      * block is the one place in the side panel where a panel and its member
@@ -145,22 +159,35 @@ function statusOf(panel: PanelRunState): ScorecardStatus {
  */
 function membersOf(panel: PanelRunState): ScorecardMember[] {
     const missing = new Set(panel.missingMembers)
-    const listed = (panel.result?.memberVerdicts ?? []).map((entry) => ({
-        editorName: entry.editorName,
-        verdict: entry.verdict ?? null,
-        verdictLabel: entry.verdict === undefined ? null : verdictLabel(entry.verdict),
-        keyPoint: entry.keyPoint ?? null,
-        missing: missing.has(entry.editorName)
-    }))
+    // The roster is the run's own record of who ran. `missingMembers` is
+    // folded in because it is equally ours (the run derives it from member
+    // statuses), and a member that failed is a member.
+    const roster = [...new Set([...panel.memberNames, ...panel.missingMembers])]
+    const known = new Set(roster)
+    const listed = (panel.result?.memberVerdicts ?? [])
+        // Model-authored names, checked against the roster: an invented or
+        // misspelled member would otherwise render as a row for an editor that
+        // never ran AND hide the real one. Dropping it is what makes the list
+        // below complete — the real member reappears through the roster pass.
+        .filter((entry) => known.has(entry.editorName))
+        .map((entry) => ({
+            editorName: entry.editorName,
+            verdict: entry.verdict ?? null,
+            verdictLabel: entry.verdict === undefined ? null : verdictLabel(entry.verdict),
+            keyPoint: entry.keyPoint ?? null,
+            missing: missing.has(entry.editorName),
+            unnamed: false
+        }))
     const named = new Set(listed.map((entry) => entry.editorName))
-    const unlisted = panel.missingMembers
+    const unlisted = roster
         .filter((name) => !named.has(name))
         .map((name) => ({
             editorName: name,
             verdict: null,
             verdictLabel: null,
             keyPoint: null,
-            missing: true
+            missing: missing.has(name),
+            unnamed: true
         }))
     return [...listed, ...unlisted]
 }
@@ -182,11 +209,16 @@ function normalizeQuote(quote: string): string {
  * reveals the wrong span is worse than one that reveals none: the user would
  * act on it (Business Rules #4 — only exact or uniquely-contextualized matches
  * are actionable).
+ *
+ * Returns the CANDIDATE, not just its id, because the cross-member fallback
+ * means the finding a fix resolves to may belong to a different editor than
+ * the one the fix credits — and the row must then show the owner the user is
+ * about to be shown, not the model's claim.
  */
-export function resolveTopFixFinding(
+export function resolveTopFix(
     fix: { readonly editorName?: string | undefined; readonly quote?: string | undefined },
     candidates: readonly TopFixCandidate[]
-): FindingId | null {
+): TopFixCandidate | null {
     const quote = fix.quote
     if (quote === undefined || quote.length === 0) {
         return null
@@ -203,11 +235,11 @@ export function resolveTopFixFinding(
     for (const matches of passes) {
         const inMember = owned.find(matches)
         if (inMember) {
-            return inMember.id
+            return inMember
         }
         const anywhere = candidates.find(matches)
         if (anywhere) {
-            return anywhere.id
+            return anywhere
         }
     }
     return null
@@ -221,6 +253,7 @@ export function buildScorecardView(
     const result = panel.result
     return {
         panelName: panel.panelName,
+        stale: panel.resultStale && result !== null,
         panelLabel: entityName('panel', panel.panelName),
         status: statusOf(panel),
         verdict:
@@ -229,12 +262,19 @@ export function buildScorecardView(
                 : { verdict: result.recommendation, label: verdictLabel(result.recommendation) },
         rationale: result?.rationale ?? null,
         members: membersOf(panel),
-        topFixes: (result?.topFixes ?? []).map((fix, index) => ({
-            rank: index + 1,
-            action: fix.action,
-            editorName: fix.editorName ?? null,
-            findingId: resolveTopFixFinding(fix, candidates)
-        })),
+        topFixes: (result?.topFixes ?? []).map((fix, index) => {
+            const resolved = resolveTopFix(fix, candidates)
+            return {
+                rank: index + 1,
+                action: fix.action,
+                // The RESOLVED owner wins over the credited one: the row is
+                // about to reveal that finding, so crediting anyone else is
+                // a provenance claim the click contradicts. The model's name
+                // stands only when nothing resolved (a structural fix).
+                editorName: resolved?.editorName ?? fix.editorName ?? null,
+                findingId: resolved?.id ?? null
+            }
+        }),
         dissent: result?.dissent ?? [],
         missingMembers: panel.missingMembers
     }
