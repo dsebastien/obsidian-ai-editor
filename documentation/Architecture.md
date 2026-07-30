@@ -28,7 +28,7 @@ Dependency direction: `ui`/`commands` → `services` → `domain` → `types`. T
 4. Each enabled editor's backend runs an `Operation` (see contract in `src/app/domain/operations/`). Backends emit `OperationEvent`s: findings (as they complete, when streaming is verified for the provider), progress, exactly one terminal event (result/error), all tagged with the run id.
 5. Findings are anchored against the snapshot (exact → normalized → contextual; ambiguous/fuzzy = display-only) and projected into CM6 decorations. User edits remap positions via change-mapping; edits intersecting a finding's range mark it stale.
 6. Triage: cards, diffs, threads, keyboard commands, bulk operations. Accept re-verifies the precondition text, applies as a single undoable transaction.
-7. Panel runs add an aggregation operation over member results, producing a typed `PanelResult` scorecard.
+7. Panel runs add an aggregation operation over member results, producing a typed `PanelResult` scorecard. A run is "busy" until BOTH its editors and its aggregation settle (`RunHandle.isBusy()`; `isSettled()` is editor-only and gates the aggregation itself). The scorecard is model-authored text, so both renderers (side panel, CLI) reconcile it through `domain/panels/scorecard-model.ts` — member names against the run's roster, a top fix's credit against the finding it actually resolves to.
 
 ## Backends
 
