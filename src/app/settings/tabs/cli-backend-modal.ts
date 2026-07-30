@@ -108,6 +108,16 @@ export class CliBackendModal extends Modal {
         })
 
         new Setting(contentEl)
+            .setName('Tool')
+            .setDesc(
+                'Fixed once the backend exists: the tool decides the invocation, the output protocol and what consent can grant. Add a second backend to use the other one.'
+            )
+            .addText((text) => {
+                text.setValue(backendKindLabel(this.draft))
+                text.setDisabled(true)
+            })
+
+        new Setting(contentEl)
             .setName('Label')
             .setDesc('How this backend appears in dropdowns.')
             .addText((text) => {
