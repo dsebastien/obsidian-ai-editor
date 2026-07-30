@@ -353,6 +353,39 @@ export function augmentSystemPrompt(basePrompt: string, instruction: string): st
     return [basePrompt, block].filter((segment) => segment.length > 0).join('\n\n')
 }
 
+/**
+ * Appends a panel's charter to a member editor's composed system prompt (plan
+ * M6). Same seam as `augmentSystemPrompt`, different framing and a different
+ * author: the charter is the PANEL's shared brief — "you are reviewing as part
+ * of the Pre-publish Review panel; weigh the reader's first pass double" —
+ * while an instruction is the user's ask for one run.
+ *
+ * It lands BEFORE the instruction so the per-run ask stays last (most salient),
+ * and it explicitly does not release the member from its own persona: a panel
+ * that homogenized its members would be four copies of one editor, which is the
+ * opposite of why panels exist. Like every other prompt augmentation it can
+ * only direct WHAT is weighed — findings still come back through the tool
+ * schema and validate through the same Zod parsing.
+ *
+ * Blank charters leave the prompt untouched.
+ */
+export function augmentPanelCharter(
+    basePrompt: string,
+    panelName: string,
+    charter: string
+): string {
+    const trimmed = charter.trim()
+    if (trimmed.length === 0) {
+        return basePrompt
+    }
+    const block = [
+        `You are reviewing as one member of the "${panelName}" panel: other editors are reviewing this same document independently, and a chairperson will synthesize all of your results into one scorecard.`,
+        'The panel charter below is the shared brief for that review. It directs what the panel weighs; it does not replace your own mandate, and it does not change the required output format:',
+        `<panel-charter>\n${trimmed}\n</panel-charter>`
+    ].join('\n')
+    return [basePrompt, block].filter((segment) => segment.length > 0).join('\n\n')
+}
+
 // ---------------------------------------------------------------------------
 // The one prompt-build entry point
 // ---------------------------------------------------------------------------
@@ -371,6 +404,16 @@ export interface BuildEditorPromptInput {
      * assembled.
      */
     readonly instructionText?: string
+    /**
+     * The panel this editor is running as a member of (plan M6). Its resolved
+     * charter is appended via `augmentPanelCharter`, before the instruction.
+     * Absent for solo runs.
+     */
+    readonly panelCharter?: {
+        readonly panelName: string
+        /** Already resolved from the panel's `PromptSource` (charter text). */
+        readonly text: string
+    }
 }
 
 export interface EditorPrompt {
@@ -407,11 +450,20 @@ export async function buildEditorPrompt(input: BuildEditorPromptInput): Promise<
         noteText: input.noteText
     })
     const composed = composeSystemPrompt(context)
+    // Charter first, instruction last: the panel brief is standing context for
+    // every run of that panel, the instruction is what the user asked for THIS
+    // time, and the last block is the most salient one.
+    const charter = input.panelCharter
+    const withCharter = charter
+        ? augmentPanelCharter(composed, charter.panelName, charter.text)
+        : composed
     const instructionText = input.instructionText ?? ''
     return {
         context,
         systemPrompt:
-            instructionText.length > 0 ? augmentSystemPrompt(composed, instructionText) : composed
+            instructionText.length > 0
+                ? augmentSystemPrompt(withCharter, instructionText)
+                : withCharter
     }
 }
 

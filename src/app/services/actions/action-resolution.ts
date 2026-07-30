@@ -7,8 +7,7 @@ import type {
     PluginSettingsV1,
     PromptSource
 } from '../../domain/settings/settings-schema'
-import { FOLLOWED_LINKS_CAP } from '../context/context-assembler'
-import { isExcluded } from '../context/exclusions'
+import { resolvePromptSourceText } from '../context/prompt-source-text'
 import type { VaultReader } from '../context/vault-reader.intf'
 import { resolveApiBackend } from '../review-service'
 
@@ -290,74 +289,19 @@ export const CUSTOM_INSTRUCTION_MAX_CHARS = 10_000
 
 /**
  * Resolves a custom action's instruction prompt source to the instruction
- * string the operation carries: the direct text first, then each referenced
- * note inlined as a delimited block, resolved fresh at dispatch time
- * (Business Rules #8). With `followLinks` on, the notes each referenced note
- * links to follow it — depth 1, embeds included, in link order, capped at
- * `FOLLOWED_LINKS_CAP` per referenced note, exactly like context assembly
- * (`assembleContext`), so one toggle means one thing plugin-wide.
- *
- * Excluded notes are never read and excluded notes are never followed
- * (Business Rules #7); missing notes are skipped silently; every note is
- * inlined at most once.
- *
- * The result is truncated to `CUSTOM_INSTRUCTION_MAX_CHARS` (the operation
- * contract's instruction cap). The direct text comes first precisely so that
- * cap can only ever cut reference material, never the directive itself.
+ * string the operation carries, through the shared `PromptSource` resolution
+ * (`resolvePromptSourceText`): direct text first, referenced notes inlined as
+ * `<instruction-note>` blocks, read fresh at dispatch time (Business Rules
+ * #8), follow-links honored, exclusions absolute (#7), truncated to
+ * `CUSTOM_INSTRUCTION_MAX_CHARS`.
  */
 export async function resolveCustomInstruction(
     source: PromptSource,
     vault: VaultReader,
     behavior: BehaviorSettings
 ): Promise<string> {
-    const seen = new Set<string>()
-    const eligible = (path: string): boolean => {
-        if (seen.has(path)) {
-            return false
-        }
-        seen.add(path)
-        return !isExcluded(path, vault.getNoteMetadata(path), behavior)
-    }
-
-    // Candidate paths first (exclusions decided before any content is read),
-    // each referenced note immediately followed by its own links.
-    const paths: string[] = []
-    for (const path of source.notePaths) {
-        if (!eligible(path)) {
-            continue
-        }
-        paths.push(path)
-        if (!source.followLinks) {
-            continue
-        }
-        let followed = 0
-        for (const linked of vault.getOutgoingLinks(path)) {
-            if (followed >= FOLLOWED_LINKS_CAP) {
-                break
-            }
-            if (!eligible(linked)) {
-                continue
-            }
-            paths.push(linked)
-            followed++
-        }
-    }
-
-    const segments: string[] = []
-    const text = source.text.trim()
-    if (text.length > 0) {
-        segments.push(text)
-    }
-    for (const path of paths) {
-        const content = await vault.readNote(path)
-        if (content === null) {
-            continue
-        }
-        const safePath = path.replace(/"/g, "'")
-        segments.push(`<instruction-note path="${safePath}">\n${content}\n</instruction-note>`)
-    }
-    const joined = segments.join('\n\n')
-    return joined.length > CUSTOM_INSTRUCTION_MAX_CHARS
-        ? joined.slice(0, CUSTOM_INSTRUCTION_MAX_CHARS)
-        : joined
+    return resolvePromptSourceText(source, vault, behavior, {
+        blockTag: 'instruction-note',
+        maxChars: CUSTOM_INSTRUCTION_MAX_CHARS
+    })
 }

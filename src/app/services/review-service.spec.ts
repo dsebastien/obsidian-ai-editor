@@ -11,7 +11,9 @@ import { RunController } from './orchestration/run-controller'
 import { reviewGate } from './reviewability'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
+    augmentPanelCharter,
     augmentSystemPrompt,
+    buildEditorPrompt,
     composeSystemPrompt,
     countWords,
     createEditorSpec,
@@ -334,6 +336,72 @@ describe('augmentSystemPrompt', () => {
         const prompt = augmentSystemPrompt('', 'focus here')
         expect(prompt).toStartWith('The user asked you')
         expect(prompt).toContain('focus here')
+    })
+})
+
+// ---------------------------------------------------------------------------
+// augmentPanelCharter (plan M6)
+// ---------------------------------------------------------------------------
+
+describe('augmentPanelCharter', () => {
+    it('appends the charter as a framed block naming the panel', () => {
+        const prompt = augmentPanelCharter('Be harsh.', 'Pre-publish Review', 'Weigh the reader.')
+        expect(prompt).toStartWith('Be harsh.')
+        expect(prompt).toContain('<panel-charter>\nWeigh the reader.\n</panel-charter>')
+        expect(prompt).toContain('"Pre-publish Review" panel')
+    })
+
+    it('keeps the member in its own lane — a panel must not homogenize members', () => {
+        const prompt = augmentPanelCharter('Be harsh.', 'Panel', 'Weigh the reader.')
+        expect(prompt).toContain('does not replace your own mandate')
+        expect(prompt).toContain('does not change the required output format')
+    })
+
+    it('trims the charter and leaves the prompt untouched when blank', () => {
+        expect(augmentPanelCharter('Be harsh.', 'Panel', '  \n\t ')).toBe('Be harsh.')
+        expect(augmentPanelCharter('Be harsh.', 'Panel', '')).toBe('Be harsh.')
+        expect(augmentPanelCharter('Be harsh.', 'Panel', '  weigh  ')).toContain(
+            '<panel-charter>\nweigh\n</panel-charter>'
+        )
+    })
+})
+
+// ---------------------------------------------------------------------------
+// buildEditorPrompt — the one prompt-build entry point (plan §4d, M6)
+// ---------------------------------------------------------------------------
+
+describe('buildEditorPrompt', () => {
+    const promptInput = (extra: Record<string, unknown>) => ({
+        editor: makeEditor({ prompt: { text: 'Persona.', notePaths: [], followLinks: false } }),
+        settings: makeSettings(),
+        vault: new FakeVault(),
+        notePath: 'Notes/Test.md',
+        noteText: DOC_TEXT,
+        ...extra
+    })
+
+    it('puts the charter after the persona and the instruction last', async () => {
+        const built = await buildEditorPrompt(
+            promptInput({
+                panelCharter: { panelName: 'Pre-publish Review', text: 'Weigh the reader.' },
+                instructionText: 'Focus on the opening.'
+            })
+        )
+
+        const personaAt = built.systemPrompt.indexOf('Persona.')
+        const charterAt = built.systemPrompt.indexOf('<panel-charter>')
+        const instructionAt = built.systemPrompt.indexOf('<user-instruction>')
+        expect(personaAt).toBeGreaterThanOrEqual(0)
+        expect(charterAt).toBeGreaterThan(personaAt)
+        expect(instructionAt).toBeGreaterThan(charterAt)
+    })
+
+    it('adds nothing for a member of a panel with a blank charter', async () => {
+        const withCharter = await buildEditorPrompt(
+            promptInput({ panelCharter: { panelName: 'Panel', text: '   ' } })
+        )
+        const solo = await buildEditorPrompt(promptInput({}))
+        expect(withCharter.systemPrompt).toBe(solo.systemPrompt)
     })
 })
 

@@ -148,12 +148,19 @@ describe('seedStarterPack', () => {
         expect(memberNames).toEqual([...STARTER_PANEL_MEMBER_NAMES])
     })
 
-    it('writes a charter that produces verdicts, top fixes, and dissent', () => {
+    it('writes a charter that briefs the members instead of scripting the chairperson', () => {
         const seeded = seedStarterPack(freshSettings())
         const charter = seeded.panels[0]?.charter.text ?? ''
-        expect(charter).toMatch(/publish, needs-work, or kill/)
-        expect(charter).toMatch(/[Tt]op fixes/)
-        expect(charter).toMatch(/[Dd]issent/)
+        // The charter reaches every member's prompt AND the aggregation call,
+        // so it must state what the panel weighs...
+        expect(charter).toMatch(/ready to publish/)
+        expect(charter).toMatch(/load-bearing objection outweighs/)
+        // ...and must NOT address one member as if it were the whole panel,
+        // nor re-specify the output the operation contract already dictates.
+        expect(charter).not.toMatch(/You are the chairperson/)
+        expect(charter).not.toMatch(/missing-members list/)
+        // A panel must not homogenize its members (plan M6).
+        expect(charter).toMatch(/keeps its own mandate/)
     })
 
     it('binds the default action verbs to the matching personas', () => {
