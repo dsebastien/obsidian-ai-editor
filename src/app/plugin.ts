@@ -9,6 +9,12 @@ import type { SettingsFacade, SettingsListener } from './settings/settings-facad
 import { AIEditorPluginSettingTab } from './settings/settings-tab'
 import { RunController } from './services/orchestration/run-controller'
 import { TransformController } from './services/orchestration/transform-run'
+import {
+    commentStoreLoadNotice,
+    commentStoreLoadSummary
+} from './services/comments/comment-repository'
+import type { MarginCommentRepository } from './services/comments/comment-repository'
+import { createCommentRepository, registerCommentStoreHooks } from './ui/comment-store'
 import { findingCardExtension } from './ui/editor/finding-card'
 import { findingDecorationsField } from './ui/editor/finding-decorations'
 import { transformPreviewField } from './ui/editor/transform-preview'
@@ -65,11 +71,15 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
     private daemonController: DaemonController | null = null
 
+    /** Durable margin comments (plan §5.5 / M8); sidecar, not `data.json`. */
+    private commentRepository: MarginCommentRepository | null = null
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
         registerWhatsNewView(this)
         await this.loadPluginSettings()
+        await this.loadMarginComments()
 
         this.addSettingTab(new AIEditorPluginSettingTab(this.app, this))
 
@@ -250,7 +260,12 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     override onunload(): void {
-        // Daemon timers first (no NEW timer can fire mid-teardown; a dispatch
+        // Durable comments first: `flush` cancels the deferred write and
+        // performs it now. `onunload` is synchronous in Obsidian, so this can
+        // only be fire-and-forget — which is why the debounce is short.
+        void this.commentRepository?.flush()
+        this.commentRepository = null
+        // Daemon timers next (no NEW timer can fire mid-teardown; a dispatch
         // already mid-flight in the review pipeline aborts via `abortWhen`'s
         // disposed check before it could start a run), then
         // rails/subscriptions, then abort every in-flight backend request so
@@ -349,6 +364,24 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             await this.persistSettings()
         }
         log('Settings loaded', 'debug')
+    }
+
+    /**
+     * Reads the durable margin-comment sidecar and keeps it following the
+     * vault. Never fatal: an unreadable store is preserved and reported, and
+     * the plugin loads with an empty one rather than not at all.
+     */
+    private async loadMarginComments(): Promise<void> {
+        const repository = createCommentRepository(this)
+        this.commentRepository = repository
+        registerCommentStoreHooks(this, repository)
+        const report = await repository.load()
+        log(`Margin comments: ${commentStoreLoadSummary(report)}`, 'debug')
+        const notice = commentStoreLoadNotice(report)
+        if (notice !== null) {
+            log(notice, 'warn')
+            new Notice(notice)
+        }
     }
 
     private async persistSettings(): Promise<void> {
