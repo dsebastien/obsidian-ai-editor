@@ -15,7 +15,8 @@ Entities and their relationships. Authoritative shapes live in code: `src/app/do
 
 - **DocumentSnapshot** — text + content hash + id, pinned per run. All quotes/anchors are relative to a snapshot.
 - **ReviewRun** — one user-triggered execution: target (note/selection), requested editors/panel, per-editor status, findings, panel result. All events carry the run id; late events from cancelled runs are discarded.
-- **Finding** — one observation by one editor: verbatim quote, critique, optional suggested replacement + rationale, severity, confidence, evidence entries (sources), anchor state (anchored / unanchored / stale / ambiguous), status (open / preview / accepted / rejected / dismissed / superseded / error), per-finding thread (push-back turns).
+- **Finding** — one observation by one editor: verbatim quote, critique, optional suggested replacement + rationale, severity, confidence, evidence entries (sources), anchor state (anchored / unanchored / stale / ambiguous), status (open / preview / accepted / rejected / dismissed / superseded / error), per-finding thread.
+- **Finding thread** — session-scoped push-back conversation on ONE finding: `thread` holds COMPLETED exchanges only (strictly alternating user/editor, capped at 6), while the in-flight or failed turn is held separately so no half exchange ever enters the history. The editor's answer either withdraws the finding (`conceded` → dismissed) or holds it, updating critique/suggestion IN PLACE (the revised suggestion is re-checked against the anchor, never fuzzy-relocated).
 - **PanelResult** — member verdicts (publish / needs-work / kill) with attribution, aggregated recommendation, top fixes, dissent, partial-failure notes.
 
 ## Persisted runtime entities (sidecar repository)
