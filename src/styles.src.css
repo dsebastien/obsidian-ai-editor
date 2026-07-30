@@ -308,8 +308,11 @@
     cursor: pointer;
 }
 
+/* `max-width` is set in code from the pane box (see layout-mode.ts) so a card
+   in a narrow split never spills over the neighbouring document — it wins over
+   the preferred width below. */
 .ai-editor-finding-card {
-    @apply fixed flex flex-col overflow-y-auto rounded;
+    @apply fixed flex min-w-0 flex-col overflow-y-auto rounded;
     z-index: var(--layer-menu, 25);
     width: min(560px, 94vw);
     max-height: 60vh;
@@ -386,8 +389,10 @@
     overflow-wrap: anywhere;
 }
 
+/* Wraps rather than overflows: a card clamped to a narrow pane can be too
+   narrow for the action row on one line. */
 .ai-editor-finding-card-actions {
-    @apply flex items-center justify-end gap-2;
+    @apply flex flex-wrap items-center justify-end gap-2;
 }
 
 /* Push-back thread: compact message list, scrollable, newest at the bottom
@@ -442,8 +447,10 @@
     @apply flex items-center gap-2;
 }
 
+/* `min-w-0`: a text input's default intrinsic width would otherwise push the
+   Send button out of a card clamped to a narrow pane. */
 .ai-editor-finding-card-pushback-input {
-    @apply w-full;
+    @apply w-full min-w-0;
 }
 
 .ai-editor-finding-card-pushback-send {
@@ -494,6 +501,14 @@
     top: 8px;
     right: 18px;
     z-index: var(--layer-popover, 30);
+}
+
+/* Narrow pane (plan M4 adaptive layout): hug the edge — in a ~500px pane every
+   reclaimed pixel is a pixel of text. Toggled by the review controller from
+   the pane ResizeObserver. */
+.ai-editor-rail-wrapper-compact {
+    top: 4px;
+    right: 6px;
 }
 
 .ai-editor-hidden {
@@ -637,6 +652,47 @@
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
     color: var(--text-normal);
+}
+
+/* ----------------------------------------
+   Compact rail (narrow panes, plan M4)
+   The button loses its label for a glyph
+   (the tooltip carries the wording plus the
+   nudge towards the side panel) and every
+   control shrinks — the rail stays a
+   launcher, the side panel is where a narrow
+   pane's findings are read.
+   ---------------------------------------- */
+
+.ai-editor-rail-compact {
+    @apply gap-1.5 p-1;
+}
+
+.ai-editor-rail-compact .ai-editor-rail-button {
+    @apply px-1 py-0 text-xs;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+}
+
+.ai-editor-rail-compact .ai-editor-rail-dots {
+    @apply gap-1;
+}
+
+.ai-editor-rail-compact .ai-editor-rail-dot,
+.ai-editor-rail-compact .ai-editor-rail-retry {
+    width: 12px;
+    height: 12px;
+}
+
+.ai-editor-rail-compact .ai-editor-rail-retry {
+    font-size: 9px;
+}
+
+.ai-editor-rail-compact .ai-editor-rail-badge {
+    top: -6px;
+    right: -7px;
+    font-size: 8px;
 }
 
 /* ========================================
@@ -796,8 +852,10 @@
     color: var(--text-muted);
 }
 
+/* Wraps in narrow panes: the widget is as wide as the editor content, so
+   Accept + Reject + the keyboard hint do not always fit on one line. */
 .ai-editor-transform-preview-actions {
-    @apply flex items-center gap-2;
+    @apply flex flex-wrap items-center gap-2;
 }
 
 .ai-editor-transform-preview-hint {

@@ -75,13 +75,15 @@ export class PersonaRail {
     render(state: RailState): void {
         const viewModel = buildRailViewModel(state)
         this.rootEl.replaceChildren()
+        // Narrow pane: icon-only, tighter spacing (plan M4 adaptive layout).
+        this.rootEl.classList.toggle('ai-editor-rail-compact', viewModel.compact)
 
         const button = this.doc.createElement('button')
         button.classList.add('ai-editor-rail-button')
         if (viewModel.button.action === 'cancel') {
             button.classList.add('ai-editor-rail-button-cancel')
         }
-        button.textContent = viewModel.button.label
+        button.textContent = viewModel.button.text
         this.applyTooltip(button, viewModel.button.ariaLabel)
         button.disabled = viewModel.button.disabled
         button.addEventListener('click', () => {

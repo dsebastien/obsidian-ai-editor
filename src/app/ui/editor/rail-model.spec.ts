@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
     DAEMON_ARMED_TITLE,
+    NARROW_PANEL_HINT,
     buildRailViewModel,
     chipClickAction,
     railErrorReason
@@ -44,6 +45,50 @@ describe('buildRailViewModel', () => {
             expect(vm.button.action).toBe('review')
             expect(vm.button.disabled).toBe(true)
             expect(vm.dots).toEqual([])
+        })
+
+        it('shows the label as text in a wide pane', () => {
+            expect(buildRailViewModel(state()).button.text).toBe('Review')
+            expect(buildRailViewModel(state({ running: true })).button.text).toBe('Cancel')
+        })
+    })
+
+    describe('narrow pane (compact form)', () => {
+        it('is not compact by default', () => {
+            const vm = buildRailViewModel(state())
+            expect(vm.compact).toBe(false)
+            expect(vm.button.ariaLabel).not.toContain(NARROW_PANEL_HINT)
+        })
+
+        it('replaces the button label with a glyph, keeping the semantics', () => {
+            const review = buildRailViewModel(state({ narrow: true }))
+            expect(review.compact).toBe(true)
+            expect(review.button.label).toBe('Review')
+            expect(review.button.action).toBe('review')
+            expect(review.button.text).not.toBe('Review')
+            expect(review.button.text.length).toBeGreaterThan(0)
+
+            const cancel = buildRailViewModel(state({ narrow: true, running: true }))
+            expect(cancel.button.label).toBe('Cancel')
+            expect(cancel.button.text).not.toBe('Cancel')
+            expect(cancel.button.text).not.toBe(review.button.text)
+        })
+
+        it('nudges towards the side panel in the button tooltip', () => {
+            const vm = buildRailViewModel(state({ narrow: true }))
+            expect(vm.button.ariaLabel).toContain('Review this note')
+            expect(vm.button.ariaLabel).toContain(NARROW_PANEL_HINT)
+        })
+
+        it('keeps the disabled rule and the chips unchanged', () => {
+            const wide = buildRailViewModel(state({ editors: [editor({ findingCount: 3 })] }))
+            const narrow = buildRailViewModel(
+                state({ narrow: true, editors: [editor({ findingCount: 3 })] })
+            )
+            expect(narrow.dots).toEqual(wide.dots)
+            expect(buildRailViewModel(state({ narrow: true, editors: [] })).button.disabled).toBe(
+                true
+            )
         })
     })
 

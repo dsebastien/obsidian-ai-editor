@@ -2,7 +2,7 @@
  * Minimal review card — the click-a-highlight interaction.
  *
  * Clicking a finding highlight opens ONE floating card per editor view,
- * positioned near the clicked span (viewport-clamped), showing every finding
+ * positioned near the clicked span (clamped into the pane), showing every finding
  * that covers the click position as stacked sections: editor identity
  * (color + name), severity, critique, the quoted text, a plain old/new
  * suggestion preview, Accept / Dismiss, and the per-finding push-back thread
@@ -13,7 +13,8 @@
  *   injected {@link FindingLookup} (wired by the review controller), so this
  *   module never touches the orchestration layer directly.
  * - Popout-safe: every element is created via the owning view's
- *   `ownerDocument`, and viewport clamping uses that document's window.
+ *   `ownerDocument`, and the clamping box comes from that document's window
+ *   intersected with the view's own pane rect (`layout-mode.ts`).
  * - Business Rules #2/#3: Accept is only offered when a suggestion exists and
  *   only applied when the lookup's precondition check (FindingStore) passes
  *   against the CURRENT document text; the replacement is dispatched as a
@@ -33,6 +34,8 @@ import type { Severity } from '../../domain/operations/contract'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
 import type { ThreadBeginFailure, ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
 import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
+import { cardMaxWidth, paneCardViewport } from './layout-mode'
+import type { LayoutBox } from './layout-mode'
 
 // ---------------------------------------------------------------------------
 // Data contract with the review controller (injected, never imported)
@@ -602,7 +605,13 @@ class FindingCardPlugin implements PluginValue {
         }
     }
 
-    /** Positions the (already attached) card near the anchor, clamped. */
+    /**
+     * Positions the (already attached) card near the anchor, clamped into the
+     * PANE (plan M4 adaptive layout) rather than the whole window: in a split
+     * or a narrow pane a window-clamped card spills over the document next to
+     * it. The width cap is applied before measuring — the measurement has to
+     * be of the box that will actually be positioned.
+     */
     private positionCard(): void {
         const card = this.cardEl
         if (!card) {
@@ -612,12 +621,15 @@ class FindingCardPlugin implements PluginValue {
         if (!win) {
             return
         }
-        const viewport: CardViewport = {
+        const windowBox: LayoutBox = {
             left: VIEWPORT_PADDING,
             top: VIEWPORT_PADDING,
             right: win.innerWidth - VIEWPORT_PADDING,
             bottom: win.innerHeight - VIEWPORT_PADDING
         }
+        const paneRect = this.view.dom.getBoundingClientRect()
+        const viewport: CardViewport = paneCardViewport(paneRect, windowBox, VIEWPORT_PADDING)
+        card.style.maxWidth = `${cardMaxWidth(viewport)}px`
         const position = computeCardPosition(
             this.anchor,
             { width: card.offsetWidth, height: card.offsetHeight },

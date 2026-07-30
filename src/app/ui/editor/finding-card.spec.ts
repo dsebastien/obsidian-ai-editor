@@ -9,6 +9,8 @@ import {
     threadView
 } from './finding-card'
 import type { CardAnchorRect, CardSize, CardViewport, FindingSpanCandidate } from './finding-card'
+import { cardMaxWidth, paneCardViewport } from './layout-mode'
+import type { LayoutBox } from './layout-mode'
 
 const viewport: CardViewport = { left: 8, top: 8, right: 1008, bottom: 708 }
 const card: CardSize = { width: 300, height: 200 }
@@ -59,6 +61,41 @@ describe('computeCardPosition', () => {
         const wideCard: CardSize = { width: 5_000, height: 200 }
         const position = computeCardPosition(anchor(), wideCard, viewport)
         expect(position.left).toBe(viewport.left)
+    })
+})
+
+describe('card positioning inside a pane (adaptive layout)', () => {
+    // What `positionCard` composes: the window box, the view's pane rect, the
+    // width cap, then the position.
+    const windowBox: LayoutBox = { left: 8, top: 8, right: 1_592, bottom: 892 }
+    const rightPane: LayoutBox = { left: 800, top: 40, right: 1_600, bottom: 900 }
+
+    it('keeps a card anchored in a split inside that split', () => {
+        const box = paneCardViewport(rightPane, windowBox, 8)
+        const size: CardSize = { width: cardMaxWidth(box), height: 200 }
+        // Anchor near the pane's left edge: without the pane box the card
+        // would be left-aligned at 810 and run to 1370 — fine. The real
+        // hazard is the RIGHT edge, so also check a late anchor.
+        const early = computeCardPosition({ left: 810, top: 100, bottom: 120 }, size, box)
+        expect(early.left).toBeGreaterThanOrEqual(box.left)
+        expect(early.left + size.width).toBeLessThanOrEqual(box.right)
+
+        const late = computeCardPosition({ left: 1_500, top: 100, bottom: 120 }, size, box)
+        expect(late.left).toBe(box.right - size.width)
+        expect(late.left).toBeGreaterThanOrEqual(rightPane.left)
+    })
+
+    it('caps the card width to the pane, not the window', () => {
+        const box = paneCardViewport(rightPane, windowBox, 8)
+        expect(cardMaxWidth(box)).toBe(1_592 - 808)
+        expect(cardMaxWidth(box)).toBeLessThan(windowBox.right - windowBox.left)
+    })
+
+    it('never places a card above the pane top', () => {
+        const box = paneCardViewport(rightPane, windowBox, 8)
+        const tall: CardSize = { width: 300, height: 700 }
+        const position = computeCardPosition({ left: 900, top: 500, bottom: 520 }, tall, box)
+        expect(position.top).toBeGreaterThanOrEqual(box.top)
     })
 })
 

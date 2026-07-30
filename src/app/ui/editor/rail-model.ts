@@ -44,10 +44,22 @@ export interface RailState {
      * a small dot with a tooltip, no layout churn.
      */
     readonly daemonArmed?: boolean
+    /**
+     * Narrow pane (plan M4 adaptive layout): the rail drops the button label
+     * and shrinks, so the tooltips carry everything the text said. Driven by
+     * the pane `ResizeObserver` through `nextLayoutMode` (layout-mode.ts).
+     */
+    readonly narrow?: boolean
 }
 
 export interface RailButtonViewModel {
+    /** Semantic label — what the button does, regardless of layout. */
     readonly label: 'Review' | 'Cancel'
+    /**
+     * What the button actually shows: the label when the pane is wide, a
+     * glyph when it is narrow (the accessible name stays `ariaLabel`).
+     */
+    readonly text: string
     readonly action: 'review' | 'cancel'
     readonly ariaLabel: string
     readonly disabled: boolean
@@ -75,6 +87,8 @@ export interface RailViewModel {
     readonly dots: readonly RailDotViewModel[]
     /** Non-null while a daemon refresh is armed for this note. */
     readonly daemon: { readonly title: string } | null
+    /** True in the narrow-pane form (icon-only, tighter spacing). */
+    readonly compact: boolean
 }
 
 /**
@@ -113,6 +127,25 @@ export function chipClickAction(
 
 /** Tooltip/aria text of the daemon armed indicator. */
 export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after you pause editing'
+
+/**
+ * Glyphs the compact button falls back to. Text glyphs on purpose: the rail
+ * is Obsidian-free DOM (no `setIcon`) and must not use innerHTML — same
+ * reasoning as the retry chip's `↻`.
+ */
+const COMPACT_BUTTON_GLYPHS: Readonly<Record<'review' | 'cancel', string>> = {
+    review: '▶',
+    cancel: '■'
+}
+
+/**
+ * Appended to the compact button's tooltip: in a narrow pane the rail is a
+ * launcher, not a reading surface — the side panel is where the findings and
+ * summaries are legible (plan M2/M4: the panel IS the narrow-pane fallback).
+ * Only the button carries it; repeating it on every chip would be noise, and
+ * the chip tooltips already carry name + status.
+ */
+export const NARROW_PANEL_HINT = 'narrow pane — open "AI Editor: Review" for the full list'
 
 const BADGE_MAX = 99
 
@@ -191,22 +224,29 @@ function buildDot(editor: RailEditorState): RailDotViewModel {
 
 /** Computes the full rail view model from the current run/editor state. */
 export function buildRailViewModel(state: RailState): RailViewModel {
-    const button: RailButtonViewModel = state.running
+    const compact = state.narrow === true
+    const base = state.running
         ? {
-              label: 'Cancel',
-              action: 'cancel',
+              label: 'Cancel' as const,
+              action: 'cancel' as const,
               ariaLabel: 'Cancel the running review',
               disabled: false
           }
         : {
-              label: 'Review',
-              action: 'review',
+              label: 'Review' as const,
+              action: 'review' as const,
               ariaLabel: 'Review this note with the enabled editors',
               disabled: state.editors.length === 0
           }
+    const button: RailButtonViewModel = {
+        ...base,
+        text: compact ? COMPACT_BUTTON_GLYPHS[base.action] : base.label,
+        ariaLabel: compact ? `${base.ariaLabel} (${NARROW_PANEL_HINT})` : base.ariaLabel
+    }
     return {
         button,
         dots: state.editors.map(buildDot),
-        daemon: state.daemonArmed === true ? { title: DAEMON_ARMED_TITLE } : null
+        daemon: state.daemonArmed === true ? { title: DAEMON_ARMED_TITLE } : null,
+        compact
     }
 }

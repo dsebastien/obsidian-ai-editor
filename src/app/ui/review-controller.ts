@@ -66,6 +66,8 @@ import {
     setFindingsEffect
 } from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
+import { nextLayoutMode } from './editor/layout-mode'
+import type { PaneLayoutMode } from './editor/layout-mode'
 import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
 import type { TransformPreviewSpec } from './editor/transform-preview'
@@ -220,6 +222,15 @@ interface ViewGlue {
     chipCycle: { editorId: string; findingId: string } | null
     /** Auto-clear timer of the ~2 s chip-click highlight emphasis. */
     emphasisTimer: number | null
+    /**
+     * Adaptive layout (plan M4): how much room this pane gives the chrome.
+     * Driven by `paneObserver` through `nextLayoutMode` (hysteresis lives
+     * there); consumed by the rail render. The finding card measures its own
+     * pane at open time, so it needs nothing from here.
+     */
+    layout: PaneLayoutMode
+    /** Pane-width observer; disconnected when the glue is destroyed. */
+    paneObserver: ResizeObserver | null
 }
 
 const REVEAL_SELECTION_MS = 1_500
@@ -1993,7 +2004,7 @@ export class ReviewController {
             // The rail sits at the editor's right edge, so place them left.
             (el, tooltip) => setTooltip(el, tooltip, { placement: 'left' })
         )
-        return {
+        const glue: ViewGlue = {
             view,
             railWrapperEl,
             rail,
@@ -2005,8 +2016,51 @@ export class ReviewController {
             transformUnsubscribe: null,
             transformPreviewKey: '',
             chipCycle: null,
-            emphasisTimer: null
+            emphasisTimer: null,
+            // First measurement, so a pane that is ALREADY narrow never
+            // renders the wide rail for a frame. A pane being measured while
+            // hidden reports 0 and keeps the default (see `nextLayoutMode`).
+            layout: nextLayoutMode(view.contentEl.clientWidth, 'wide'),
+            paneObserver: null
         }
+        this.observePaneWidth(glue, doc)
+        return glue
+    }
+
+    /**
+     * Watches the markdown view content for width changes (plan M4 adaptive
+     * layout). The observer comes from the view's OWN window so panes in
+     * popout windows are observed by their own document's implementation.
+     * Only a mode CHANGE schedules work — dragging a split fires this per
+     * frame, and the layout mode has hysteresis around the threshold.
+     */
+    private observePaneWidth(glue: ViewGlue, doc: Document): void {
+        const observer = doc.defaultView?.ResizeObserver
+        if (!observer) {
+            return // no observer in this window: the rail stays in wide form
+        }
+        glue.paneObserver = new observer((entries) => {
+            const entry = entries[entries.length - 1]
+            if (entry === undefined) {
+                return
+            }
+            this.handlePaneResize(glue, entry.contentRect.width)
+        })
+        glue.paneObserver.observe(glue.view.contentEl)
+    }
+
+    private handlePaneResize(glue: ViewGlue, width: number): void {
+        if (this.disposed) {
+            return
+        }
+        const layout = nextLayoutMode(width, glue.layout)
+        if (layout === glue.layout) {
+            return
+        }
+        glue.layout = layout
+        // Rail re-render only — never synchronous DOM work inside the
+        // observer callback (that is how ResizeObserver loops start).
+        this.scheduleRefresh()
     }
 
     private destroyGlue(glue: ViewGlue): void {
@@ -2015,6 +2069,8 @@ export class ReviewController {
         glue.unsubscribe = null
         glue.transformUnsubscribe?.()
         glue.transformUnsubscribe = null
+        glue.paneObserver?.disconnect()
+        glue.paneObserver = null
         glue.rail.destroy()
         glue.railWrapperEl.remove()
         glue.view.contentEl.removeClass('ai-editor-rail-host')
@@ -2078,12 +2134,17 @@ export class ReviewController {
         // Rail only makes sense over an editable editor (Reading view is out
         // of scope for v1 interactions).
         glue.railWrapperEl.toggleClass('ai-editor-hidden', glue.view.getMode() === 'preview')
+        // Narrow pane: the wrapper hugs the edge (every reclaimed pixel is a
+        // pixel of text) and the rail itself renders in its compact form.
+        const narrow = glue.layout === 'narrow'
+        glue.railWrapperEl.toggleClass('ai-editor-rail-wrapper-compact', narrow)
         glue.rail.render({
             editors: this.buildRailEditors(run, transformRun),
             running:
                 (run !== null && !run.isSettled()) ||
                 (transformRun !== null && !transformRun.isSettled()),
-            daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false)
+            daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
+            narrow
         })
         this.dispatchDecorations(glue, run)
         this.dispatchCardRefresh(glue, run)
