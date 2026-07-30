@@ -163,6 +163,21 @@ describe('seedStarterPack', () => {
         expect(charter).toMatch(/keeps its own mandate/)
     })
 
+    it('tells the panel what "top" means and what to do with disagreement', () => {
+        // The slice-2 scorecard made top fixes RANKED and pointed at a span,
+        // and dissent a structure of attributed positions. Those are format
+        // mechanics the operation contract dictates; what the charter has to
+        // supply is the judgment behind them — otherwise the model ranks by
+        // nothing and averages the disagreement it was asked to keep.
+        const charter = seedStarterPack(freshSettings()).panels[0]?.charter.text ?? ''
+        expect(charter).toMatch(/Rank by what unblocks publication/)
+        expect(charter).toMatch(/tie it to the exact passage/)
+        expect(charter).toMatch(/Disagreement is information/)
+        expect(charter).toMatch(/difference of emphasis is not a disagreement/)
+        // Still a brief, not a schema: no field names, no output shape.
+        expect(charter).not.toMatch(/topFixes|dissent"|memberVerdicts|JSON/)
+    })
+
     it('binds the default action verbs to the matching personas', () => {
         const seeded = seedStarterPack(freshSettings())
         const nameById = new Map(seeded.editors.map((editor) => [editor.id, editor.name]))

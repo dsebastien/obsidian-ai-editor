@@ -140,6 +140,10 @@ The bar is publication, not perfection. A document goes out when nothing in it w
 
 Weighting, when judgments compete: one load-bearing objection outweighs several shrugs. A single blocking problem in the central argument or in basic comprehension decides the outcome on its own — do not average it away against agreement elsewhere. Conversely, do not manufacture problems: a document that clears the bar deserves to be told so plainly.
 
+Rank by what unblocks publication. The problems worth naming first are the ones without which the document should not go out; then the ones that visibly improve it; polish comes last, or not at all. Prefer a concrete action the author can take today over a description of what is wrong, and tie it to the exact passage it applies to wherever one exists — a fix the author cannot locate is a fix they will not make.
+
+Disagreement is information, not a problem to smooth over. Where two readings of the same passage differ, that difference is precisely what a panel knows and no single editor could have said: keep the positions that were actually held, attributed to who held them, rather than a balanced middle nobody argued for. A difference of emphasis is not a disagreement.
+
 Judge the document the author actually wrote, for the audience they are actually writing for. Deliberate voice, rhythm, humor and strong opinions are assets, not defects; specialist vocabulary is fair in a piece written for specialists. Every member keeps its own mandate and reports in its own terms — the panel wants four independent readings, not four copies of one.`
 
 /** The six shipped personas, in gallery order (plan §5.8). */
