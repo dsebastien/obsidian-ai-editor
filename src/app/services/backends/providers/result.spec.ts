@@ -96,3 +96,88 @@ describe('validateOperationResult — advisory field clamping', () => {
         ).toThrow()
     })
 })
+
+/**
+ * The "runaway model" guard, verified rather than assumed (plan M9,
+ * performance pass). Every bound below is the operation contract's; these
+ * tests exist so a later widening of a `.max()` cannot silently remove the
+ * property that a single backend response can never become an unbounded
+ * amount of work for the editor.
+ */
+describe('validateOperationResult — a runaway response is bounded by the contract', () => {
+    function finding(index: number): Record<string, unknown> {
+        return {
+            quote: `quoted span number ${index}`,
+            critique: `critique number ${index}`,
+            severity: 'suggestion'
+        }
+    }
+
+    it('refuses 10 000 findings rather than ingesting them', () => {
+        // This is why a note cannot accumulate ten thousand highlights from
+        // one run: the result never gets past validation.
+        const payload = {
+            kind: 'review',
+            findings: Array.from({ length: 10_000 }, (_, index) => finding(index))
+        }
+        try {
+            validateOperationResult(payload)
+            expect.unreachable()
+        } catch (error) {
+            expect(error).toBeInstanceOf(ProviderError)
+            expect((error as ProviderError).code).toBe('invalid-output')
+        }
+    })
+
+    it('accepts exactly 200 findings and refuses 201', () => {
+        const at = {
+            kind: 'review',
+            findings: Array.from({ length: 200 }, (_, index) => finding(index))
+        }
+        const over = {
+            kind: 'review',
+            findings: Array.from({ length: 201 }, (_, index) => finding(index))
+        }
+        expect(validateOperationResult(at).kind).toBe('review')
+        expect(() => validateOperationResult(over)).toThrow(ProviderError)
+    })
+
+    it('refuses an oversized quote, critique and suggestion', () => {
+        const oversized = (field: string, length: number): Record<string, unknown> => ({
+            kind: 'review',
+            findings: [{ ...finding(0), [field]: 'x'.repeat(length) }]
+        })
+        expect(() => validateOperationResult(oversized('quote', 2_001))).toThrow(ProviderError)
+        expect(() => validateOperationResult(oversized('critique', 10_001))).toThrow(ProviderError)
+        expect(() => validateOperationResult(oversized('suggestion', 10_001))).toThrow(
+            ProviderError
+        )
+    })
+
+    it('parses and refuses a ~1 MB payload without hanging', () => {
+        const body = JSON.stringify({
+            kind: 'review',
+            findings: Array.from({ length: 5_000 }, (_, index) => ({
+                ...finding(index),
+                critique: `critique number ${index} ${'padding '.repeat(20)}`
+            }))
+        })
+        expect(body.length).toBeGreaterThan(1_000_000)
+        const started = performance.now()
+        const parsed = extractJsonPayload(body)
+        expect(() => validateOperationResult(parsed)).toThrow(ProviderError)
+        expect(performance.now() - started).toBeLessThan(2_000)
+    })
+
+    it('bounds a transform replacement and a thread reply too', () => {
+        expect(() =>
+            validateOperationResult({
+                kind: 'transform-selection',
+                replacement: 'x'.repeat(100_001)
+            })
+        ).toThrow(ProviderError)
+        expect(() =>
+            validateOperationResult({ kind: 'thread-turn', reply: 'x'.repeat(10_001) })
+        ).toThrow(ProviderError)
+    })
+})

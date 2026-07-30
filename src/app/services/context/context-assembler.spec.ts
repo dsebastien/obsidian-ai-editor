@@ -846,3 +846,95 @@ describe('assembleContext — dedup and cycles', () => {
         expect(result.attachments).toEqual([])
     })
 })
+
+/**
+ * The "huge link graph" guard, verified rather than assumed (plan M9,
+ * performance pass). The caps themselves are covered above one at a time; what
+ * these pin is the SHAPE of the whole: no matter what the vault looks like,
+ * one assembly reads a bounded number of notes and sends a bounded number of
+ * characters, and it never walks past depth 1.
+ */
+describe('assembleContext — a pathological link graph stays bounded', () => {
+    /** A vault where every note links to 500 others, including itself-ward. */
+    class HubVault implements VaultReader {
+        reads = 0
+        readonly paths: string[] = Array.from({ length: 500 }, (_, index) => `Hub/N${index}.md`)
+
+        readNote(path: string): Promise<string | null> {
+            this.reads += 1
+            return Promise.resolve(path === NOTE_PATH ? 'body' : `content of ${path}`)
+        }
+
+        resolveLink(linkText: string): string | null {
+            return this.paths.includes(`${linkText}.md`) ? `${linkText}.md` : null
+        }
+
+        /** Every note links to every other note — a complete graph. */
+        getOutgoingLinks(path: string): string[] {
+            return this.paths.filter((candidate) => candidate !== path)
+        }
+
+        getNoteMetadata(): NoteMetadata {
+            return { tags: [], frontmatter: {} }
+        }
+
+        getNoteTypeIds(): readonly string[] {
+            return []
+        }
+    }
+
+    test('a complete 500-note graph attaches at most maxLinkedNotes', async () => {
+        const vault = new HubVault()
+        const result = await assembleContext({
+            editor: editor({ includeLinkedNotes: true, maxLinkedNotes: 20 }),
+            voiceProfile: voice(),
+            behavior: behavior({ contextBudgetChars: 2_000_000 }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        expect(result.attachments).toHaveLength(20)
+        // 20 reads, not 500 and not 500² — the walk is depth 1 and capped.
+        expect(vault.reads).toBe(20)
+    })
+
+    test('following links from prompt refs stops at depth 1', async () => {
+        // Root R links to 500 notes; each of THOSE links to 500 more. Only the
+        // first hop may be attached, capped by FOLLOWED_LINKS_CAP.
+        const vault = new HubVault()
+        const result = await assembleContext({
+            editor: editor({
+                prompt: { text: '', notePaths: ['Hub/N0.md'], followLinks: true },
+                includeLinkedNotes: false
+            }),
+            voiceProfile: voice(),
+            behavior: behavior({ contextBudgetChars: 2_000_000 }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        // The root itself + one hop, capped.
+        expect(result.attachments).toHaveLength(1 + FOLLOWED_LINKS_CAP)
+        expect(result.attachments[0]?.reason).toBe('prompt-ref')
+        expect(result.attachments.slice(1).every((a) => a.reason === 'followed-link')).toBeTrue()
+    })
+
+    test('the character budget still bounds what a bounded set SENDS', async () => {
+        // Two independent bounds: the caps limit how many notes are read, the
+        // budget limits how much of them travels. A tiny budget on a huge
+        // graph must send the note and almost nothing else.
+        const vault = new HubVault()
+        const result = await assembleContext({
+            editor: editor({ includeLinkedNotes: true, maxLinkedNotes: 20 }),
+            voiceProfile: voice(),
+            behavior: behavior({ contextBudgetChars: 1_000 }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: 'body'
+        })
+        const sent = result.sections.reduce((total, section) => total + section.sentChars, 0)
+        expect(sent).toBeLessThanOrEqual(1_000)
+        // And every candidate is still accounted for, dropped ones included.
+        expect(result.sections).toHaveLength(2 + 20)
+    })
+})

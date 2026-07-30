@@ -8,6 +8,7 @@ import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import type { CommentJobRow, CommentJobsSection } from './comment-jobs-model'
+import { undecoratedNoticeText } from './editor/decoration-budget'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
@@ -50,6 +51,12 @@ export interface SidePanelBinding {
     readonly run: RunHandle
     readonly editors: readonly SidePanelEditorInfo[]
     readonly skips: readonly EditorSkip[]
+    /**
+     * How many of this note's findings the decoration budget left without a
+     * highlight (see `editor/decoration-budget.ts`). They are all still listed
+     * below; the panel says so rather than letting the note look under-marked.
+     */
+    readonly undecoratedFindings: number
     /** Active severity lens for this file (view state, never a mutation). */
     readonly severityFilter: SeverityFilterMode
     /** Advances the lens: all → warnings and suggestions → warnings only. */
@@ -265,6 +272,7 @@ export class ReviewSidePanelView extends ItemView {
         this.renderScorecard(root, binding)
         this.renderSeverityFilter(root, binding)
         this.renderSkips(root, binding.skips)
+        this.renderUndecoratedNotice(root, binding.undecoratedFindings)
 
         const colorById = new Map(binding.editors.map((editor) => [editor.id, editor.color]))
         // Every editor of a panel run IS one of its members (the pool is the
@@ -656,6 +664,23 @@ export class ReviewSidePanelView extends ItemView {
                 text: `Skipped ${skip.editorName}: ${skipReasonLabel(skip.reason)}.`
             })
         }
+    }
+
+    /**
+     * Says how many findings are listed but not highlighted (plan M9,
+     * performance pass). Rendered next to the skip notices because it belongs
+     * to the same family: things the run did that the user would otherwise
+     * have to infer from an absence.
+     */
+    private renderUndecoratedNotice(root: HTMLElement, undecorated: number): void {
+        const text = undecoratedNoticeText(undecorated)
+        if (text.length === 0) {
+            return
+        }
+        root.createDiv({ cls: 'ai-editor-panel-skips' }).createDiv({
+            cls: 'ai-editor-panel-skip',
+            text
+        })
     }
 
     private renderEditorSection(

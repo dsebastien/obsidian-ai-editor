@@ -74,6 +74,7 @@ import { ContextPreviewModal } from './context-preview-modal'
 import { previewActionChoices, previewEditorChoices } from './context-preview-model'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
+import { applyDecorationBudget } from './editor/decoration-budget'
 import {
     refreshFindingCardEffect,
     showFindingCardEffect,
@@ -404,6 +405,12 @@ export class ReviewController {
     private readonly vaultReader: ObsidianVaultReader
     private readonly glues = new Map<MarkdownView, ViewGlue>()
     private readonly skipsByFile = new Map<string, readonly EditorSkip[]>()
+    /**
+     * Findings the decoration budget left unhighlighted, per file — written by
+     * the dispatch that applied the cap, read by the side panel so it can say
+     * so. Nothing is hidden by the cap; this is what stops it being SILENT.
+     */
+    private readonly undecoratedByFile = new Map<string, number>()
     private readonly pendingTimers = new Set<number>()
     /**
      * Files whose panel Review button has dispatched but whose run does not
@@ -506,6 +513,7 @@ export class ReviewController {
                 this.deps.runController.discardRun(oldPath)
                 this.deps.transformController.discardRun(oldPath)
                 this.skipsByFile.delete(oldPath)
+                this.undecoratedByFile.delete(oldPath)
                 this.triageCursors.clear(oldPath)
                 this.severityFilters.clear(oldPath)
                 this.daemon?.fileClosed(oldPath)
@@ -520,6 +528,7 @@ export class ReviewController {
                 this.deps.runController.discardRun(file.path)
                 this.deps.transformController.discardRun(file.path)
                 this.skipsByFile.delete(file.path)
+                this.undecoratedByFile.delete(file.path)
                 this.triageCursors.clear(file.path)
                 this.severityFilters.clear(file.path)
                 this.daemon?.fileClosed(file.path)
@@ -2426,6 +2435,7 @@ export class ReviewController {
                 color: colors.get(state.editorId) ?? 'var(--text-accent)'
             })),
             skips: this.skipsByFile.get(path) ?? [],
+            undecoratedFindings: this.undecoratedByFile.get(path) ?? 0,
             severityFilter: this.severityFilters.get(path),
             cycleSeverityFilter: (): void => {
                 this.cycleSeverityFilter()
@@ -3507,7 +3517,15 @@ export class ReviewController {
         if (!editorView) {
             return
         }
-        const specs = run ? this.buildDecorationSpecs(run) : []
+        // The cap bounds the editing loop's cost by the DOCUMENT rather than
+        // by how many editors are enabled (see `decoration-budget.ts`). What
+        // it leaves out is counted, kept in the store and reported by the side
+        // panel — a highlight is dropped, never a finding.
+        const budgeted = applyDecorationBudget(run ? this.buildDecorationSpecs(run) : [])
+        const specs = budgeted.decorated
+        if (glue.filePath !== null) {
+            this.undecoratedByFile.set(glue.filePath, budgeted.undecorated)
+        }
         const key = JSON.stringify(specs)
         if (key === glue.lastSpecsKey) {
             return
