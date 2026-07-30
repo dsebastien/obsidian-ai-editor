@@ -1,6 +1,7 @@
 import { MarkdownView, Modal, Notice, Setting, TFile, setTooltip } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import { isolateHistory } from '@codemirror/commands'
+import { Prec } from '@codemirror/state'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
@@ -8,9 +9,12 @@ import {
     cycleFinding,
     navigableEditorFindings,
     navigableFindings,
-    stepFinding
+    stepFinding,
+    triageCurrent,
+    triageStep
 } from '../commands/finding-navigation'
-import type { NavigationDirection } from '../commands/finding-navigation'
+import type { NavigationDirection, NavigationTarget } from '../commands/finding-navigation'
+import { TriageCursorStore } from '../commands/triage-cursor'
 import { getBuiltInVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
@@ -39,11 +43,13 @@ import { startAction } from '../services/transform-service'
 import { AskEditorModal } from './ask-editor-modal'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
+import { showFindingCardEffect } from './editor/finding-card'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
 import {
     clearFindingsEffect,
     emphasizeEditorEffect,
     markStaleEffect,
+    removeFindingsEffect,
     setFindingsEffect
 } from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
@@ -238,6 +244,14 @@ export class ReviewController {
     private readonly notifiedTransformErrors = new Set<string>()
     /** Transform runs whose stale-dismiss Notice already fired. */
     private readonly notifiedTransformStale = new Set<string>()
+    /**
+     * Keyboard-triage cursors (plan M4, stage D slice 1): one per file,
+     * validated against the file's RunHandle so a replaced run evicts the
+     * stale cursor. Distinct from the per-glue chip-click cycle memory —
+     * the chip contract is locked to restart-at-first, the triage cursor
+     * survives note switches and falls back position-based on eviction.
+     */
+    private readonly triageCursors = new TriageCursorStore()
     /** Sticky: survives focus moving to the side panel itself. */
     private lastActiveMarkdownFile: string | null = null
     private refreshTimer: number | null = null
@@ -289,6 +303,7 @@ export class ReviewController {
                 this.deps.runController.discardRun(oldPath)
                 this.deps.transformController.discardRun(oldPath)
                 this.skipsByFile.delete(oldPath)
+                this.triageCursors.clear(oldPath)
                 this.daemon?.fileClosed(oldPath)
                 if (this.lastActiveMarkdownFile === oldPath) {
                     this.lastActiveMarkdownFile = file.path
@@ -301,6 +316,7 @@ export class ReviewController {
                 this.deps.runController.discardRun(file.path)
                 this.deps.transformController.discardRun(file.path)
                 this.skipsByFile.delete(file.path)
+                this.triageCursors.clear(file.path)
                 this.daemon?.fileClosed(file.path)
                 if (this.lastActiveMarkdownFile === file.path) {
                     this.lastActiveMarkdownFile = null
@@ -331,7 +347,40 @@ export class ReviewController {
      * against the WRONG occurrence (Business Rules #3/#4).
      */
     editorExtension(): Extension {
-        return EditorView.updateListener.of((update) => this.handleEditorUpdate(update))
+        return [
+            EditorView.updateListener.of((update) => this.handleEditorUpdate(update)),
+            // Escape precedence (documented contract, plan M4 triage): while
+            // a finding card is open, its document-level CAPTURE listener
+            // consumes Escape (closes the card, stops propagation) before
+            // the editor ever sees the key — the triage cursor survives so
+            // stepping can continue. Only when NO card is open does Escape
+            // reach this handler, which clears the file's triage cursor.
+            // It NEVER consumes the event (returns false): Obsidian and
+            // other plugins keep their own Escape behaviors, this is a
+            // side-effect-only observer, hence Prec.highest so a consuming
+            // lower-precedence handler cannot starve it.
+            Prec.highest(
+                EditorView.domEventHandlers({
+                    keydown: (event, editorView) => {
+                        if (event.key === 'Escape') {
+                            this.handleEditorEscape(editorView)
+                        }
+                        return false
+                    }
+                })
+            )
+        ]
+    }
+
+    /** Escape in an editor with no card open: leave triage for that file. */
+    private handleEditorEscape(editorView: EditorView): void {
+        const glue = this.findGlueByEditorView(editorView)
+        const path = glue?.filePath ?? null
+        if (!path || this.disposed || !this.triageCursors.has(path)) {
+            return
+        }
+        this.triageCursors.clear(path)
+        this.scheduleRefresh() // drops the current ring from the decorations
     }
 
     /** Tears down rails, subscriptions and timers; call from `onunload`. */
@@ -349,6 +398,7 @@ export class ReviewController {
             this.destroyGlue(glue)
         }
         this.glues.clear()
+        this.triageCursors.clearAll()
     }
 
     /**
@@ -1089,11 +1139,16 @@ export class ReviewController {
     }
 
     /**
-     * Steps to the next/previous navigable finding of the active file's run,
-     * ordered by anchor position with wrap-around (pure logic in
-     * `finding-navigation.ts`). The step is cursor-relative when the note is
-     * open in an editor; the reveal then moves the cursor onto the target, so
-     * repeated invocations cycle through all findings.
+     * Triage stepping (plan M4, stage D slice 1): moves the per-file triage
+     * cursor to the next/previous navigable finding — ALL editors, anchor
+     * order, wrap-around — reveals it, rings it as current, and opens its
+     * card (card-on-jump). Pure decisions live in `finding-navigation.ts`:
+     * the very first step (no cursor yet) seeds cursor-relative via
+     * `stepFinding` (the pre-triage behavior of these commands), every
+     * later step is memory-based via the shared `triageStep` engine — so a
+     * cursor invalidated in place (its finding accepted from the card, went
+     * stale under an edit, was dismissed) resumes from where it USED to sit
+     * instead of restarting.
      */
     navigateFinding(direction: NavigationDirection): void {
         const path = this.resolveActiveFilePath()
@@ -1102,16 +1157,164 @@ export class ReviewController {
             return
         }
         const ordered = navigableFindings(run.findings.list())
-        const view = this.findMarkdownView(path)
-        const cursorOffset =
-            view && view.file?.path === path
-                ? view.editor.posToOffset(view.editor.getCursor('from'))
-                : null
-        const target = stepFinding(ordered, cursorOffset, direction)
+        const memory = this.triageCursors.get(path, run)
+        let target: NavigationTarget | null
+        if (memory) {
+            target = triageStep(ordered, memory, direction)
+        } else {
+            const view = this.findMarkdownView(path)
+            const cursorOffset =
+                view && view.file?.path === path
+                    ? view.editor.posToOffset(view.editor.getCursor('from'))
+                    : null
+            target = stepFinding(ordered, cursorOffset, direction)
+        }
         if (!target) {
             return
         }
-        void this.revealFinding(path, asFindingId(target.id))
+        this.moveTriageCursor(path, run, target)
+    }
+
+    /**
+     * Commits a triage step: remember the cursor (id + position — the
+     * position is the eviction fallback), refresh so the decoration layer
+     * rings the new current finding, reveal it through the exact side-panel
+     * path, then open its card at the revealed span (card-on-jump).
+     */
+    private moveTriageCursor(path: string, run: RunHandle, target: NavigationTarget): void {
+        this.triageCursors.set(path, run, { id: target.id, from: target.from })
+        this.scheduleRefresh()
+        void this.revealFinding(path, asFindingId(target.id)).then((view) => {
+            if (view && !this.disposed) {
+                editorViewOf(view)?.dispatch({ effects: showFindingCardEffect.of(target.id) })
+            }
+        })
+    }
+
+    // -- Keyboard triage: accept/dismiss the current finding ------------------
+
+    /**
+     * The active file's triage state, when a CURRENT finding exists: the
+     * cursor points at a finding that is still navigable (non-terminal,
+     * anchored, not stale) under the file's CURRENT run. Everything the
+     * `accept-finding`/`dismiss-finding` gates and actions need.
+     */
+    private currentTriageContext(): {
+        path: string
+        run: RunHandle
+        current: NavigationTarget
+    } | null {
+        const path = this.resolveActiveFilePath()
+        const run = path ? this.deps.runController.getRun(path) : null
+        if (!path || !run) {
+            return null
+        }
+        const ordered = navigableFindings(run.findings.list())
+        const current = triageCurrent(ordered, this.triageCursors.get(path, run))
+        return current ? { path, run, current } : null
+    }
+
+    /**
+     * `Accept current finding` gate: a current finding exists, the store
+     * reports it actionable (suggestion present, anchored, not stale, not
+     * terminal — the exact card-button condition), and its note is open in
+     * an editor to dispatch the replacement into.
+     */
+    canAcceptCurrentFinding(): boolean {
+        const context = this.currentTriageContext()
+        if (!context) {
+            return false
+        }
+        return (
+            context.run.findings.isActionable(asFindingId(context.current.id)) &&
+            this.editorViewFor(context.path) !== null
+        )
+    }
+
+    /**
+     * `Dismiss current finding` gate: a current finding exists — navigable
+     * implies non-terminal, so it is dismissable by construction.
+     */
+    canDismissCurrentFinding(): boolean {
+        return this.currentTriageContext() !== null
+    }
+
+    /**
+     * Accepts the CURRENT finding through the exact card-button path:
+     * `FindingStore.accept` re-verifies the precondition against the live
+     * document (Business Rules #3), then ONE regular undoable transaction
+     * applies the replacement and drops the mark — the canonical-view
+     * forwarding remaps every other anchor exactly like a user edit. Then
+     * the triage loop auto-advances onto the next remaining finding.
+     */
+    acceptCurrentFinding(): void {
+        const context = this.currentTriageContext()
+        if (!context) {
+            return
+        }
+        const editorView = this.editorViewFor(context.path)
+        if (!editorView) {
+            return
+        }
+        const outcome = this.acceptFinding(context.current.id, editorView.state.doc.toString())
+        if (!outcome.ok) {
+            // Same stale race the card handles by re-rendering; a command
+            // has no card to refresh, so say why nothing happened.
+            new Notice('The text changed since this suggestion was made.')
+            this.scheduleRefresh()
+            return
+        }
+        editorView.dispatch({
+            changes: { from: outcome.from, to: outcome.to, insert: outcome.insert },
+            effects: removeFindingsEffect.of([context.current.id])
+        })
+        this.advanceTriage(context.path, context.run, context.current)
+    }
+
+    /**
+     * Dismisses the CURRENT finding (terminal status via the same store
+     * path as the card button, decoration dropped in place) and advances
+     * the triage loop.
+     */
+    dismissCurrentFinding(): void {
+        const context = this.currentTriageContext()
+        if (!context) {
+            return
+        }
+        this.dismissFinding(context.current.id)
+        this.editorViewFor(context.path)?.dispatch({
+            effects: removeFindingsEffect.of([context.current.id])
+        })
+        this.advanceTriage(context.path, context.run, context.current)
+    }
+
+    /**
+     * The triage loop's auto-advance: the judged finding just left the
+     * navigable set (terminal, or its accept edit staled a neighbor too),
+     * so `triageStep` from its remembered position lands on the next
+     * remaining finding, wrapping around. Nothing left → triage is done:
+     * clear the cursor, close the card, say so once.
+     */
+    private advanceTriage(path: string, run: RunHandle, judged: NavigationTarget): void {
+        const ordered = navigableFindings(run.findings.list())
+        const target = triageStep(ordered, { id: judged.id, from: judged.from }, 'next')
+        if (!target) {
+            this.triageCursors.clear(path)
+            const view = this.findMarkdownView(path)
+            if (view) {
+                editorViewOf(view)?.dispatch({ effects: showFindingCardEffect.of(null) })
+            }
+            new Notice('No more findings to triage.')
+            this.scheduleRefresh()
+            return
+        }
+        this.moveTriageCursor(path, run, target)
+    }
+
+    /** The CM6 view of an open markdown view showing `path`, if any. */
+    private editorViewFor(path: string): EditorView | null {
+        const view = this.findMarkdownView(path)
+        return view ? editorViewOf(view) : null
     }
 
     /** Opens (or reveals) the side panel leaf and pushes the current binding. */
@@ -1615,6 +1818,11 @@ export class ReviewController {
 
     private buildDecorationSpecs(run: RunHandle): FindingDecorationSpec[] {
         const colors = this.editorColors()
+        // The triage cursor rides the specs so it survives full rebuilds
+        // (see finding-decorations.ts). Reading through the store validates
+        // run identity: a cursor left behind by a replaced run is evicted
+        // right here, on the first rebuild that could have shown it.
+        const cursor = this.triageCursors.get(run.snapshot.filePath, run)
         const specs: FindingDecorationSpec[] = []
         for (const finding of run.findings.list()) {
             if (finding.anchor === null) {
@@ -1623,15 +1831,15 @@ export class ReviewController {
             if (finding.status !== 'open' && finding.status !== 'preview') {
                 continue
             }
+            const stale = finding.anchor.state === 'stale'
             specs.push({
                 findingId: finding.id,
                 editorId: finding.editorId,
                 from: finding.anchor.from,
                 to: finding.anchor.to,
                 color: colors.get(finding.editorId) ?? 'var(--text-accent)',
-                stale: finding.anchor.state === 'stale',
-                // Wired to the keyboard-triage cursor in the triage slice.
-                current: false
+                stale,
+                current: cursor !== null && cursor.id === finding.id && !stale
             })
         }
         return specs
@@ -1877,15 +2085,22 @@ export class ReviewController {
 
     // -- Reveal from the side panel ------------------------------------------
 
-    private async revealFinding(filePath: string, findingId: FindingId): Promise<void> {
+    /**
+     * Returns the view the finding was revealed in (`null` when nothing was
+     * revealed) so triage stepping can chain the card open onto it.
+     */
+    private async revealFinding(
+        filePath: string,
+        findingId: FindingId
+    ): Promise<MarkdownView | null> {
         const run = this.deps.runController.getRun(filePath)
         const finding = run?.findings.get(findingId) ?? null
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {
-            return
+            return null
         }
         const view = await this.openMarkdownView(filePath)
         if (!view) {
-            return
+            return null
         }
         const editor = view.editor
         const docLength = editor.getValue().length
@@ -1917,6 +2132,7 @@ export class ReviewController {
             }
         }, REVEAL_SELECTION_MS)
         this.pendingTimers.add(timer)
+        return view
     }
 
     /**

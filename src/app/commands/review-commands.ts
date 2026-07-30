@@ -18,11 +18,17 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  *   hash synchronously, then opens the freeform modal (design §6 decision 1).
  * - `Open review panel` — reveals the side-panel leaf.
  * - `Cancel review` — the active file's run is still unsettled.
- * - `Next finding` / `Previous finding` — cursor-relative stepping through
- *   the active run's revealable findings, wrapping around.
+ * - `Next finding` / `Previous finding` — triage stepping through the
+ *   active run's revealable findings (anchor order, all editors, wrapping
+ *   around): moves the per-file triage cursor, rings the current finding,
+ *   and opens its card (card-on-jump).
+ * - `Accept current finding` / `Dismiss current finding` — judge the triage
+ *   cursor's finding (accept routes through the FindingStore precondition
+ *   exactly like the card button) and auto-advance to the next remaining
+ *   one. Hidden unless a current finding exists (and, for accept, is
+ *   actionable with its note open in an editor).
  *
- * Dynamic commands (per-action `action-<id>`, per-editor accept/dismiss-all)
- * and triage-state commands (accept/dismiss current, severity filter) are
+ * Dynamic per-editor accept/dismiss-all and the severity filter are
  * deferred until their pipelines exist — no non-functional commands.
  */
 export function registerReviewCommands(plugin: Plugin, controller: ReviewController): void {
@@ -145,6 +151,36 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
         name: 'Previous finding',
         checkCallback: (checking: boolean): boolean =>
             navigateFindingCommand(controller, checking, 'prev')
+    })
+
+    plugin.addCommand({
+        id: 'accept-finding',
+        name: 'Accept current finding',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canAcceptCurrentFinding()) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.acceptCurrentFinding()
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'dismiss-finding',
+        name: 'Dismiss current finding',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canDismissCurrentFinding()) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.dismissCurrentFinding()
+            return true
+        }
     })
 }
 
