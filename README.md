@@ -9,12 +9,34 @@ An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and
 - **Async margin comments**: select text, leave an instruction, and a background agent works on it while you keep writing.
 - **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
 - **Portable configuration**: export the editors, panels, actions, rules, and voice profile you built to a JSON file (API keys never included) and import them into another vault, after confirming exactly what will be added.
-- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI, OpenRouter and other compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
+- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI, OpenRouter and other compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex) running on your own machine, behind the security boundary described below. Desktop-only.
 - **Guided setup**: a first-run wizard walks you through a backend, your editors, your voice profile, and when editors run — with a **Test connection** check that sends one real request through the same path a review takes, so a green light means reviews will actually work. Nothing is saved until the last step, and it is re-runnable any time.
 
 Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff. The one opt-in exception is **daemon mode** — a settings toggle (off by default) that lets your editors watch your edits and refresh their recommendations after you pause; every refresh calls your configured backends, so the toggle states the cost implication plainly.
 
 > Status: early development. See `documentation/plans/` for the implementation plan.
+
+## CLI backends: the security model first
+
+A CLI backend runs a **program on your computer** with your note content on its standard input. That is the highest-risk thing this plugin does, so the containment comes before the feature:
+
+- **No shell, ever.** The tool is started with an argument array. No command line is assembled, so there is no quoting rule to get wrong and no metacharacter to escape.
+- **You name the exact binary.** An absolute path to an existing, executable file. A bare name or a relative path is refused: it would be resolved through `PATH` or the working directory, and a writable directory ahead of the real one would silently turn "review this note" into "run whatever is called `claude` today".
+- **Your note never appears in arguments.** It travels on standard input only. Arguments are world-readable in `ps` on a shared machine; notes are not.
+- **A throwaway working directory.** Created per run, owner-only, unpredictable name, deleted when the run ends. Never your vault, and deliberately not the plugin's own folder either — that lives inside the vault and syncs.
+- **An environment built from empty.** Only what the tool cannot start without, plus what you explicitly configured. Loader- and runtime-injection variables (`LD_PRELOAD`, `NODE_OPTIONS`, `BASH_ENV`, proxies…) are refused even if configured.
+- **No session on disk.** Both tools are run with session persistence off, so reviewing a note does not leave a verbatim copy outside the vault.
+- **No inherited MCP servers or plugins.** The tool sees the servers you configured elsewhere: none of them.
+- **Cancelling kills the whole process tree**, verified rather than assumed — and when something survives, you are told.
+
+On top of that, **two separate consents**, both revocable:
+
+1. **Allowed to run** — a dialog that states, before anything starts, that a program will be launched on your computer with your note on its standard input, names the exact file, and says you are responsible for what that program does. Until you agree, the backend is skipped by every run, however its enable toggle reads.
+2. **Tool and research mode** — a second, stronger, separate act: the agent may read and write files and reach the network on your behalf. Off by default. Turning it off later leaves the backend working. Offered only for a tool where the plugin can actually switch it off (Claude Code); Codex says so plainly instead of showing a toggle that would do nothing.
+
+Consent records **which executable** you agreed to. Change the path — or import settings, or sync `data.json` from another machine — and the earlier agreement no longer applies; you are asked again about the program that is actually there.
+
+Windows note: both tools install there as `.cmd` shims, which this plugin refuses to run (running one means running `cmd.exe`). Point the setting at a real `.exe` or use an API backend.
 
 ## Inspiration
 

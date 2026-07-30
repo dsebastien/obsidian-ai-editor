@@ -5,7 +5,7 @@ nav_order: 2
 
 # Usage
 
-> The plugin is in early development. The review loop, action verbs, push-back threads and panel scorecards below are working; margin comments and CLI backends are coming next.
+> The plugin is in early development. The review loop, action verbs, push-back threads, panel scorecards and CLI backends below are working; margin comments are coming next.
 
 ## Getting started
 
@@ -13,7 +13,7 @@ The **setup wizard** opens by itself the first time the plugin loads and walks y
 
 Prefer to do it by hand:
 
-1. Open **Settings → AI Editor → Backends** and configure at least one API backend (Anthropic, OpenAI, OpenRouter or another OpenAI-compatible endpoint, Azure OpenAI, or Ollama) with a default model.
+1. Open **Settings → AI Editor → Backends** and configure at least one backend: an API provider (Anthropic, OpenAI, OpenRouter or another OpenAI-compatible endpoint, Azure OpenAI, or Ollama) with a default model, or a [CLI backend](#cli-backends-claude-code-codex).
 2. Set it as the default backend, or assign it to individual editors.
 3. Make sure at least one editor is enabled (a starter pack is seeded on first load).
 4. Open a note and run **Review current note**.
@@ -144,6 +144,49 @@ By default nothing runs automatically: reviews only start when you trigger them.
 - While a refresh is armed for the current note, a small pulsing dot appears at the bottom of the persona rail.
 - **Cost warning**: every refresh calls your configured AI backends. Keep the idle delay generous if you pay per token.
 
+## CLI backends (Claude Code, Codex)
+
+Read this section before enabling one. A CLI backend does not call a remote API — it **runs a program on your computer**, with the content of your note on its standard input. Everything else about the feature follows from containing that.
+
+### What the plugin enforces
+
+You do not have to trust these; they are how the code is written, and you can read them in `src/app/services/backends/cli/`.
+
+- **No shell.** The tool is started with an argument array, never a command line. There is no quoting rule to get wrong.
+- **You name the exact binary.** An absolute path to an existing executable file. A bare name (`claude`) or a relative path is refused, because it would be resolved through `PATH` or the working directory — a writable directory ahead of the real one would silently change what runs.
+- **Your note never appears in the arguments.** Standard input only. Arguments are visible to every process on the machine; notes are not.
+- **A throwaway working directory**, created for the run and deleted when it ends. Never your vault, and not the plugin's own folder either — that lives inside the vault and syncs.
+- **A minimal environment.** Built from nothing, with only what the tool needs to start. Injection variables (`LD_PRELOAD`, `NODE_OPTIONS`, `BASH_ENV`, proxy variables…) are refused even if you configure them.
+- **No session written to disk**, so reviewing a note does not leave a copy of it outside the vault.
+- **No inherited MCP servers**, plugins, or extra directories.
+- **Cancelling stops the whole process tree**, and if something survives, the plugin says so rather than hiding it.
+
+### The two consents
+
+Both are asked for explicitly, both are recorded per backend, and both can be withdrawn.
+
+1. **Allowed to run.** Enabling a CLI backend opens a dialog that states what will happen, names the exact file that will run, and says you are responsible for what that program does. Until you agree, the backend is skipped by every review and every action — an enabled backend that has not been allowed is not a running backend, and the Backends tab says so on the row.
+2. **Tool and research mode.** A separate, stronger permission: the agent may read and write files and reach the network while it works. **Off by default.** Turning it on is its own dialog with its own wording. Turning it off later leaves the backend working, just without tools.
+
+This second consent is offered only where the plugin can actually enforce the off position. Claude Code can be run with all tools disabled, so it gets the toggle. Codex cannot — running commands is how it answers at all — so instead of a toggle that would do nothing, the settings row says so and describes what is enforced anyway: a read-only sandbox, a temporary folder, an environment built from nothing.
+
+**Consent names an executable.** If the path changes — you edit it, you import settings, or `data.json` syncs from another machine — the earlier agreement no longer applies and you are asked again about the program that is actually there. Imported settings never carry consent, and imported backends always arrive switched off.
+
+### Setting one up
+
+1. **Settings → AI Editor → Backends → Add backend** → pick **Claude Code (runs locally)** or **Codex (runs locally)**.
+2. **Executable**: paste the full path, or select **Detect**. Detection only looks in common install locations and only asks the filesystem whether something is there — it never runs anything, and it never searches `PATH`. If it finds nothing, run `which claude` or `which codex` in a terminal and paste what it prints.
+3. Optionally set a **default model**. Leave it empty to let the tool use its own current default.
+4. **Timeout**: how long one run may take before the tool and everything it started are stopped. Agents are much slower than a chat completion, so this is separate from the API request timeout in the Behavior tab.
+5. **Test connection** runs one trivial review through the whole path — same executable, same temporary folder, same environment and timeout. It asks for the first consent before running, because running it _is_ launching the program.
+6. Save, then switch the backend on. Assign it to an editor or panel like any other backend.
+
+### Limits worth knowing
+
+- **Windows**: both tools install as `.cmd` shims, which this plugin refuses to run — running one means running `cmd.exe`, which reintroduces exactly the quoting problems the no-shell rule avoids. Point the setting at a real `.exe` if you have one, or use an API backend.
+- **No streaming.** A CLI run is read after the process ends, so findings appear all at once rather than trickling in.
+- **Errors are status-only.** The plugin never shows you the tool's own error text: an agent CLI echoes its configuration when it fails, and configuration contains credentials. You get the status, the byte count of anything it wrote to its error stream, and — when it applies — the fact that something could not be stopped.
+
 ## Privacy
 
-Privacy-excluded notes (folder, tag, or `ai_editor: false` frontmatter) are never sent to any backend — not by commands, not by daemon mode.
+Privacy-excluded notes (folder, tag, or `ai_editor: false` frontmatter) are never sent to any backend — not by commands, not by daemon mode, and not to a CLI backend on your own machine.

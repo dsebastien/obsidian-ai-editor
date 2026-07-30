@@ -28,8 +28,10 @@ const MODEL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
 
 /**
  * Create/edit dialog for one API backend instance. Works on a local draft;
- * nothing is persisted until Save passes validation. CLI backends (Claude
- * Code, Codex) are a later milestone (M7) and are not offered here.
+ * nothing is persisted until Save passes validation. CLI backends have their
+ * own dialog (`cli-backend-modal.ts`): they name a program rather than an
+ * endpoint, and carry the two-step consent this screen has no business
+ * hosting.
  */
 export class BackendModal extends Modal {
     private readonly ctx: TabContext
