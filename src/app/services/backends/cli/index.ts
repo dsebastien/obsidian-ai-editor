@@ -14,13 +14,15 @@ export type {
     CreateCliEditorExecutorInput,
     SpawnCliProcessFn
 } from './cli-editor-backend'
+export { cliCandidatePaths, cliCommandName, detectCliExecutables, detectionSummary } from './detect'
+export type { CliCandidate, CliDetectionResult } from './detect'
 export { buildCliEnv } from './env'
 export type { CliEnvResult, EnvProblem } from './env'
 export { validateExecutablePath } from './executable'
 export type { ExecutableProbe, ExecutableProblem, ExecutableValidation } from './executable'
 export { DEFAULT_KILL_GRACE_MS, runKillEscalation } from './kill'
 export type { KillResult } from './kill'
-export { createTempRunDir, nodeExecutableProbe } from './node-fs'
+export { createTempRunDir, nodeExecutableProbe, nodeHomeDirectory } from './node-fs'
 export type { CreateRunDir, RunDirHandle } from './node-fs'
 export { killProcessTree } from './node-process'
 export { currentCliPlatform, toCliPlatform } from './platform'

@@ -1,6 +1,6 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ExecutableProbe } from './executable'
 
@@ -33,6 +33,21 @@ export const nodeExecutableProbe: ExecutableProbe = {
         } catch {
             return false
         }
+    }
+}
+
+/**
+ * The current user's home directory, or `''` when the OS cannot say.
+ *
+ * Used only to expand the `~`-relative entries in the detection candidate list
+ * (`detect.ts`). It is never used to RESOLVE what gets executed — the
+ * executable is always the user's own absolute path.
+ */
+export function nodeHomeDirectory(): string {
+    try {
+        return homedir()
+    } catch {
+        return ''
     }
 }
 

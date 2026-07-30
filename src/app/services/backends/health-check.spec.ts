@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'bun:test'
-import { HEALTH_CHECK_TIMEOUT_MS, checkBackendHealth, classifyHealthEvent } from './health-check'
+import {
+    CLI_HEALTH_CHECK_TIMEOUT_MS,
+    HEALTH_CHECK_TIMEOUT_MS,
+    checkBackendHealth,
+    classifyHealthEvent,
+    healthCheckTimeoutMs
+} from './health-check'
+import { cliBackendSchema } from '../../domain/settings/settings-schema'
+import type { CliBackend } from '../../domain/settings/settings-schema'
 import { TEST_API_KEY, makeConfig, validReviewResult } from './providers/spec-fixtures'
+
+function makeCliConfig(overrides: Record<string, unknown> = {}): CliBackend {
+    const executablePath = (overrides['executablePath'] as string) ?? '/usr/local/bin/claude'
+    return cliBackendSchema.parse({
+        id: 'cli-1',
+        family: 'cli',
+        kind: 'claude-code',
+        label: 'Claude Code',
+        enabled: true,
+        consent: { launchPath: executablePath, toolsPath: '' },
+        ...overrides,
+        executablePath
+    })
+}
 
 /**
  * Health-check specs: the pure classification of every terminal event, plus the
@@ -40,51 +62,91 @@ function ollamaBody(content: string): string {
 
 describe('classifyHealthEvent', () => {
     it('is ok on a result', () => {
-        const result = classifyHealthEvent({
-            type: 'result',
-            runId: 'r',
-            result: { kind: 'review', findings: [] }
-        })
+        const result = classifyHealthEvent(
+            {
+                type: 'result',
+                runId: 'r',
+                result: { kind: 'review', findings: [] }
+            },
+            'api'
+        )
         expect(result.status).toBe('ok')
         expect(result.code).toBe('')
     })
 
     it('separates a reachable endpoint with an unusable answer from a failure', () => {
-        const result = classifyHealthEvent({
-            type: 'error',
-            runId: 'r',
-            error: { code: 'invalid-output', message: 'not a tool call' }
-        })
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'invalid-output', message: 'not a tool call' }
+            },
+            'api'
+        )
         expect(result.status).toBe('unusable')
         expect(result.code).toBe('invalid-output')
         expect(result.message).toContain('stronger model')
     })
 
     it('reports auth failures verbatim from the transport', () => {
-        const result = classifyHealthEvent({
-            type: 'error',
-            runId: 'r',
-            error: { code: 'auth', message: 'Provider rejected the credentials (HTTP 401)' }
-        })
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'auth', message: 'Provider rejected the credentials (HTTP 401)' }
+            },
+            'api'
+        )
         expect(result.status).toBe('failed')
         expect(result.code).toBe('auth')
         expect(result.message).toBe('Provider rejected the credentials (HTTP 401)')
     })
 
     it('tells the user a slow local model may still work when the probe times out', () => {
-        const result = classifyHealthEvent({
-            type: 'error',
-            runId: 'r',
-            error: { code: 'timeout', message: 'whatever the executor said' }
-        })
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'timeout', message: 'whatever the executor said' }
+            },
+            'api'
+        )
         expect(result.status).toBe('failed')
         expect(result.message).toContain(String(HEALTH_CHECK_TIMEOUT_MS / 1_000))
         expect(result.message).toContain('Request timeout')
     })
 
+    it('points a CLI backend at its own timeout, not the Behavior tab', () => {
+        // The Behavior tab's request timeout does nothing for a CLI backend;
+        // sending the user there would be sending them to the wrong control.
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'timeout', message: 'whatever the executor said' }
+            },
+            'cli'
+        )
+        expect(result.message).toContain(String(CLI_HEALTH_CHECK_TIMEOUT_MS / 1_000))
+        expect(result.message).not.toContain('Request timeout')
+    })
+
+    it('explains an unusable CLI answer as an agent wrapping its result in prose', () => {
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'invalid-output', message: 'not JSON' }
+            },
+            'cli'
+        )
+        expect(result.status).toBe('unusable')
+        expect(result.message).toContain('prose')
+    })
+
     it('fails on a missing terminal event instead of assuming success', () => {
-        expect(classifyHealthEvent(null).status).toBe('failed')
-        expect(classifyHealthEvent({ type: 'progress', runId: 'r' }).status).toBe('failed')
+        expect(classifyHealthEvent(null, 'api').status).toBe('failed')
+        expect(classifyHealthEvent({ type: 'progress', runId: 'r' }, 'api').status).toBe('failed')
     })
 })
 
@@ -180,5 +242,57 @@ describe('checkBackendHealth', () => {
             timeoutMs: 5_000
         })
         expect(result.message).not.toContain(TEST_API_KEY)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// CLI backends: the probe goes through the same boundary a real run does
+// ---------------------------------------------------------------------------
+
+describe('healthCheckTimeoutMs', () => {
+    it('bounds an API probe well under the request timeout', () => {
+        expect(healthCheckTimeoutMs(makeConfig())).toBe(HEALTH_CHECK_TIMEOUT_MS)
+    })
+
+    it('gives a CLI probe longer, an agent does more before it answers', () => {
+        expect(healthCheckTimeoutMs(makeCliConfig())).toBe(CLI_HEALTH_CHECK_TIMEOUT_MS)
+    })
+
+    it('never outlives the backend’s own timeout', () => {
+        // Probing for longer than the setting under test would certify a
+        // configuration that cannot actually run.
+        expect(healthCheckTimeoutMs(makeCliConfig({ timeoutSeconds: 30 }))).toBe(30_000)
+    })
+})
+
+describe('checkBackendHealth (CLI)', () => {
+    it('reports an executable that is not there, with the path in the message', async () => {
+        const result = await checkBackendHealth({
+            backend: makeCliConfig({ executablePath: '/definitely/not/here/claude' }),
+            model: '',
+            timeoutMs: 5_000
+        })
+        expect(result.status).toBe('failed')
+        expect(result.message).toContain('/definitely/not/here/claude')
+    })
+
+    it('reports a path that is not a file at all', async () => {
+        const result = await checkBackendHealth({
+            backend: makeCliConfig({ executablePath: '/tmp' }),
+            model: '',
+            timeoutMs: 5_000
+        })
+        expect(result.status).toBe('failed')
+        expect(result.message).toContain('not a file')
+    })
+
+    it('refuses a relative path the way the boundary would', async () => {
+        const result = await checkBackendHealth({
+            backend: makeCliConfig({ executablePath: 'claude' }),
+            model: '',
+            timeoutMs: 5_000
+        })
+        expect(result.status).toBe('failed')
+        expect(result.message).toContain('absolute')
     })
 })

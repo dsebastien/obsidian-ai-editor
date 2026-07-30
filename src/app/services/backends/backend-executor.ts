@@ -54,6 +54,13 @@ export interface CreateBackendExecutorInput {
     readonly behavior: BehaviorSettings
     /** Transport for API backends; ignored by CLI backends. */
     readonly fetchImpl: typeof fetch
+    /**
+     * Replaces the family's normal timeout. The one legitimate caller is the
+     * health probe, which must stay a check rather than inheriting a ten-minute
+     * request budget; everything that runs a real operation leaves this unset
+     * so the user's configured timeout is what applies.
+     */
+    readonly timeoutMsOverride?: number
 }
 
 /**
@@ -93,7 +100,7 @@ export function resolvedBackendLabel(backend: BackendInstance, model: string): s
 /** Builds the executor + redaction pair for one resolved backend. */
 export function createBackendExecutor(input: CreateBackendExecutorInput): ResolvedBackendExecutor {
     const { backend, model, systemPrompt, behavior } = input
-    const timeoutMs = backendTimeoutMs(backend, behavior)
+    const timeoutMs = input.timeoutMsOverride ?? backendTimeoutMs(backend, behavior)
     if (backend.family === 'cli') {
         return {
             // A CLI backend holds no credential of ours: the tool authenticates
