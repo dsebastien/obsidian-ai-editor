@@ -128,7 +128,8 @@
 
 /* Key-storage disclosure and intros */
 .ai-editor-settings-callout {
-    @apply mb-4 rounded p-3 text-sm;
+    @apply mb-4 p-3 text-sm;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-left: 4px solid var(--color-yellow, orange);
     background-color: var(--background-secondary);
@@ -174,7 +175,8 @@
 }
 
 .ai-editor-card {
-    @apply flex flex-col gap-1.5 rounded p-3;
+    @apply flex flex-col gap-1.5 p-3;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
 }
@@ -312,7 +314,8 @@
    in a narrow split never spills over the neighbouring document — it wins over
    the preferred width below. */
 .ai-editor-finding-card {
-    @apply fixed flex min-w-0 flex-col overflow-y-auto rounded;
+    @apply fixed flex min-w-0 flex-col overflow-y-auto;
+    border-radius: var(--radius-s);
     z-index: var(--layer-menu, 25);
     width: min(560px, 94vw);
     max-height: 60vh;
@@ -378,7 +381,8 @@
 
 /* Plain two-block old/new suggestion preview (no word-level diff yet) */
 .ai-editor-finding-card-diff {
-    @apply flex flex-col gap-1 rounded p-2 text-sm;
+    @apply flex flex-col gap-1 p-2 text-sm;
+    border-radius: var(--radius-s);
     background-color: var(--background-secondary);
 }
 
@@ -389,9 +393,15 @@
     overflow-wrap: anywhere;
 }
 
+/* WCAG 1.4.1: green vs red is the ONLY difference between these two blocks
+   for anyone who cannot resolve the hue, and "struck out" already carries the
+   removal. The addition therefore carries an underline — a second, non-colour
+   signal that survives a monochrome display and every red/green deficiency. */
 .ai-editor-finding-card-diff-new {
     color: var(--color-green, var(--text-success));
-    text-decoration: none;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
@@ -405,7 +415,8 @@
 /* Push-back thread: compact message list, scrollable, newest at the bottom
    (the card scrolls it into view after every render). */
 .ai-editor-finding-card-thread {
-    @apply flex flex-col gap-1.5 overflow-y-auto rounded p-2 text-xs;
+    @apply flex flex-col gap-1.5 overflow-y-auto p-2 text-xs;
+    border-radius: var(--radius-s);
     max-height: 160px;
     background-color: var(--background-secondary);
 }
@@ -437,12 +448,6 @@
 
 .ai-editor-finding-card-thread-failed .ai-editor-finding-card-thread-body {
     color: var(--text-error);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .ai-editor-finding-card-thread-pending {
-        animation: none;
-    }
 }
 
 .ai-editor-finding-card-thread-failure {
@@ -678,13 +683,15 @@
 }
 
 .ai-editor-rail {
-    @apply flex flex-col items-center gap-2 rounded p-1.5;
+    @apply flex flex-col items-center gap-2 p-1.5;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: color-mix(in srgb, var(--background-primary) 85%, transparent);
 }
 
 .ai-editor-rail-button {
-    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    @apply cursor-pointer px-2 py-1 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     box-shadow: none;
@@ -719,7 +726,8 @@
    group says the members belong to it without absorbing them. */
 
 .ai-editor-rail-panel {
-    @apply flex flex-col items-center gap-1.5 rounded py-1;
+    @apply flex flex-col items-center gap-1.5 py-1;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-right: none;
 }
@@ -748,8 +756,8 @@
 /* A ring that is actively producing a scorecard must not look identical to a
    finished one — the rail is what the user watches while waiting. Same
    vocabulary as the editor dots: slow pulse while queued, fast while working.
-   Both selectors are in the reduced-motion block below (that list is explicit,
-   so a new animation is silently exempt unless it is added there). */
+   Motion is switched off wholesale at the foot of this file — no per-animation
+   opt-in to forget (see "REDUCED MOTION"). */
 .ai-editor-rail-panel-waiting {
     animation: ai-editor-pulse 2.4s ease-in-out infinite;
 }
@@ -865,20 +873,6 @@
     animation: ai-editor-pulse 2.4s ease-in-out infinite;
 }
 
-/* WCAG 2.3.3: the armed indicator can pulse for the whole idle window (up
-   to 600 s) on every note being edited — motion-sensitive users get static
-   dots (state stays visible through color/opacity alone). */
-@media (prefers-reduced-motion: reduce) {
-    .ai-editor-rail-dot-pending,
-    .ai-editor-rail-dot-running,
-    .ai-editor-rail-dot-transforming,
-    .ai-editor-rail-panel-waiting,
-    .ai-editor-rail-panel-running,
-    .ai-editor-rail-daemon {
-        animation: none;
-    }
-}
-
 .ai-editor-rail-badge {
     @apply absolute rounded-full px-1 leading-tight;
     top: -7px;
@@ -984,12 +978,6 @@
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .ai-editor-finding-emphasized {
-        animation: none;
-    }
-}
-
 /* Current: the keyboard-triage cursor's finding — a static persona-colored
    ring distinct from the transient emphasis tint (the two can coexist).
    No animation, so no reduced-motion variant is needed. */
@@ -1029,14 +1017,19 @@
    ======================================== */
 
 .ai-editor-transform-preview {
-    @apply my-1 flex flex-col gap-2 rounded p-3 text-sm;
+    @apply my-1 flex flex-col gap-2 p-3 text-sm;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
     background-color: var(--background-secondary);
 }
 
-.ai-editor-transform-preview:focus {
-    outline: none;
+/* `:focus-visible`, not `:focus`: suppressing the outline on every focus
+   (including the programmatic focus the widget takes when it opens) removes
+   the indicator for a keyboard user too. The ring itself is added by the
+   KEYBOARD FOCUS block at the foot of this file — this rule only keeps the
+   persona's left edge from being repainted by the focus border. */
+.ai-editor-transform-preview:focus-visible {
     border-color: var(--background-modifier-border-focus, var(--interactive-accent));
     border-left-color: var(--ai-editor-editor-color, var(--text-accent));
 }
@@ -1060,7 +1053,8 @@
 /* Word-level diff body: segments flow as inline text; whitespace (incl.
    newlines inside segments) must render verbatim. */
 .ai-editor-transform-preview-diff {
-    @apply rounded p-2 text-sm;
+    @apply p-2 text-sm;
+    border-radius: var(--radius-s);
     background-color: var(--background-primary);
     color: var(--text-normal);
     white-space: pre-wrap;
@@ -1075,11 +1069,18 @@
     text-decoration-color: color-mix(in srgb, var(--color-red, #e93147) 70%, transparent);
 }
 
+/* WCAG 1.4.1: the deleted run is struck out, so the inserted run needs a
+   non-colour signal of its own — otherwise the two segments differ by hue
+   alone and a red/green deficiency reads the whole diff as one block of text.
+   `<ins>`'s native underline, restored rather than suppressed. */
 .ai-editor-transform-preview-ins {
     border-radius: 2px;
     color: var(--color-green, var(--text-success));
     background-color: color-mix(in srgb, var(--color-green, #08b94e) 12%, transparent);
-    text-decoration: none;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--color-green, #08b94e) 70%, transparent);
+    text-underline-offset: 2px;
 }
 
 .ai-editor-transform-preview-rationale {
@@ -1125,7 +1126,8 @@
 }
 
 .ai-editor-panel-review-button {
-    @apply flex shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs;
+    @apply flex shrink-0 cursor-pointer items-center gap-1.5 px-2 py-1 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     color: var(--text-normal);
@@ -1158,18 +1160,9 @@
     }
 }
 
-/* WCAG 2.2.2/2.3.3: a review can legitimately run for minutes (slow local
-   models), so the spinner would rotate the whole time. Motion-sensitive users
-   get a static ring — the button's own label ("Reviewing…") is what actually
-   reports the state, the spinner only reinforces it. */
-@media (prefers-reduced-motion: reduce) {
-    .ai-editor-panel-review-spinner {
-        animation: none;
-    }
-}
-
 .ai-editor-panel-skips {
-    @apply rounded p-2 text-xs;
+    @apply p-2 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-left: 3px solid var(--color-yellow, orange);
     background-color: var(--background-secondary);
@@ -1191,7 +1184,8 @@
 }
 
 .ai-editor-panel-comment {
-    @apply flex flex-col gap-1 rounded p-2 text-xs;
+    @apply flex flex-col gap-1 p-2 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
 }
@@ -1224,7 +1218,8 @@
 }
 
 .ai-editor-panel-comment-action {
-    @apply cursor-pointer rounded px-2 py-1;
+    @apply cursor-pointer px-2 py-1;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     color: var(--text-normal);
@@ -1240,7 +1235,8 @@
    the block reads as ONE entity above the member sections. */
 
 .ai-editor-scorecard {
-    @apply flex flex-col gap-2 rounded p-2.5;
+    @apply flex flex-col gap-2 p-2.5;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     outline: 1px solid var(--background-modifier-border);
     outline-offset: 2px;
@@ -1353,7 +1349,8 @@
 }
 
 .ai-editor-scorecard-dissent-item {
-    @apply flex flex-col gap-0.5 rounded p-1.5 text-xs;
+    @apply flex flex-col gap-0.5 p-1.5 text-xs;
+    border-radius: var(--radius-s);
     border-left: 3px solid var(--color-purple, var(--text-accent));
     background-color: var(--background-primary-alt);
 }
@@ -1369,7 +1366,8 @@
 }
 
 .ai-editor-panel-section {
-    @apply flex flex-col gap-1.5 rounded p-2;
+    @apply flex flex-col gap-1.5 p-2;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
 }
@@ -1413,7 +1411,8 @@
 
 /* Per-editor retry (section header, mirrors the rail chip affordance). */
 .ai-editor-panel-retry {
-    @apply flex cursor-pointer items-center justify-center rounded p-0;
+    @apply flex cursor-pointer items-center justify-center p-0;
+    border-radius: var(--radius-s);
     width: 20px;
     height: 20px;
     border: 1px solid var(--background-modifier-border);
@@ -1474,7 +1473,8 @@
 }
 
 .ai-editor-panel-filter-button {
-    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    @apply cursor-pointer px-2 py-0.5 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: transparent;
     color: var(--text-normal);
@@ -1497,7 +1497,8 @@
 }
 
 .ai-editor-panel-bulk-button {
-    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    @apply cursor-pointer px-2 py-0.5 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: transparent;
     color: var(--text-muted);
@@ -1516,7 +1517,8 @@
 }
 
 .ai-editor-panel-more-button {
-    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    @apply cursor-pointer px-2 py-0.5 text-xs;
+    border-radius: var(--radius-s);
     border: 1px dashed var(--background-modifier-border);
     background-color: transparent;
     color: var(--text-muted);
@@ -1536,7 +1538,7 @@
 
 .ai-editor-panel-more-error {
     @apply text-xs;
-    color: var(--text-warning);
+    color: var(--text-warning, var(--color-yellow, orange));
 }
 
 .ai-editor-panel-subheader {
@@ -1550,7 +1552,8 @@
 }
 
 .ai-editor-panel-finding {
-    @apply flex items-start gap-1.5 rounded p-1.5;
+    @apply flex items-start gap-1.5 p-1.5;
+    border-radius: var(--radius-s);
     border: 1px solid transparent;
 }
 
@@ -1668,12 +1671,16 @@
 }
 
 .ai-editor-margin-card {
-    @apply flex flex-col gap-1 rounded p-2 text-xs;
+    @apply flex flex-col gap-1 p-2 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
     background-color: var(--background-primary);
     color: var(--text-normal);
-    box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+    /* The theme's own small elevation, not a hand-mixed black: a light-on-dark
+       theme needs a different shadow colour than a dark-on-light one, and the
+       floating finding card already takes it from the same token. */
+    box-shadow: var(--shadow-s, 0 1px 4px rgb(0 0 0 / 12%));
 }
 
 /* An orphan has no line to sit next to; the muted border says so without
@@ -1747,7 +1754,8 @@
 }
 
 .ai-editor-margin-action {
-    @apply cursor-pointer rounded px-1.5 py-0.5 text-[0.9em];
+    @apply cursor-pointer px-1.5 py-0.5 text-[0.9em];
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     color: var(--text-muted);
@@ -1761,7 +1769,8 @@
 
 /* One line with several comments: a chip that expands to the cards. */
 .ai-editor-margin-chip {
-    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    @apply cursor-pointer px-2 py-1 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
     color: var(--text-muted);
@@ -1774,7 +1783,8 @@
 }
 
 .ai-editor-margin-orphan-box {
-    @apply mb-2 flex flex-col gap-1.5 rounded p-1.5;
+    @apply mb-2 flex flex-col gap-1.5 p-1.5;
+    border-radius: var(--radius-s);
     border: 1px dashed var(--background-modifier-border);
     background-color: color-mix(in srgb, var(--background-secondary) 85%, transparent);
 }
@@ -1799,7 +1809,8 @@
 
 /* "Ask for comments" next to the panel's Review button (plan §5.5 / M8). */
 .ai-editor-panel-comment-ask {
-    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    @apply cursor-pointer px-2 py-1 text-xs;
+    border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     color: var(--text-muted);
@@ -1809,4 +1820,76 @@
 .ai-editor-panel-comment-ask:hover {
     background-color: var(--interactive-hover);
     color: var(--text-normal);
+}
+
+/* ========================================
+   KEYBOARD FOCUS
+   Obsidian's only focus indicator is
+   `button:focus-visible { box-shadow: 0 0 0
+   3px var(--background-modifier-border-focus) }`
+   (verified against app.css). Every control
+   in this plugin that IS a <button> inherits
+   it — the `box-shadow: none` in our base
+   rules sits at 0,1,0 and loses to that
+   0,1,1 selector, so no ring is suppressed.
+
+   What Obsidian cannot cover is the handful
+   of elements that are focusable WITHOUT
+   being buttons. Each one below is tabbable
+   (`tabindex="0"`) and, before this rule, its
+   only focus feedback was a background or
+   border tint indistinguishable from hover —
+   WCAG 2.4.7 and 2.4.11. Same ring as the
+   native one, so focus looks the same
+   everywhere in the plugin.
+   ======================================== */
+
+.ai-editor-panel-finding.is-clickable:focus-visible,
+.ai-editor-transform-preview:focus-visible,
+.ai-editor-preview-prompt:focus-visible,
+.ai-editor-finding-card-thread:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* ========================================
+   REDUCED MOTION (WCAG 2.2.2 / 2.3.3)
+   ONE blanket switch instead of a per-
+   animation allow-list. The list this
+   replaces carried its own warning — "a new
+   animation is silently exempt unless it is
+   added there" — and that is exactly the
+   failure mode: the cost of forgetting is
+   borne by the user who asked the operating
+   system not to animate things, and nothing
+   in the build can catch the omission.
+
+   Scoped by attribute rather than globally:
+   the selector matches only elements whose
+   own class list carries the plugin prefix,
+   so Obsidian's and the theme's animations
+   are untouched. Specificity is 0,1,0 and it
+   is the last rule in the file, so it wins
+   against every animated rule above (all of
+   which are single-class) without an
+   `!important`.
+
+   Nothing depends on motion to convey state:
+   a pulsing rail dot is also dimmed, the
+   review spinner sits next to the word
+   "Reviewing…", and the chip-click emphasis
+   keeps its stronger static tint. Durations
+   are collapsed rather than removed so an
+   animation that ENDS on a different style
+   than it starts still lands on its final
+   frame.
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    [class*='ai-editor-'] {
+        animation-duration: 1ms;
+        animation-iteration-count: 1;
+        transition-duration: 1ms;
+        scroll-behavior: auto;
+    }
 }
