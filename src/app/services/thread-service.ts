@@ -8,6 +8,7 @@ import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { FindingId } from '../domain/ids'
 import type { RunController, ThreadTurnResolution } from './orchestration/run-controller'
+import { noteRuleOutcome } from './rules/note-rules'
 import type { EditorSkip } from './review-service'
 import { composeSystemPrompt, resolveApiBackend, reviewTimeoutMs } from './review-service'
 
@@ -43,6 +44,11 @@ export type ThreadStart =
     | { readonly status: 'no-run' }
     /** The finding's note is excluded (Business Rules #7). */
     | { readonly status: 'excluded'; readonly notePath: string }
+    /**
+     * A binding rule switches the plugin off for the finding's note (plan
+     * §4b) — a rule added AFTER the review that produced it.
+     */
+    | { readonly status: 'rule-disabled'; readonly notePath: string; readonly ruleLabel: string }
     /**
      * The editor that produced the finding cannot answer. `skip` explains why;
      * it is `null` only when the editor id no longer resolves to a name.
@@ -83,6 +89,12 @@ export async function startThreadTurn(input: StartThreadTurnServiceInput): Promi
     const notePath = run.snapshot.filePath
     if (isExcluded(notePath, vault.getNoteMetadata(notePath), behavior)) {
         return { status: 'excluded', notePath }
+    }
+
+    // -- Binding-rule kill switch (plan §4b) ---------------------------------
+    const ruleOutcome = noteRuleOutcome(notePath, vault, settings)
+    if (ruleOutcome.kind === 'disabled') {
+        return { status: 'rule-disabled', notePath, ruleLabel: ruleOutcome.ruleLabel }
     }
 
     // -- The finding's own editor answers; nobody else may speak for it ------

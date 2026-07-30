@@ -200,6 +200,46 @@ describe('startAction refusals', () => {
         expect(result).toEqual({ status: 'excluded', notePath: 'Notes/Test.md' })
     })
 
+    it('refuses a note a binding rule switches the plugin off for (plan §4b)', async () => {
+        const result = await startAction(
+            makeInput({
+                settings: makeSettings({
+                    rules: [
+                        {
+                            id: 'r1',
+                            name: 'No AI in Notes',
+                            match: { matchType: 'folder', value: 'Notes' },
+                            effect: 'disabled'
+                        }
+                    ]
+                })
+            })
+        )
+        expect(result).toEqual({
+            status: 'rule-disabled',
+            notePath: 'Notes/Test.md',
+            ruleLabel: 'No AI in Notes'
+        })
+    })
+
+    it('is unaffected by an assign rule: a bound action names its own editor', async () => {
+        const result = await startAction(
+            makeInput({
+                settings: makeSettings({
+                    rules: [
+                        {
+                            id: 'r1',
+                            match: { matchType: 'folder', value: 'Notes' },
+                            effect: 'assign',
+                            defaultTarget: { targetType: 'editor', targetId: 'someone-else' }
+                        }
+                    ]
+                })
+            })
+        )
+        expect(result.status).toBe('started')
+    })
+
     it('requires confirmation for oversized notes, then proceeds when confirmed', async () => {
         const settings = makeSettings({ behavior: { sizeWarningWords: 100 } })
         const longText = Array.from({ length: 150 }, (_, i) => `word${i}`).join(' ')

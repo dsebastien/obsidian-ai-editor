@@ -27,7 +27,7 @@ import {
  *   `Review current note` command (shared refusals: exclusions, size guard,
  *   editor/backend resolution), waits for the run to settle, and returns one
  *   JSON document (default) or one line per finding (`--format text`).
- * - Errors are typed codes (`file-not-found`, `excluded`,
+ * - Errors are typed codes (`file-not-found`, `excluded`, `rule-disabled`,
  *   `needs-confirmation`, `no-editors`, `backend-error`, `timeout`) with
  *   status-only messages: per-editor failure messages already passed the
  *   run's redaction seam (Business Rules #12), and unexpected pipeline
@@ -72,6 +72,7 @@ export type ReviewCliErrorCode =
     | 'bad-args'
     | 'file-not-found'
     | 'excluded'
+    | 'rule-disabled'
     | 'needs-confirmation'
     | 'no-editors'
     | 'backend-error'
@@ -463,6 +464,15 @@ export async function handleReviewCli(
                     path,
                     'excluded',
                     'This note is excluded from AI review by the privacy settings'
+                ),
+                args.format
+            )
+        case 'rule-disabled':
+            return render(
+                errorOutput(
+                    path,
+                    'rule-disabled',
+                    `AI Editor is disabled for this note by the rule ${start.ruleLabel}`
                 ),
                 args.format
             )

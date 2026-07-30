@@ -338,6 +338,40 @@ describe('startThreadTurn refusals', () => {
         expect(calls).toEqual(0)
     })
 
+    it('refuses when a binding rule added after the review disables the note', async () => {
+        const controller = new RunController()
+        const { findingId } = await runWithFinding(controller)
+        let calls = 0
+        const fetchImpl = (() => {
+            calls += 1
+            return Promise.resolve(new Response('{}', { status: 200 }))
+        }) as unknown as typeof fetch
+        const start = await startThreadTurn({
+            settings: makeSettings({
+                rules: [
+                    {
+                        id: 'r1',
+                        name: 'Hands off',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'disabled'
+                    }
+                ]
+            }),
+            vault: new FakeVault(),
+            runController: controller,
+            findingId,
+            message: 'push',
+            currentText: DOC_TEXT,
+            fetchImpl
+        })
+        expect(start).toEqual({
+            status: 'rule-disabled',
+            notePath: NOTE_PATH,
+            ruleLabel: 'Hands off'
+        })
+        expect(calls).toEqual(0)
+    })
+
     it('reports why the finding’s editor cannot answer', async () => {
         const controller = new RunController()
         const { findingId } = await runWithFinding(controller)

@@ -9,9 +9,11 @@ import type { NoteMetadata } from './context/vault-reader.intf'
 import {
     hasReviewCapableEditor,
     isExcluded,
+    isPluginEnabledForNote,
     isReviewable,
     reviewCapableEditors
 } from './reviewability'
+import type { NoteFactsSource } from './rules/note-rules'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -47,6 +49,20 @@ function makeSettings(overrides: Record<string, unknown> = {}): PluginSettingsV1
 }
 
 const NO_METADATA_EXCLUSIONS: NoteMetadata = { tags: [], frontmatter: {} }
+
+/**
+ * Minimal `NoteFactsSource`: one metadata value for every path plus optional
+ * note-type ids (binding rules read both through this seam).
+ */
+function factsOf(
+    metadata: NoteMetadata | null,
+    noteTypeIds: readonly string[] = []
+): NoteFactsSource {
+    return {
+        getNoteMetadata: (): NoteMetadata | null => metadata,
+        getNoteTypeIds: (): readonly string[] => noteTypeIds
+    }
+}
 
 // ---------------------------------------------------------------------------
 // hasReviewCapableEditor
@@ -147,14 +163,18 @@ describe('reviewCapableEditors', () => {
 
 describe('isReviewable', () => {
     it('is true for a non-excluded note with a dispatchable editor', () => {
-        expect(isReviewable('Notes/idea.md', NO_METADATA_EXCLUSIONS, makeSettings())).toBe(true)
+        expect(isReviewable('Notes/idea.md', factsOf(NO_METADATA_EXCLUSIONS), makeSettings())).toBe(
+            true
+        )
     })
 
     it('is false for a folder-excluded note', () => {
         const settings = makeSettings({
             behavior: { excludedFolders: ['Private'] }
         })
-        expect(isReviewable('Private/journal.md', NO_METADATA_EXCLUSIONS, settings)).toBe(false)
+        expect(isReviewable('Private/journal.md', factsOf(NO_METADATA_EXCLUSIONS), settings)).toBe(
+            false
+        )
     })
 
     it('is false for a tag-excluded note', () => {
@@ -162,29 +182,98 @@ describe('isReviewable', () => {
             behavior: { excludedTags: ['private'] }
         })
         const metadata: NoteMetadata = { tags: ['#private/journal'], frontmatter: {} }
-        expect(isReviewable('Notes/idea.md', metadata, settings)).toBe(false)
+        expect(isReviewable('Notes/idea.md', factsOf(metadata), settings)).toBe(false)
     })
 
     it('fails closed on null metadata when tag exclusions are configured', () => {
         const settings = makeSettings({
             behavior: { excludedTags: ['private'], respectFrontmatterOptOut: false }
         })
-        expect(isReviewable('Notes/idea.md', null, settings)).toBe(false)
+        expect(isReviewable('Notes/idea.md', factsOf(null), settings)).toBe(false)
     })
 
     it('is false for a frontmatter opt-out note', () => {
         const metadata: NoteMetadata = { tags: [], frontmatter: { ai_editor: false } }
-        expect(isReviewable('Notes/idea.md', metadata, makeSettings())).toBe(false)
+        expect(isReviewable('Notes/idea.md', factsOf(metadata), makeSettings())).toBe(false)
     })
 
     it('is false when no editor can dispatch, even for an includable note', () => {
         const settings = makeSettings({ editors: [] })
-        expect(isReviewable('Notes/idea.md', NO_METADATA_EXCLUSIONS, settings)).toBe(false)
+        expect(isReviewable('Notes/idea.md', factsOf(NO_METADATA_EXCLUSIONS), settings)).toBe(false)
     })
 
     it('re-exports isExcluded so surfaces need a single import', () => {
         expect(typeof isExcluded).toBe('function')
         const settings = makeSettings({ behavior: { excludedFolders: ['Private'] } })
         expect(isExcluded('Private/a.md', NO_METADATA_EXCLUSIONS, settings.behavior)).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Binding-rule kill switch (plan §4b)
+// ---------------------------------------------------------------------------
+
+describe('binding rules', () => {
+    const withRule = (rule: Record<string, unknown>): PluginSettingsV1 =>
+        makeSettings({
+            rules: [
+                {
+                    id: 'r1',
+                    match: { matchType: 'folder', value: 'Private' },
+                    effect: 'disabled',
+                    ...rule
+                }
+            ]
+        })
+
+    it('makes a kill-switched note neither reviewable nor plugin-enabled', () => {
+        const settings = withRule({})
+        const facts = factsOf(NO_METADATA_EXCLUSIONS)
+        expect(isReviewable('Private/journal.md', facts, settings)).toBe(false)
+        expect(isPluginEnabledForNote('Private/journal.md', facts, settings)).toBe(false)
+    })
+
+    it('leaves other notes alone', () => {
+        const settings = withRule({})
+        const facts = factsOf(NO_METADATA_EXCLUSIONS)
+        expect(isReviewable('Blog/post.md', facts, settings)).toBe(true)
+        expect(isPluginEnabledForNote('Blog/post.md', facts, settings)).toBe(true)
+    })
+
+    it('reads note-type facts through the same seam', () => {
+        const settings = withRule({
+            match: { matchType: 'osk-note-type', value: 'Daily Notes' }
+        })
+        expect(
+            isReviewable(
+                'Journal/2026-07-30.md',
+                factsOf(NO_METADATA_EXCLUSIONS, ['daily-notes']),
+                settings
+            )
+        ).toBe(false)
+        expect(
+            isReviewable(
+                'Journal/2026-07-30.md',
+                factsOf(NO_METADATA_EXCLUSIONS, ['tasks']),
+                settings
+            )
+        ).toBe(true)
+    })
+
+    it('an assign rule never blocks a note', () => {
+        const settings = withRule({
+            effect: 'assign',
+            defaultTarget: { targetType: 'editor', targetId: 'editor-1' }
+        })
+        expect(isReviewable('Private/journal.md', factsOf(NO_METADATA_EXCLUSIONS), settings)).toBe(
+            true
+        )
+    })
+
+    it('isPluginEnabledForNote is independent of having a review-capable editor', () => {
+        const settings = makeSettings({ editors: [] })
+        const facts = factsOf(NO_METADATA_EXCLUSIONS)
+        expect(isPluginEnabledForNote('Notes/idea.md', facts, settings)).toBe(true)
+        expect(isReviewable('Notes/idea.md', facts, settings)).toBe(false)
     })
 })

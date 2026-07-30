@@ -1,3 +1,4 @@
+import { resolveRuleEditorPool } from '../domain/rules/rule-engine'
 import type {
     ApiBackend,
     BehaviorSettings,
@@ -12,6 +13,7 @@ import type { AssembledContext } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { RunController, RunEditorSpec, RunHandle } from './orchestration/run-controller'
+import { noteRuleOutcome } from './rules/note-rules'
 
 /**
  * Review-run entry point: turns settings + a document snapshot into one
@@ -24,6 +26,9 @@ import type { RunController, RunEditorSpec, RunHandle } from './orchestration/ru
  * Guarantees enforced here:
  * - Privacy exclusions are checked BEFORE anything else — an excluded target
  *   never reaches context assembly or a backend (Business Rules #7).
+ * - Binding rules are checked next (plan §4b): a note a rule switches the
+ *   plugin off for is refused with its own status, and a rule that assigns a
+ *   reviewer supplies the default participant pool.
  * - Nothing runs without an explicit user action (Business Rules #1): the
  *   invokers are the Review command / rail button / menus / CLI — plus daemon
  *   refreshes, authorized by the rule's documented carve-out (the explicit
@@ -46,10 +51,12 @@ export type SkipReason =
     | 'backend-disabled'
     | 'cli-backend-unsupported'
     | 'no-model-configured'
-    /** Instruction runs only: a named editor is disabled. */
+    /** Named-pool runs only: a named editor is disabled. */
     | 'editor-disabled'
-    /** Instruction runs only: a named editor id no longer exists. */
+    /** Named-pool runs only: a named editor id no longer exists. */
     | 'editor-missing'
+    /** A binding rule assigned a panel that no longer exists (plan §4b). */
+    | 'rule-target-missing'
 
 /** One editor that could not participate in the run, and why. */
 export interface EditorSkip {
@@ -79,6 +86,8 @@ export function skipReasonLabel(reason: SkipReason): string {
             return 'the editor is disabled'
         case 'editor-missing':
             return 'the editor no longer exists'
+        case 'rule-target-missing':
+            return "the matching rule's panel no longer exists"
     }
 }
 
@@ -120,6 +129,14 @@ export type ReviewStart =
       }
     /** Typed refusal: the target note is excluded (Business Rules #7). */
     | { readonly status: 'excluded'; readonly notePath: string }
+    /**
+     * Typed refusal distinct from `excluded`: a binding rule switches the
+     * plugin OFF for this note (plan §4b kill switch). Different cause,
+     * different fix, so it gets its own status — `excluded` means "this
+     * content never leaves the vault", `rule-disabled` means "AI Editor does
+     * not operate here". `ruleLabel` names the rule so the user can find it.
+     */
+    | { readonly status: 'rule-disabled'; readonly notePath: string; readonly ruleLabel: string }
     /** No editor could run; `skips` explains each candidate. */
     | { readonly status: 'no-editors'; readonly skips: readonly EditorSkip[] }
     /**
@@ -401,6 +418,18 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         return { status: 'excluded', notePath: snapshot.filePath }
     }
 
+    // -- Binding rules: kill switch, then the default participant pool -------
+    // Before the size guard: a note the plugin is switched off for must not
+    // pop a confirmation dialog on its way to being refused.
+    const ruleOutcome = noteRuleOutcome(snapshot.filePath, vault, settings)
+    if (ruleOutcome.kind === 'disabled') {
+        return {
+            status: 'rule-disabled',
+            notePath: snapshot.filePath,
+            ruleLabel: ruleOutcome.ruleLabel
+        }
+    }
+
     // -- Size guard: oversized notes need an explicit user confirmation ------
     const wordCount = countWords(snapshot.text)
     if (wordCount > behavior.sizeWarningWords && input.confirmedLargeNote !== true) {
@@ -408,30 +437,64 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     }
 
     // -- Resolve participants -------------------------------------------------
-    // SEAM (M6): binding rules (folder/tag/frontmatter → default editors or
-    // disabled) will narrow this selection per note. Until then every enabled
-    // review-capable editor participates — unless a per-run instruction
-    // narrows the run to the editor(s) the user asked (the others are not
-    // candidates at all, so they never appear in the skip report). Editors
-    // the instruction NAMES are candidates by definition, so every one that
-    // cannot run is reported as a skip — deleted ids and disabled editors
-    // included — instead of silently shrinking the panel/ask (the resolution
-    // contract in `action-resolution.ts`). Outside an instruction, disabled
-    // editors stay silent: the user turned them off on purpose, and the
-    // daemon/retry re-dispatch (`input.editorIds`) must not nag about them.
-    // An instruction none of whose editors can run yields `no-editors` with
-    // the full skip report, like any other empty selection.
+    // Precedence, highest first:
+    // 1. A per-run `instruction` narrows the run to the editor(s) the user
+    //    asked (ask-an-editor, a bound review-class verb). The others were not
+    //    asked at all, so they are not candidates and never appear as skips.
+    // 2. `editorIds` re-dispatches a KNOWN set (a daemon refresh of the note's
+    //    previous run).
+    // 3. A matching `assign` binding rule (plan §4b): its editor, or every
+    //    member of its panel. Rules only supply the DEFAULT pool — when the
+    //    user or the daemon named editors, that choice wins.
+    // 4. Otherwise every editor in the settings.
+    //
+    // Pools that NAME editors (1 and 3) report every named editor that cannot
+    // run — deleted ids and disabled editors included — instead of silently
+    // shrinking the ask / panel / rule (the resolution contract in
+    // `action-resolution.ts`). Pools 2 and 4 stay silent about disabled
+    // editors: the user turned them off on purpose, and a daemon refresh must
+    // not nag about them. A named pool none of whose editors can run yields
+    // `no-editors` with the full skip report, like any other empty selection.
     const instruction = input.instruction
-    const editorIds = input.editorIds
-    const editorPool = instruction
-        ? settings.editors.filter((editor) => instruction.editorIds.includes(editor.id))
-        : editorIds
-          ? settings.editors.filter((editor) => editorIds.includes(editor.id))
-          : settings.editors
     const skips: EditorSkip[] = []
+    let requestedIds: readonly string[] | null = null
+    let namedPool = false
     if (instruction) {
+        requestedIds = instruction.editorIds
+        namedPool = true
+    } else if (input.editorIds) {
+        requestedIds = input.editorIds
+    } else {
+        const rulePool = resolveRuleEditorPool(settings, ruleOutcome)
+        if (rulePool.kind === 'target-missing') {
+            // Dangling panel reference (referential integrity reports it in the
+            // settings too). Refusing with a named reason beats silently
+            // reviewing with every editor the rule was meant to replace.
+            return {
+                status: 'no-editors',
+                skips: [
+                    {
+                        editorId: rulePool.targetId,
+                        editorName:
+                            ruleOutcome.kind === 'assigned' ? ruleOutcome.ruleLabel : 'Rule',
+                        reason: 'rule-target-missing'
+                    }
+                ]
+            }
+        }
+        if (rulePool.kind === 'editors') {
+            requestedIds = rulePool.editorIds
+            namedPool = true
+        }
+    }
+    const pool = requestedIds
+    const editorPool =
+        pool === null
+            ? settings.editors
+            : settings.editors.filter((editor) => pool.includes(editor.id))
+    if (namedPool && pool !== null) {
         const known = new Set(settings.editors.map((editor) => editor.id))
-        for (const id of instruction.editorIds) {
+        for (const id of pool) {
             if (!known.has(id)) {
                 skips.push({ editorId: id, editorName: 'Unknown editor', reason: 'editor-missing' })
             }
@@ -440,7 +503,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     const participants: { editor: EditorConfig; backend: ApiBackend; model: string }[] = []
     for (const editor of editorPool) {
         if (!editor.enabled) {
-            if (instruction) {
+            if (namedPool) {
                 skips.push({
                     editorId: editor.id,
                     editorName: editor.name,

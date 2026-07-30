@@ -10,6 +10,7 @@ import { ExcludedTargetError, assembleContext } from './context/context-assemble
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { RunController } from './orchestration/run-controller'
+import { noteRuleOutcome } from './rules/note-rules'
 import type {
     StartTransformInput,
     TransformController,
@@ -60,6 +61,8 @@ export type ActionStart =
     | { readonly status: 'unknown-action'; readonly actionId: string }
     /** Target note is excluded (Business Rules #7). */
     | { readonly status: 'excluded'; readonly notePath: string }
+    /** A binding rule switches the plugin off for this note (plan §4b). */
+    | { readonly status: 'rule-disabled'; readonly notePath: string; readonly ruleLabel: string }
     /**
      * The note exceeds `behavior.sizeWarningWords`; the caller must confirm
      * and retry with `confirmedLargeNote: true` (transform operations send
@@ -209,6 +212,19 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
     // -- Exclusions come first: fail closed before anything is read ----------
     if (isExcluded(snapshot.filePath, vault.getNoteMetadata(snapshot.filePath), behavior)) {
         return { status: 'excluded', notePath: snapshot.filePath }
+    }
+
+    // -- Binding-rule kill switch (plan §4b), before the size dialog ---------
+    // Only the kill switch applies to actions: an `assign` rule picks who
+    // REVIEWS a note by default, while a bound action already names its own
+    // target editor (`action-resolution.ts`).
+    const ruleOutcome = noteRuleOutcome(snapshot.filePath, vault, settings)
+    if (ruleOutcome.kind === 'disabled') {
+        return {
+            status: 'rule-disabled',
+            notePath: snapshot.filePath,
+            ruleLabel: ruleOutcome.ruleLabel
+        }
     }
 
     // -- Size guard: the whole note travels as operation context -------------

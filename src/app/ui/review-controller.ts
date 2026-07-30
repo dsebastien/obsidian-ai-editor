@@ -464,7 +464,7 @@ export class ReviewController {
      * closed note fails closed exactly like `startReview` would.
      */
     canReviewPath(path: string): boolean {
-        return isReviewable(path, this.vaultReader.getNoteMetadata(path), this.deps.getSettings())
+        return isReviewable(path, this.vaultReader, this.deps.getSettings())
     }
 
     /**
@@ -542,6 +542,9 @@ export class ReviewController {
                 return
             case 'excluded':
                 new Notice('This note is excluded from AI review by your privacy settings.')
+                return
+            case 'rule-disabled':
+                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
@@ -775,6 +778,9 @@ export class ReviewController {
                 return
             case 'excluded':
                 new Notice('This note is excluded from AI actions by your privacy settings.')
+                return
+            case 'rule-disabled':
+                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(
@@ -1778,6 +1784,9 @@ export class ReviewController {
                 return false
             case 'excluded':
                 new Notice(`${start.notePath} is excluded from AI review.`)
+                return false
+            case 'rule-disabled':
+                new Notice(`AI Editor is turned off for that note by the rule ${start.ruleLabel}.`)
                 return false
             case 'no-editor':
                 new Notice(

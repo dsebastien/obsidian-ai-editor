@@ -395,6 +395,179 @@ describe('startReview', () => {
         expect(result).toEqual({ status: 'excluded', notePath: 'Private/Secret.md' })
     })
 
+    describe('binding rules (plan §4b)', () => {
+        const disableRule = {
+            id: 'r1',
+            name: 'No AI in daily notes',
+            match: { matchType: 'tag', value: 'private' },
+            effect: 'disabled'
+        }
+
+        it('refuses a kill-switched note BEFORE the size guard', async () => {
+            const settings = makeSettings({
+                rules: [disableRule],
+                behavior: { sizeWarningWords: 100 }
+            })
+            const oversized = Array.from({ length: 101 }, (_, index) => `word${index}`).join(' ')
+            const vault = new FakeVault()
+            vault.metadata.set('Notes/Test.md', { tags: ['private'], frontmatter: {} })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(oversized),
+                vault,
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody())
+            })
+            expect(result).toEqual({
+                status: 'rule-disabled',
+                notePath: 'Notes/Test.md',
+                ruleLabel: 'No AI in daily notes'
+            })
+        })
+
+        it('narrows the default pool to the editor an assign rule names', async () => {
+            const settings = makeSettings({
+                editors: [makeEditor({ id: 'e-1', name: 'Chosen' }), makeEditor({ id: 'e-2' })],
+                rules: [
+                    {
+                        id: 'r1',
+                        match: { matchType: 'folder', value: 'Notes' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'editor', targetId: 'e-1' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody())
+            })
+            if (result.status !== 'started') {
+                throw new Error(`Expected started, got ${result.status}`)
+            }
+            expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-1'])
+        })
+
+        it('expands a panel target to every member and reports disabled members', async () => {
+            const settings = makeSettings({
+                editors: [
+                    makeEditor({ id: 'e-1', name: 'Member one' }),
+                    makeEditor({ id: 'e-2', name: 'Member two', enabled: false }),
+                    makeEditor({ id: 'e-3', name: 'Outsider' })
+                ],
+                panels: [{ id: 'p-1', name: 'Pre-publish', memberEditorIds: ['e-1', 'e-2'] }],
+                rules: [
+                    {
+                        id: 'r1',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'panel', targetId: 'p-1' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody())
+            })
+            if (result.status !== 'started') {
+                throw new Error(`Expected started, got ${result.status}`)
+            }
+            expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-1'])
+            expect(result.skips).toEqual([
+                { editorId: 'e-2', editorName: 'Member two', reason: 'editor-disabled' }
+            ])
+        })
+
+        it('refuses a rule whose panel no longer exists instead of reviewing with everyone', async () => {
+            const settings = makeSettings({
+                rules: [
+                    {
+                        id: 'r1',
+                        name: 'Blog panel',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'panel', targetId: 'gone' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody())
+            })
+            expect(result).toEqual({
+                status: 'no-editors',
+                skips: [
+                    { editorId: 'gone', editorName: 'Blog panel', reason: 'rule-target-missing' }
+                ]
+            })
+        })
+
+        it('lets an explicit instruction win over an assign rule', async () => {
+            const settings = makeSettings({
+                editors: [makeEditor({ id: 'e-1' }), makeEditor({ id: 'e-2', name: 'Asked' })],
+                rules: [
+                    {
+                        id: 'r1',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'editor', targetId: 'e-1' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody()),
+                instruction: { editorIds: ['e-2'], text: 'Focus on the opening' }
+            })
+            if (result.status !== 'started') {
+                throw new Error(`Expected started, got ${result.status}`)
+            }
+            expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-2'])
+        })
+
+        it('lets an explicit editorIds re-dispatch win over an assign rule, silently', async () => {
+            const settings = makeSettings({
+                editors: [
+                    makeEditor({ id: 'e-1' }),
+                    makeEditor({ id: 'e-2', name: 'Previous' }),
+                    makeEditor({ id: 'e-3', name: 'Turned off', enabled: false })
+                ],
+                rules: [
+                    {
+                        id: 'r1',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'editor', targetId: 'e-1' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody()),
+                editorIds: ['e-2', 'e-3']
+            })
+            if (result.status !== 'started') {
+                throw new Error(`Expected started, got ${result.status}`)
+            }
+            expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-2'])
+            expect(result.skips).toEqual([])
+        })
+    })
+
     it('requires confirmation above the size warning threshold', async () => {
         const settings = makeSettings({ behavior: { sizeWarningWords: 100 } })
         const bigText = Array.from({ length: 101 }, (_, i) => `word${i}`).join(' ')

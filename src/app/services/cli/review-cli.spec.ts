@@ -471,6 +471,20 @@ describe('handleReviewCli', () => {
         expect(output.error?.code).toBe('excluded')
     })
 
+    it('returns rule-disabled, naming the rule, when a kill switch matches', async () => {
+        const deps = makeDeps({
+            runReview: () =>
+                Promise.resolve({
+                    status: 'rule-disabled',
+                    notePath: 'Notes/Test.md',
+                    ruleLabel: 'No AI in daily notes'
+                })
+        })
+        const output = parseOutput(await handleReviewCli({ file: 'Notes/Test.md' }, deps))
+        expect(output.error?.code).toBe('rule-disabled')
+        expect(output.error?.message).toContain('No AI in daily notes')
+    })
+
     it('returns needs-confirmation with counts for oversized notes', async () => {
         const deps = makeDeps({
             runReview: () =>
