@@ -183,7 +183,11 @@ describe('startAction refusals', () => {
         const result = await startAction(
             makeInput({
                 actionId: 'custom-1',
-                custom: { label: 'Make checklist', instruction: '   ' }
+                custom: {
+                    label: 'Make checklist',
+                    verbClass: 'transform',
+                    instruction: '   '
+                }
             })
         )
         expect(result).toEqual({ status: 'unknown-action', actionId: 'custom-1' })
@@ -391,6 +395,7 @@ describe('startAction transform verbs', () => {
                 actionId: 'custom-1',
                 custom: {
                     label: 'Make checklist',
+                    verbClass: 'transform',
                     instruction: 'Turn the selection into a checklist.'
                 }
             })
@@ -405,6 +410,34 @@ describe('startAction transform verbs', () => {
         expect(result.run.getState().status).toBe('done')
         const messages = (requests[0]?.body['messages'] ?? []) as { content: string }[]
         expect(messages[0]?.content ?? '').toContain('Turn the selection into a checklist.')
+    })
+
+    it('dispatches a custom GENERATE verb as an insertion, not a replacement', async () => {
+        const { fetchImpl, requests } = capturingFetch(
+            anthropicResultBody({ kind: 'insert-at', insertion: 'One more paragraph.' })
+        )
+        const result = await startAction(
+            makeInput({
+                fetchImpl,
+                actionId: 'custom-1',
+                custom: {
+                    label: 'Draft a counter-argument',
+                    verbClass: 'generate',
+                    instruction: 'Argue the other side.'
+                }
+            })
+        )
+        expect(result.status).toBe('started')
+        if (result.status !== 'started') {
+            return
+        }
+        expect(result.run.kind).toBe('insert-at')
+        // Inserts AFTER the captured selection, like a built-in generate verb.
+        expect(result.run.target).toMatchObject({ kind: 'insert-at', position: SELECTION.to })
+        await result.run.settled
+        expect(result.run.getState().status).toBe('done')
+        const messages = (requests[0]?.body['messages'] ?? []) as { content: string }[]
+        expect(messages[0]?.content ?? '').toContain('Argue the other side.')
     })
 
     it('captures the replace-span target with the exact span text', async () => {
@@ -638,6 +671,32 @@ describe('startAction review-class verbs', () => {
         const userMessage =
             (requests[0]?.body['messages'] as { content: string }[])[0]?.content ?? ''
         expect(userMessage).not.toContain('<selection>')
+    })
+
+    it('routes a custom REVIEW verb through the review pipeline, not a rewrite', async () => {
+        const { fetchImpl, requests } = capturingFetch(reviewBody)
+        const result = await startAction(
+            makeInput({
+                fetchImpl,
+                actionId: 'custom-1',
+                custom: {
+                    label: 'Check the numbers',
+                    verbClass: 'review',
+                    instruction: 'Flag every unsupported number.'
+                }
+            })
+        )
+        expect(result.status).toBe('review')
+        if (result.status !== 'review' || result.review.status !== 'started') {
+            throw new Error('Expected a started review')
+        }
+        await result.review.run.settled
+        expect(result.review.run.findings.list()).toHaveLength(1)
+        // The custom instruction rides the system prompt, exactly like a
+        // built-in review verb's — nothing downstream knows it was custom.
+        const body = requests[0]?.body ?? {}
+        expect(String(body['system'])).toContain('Flag every unsupported number.')
+        expect(String(body['system'])).toContain('<user-instruction>')
     })
 
     it('propagates review refusals (exclusion) unchanged', async () => {

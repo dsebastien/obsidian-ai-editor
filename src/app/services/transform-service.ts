@@ -1,4 +1,5 @@
-import { getBuiltInVerb } from '../domain/actions/verb-registry'
+import { resolveActionVerb } from '../domain/actions/verb-registry'
+import type { ActionVerb } from '../domain/actions/verb-registry'
 import { asRunId, generateId } from '../domain/ids'
 import { CONTRACT_VERSION } from '../domain/operations/contract'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
@@ -31,6 +32,9 @@ import type { EditorSkip, ReviewStart } from './review-service'
 /**
  * Action-run entry point: turns a built-in action verb + a document snapshot
  * into one executable run against the target editor's API backend.
+ *
+ * Built-in verbs and custom actions arrive as the same `ActionVerb`
+ * (`resolveActionVerb`), so nothing below this line knows the difference.
  *
  * Verb classes route to different pipelines (see the verb registry):
  * - review-class verbs delegate to `startReview` with the verb instruction
@@ -99,12 +103,13 @@ export interface StartActionInput {
     /** Built-in verb id (see `builtInActionIdSchema`), or a custom UUID. */
     readonly actionId: string
     /**
-     * Custom action verb, required when `actionId` is not a built-in verb.
-     * Custom actions are transform-class (they rewrite the selection); the
-     * instruction must already be resolved (`resolveCustomInstruction` —
-     * direct text + referenced notes) and non-blank.
+     * Custom action verb, required when `actionId` is not a built-in verb: its
+     * label, its own class (`customVerbClass` — a custom action can rewrite,
+     * write more, or report findings), and its instruction already resolved
+     * from the vault (`resolveCustomInstruction`) and non-blank. Built-in ids
+     * ignore it — see `resolveActionVerb`.
      */
-    readonly custom?: { readonly label: string; readonly instruction: string }
+    readonly custom?: ActionVerb
     /** Target editor (resolved from the action binding by the caller). */
     readonly editorId: string
     /** Injected network seam; defaults to the runtime's `fetch`. */
@@ -166,19 +171,10 @@ export function isInsertionAnchorValid(
  * size guard needs explicit confirmation, unusable editors are explained).
  */
 export async function startAction(input: StartActionInput): Promise<ActionStart> {
-    const builtIn = getBuiltInVerb(input.actionId)
-    // Custom actions are transform-class with a caller-resolved instruction;
-    // a blank instruction has nothing to dispatch (the resolution layer
+    // One resolution point for built-in and custom verbs alike; a custom verb
+    // with a blank instruction has nothing to dispatch (the resolution layer
     // refuses such bindings — this is the fail-closed backstop).
-    const verb =
-        builtIn ??
-        (input.custom && input.custom.instruction.trim().length > 0
-            ? {
-                  label: input.custom.label,
-                  verbClass: 'transform' as const,
-                  instruction: input.custom.instruction
-              }
-            : null)
+    const verb = resolveActionVerb(input.actionId, input.custom)
     if (verb === null) {
         return { status: 'unknown-action', actionId: input.actionId }
     }

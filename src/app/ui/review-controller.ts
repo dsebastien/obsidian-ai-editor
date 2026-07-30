@@ -26,7 +26,8 @@ import {
     dismissableFindingIds,
     planBulkAccept
 } from '../commands/bulk-triage'
-import { getBuiltInVerb } from '../domain/actions/verb-registry'
+import { resolveActionVerb } from '../domain/actions/verb-registry'
+import type { ActionVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
@@ -672,7 +673,7 @@ export class ReviewController {
      * contract — the dispatch path awaits vault reads before the run
      * starts).
      *
-     * Routing by verb class:
+     * Routing by verb class, identical for built-in and custom actions:
      * - review-class → the exact `startReview` path, narrowed to the
      *   resolved editor set (one editor, or every panel member) with the
      *   verb instruction augmented onto each prompt; a non-empty selection
@@ -693,40 +694,95 @@ export class ReviewController {
         }
         const from = editor.posToOffset(editor.getCursor('from'))
         const to = editor.posToOffset(editor.getCursor('to'))
-
-        if (resolved.verbClass === 'review') {
-            const verb = getBuiltInVerb(resolved.actionId)
-            if (!verb) {
-                // Custom actions are transform-class; unreachable.
-                return
-            }
-            void this.startReview(view, false, from !== to ? { from, to } : undefined, 'auto', {
-                editorIds: resolved.editorIds,
-                text: verb.instruction
-            })
-            return
-        }
-
         if (resolved.verbClass === 'transform' && from === to) {
             new Notice('Select the text to transform first.')
             return
         }
         const selection = { from, to, capturedHash: hashText(editor.getValue()) }
-        void this.runTransformAction(view, resolved, selection, false)
+        void this.runBoundAction(view, resolved, selection, false)
     }
 
     /**
-     * Transform/generate dispatch continuation: resolves a custom action's
-     * instruction fresh from the vault (Business Rules #8), snapshots the
-     * view, and routes every `startAction` refusal to a Notice. Mirrors the
-     * `startReview` continuation — including the size-confirmation round
-     * trip, which re-enters with `confirmedLargeNote` and the ORIGINAL
-     * captured selection (the service re-validates it against the fresh
-     * snapshot and refuses staleness as `selection-changed`).
+     * Bound-action dispatch continuation: resolves the verb (a custom
+     * action's instruction is read fresh from the vault here — Business Rules
+     * #8), then routes it by class. Built-in and custom actions become the
+     * same `ActionVerb` first, so the routing below cannot treat them
+     * differently.
+     */
+    private async runBoundAction(
+        view: MarkdownView,
+        resolved: ResolvedAction,
+        selection: { from: number; to: number; capturedHash: string },
+        confirmedLargeNote: boolean
+    ): Promise<void> {
+        const verb = await this.resolveBoundVerb(resolved)
+        if (verb === null || this.disposed || !view.file) {
+            return
+        }
+        if (verb.verbClass === 'review') {
+            // The instruction is already resolved, so the size-confirmation
+            // round trip inside `startReview` reuses it unchanged.
+            await this.startReview(
+                view,
+                confirmedLargeNote,
+                selection.from !== selection.to ? selection : undefined,
+                'auto',
+                { editorIds: resolved.editorIds, text: verb.instruction }
+            )
+            return
+        }
+        await this.runTransformAction(view, resolved, verb, selection, confirmedLargeNote)
+    }
+
+    /**
+     * The verb a bound action dispatches: the registry entry for a built-in
+     * id, or the custom action's own verb with its instruction resolved fresh
+     * from the vault (direct text + referenced notes, follow-links included).
+     * Null — with a Notice — when the action vanished from the settings or its
+     * instruction resolves to nothing (every referenced note missing or
+     * excluded), because sending an empty directive would bill a backend to
+     * ask for nothing.
+     */
+    private async resolveBoundVerb(resolved: ResolvedAction): Promise<ActionVerb | null> {
+        const settings = this.deps.getSettings()
+        if (resolved.kind === 'built-in') {
+            return resolveActionVerb(resolved.actionId)
+        }
+        const binding = settings.actions.find((candidate) => candidate.id === resolved.bindingId)
+        if (!binding || binding.customVerbClass === null) {
+            new Notice('This action is no longer available — check the Actions settings tab.')
+            return null
+        }
+        const instruction = await resolveCustomInstruction(
+            binding.customInstruction,
+            this.vaultReader,
+            settings.behavior
+        )
+        const verb = resolveActionVerb(resolved.actionId, {
+            label: resolved.label,
+            verbClass: binding.customVerbClass,
+            instruction
+        })
+        if (verb === null) {
+            new Notice(
+                `${resolved.label}: its instruction notes are missing or excluded — nothing to send.`
+            )
+        }
+        return verb
+    }
+
+    /**
+     * Transform/generate dispatch: snapshots the view and routes every
+     * `startAction` refusal to a Notice. Mirrors the `startReview`
+     * continuation — including the size-confirmation round trip, which
+     * re-enters with `confirmedLargeNote` and the ORIGINAL captured selection
+     * (the service re-validates it against the fresh snapshot and refuses
+     * staleness as `selection-changed`).
      */
     private async runTransformAction(
         view: MarkdownView,
         resolved: ResolvedAction,
+        verb: ActionVerb,
         selection: { from: number; to: number; capturedHash: string },
         confirmedLargeNote: boolean
     ): Promise<void> {
@@ -740,27 +796,7 @@ export class ReviewController {
         if (editorId === undefined) {
             return
         }
-        let custom: { label: string; instruction: string } | undefined
-        if (resolved.kind === 'custom') {
-            const binding = settings.actions.find(
-                (candidate) => candidate.id === resolved.bindingId
-            )
-            if (!binding) {
-                return
-            }
-            const instruction = await resolveCustomInstruction(
-                binding.customInstruction,
-                this.vaultReader,
-                settings.behavior
-            )
-            if (instruction.trim().length === 0) {
-                new Notice(
-                    `${resolved.label}: its instruction notes are missing or excluded — nothing to send.`
-                )
-                return
-            }
-            custom = { label: resolved.label, instruction }
-        }
+        const custom = resolved.kind === 'custom' ? verb : undefined
         const snapshot = this.snapshotView(view, filePath, 'whole-note')
         const result = await startAction({
             settings,
@@ -781,7 +817,8 @@ export class ReviewController {
         })
         switch (result.status) {
             case 'review':
-                // Review-class verbs dispatch via `startReview` upstream.
+                // Review-class verbs never reach here — `runBoundAction`
+                // routes them to `startReview` before this method is called.
                 return
             case 'started':
                 // Synchronous on purpose (same invariant as the review
@@ -805,7 +842,9 @@ export class ReviewController {
                     result.wordCount,
                     result.limit,
                     () => {
-                        void this.runTransformAction(view, resolved, selection, true)
+                        // Re-enter at the top so a custom instruction is
+                        // resolved fresh after the confirmation delay.
+                        void this.runBoundAction(view, resolved, selection, true)
                     },
                     ACTION_SIZE_LABELS
                 ).open()
