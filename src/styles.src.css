@@ -478,6 +478,26 @@
     @apply my-2 pl-5;
 }
 
+/* CLI backend dialog (src/app/settings/tabs/cli-backend-modal.ts) */
+.ai-editor-modal-hint {
+    @apply mt-1 mb-2 text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-wide-input {
+    @apply w-full;
+}
+
+/* Consent state under a CLI backend row (settings/tabs/backends-tab.ts) */
+.ai-editor-consent-line {
+    @apply mt-1 text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-consent-line.is-missing {
+    color: var(--color-yellow, orange);
+}
+
 /* "Ask an editor" modal (src/app/ui/ask-editor-modal.ts) */
 .ai-editor-ask-textarea {
     @apply my-2 w-full;

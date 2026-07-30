@@ -1,6 +1,8 @@
-import { Setting } from 'obsidian'
+import { Notice, Setting } from 'obsidian'
+import { grantLaunchConsent, hasLaunchConsent } from '../../domain/settings/cli-consent'
 import { apiProviderKindSchema } from '../../domain/settings/settings-schema'
-import type { ApiProviderKind, BackendInstance } from '../../domain/settings/settings-schema'
+import type { BackendInstance, CliBackend } from '../../domain/settings/settings-schema'
+import { launchConsentCopy, launchConsentLine } from '../cli-consent-copy'
 import { ConfirmModal, populateBackendDropdown } from '../components'
 import {
     apiKindLabel,
@@ -9,8 +11,35 @@ import {
     deletionImpactLines
 } from '../helpers'
 import { BackendModal } from './backend-modal'
+import { CliBackendModal } from './cli-backend-modal'
 import { commit } from './shared'
 import type { TabContext } from './shared'
+
+/**
+ * What the "Add backend" dropdown offers: every API provider kind, then every
+ * CLI tool. Encoded as `family:kind` so one control covers both families
+ * without a second dropdown that would have to be kept in sync.
+ */
+type AddChoice =
+    | { readonly family: 'api'; readonly kind: (typeof apiProviderKindSchema.options)[number] }
+    | { readonly family: 'cli'; readonly kind: CliBackend['kind'] }
+
+const ADD_CHOICES: readonly AddChoice[] = [
+    ...apiProviderKindSchema.options.map((kind): AddChoice => ({ family: 'api', kind })),
+    { family: 'cli', kind: 'claude-code' },
+    { family: 'cli', kind: 'codex' }
+]
+
+function addChoiceValue(choice: AddChoice): string {
+    return `${choice.family}:${choice.kind}`
+}
+
+function addChoiceLabel(choice: AddChoice): string {
+    if (choice.family === 'api') {
+        return apiKindLabel(choice.kind)
+    }
+    return `${choice.kind === 'claude-code' ? 'Claude Code' : 'Codex'} (runs locally)`
+}
 
 /**
  * Backends tab: key-storage disclosure, global default backend, the list of
@@ -74,19 +103,21 @@ export function renderBackendsTab(containerEl: HTMLElement, ctx: TabContext): vo
         renderBackendRow(containerEl, ctx, backend)
     }
 
-    let selectedKind: ApiProviderKind = 'anthropic'
+    let selected: AddChoice = ADD_CHOICES[0] ?? { family: 'cli', kind: 'claude-code' }
     new Setting(containerEl)
         .setName('Add backend')
-        .setDesc('CLI agents (Claude Code, Codex) arrive in a later milestone.')
+        .setDesc(
+            'CLI agents run a program on this computer. They arrive switched off and ask for your explicit permission before they can run.'
+        )
         .addDropdown((dropdown) => {
-            for (const kind of apiProviderKindSchema.options) {
-                dropdown.addOption(kind, apiKindLabel(kind))
+            for (const choice of ADD_CHOICES) {
+                dropdown.addOption(addChoiceValue(choice), addChoiceLabel(choice))
             }
-            dropdown.setValue(selectedKind)
+            dropdown.setValue(addChoiceValue(selected))
             dropdown.onChange((value) => {
-                const parsed = apiProviderKindSchema.safeParse(value)
-                if (parsed.success) {
-                    selectedKind = parsed.data
+                const match = ADD_CHOICES.find((choice) => addChoiceValue(choice) === value)
+                if (match) {
+                    selected = match
                 }
             })
         })
@@ -95,7 +126,11 @@ export function renderBackendsTab(containerEl: HTMLElement, ctx: TabContext): vo
                 .setButtonText('Add')
                 .setCta()
                 .onClick(() => {
-                    new BackendModal(ctx.app, ctx, null, selectedKind).open()
+                    if (selected.family === 'cli') {
+                        new CliBackendModal(ctx.app, ctx, null, selected.kind).open()
+                        return
+                    }
+                    new BackendModal(ctx.app, ctx, null, selected.kind).open()
                 })
         })
 }
@@ -113,11 +148,36 @@ function renderBackendRow(
         details.push(backend.baseUrl)
     }
 
+    if (backend.family === 'cli') {
+        details.push(backend.executablePath)
+    }
+
     const row = new Setting(containerEl).setName(backend.label).setDesc(details.join(' · '))
+    if (backend.family === 'cli') {
+        // The consent state is the single most important thing about a CLI
+        // backend row: an enabled-but-unconsented one is skipped by every run,
+        // and without this line the user would only find out from a skip
+        // report after asking for a review.
+        row.descEl.createDiv({
+            cls: hasLaunchConsent(backend)
+                ? 'ai-editor-consent-line'
+                : 'ai-editor-consent-line is-missing',
+            text: launchConsentLine(backend)
+        })
+    }
     row.addToggle((toggle) => {
         toggle.setValue(backend.enabled)
         toggle.setTooltip(backend.enabled ? 'Enabled' : 'Disabled')
         toggle.onChange((value) => {
+            // Enabling a CLI backend is the moment permission is needed, so it
+            // is the moment the dialog appears. The toggle is reverted and the
+            // change dropped unless the user agrees — nothing is written on a
+            // cancelled consent.
+            if (value && backend.family === 'cli' && !hasLaunchConsent(backend)) {
+                toggle.setValue(false)
+                askLaunchConsent(ctx, backend)
+                return
+            }
             commit(
                 ctx,
                 (draft) => {
@@ -130,16 +190,18 @@ function renderBackendRow(
             )
         })
     })
-    if (backend.family === 'api') {
-        row.addExtraButton((button) => {
-            button
-                .setIcon('pencil')
-                .setTooltip('Edit')
-                .onClick(() => {
-                    new BackendModal(ctx.app, ctx, backend, backend.kind).open()
-                })
-        })
-    }
+    row.addExtraButton((button) => {
+        button
+            .setIcon('pencil')
+            .setTooltip('Edit')
+            .onClick(() => {
+                if (backend.family === 'cli') {
+                    new CliBackendModal(ctx.app, ctx, backend, backend.kind).open()
+                    return
+                }
+                new BackendModal(ctx.app, ctx, backend, backend.kind).open()
+            })
+    })
     row.addExtraButton((button) => {
         button
             .setIcon('trash')
@@ -163,4 +225,39 @@ function renderBackendRow(
                 }).open()
             })
     })
+}
+
+/**
+ * The consent dialog behind the enable toggle: explain, then record BOTH the
+ * permission and the enablement in one commit.
+ *
+ * Doing them together matters — a backend that was enabled but not consented,
+ * or consented but not enabled, is a state the user did not ask for and would
+ * have to fix by hand.
+ */
+function askLaunchConsent(ctx: TabContext, backend: CliBackend): void {
+    if (backend.executablePath.trim().length === 0) {
+        new Notice('Set the executable path first: select Edit on this backend.')
+        return
+    }
+    const copy = launchConsentCopy(backend)
+    new ConfirmModal(ctx.app, {
+        title: copy.title,
+        message: copy.message,
+        impactLines: copy.lines,
+        ctaLabel: copy.ctaLabel,
+        onConfirm: () => {
+            commit(
+                ctx,
+                (draft) => {
+                    const target = draft.backends.find((item) => item.id === backend.id)
+                    if (target && target.family === 'cli') {
+                        target.consent = grantLaunchConsent(target)
+                        target.enabled = true
+                    }
+                },
+                { refresh: true }
+            )
+        }
+    }).open()
 }
