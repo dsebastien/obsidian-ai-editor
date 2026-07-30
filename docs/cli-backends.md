@@ -23,7 +23,7 @@ You do not have to take these on trust; they are how the code is written, in `sr
 - **No session written to disk.** Claude Code runs with `--no-session-persistence`, Codex with `--ephemeral`, so the conversation is not saved and cannot be resumed. That covers the transcript; it is not a claim that the tool writes nothing at all.
 - **No inherited MCP servers — for Claude Code.** `--strict-mcp-config` is passed without an MCP config, so none are loaded.
 - **Every run ends with the process tree killed**, cancelled or not. A tool that exits 0 can leave a background helper running, so the tree is probed on every path. If something survives, the run is reported as **failed** rather than passed off as a success.
-- **Output is capped** at 8 MB, and the plugin never shows you the tool's own error text — see [Errors are status-only](#errors-are-status-only).
+- **Output is capped** at 8 MB, and the plugin never shows you the tool's own error text — see [Limits worth knowing](#limits-worth-knowing).
 
 ## What the plugin does not bound
 

@@ -102,7 +102,7 @@ Full user guide: **<https://dsebastien.github.io/obsidian-ai-editor/>**
 
 - [Install and quick start](docs/install.md)
 - [Set up a backend](docs/backends.md) — providers, models, thinking modes, timeouts
-- [Review a note](docs/review-a-note.md) — the rail, findings, cards, triage, bulk operations
+- [Review a note](docs/usage.md) — the rail, findings, cards, triage, bulk operations
 - [Create and tune editors](docs/editors.md) — personas, prompts, context, voice profile
 - [Run actions on a selection](docs/actions.md) — built-in verbs and custom actions
 - [Work with panels](docs/panels.md) — charters, scorecards, partial failures
