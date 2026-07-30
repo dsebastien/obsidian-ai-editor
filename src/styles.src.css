@@ -587,6 +587,37 @@
     color: var(--text-error, var(--color-red, red));
 }
 
+/* Setup wizard (src/app/settings/setup-wizard-modal.ts) */
+.ai-editor-wizard-progress {
+    @apply mb-2 text-xs uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+}
+
+.ai-editor-wizard-aside {
+    @apply my-2 text-xs;
+    color: var(--text-muted);
+}
+
+/* Health-check verdict. Three states, three colors: "reached but unusable" is
+   not a success and not a connection failure, and the color has to say so. */
+.ai-editor-wizard-health {
+    @apply my-2 text-sm;
+    color: var(--text-muted);
+}
+
+.ai-editor-wizard-health-ok {
+    color: var(--color-green, green);
+}
+
+.ai-editor-wizard-health-unusable {
+    color: var(--color-yellow, orange);
+}
+
+.ai-editor-wizard-health-failed {
+    color: var(--text-error, var(--color-red, red));
+}
+
 /* ========================================
    PERSONA RAIL (src/app/ui/editor/rail.ts,
    mounted by src/app/ui/review-controller.ts)

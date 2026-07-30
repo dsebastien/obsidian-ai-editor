@@ -18,9 +18,11 @@ import { DaemonController } from './ui/daemon-controller'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
+import { SetupWizardModal } from './settings/setup-wizard-modal'
 import { registerActionCommands } from './commands/action-commands'
 import { registerBulkCommands } from './commands/bulk-commands'
 import { registerReviewCommands } from './commands/review-commands'
+import { registerSetupCommands } from './commands/setup-commands'
 import { registerReviewCli } from './cli/register-review-cli'
 import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
 import { CANCEL_CLI_COMMAND } from './services/cli/cancel-cli'
@@ -126,6 +128,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.register(this.subscribe(() => daemonController.settingsChanged()))
 
         registerReviewCommands(this, reviewController)
+        registerSetupCommands(this, this)
+        this.openSetupWizardOnFirstRun()
         // Dynamic `action-<bindingId>` commands (design §3): registration
         // follows the settings via the mutation observer — add/removeCommand
         // diffing keeps the palette in sync without a reload.
@@ -183,6 +187,30 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 registerStatusCli({ plugin: this, runController })
             )
         }
+    }
+
+    /**
+     * Opens the setup wizard once, on the first load that has never seen it
+     * (`onboarded === false`, plan M5).
+     *
+     * Deferred to `onLayoutReady`: a modal thrown up while the workspace is
+     * still restoring lands behind the restoring leaves and steals focus from
+     * whatever the user was doing. The wizard marks `onboarded` on ANY exit, so
+     * this can never become a nag — and it never collides with the "What's new"
+     * tab, which by design does not open on a fresh install.
+     */
+    private openSetupWizardOnFirstRun(): void {
+        if (this.settings.onboarded) {
+            return
+        }
+        this.app.workspace.onLayoutReady(() => {
+            // Re-checked: a wizard run from the palette during startup, or a
+            // synced data.json arriving meanwhile, may have set the flag.
+            if (this.settings.onboarded) {
+                return
+            }
+            new SetupWizardModal(this.app, this).open()
+        })
     }
 
     /**

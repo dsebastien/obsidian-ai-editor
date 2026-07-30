@@ -4,17 +4,38 @@ import type { PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import { applyImportPlan } from '../../domain/settings/settings-transfer'
 import { renderChipList } from '../components'
 import { clampInt, normalizeChipValue } from '../helpers'
+import { SetupWizardModal } from '../setup-wizard-modal'
 import { ExportSettingsModal, ImportSettingsModal } from '../transfer-modals'
 import { commit } from './shared'
 import type { TabContext } from './shared'
 
 /**
- * Behavior tab: run guardrails (size warning, concurrency, context budget),
- * privacy exclusions (folders, tags, frontmatter opt-out — absolute, per
- * Business Rule #7), response/comment defaults, and settings import/export.
+ * Behavior tab: the setup wizard entry point, run guardrails (size warning,
+ * concurrency, context budget), privacy exclusions (folders, tags, frontmatter
+ * opt-out — absolute, per Business Rule #7), response/comment defaults, and
+ * settings import/export.
+ *
+ * The wizard lives here rather than in the Backends tab because it spans every
+ * tab (backends, editors, voice, behavior); this is the tab that already owns
+ * the cross-cutting operations, import/export included.
  */
 export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
+
+    new Setting(containerEl).setName('Setup').setHeading()
+    new Setting(containerEl)
+        .setName('Setup wizard')
+        .setDesc(
+            'Walk through a backend, your editors, your voice profile, and when editors run. ' +
+                'Nothing is saved until the last step.'
+        )
+        .addButton((button) => {
+            button.setButtonText('Run setup wizard').onClick(() => {
+                // The wizard can add a backend and flip editor toggles, so the
+                // whole tab re-renders once it commits.
+                new SetupWizardModal(ctx.app, ctx.facade, ctx.refresh).open()
+            })
+        })
 
     const renderIntField = (
         name: string,
