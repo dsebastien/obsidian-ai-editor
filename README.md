@@ -2,46 +2,120 @@
 
 An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself** — not a chat sidebar, but configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
-- **Editors**: AI personas (Concision Editor, Devil's Advocate, Fact Checker…) you define with a prompt — typed directly or sourced from your own vault notes.
-- **Panels**: groups of 1-n editors producing an aggregated scorecard: verdicts, top fixes, dissenting opinions.
-- **Review loop**: summon your editors, watch findings land as highlighted spans, triage them with keyboard-first accept/reject, push back and argue, refine suggestions.
-- **Actions**: rephrase, critique, say more, find evidence, identify assumptions — each bound to the editor or panel of your choice, plus your own custom actions (name, instruction, and whether the answer rewrites the selection, is inserted at the cursor, or comes back as findings).
-- **Async margin comments**: select text, leave a question, and an editor answers it in the background while you keep writing. The comment lives in a column beside the text, aligned with the line it is about, and survives note switches and restarts — a comment whose text you edited away is kept and shown with its quote, never silently dropped.
-- **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
-- **Portable configuration**: export the editors, panels, actions, rules, and voice profile you built to a JSON file (API keys never included) and import them into another vault, after confirming exactly what will be added.
-- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI, OpenRouter and other compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex) running on your own machine, behind the security boundary described below. Desktop-only.
-- **Guided setup**: a first-run wizard walks you through a backend, your editors, your voice profile, and when editors run — with a **Test connection** check that sends one real request through the same path a review takes, so a green light means reviews will actually work. Nothing is saved until the last step, and it is re-runnable any time.
+Nothing ever runs on its own: every AI call is something you asked for, and every proposed change goes through a visible diff with **Accept** and **Reject**. There is no code path that writes AI output into a note without your confirmation.
 
-Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff. The one opt-in exception is **daemon mode** — a settings toggle (off by default) that lets your editors watch your edits and refresh their recommendations after you pause; every refresh calls your configured backends, so the toggle states the cost implication plainly.
+Desktop only. Bring your own backend — a hosted API (Anthropic, OpenAI, OpenRouter and other OpenAI-compatible endpoints, Azure OpenAI, Ollama) or an agent CLI running on your own machine (Claude Code, Codex).
 
-> Status: early development. See `documentation/plans/` for the implementation plan.
+## What it does
 
-## CLI backends: the security model first
+You write. When you want a second opinion, you summon your editors. They read the note, come back with findings anchored to the exact words they are about, and you accept, dismiss, or argue with each one.
 
-A CLI backend runs a **program on your computer** with your note content on its standard input. That is the highest-risk thing this plugin does, so the containment comes before the feature:
+- **Editors** — AI personas you define with a prompt: a name, a colour, and what they care about. Six ship with the plugin (Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader) and all six are fully editable.
+- **Panels** — groups of editors that review together and are then summed up in one scorecard: an overall verdict, a verdict per member, ranked top fixes, and where the members disagreed.
+- **Actions** — verbs you run on a selection: rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus your own custom actions.
+- **Margin comments** — park a question on a passage and keep writing; an editor answers it in the background, and the answer waits for you in a column beside the text.
+- **Vault as configuration** — every prompt field accepts direct text _and/or_ references to your own vault notes, resolved fresh at run time. Documenting your assistant in your vault _is_ configuring the plugin.
 
-- **No shell, ever.** The tool is started with an argument array. No command line is assembled, so there is no quoting rule to get wrong and no metacharacter to escape.
-- **You name the exact binary.** An absolute path to an existing, executable file. A bare name or a relative path is refused: it would be resolved through `PATH` or the working directory, and a writable directory ahead of the real one would silently turn "review this note" into "run whatever is called `claude` today".
-- **Your note never appears in arguments.** It travels on standard input only. Arguments are world-readable in `ps` on a shared machine; notes are not.
-- **A throwaway working directory.** Created per run, owner-only, unpredictable name, deleted when the run ends. Never your vault, and deliberately not the plugin's own folder either — that lives inside the vault and syncs.
-- **An environment built from empty.** Only what the tool cannot start without: a home directory so it can find its own login, a `PATH` for its sub-tools, a locale, and a temporary directory pointing inside the throwaway folder. Nothing else in Obsidian's environment travels with the request, and there is no setting that can add to the list.
-- **No session on disk.** Both tools are run with session persistence off (`--no-session-persistence`, `--ephemeral`), so a review does not save a resumable transcript of your note.
-- **No inherited MCP servers, for Claude Code.** `--strict-mcp-config` is passed and no MCP config is, so the servers you configured elsewhere are not loaded. **Codex is different**, and this is worth knowing before you allow it: its own `~/.codex/config.toml` IS read — that is where your provider, endpoint and model live, and ignoring it would silently redirect the run away from the setup you tested — so any `[mcp_servers.*]` you declared there is loaded too.
-- **Every run ends with the whole process tree killed**, verified rather than assumed — including a run that finished normally, because an agent that exits successfully can leave a helper behind. When something survives, the run is reported as failed rather than passed off as a success.
+## The screens, in words
 
-**What the plugin does NOT bound**, stated plainly because you are being asked to allow a program to run:
+**The persona rail.** Every markdown editor gets a small rail in its top-right corner: a **Review** button and one coloured dot per enabled editor. Dots pulse while their editor is working and carry a live finding count. Hover one and it names itself and its state — "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel appears there as one ringed chip with its members bracketed underneath it.
 
-- **Each tool's own configuration is loaded.** For Claude Code that means your `CLAUDE.md`, skills, plugins, hooks and `settings.json` — including any pre-approved permission rules in it, which `--permission-mode manual` does not override. For Codex it means `~/.codex/config.toml`. Suppressing those would break authentication or silently change which model answers, so the plugin does not; what it can do is tell you.
-- **Codex runs under `--sandbox read-only`; Claude Code has no sandbox flag to run under.** Its containment here is the throwaway working directory, the empty environment, and — unless your own settings pre-approve tools — a permission mode nothing can answer.
+**Findings in the text.** Each finding tints the exact span it quotes in its editor's colour, with a per-editor edge style underneath so the two are never told apart by colour alone. Keep typing: highlights follow your edits. Edit _inside_ a highlighted span and the finding goes stale — dashed and dimmed — because its suggestion no longer matches your text.
 
-On top of that, **two separate consents**, both revocable:
+**The review card.** Click a highlight and a card floats next to it: the critique, the quoted text, and — when the editor proposed a replacement — an old/new preview with **Accept** and **Dismiss**. Overlapping findings stack in one card, innermost first. Under it, a reply box: type your objection and the editor either withdraws the finding or holds its position and sharpens it.
 
-1. **Allowed to run** — a dialog that states, before anything starts, that a program will be launched on your computer with your note on its standard input, names the exact file, and says you are responsible for what that program does. Until you agree, the backend is skipped by every run, however its enable toggle reads.
-2. **Tool and research mode** — a second, stronger, separate act: the agent may read and write files and reach the network on your behalf. Off by default. Turning it off later leaves the backend working. Offered only for a tool where the plugin can actually switch it off (Claude Code); Codex says so plainly instead of showing a toggle that would do nothing.
+**The review panel.** A side panel lists every editor's status, summary, findings and verdict for the note it is bound to, with its own **Review** button and, for panel runs, the scorecard on top. Click a finding to jump to it in the text. Findings whose quote could not be located are grouped under "Not anchored" rather than guessed into a position.
 
-Consent records **which executable** you agreed to. Change the path — or import settings, or sync `data.json` from another machine — and the earlier agreement no longer applies; you are asked again about the program that is actually there.
+**The margin column.** Comments sit in a column beside the text, each card aligned with the line it is about: who was asked, how long it has been running, and the answer once there is one. Several comments on one line collapse into a chip that expands.
 
-Windows note: both tools install there as `.cmd` shims, which this plugin refuses to run (running one means running `cmd.exe`). Point the setting at a real `.exe` or use an API backend.
+**The status bar** shows the number of open findings for the active note, and nothing at all when there are none.
+
+## Privacy and security
+
+This is the part to read before installing, not after.
+
+- **Nothing runs automatically.** Every backend request is triggered by an explicit action of yours — Review, an action verb, a push-back, a comment, a health check. The one opt-in exception is **daemon mode**: a settings toggle, off by default, that lets your editors refresh their recommendations after you pause editing. Turning it on _is_ the explicit action, and its settings copy states the cost plainly.
+- **Nothing is written without a diff.** Every AI-proposed change is a suggestion until you accept it, and it is only applied while the target text still matches exactly what the suggestion was computed against.
+- **Excluded notes are never sent anywhere.** Exclude by folder, by tag, or with `ai_editor: false` in a note's frontmatter. An excluded note is never the review target, never attached as linked context, and never followed through a wikilink from another prompt.
+- **What actually leaves your vault**, for a hosted API backend: the note's text (or the selection), the persona prompt and voice profile, and any vault notes you explicitly attached — nothing else. Run **Preview what will be sent** to see the exact assembly, character counts included, before spending anything.
+- **API keys live in this plugin's `data.json`, inside your vault.** If the vault syncs — Obsidian Sync, iCloud, git, Syncthing — the keys travel with it. Use minimal-scope keys and rotate them if the vault ever leaks. Keys and prompts are redacted from logs and error reports, and exported settings never contain a key.
+- **Margin comments never touch your notes.** They live in one file in the plugin's own data folder, never next to a note and never in its frontmatter.
+
+### CLI backends run a program on your computer
+
+A CLI backend does not call a remote API: it starts a local agent with your note on its standard input. That is the highest-risk thing this plugin does, so the containment comes first.
+
+- **No shell, ever** — the tool is started with an argument array, so there is no quoting rule to get wrong.
+- **You name the exact binary** — an absolute path to an existing executable file. A bare name or a relative path is refused, because it would be resolved through `PATH` or the working directory.
+- **Your note never appears in the arguments** — standard input only. Arguments are world-readable on a shared machine; notes are not.
+- **A throwaway working directory**, created per run and deleted when it ends. Never your vault, and deliberately not the plugin's own folder either — that lives inside the vault and syncs.
+- **An environment built from empty** — a home directory, a `PATH`, a locale, and a temporary directory pointing inside the throwaway folder. Nothing else in Obsidian's environment travels with the request, and no setting can add to the list.
+- **No session on disk** — both tools run with session persistence off, so a review does not leave a resumable transcript of your note.
+- **Every run ends with the whole process tree killed**, verified rather than assumed, including runs that finished normally. A run whose tree could not be killed is reported as failed, not passed off as a success.
+
+**What the plugin does not bound**, stated plainly because you are being asked to allow a program to run: each tool's own configuration is loaded — for Claude Code that means your `CLAUDE.md`, skills, plugins, hooks and `settings.json`, including permission rules you wrote there; for Codex it means `~/.codex/config.toml`, and any MCP servers declared in it. Suppressing those would break authentication or silently change which model answers. Codex runs under `--sandbox read-only`; Claude Code has no sandbox flag to run under.
+
+On top of that, **two separate consents**, both revocable, both recording _which executable_ they were granted for — so a changed, imported or synced path invalidates the earlier agreement and you are asked again about the program that is actually there. Full detail: [CLI backends](docs/cli-backends.md).
+
+## Installation
+
+Requires Obsidian **1.8.7** or newer, on **desktop** (Windows, macOS, Linux). The `ai-editor:*` command-line integration additionally needs Obsidian 1.12.2.
+
+### Community plugins
+
+Once the plugin is available in the community catalog:
+
+1. In Obsidian, go to **Settings → Community plugins**.
+2. Disable **Restricted mode** if it is enabled.
+3. Select **Browse**, search for **AI Editor**, install it, then enable it.
+
+### Manual installation
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/dsebastien/obsidian-ai-editor/releases).
+2. Copy them into `<Vault>/.obsidian/plugins/ai-editor/`.
+3. Reload Obsidian and enable **AI Editor** in **Settings → Community plugins**.
+
+### BRAT (bleeding edge)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from a GitHub repository and keeps them updated. Use this if you want the latest commits — **things might break**.
+
+1. Install **Obsidian42 - BRAT** from **Settings → Community plugins → Browse** and enable it.
+2. Run **BRAT: Add a beta plugin for testing** from the command palette.
+3. Paste `https://github.com/dsebastien/obsidian-ai-editor`.
+4. Enable **AI Editor** in **Settings → Community plugins**.
+
+## Quick start
+
+The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → AI Editor → Behavior → Setup** or the **Run setup wizard** command.
+
+1. **Add a backend** — pick a provider, paste a key, name a model. Select **Test connection**: it sends one small real request through the same path a review takes, so a green light means reviews will actually work.
+2. **Choose your editors** — six are seeded and enabled; turn off the ones you do not want paying for.
+3. **Point at your voice profile** (optional) — a vault note describing how you write, injected into every editor's prompt.
+4. **Decide when editors run** — summoned only (the default), or daemon mode.
+5. Open a note and run **Review current note**.
+
+Prefer doing it by hand? **Settings → AI Editor → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.
+
+## Documentation
+
+Full user guide: **<https://dsebastien.github.io/obsidian-ai-editor/>**
+
+- [Install and quick start](docs/install.md)
+- [Set up a backend](docs/backends.md) — providers, models, thinking modes, timeouts
+- [Review a note](docs/review-a-note.md) — the rail, findings, cards, triage, bulk operations
+- [Create and tune editors](docs/editors.md) — personas, prompts, context, voice profile
+- [Run actions on a selection](docs/actions.md) — built-in verbs and custom actions
+- [Work with panels](docs/panels.md) — charters, scorecards, partial failures
+- [Margin comments](docs/margin-comments.md) — parked questions answered in the background
+- [Binding rules](docs/rules.md) — per-folder, per-tag, per-note-type routing and kill switches
+- [Daemon mode](docs/daemon-mode.md)
+- [CLI backends](docs/cli-backends.md) — Claude Code and Codex, and their security model
+- [The command line](docs/command-line.md) — `ai-editor:review`, `ai-editor:status`, `ai-editor:cancel`
+- [Move settings between vaults](docs/transfer.md)
+- [Privacy and security](docs/privacy-and-security.md)
+- [Configuration reference](docs/configuration.md) — every setting, its default, what it does
+- [Tips and best practices](docs/tips.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## Inspiration
 
@@ -74,6 +148,7 @@ Built with [Bun](https://bun.sh/) and TypeScript, from the [Obsidian Plugin Temp
 | `bun run lint`      | Run ESLint                        |
 | `bun run format`    | Format with Prettier              |
 | `bun test`          | Run tests                         |
+| `bun run validate`  | Type check, lint and test         |
 
 ## Contributing
 
