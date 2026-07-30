@@ -49,22 +49,28 @@ export class FakeRunHandle implements RunHandle {
     readonly snapshot = createSnapshot({ filePath: 'Notes/Test.md', text: 'Hello world' })
     readonly findings = new FindingStore()
     readonly settled: Promise<void> = Promise.resolve()
-    readonly panelSettled: Promise<void> = Promise.resolve()
+    readonly panelSettled: Promise<void>
 
     /** Number of `cancelRun` calls — lets specs pin cancel side effects. */
     cancelCount = 0
 
     private readonly settledFlag: boolean
 
-    private readonly panelState: PanelRunState | null
+    private panelState: PanelRunState | null
 
     constructor(
         private readonly states: readonly EditorRunState[],
         findingFixtures: readonly FindingFixture[] = [],
-        options: { readonly settled?: boolean; readonly panel?: PanelRunState } = {}
+        options: {
+            readonly settled?: boolean
+            readonly panel?: PanelRunState
+            /** Deferred so a spec can prove the CLI waits for the scorecard. */
+            readonly panelSettled?: Promise<void>
+        } = {}
     ) {
         this.settledFlag = options.settled ?? true
         this.panelState = options.panel ?? null
+        this.panelSettled = options.panelSettled ?? Promise.resolve()
         for (const fixture of findingFixtures) {
             this.findings.add({
                 id: asFindingId(generateId()),
@@ -94,6 +100,11 @@ export class FakeRunHandle implements RunHandle {
     /** Solo by default; specs pass a `panel` fixture to shape a panel run. */
     getPanelState(): PanelRunState | null {
         return this.panelState
+    }
+
+    /** Lets a spec land the scorecard while `panelSettled` is pending. */
+    setPanelState(panel: PanelRunState): void {
+        this.panelState = panel
     }
 
     isSettled(): boolean {

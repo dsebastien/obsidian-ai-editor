@@ -1,7 +1,9 @@
 import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { createSnapshot } from '../../domain/snapshot'
-import type { RunHandle } from '../orchestration/run-controller'
+import { resolveTopFix, scorecardMembers } from '../../domain/panels/scorecard-model'
+import type { TopFixCandidate } from '../../domain/panels/scorecard-model'
+import type { PanelAggregationStatus, RunHandle } from '../orchestration/run-controller'
 import type { EditorSkip, ReviewStart } from '../review-service'
 import { skipReasonLabel } from '../review-service'
 import type { CliFinding, CliFlagSpec, CliFormat } from './cli-shared'
@@ -25,8 +27,9 @@ import {
  * Contract (buffered — the CLI API returns a single string):
  * - Runs one review through the exact same `startReview` pipeline as the
  *   `Review current note` command (shared refusals: exclusions, size guard,
- *   editor/backend resolution), waits for the run to settle, and returns one
- *   JSON document (default) or one line per finding (`--format text`).
+ *   editor/backend resolution), waits for the run to settle — including the
+ *   scorecard when the run is a panel run — and returns one JSON document
+ *   (default) or one line per finding (`--format text`).
  * - Errors are typed codes (`file-not-found`, `excluded`, `rule-disabled`,
  *   `needs-confirmation`, `no-editors`, `backend-error`, `timeout`) with
  *   status-only messages: per-editor failure messages already passed the
@@ -103,12 +106,66 @@ export interface ReviewCliError {
     readonly message: string
 }
 
+/**
+ * The panel's scorecard, when the run was a panel run (plan M6).
+ *
+ * The CLI waits for it rather than shaping the members alone: the aggregation
+ * is dispatched the moment the members settle, so a CLI that returned without
+ * it would bill the user for a request whose answer nothing ever shows. Every
+ * non-`done` status still renders — a scorecard that failed costs a synthesis,
+ * never the member reviews, which are in `findings` either way.
+ */
+export interface ReviewCliPanel {
+    readonly name: string
+    readonly status: PanelAggregationStatus
+    /** The panel's overall verdict; `null` until a scorecard exists. */
+    readonly verdict: string | null
+    readonly rationale: string | null
+    /**
+     * One entry per member the scorecard names, reconciled against the run's
+     * roster: a name the panel invented is dropped, and a member it never
+     * mentioned appears with a null verdict.
+     */
+    readonly members: readonly ReviewCliPanelMember[]
+    /** Ranked, most important first, as the panel ordered them. */
+    readonly topFixes: readonly ReviewCliPanelFix[]
+    readonly dissent: readonly ReviewCliPanelDissent[]
+    /** Members that produced no review and were therefore not weighed. */
+    readonly missingMembers: readonly string[]
+    /** Redacted failure message when `status` is `error`. */
+    readonly error: string | null
+}
+
+export interface ReviewCliPanelMember {
+    readonly editor: string
+    readonly verdict: string | null
+    readonly keyPoint: string | null
+    /** True when the member produced no review at all. */
+    readonly missing: boolean
+}
+
+export interface ReviewCliPanelFix {
+    readonly rank: number
+    readonly action: string
+    /** The member credited with the underlying finding, when named. */
+    readonly editor: string | null
+    /** That finding's quote, so a script can locate the span. */
+    readonly quote: string | null
+}
+
+export interface ReviewCliPanelDissent {
+    readonly subject: string
+    readonly positions: readonly { readonly editor: string; readonly stance: string }[]
+}
+
 export interface ReviewCliOutput {
     readonly ok: boolean
     readonly file: string
     readonly findings: readonly ReviewCliFinding[]
     readonly skips: readonly ReviewCliSkip[]
     readonly summaryByEditor: Readonly<Record<string, string>>
+    /** The scorecard for a panel run; `null` for a solo run. */
+    readonly panel: ReviewCliPanel | null
     readonly error: ReviewCliError | null
 }
 
@@ -267,7 +324,15 @@ function errorOutput(
     message: string,
     skips: readonly ReviewCliSkip[] = []
 ): ReviewCliOutput {
-    return { ok: false, file, findings: [], skips, summaryByEditor: {}, error: { code, message } }
+    return {
+        ok: false,
+        file,
+        findings: [],
+        skips,
+        summaryByEditor: {},
+        panel: null,
+        error: { code, message }
+    }
 }
 
 function toCliSkips(skips: readonly EditorSkip[]): ReviewCliSkip[] {
@@ -315,9 +380,11 @@ export function shapeRunOutput(
         }
     }
 
+    const panel = shapePanel(run)
+
     const anyDone = states.some((state) => state.status === 'done')
     if (anyDone) {
-        return { ok: true, file, findings, skips: allSkips, summaryByEditor, error: null }
+        return { ok: true, file, findings, skips: allSkips, summaryByEditor, panel, error: null }
     }
 
     const failed = states.filter((state) => state.status === 'error')
@@ -342,8 +409,79 @@ export function shapeRunOutput(
         findings,
         skips: allSkips,
         summaryByEditor,
+        panel,
         error: { code, message }
     }
+}
+
+/**
+ * Shapes a panel run's aggregation state; `null` for a solo run.
+ *
+ * The two reconciliations come from the domain (`scorecardMembers`,
+ * `resolveTopFix`) — the same ones the side panel renders — so the CLI and the
+ * UI cannot disagree about which members a scorecard names or whom a fix
+ * credits. Only the wire vocabulary is decided here.
+ */
+function shapePanel(run: RunHandle): ReviewCliPanel | null {
+    const state = run.getPanelState()
+    if (state === null) {
+        return null
+    }
+    const candidates = topFixCandidates(run)
+    const result = state.result
+    return {
+        name: state.panelName,
+        status: state.status,
+        verdict: result?.recommendation ?? null,
+        rationale: result?.rationale ?? null,
+        members: scorecardMembers({
+            memberNames: state.memberNames,
+            missingMembers: state.missingMembers,
+            memberVerdicts: result?.memberVerdicts ?? []
+        }).map((member) => ({
+            editor: member.editorName,
+            verdict: member.verdict,
+            keyPoint: member.keyPoint,
+            missing: member.missing
+        })),
+        topFixes: (result?.topFixes ?? []).map((fix, index) => ({
+            rank: index + 1,
+            action: fix.action,
+            // The RESOLVED owner, not the credited one: the cross-member
+            // fallback may have matched another member's finding, and the
+            // quote below is that finding's.
+            editor: resolveTopFix(fix, candidates)?.editorName ?? fix.editorName ?? null,
+            quote: fix.quote ?? null
+        })),
+        dissent: (result?.dissent ?? []).map((entry) => ({
+            subject: entry.subject,
+            positions: entry.positions.map((position) => ({
+                editor: position.editorName,
+                stance: position.stance
+            }))
+        })),
+        missingMembers: state.missingMembers,
+        error: state.error
+    }
+}
+
+/** Live findings a top fix may point at, in the shared candidate shape. */
+function topFixCandidates(run: RunHandle): TopFixCandidate[] {
+    const candidates: TopFixCandidate[] = []
+    for (const state of run.getEditorStates()) {
+        for (const id of state.findingIds) {
+            const finding = run.findings.get(id)
+            if (finding === null || (finding.status !== 'open' && finding.status !== 'preview')) {
+                continue
+            }
+            candidates.push({
+                id: finding.id,
+                editorName: state.editorName,
+                quote: finding.raw.quote
+            })
+        }
+    }
+    return candidates
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +507,49 @@ export function formatTextOutput(output: ReviewCliOutput): string {
     for (const skip of output.skips) {
         lines.push(`Skipped ${skip.editor}: ${skip.reason}`)
     }
+    lines.push(...panelTextLines(output.panel))
     return lines.join('\n')
+}
+
+/**
+ * The scorecard's text rendering: the verdict line, one line per member, the
+ * ranked fixes, then each disagreement. Nothing is folded away on a non-`done`
+ * status — "the scorecard was cancelled" is the answer a script needs, and the
+ * member findings above it are unaffected either way.
+ */
+function panelTextLines(panel: ReviewCliPanel | null): string[] {
+    if (panel === null) {
+        return []
+    }
+    const lines = [
+        panel.verdict === null
+            ? `Panel ${panel.name}: ${panel.status}`
+            : `Panel ${panel.name}: ${panel.verdict} (${panel.status})`
+    ]
+    if (panel.error !== null) {
+        lines.push(`Panel error: ${oneLine(panel.error)}`)
+    }
+    if (panel.rationale !== null) {
+        lines.push(`Panel rationale: ${oneLine(panel.rationale)}`)
+    }
+    for (const member of panel.members) {
+        lines.push(
+            `Member ${member.editor}: ${member.missing ? 'no review' : (member.verdict ?? 'no verdict')}`
+        )
+    }
+    for (const fix of panel.topFixes) {
+        lines.push(
+            `Fix ${fix.rank}${fix.editor === null ? '' : ` (${fix.editor})`}: ${oneLine(fix.action)}`
+        )
+    }
+    for (const entry of panel.dissent) {
+        lines.push(
+            `Dissent — ${oneLine(entry.subject)}: ${entry.positions
+                .map((position) => `${position.editor}: ${oneLine(position.stance)}`)
+                .join('; ')}`
+        )
+    }
+    return lines
 }
 
 function render(output: ReviewCliOutput, format: ReviewCliFormat): string {
@@ -438,7 +618,11 @@ export async function handleReviewCli(
             confirmedLargeNote: args.confirmLarge
         })
         if (start.status === 'started') {
-            await start.run.settled
+            // The scorecard too, not just the members: a panel run dispatches
+            // its aggregation the moment the members settle, so returning here
+            // would abandon (and `releaseRun` would abort) a request the user
+            // has already paid for. Solo runs resolve `panelSettled` at once.
+            await Promise.all([start.run.settled, start.run.panelSettled])
         }
     } catch {
         // Status-only on purpose: an unexpected pipeline failure has not

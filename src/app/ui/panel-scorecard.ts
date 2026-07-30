@@ -1,11 +1,16 @@
 import type { FindingId } from '../domain/ids'
 import type { PanelDissent, Verdict } from '../domain/operations/contract'
+import { resolveTopFix, scorecardMembers } from '../domain/panels/scorecard-model'
+import type { TopFixCandidate } from '../domain/panels/scorecard-model'
 import type {
     PanelAggregationStatus,
     PanelRunState
 } from '../services/orchestration/run-controller'
 import { entityName } from './entity-label'
 import { verdictLabel } from './verdict-label'
+
+export type { TopFixCandidate }
+export { resolveTopFix }
 
 /**
  * Pure projection of a panel run's aggregation state into what the side panel
@@ -55,7 +60,7 @@ export interface ScorecardTopFix {
     readonly findingId: FindingId | null
 }
 
-/** One member's line in the scorecard. */
+/** One member's line in the scorecard, with its verdict relabelled. */
 export interface ScorecardMember {
     readonly editorName: string
     readonly verdict: Verdict | null
@@ -64,12 +69,7 @@ export interface ScorecardMember {
     readonly keyPoint: string | null
     /** True when the member failed and the panel could not weigh it. */
     readonly missing: boolean
-    /**
-     * True when the panel's scorecard never mentioned this member — it ran,
-     * but the synthesis says nothing about it. Distinct from `missing` (which
-     * is the plugin's own record that the member produced no review): one is
-     * the run's fact, the other is the chairperson's silence.
-     */
+    /** True when the scorecard never mentioned this member (see the domain). */
     readonly unnamed: boolean
 }
 
@@ -99,14 +99,6 @@ export interface ScorecardView {
     readonly dissent: readonly PanelDissent[]
     /** Members that produced no review, whether or not aggregation ran. */
     readonly missingMembers: readonly string[]
-}
-
-/** A live finding a top fix may point at. */
-export interface TopFixCandidate {
-    readonly id: FindingId
-    readonly editorName: string
-    /** The finding's quote, exactly as the member reported it. */
-    readonly quote: string
 }
 
 /**
@@ -149,100 +141,19 @@ function statusOf(panel: PanelRunState): ScorecardStatus {
 }
 
 /**
- * Members as the scorecard lists them: the panel's own `memberVerdicts` first
- * (it decides the order — a ranking is a statement), then any member the panel
- * left out, marked missing.
- *
- * A missing member is listed even when the panel never mentioned it: silence
- * about a member that failed is exactly what `missingMembers` exists to
- * prevent, and the chairperson is instructed not to speak for it.
+ * Members as the scorecard lists them, with each verdict relabelled. The
+ * reconciliation against the run's roster is the domain's
+ * (`scorecardMembers`); this only adds the display vocabulary.
  */
 function membersOf(panel: PanelRunState): ScorecardMember[] {
-    const missing = new Set(panel.missingMembers)
-    // The roster is the run's own record of who ran. `missingMembers` is
-    // folded in because it is equally ours (the run derives it from member
-    // statuses), and a member that failed is a member.
-    const roster = [...new Set([...panel.memberNames, ...panel.missingMembers])]
-    const known = new Set(roster)
-    const listed = (panel.result?.memberVerdicts ?? [])
-        // Model-authored names, checked against the roster: an invented or
-        // misspelled member would otherwise render as a row for an editor that
-        // never ran AND hide the real one. Dropping it is what makes the list
-        // below complete — the real member reappears through the roster pass.
-        .filter((entry) => known.has(entry.editorName))
-        .map((entry) => ({
-            editorName: entry.editorName,
-            verdict: entry.verdict ?? null,
-            verdictLabel: entry.verdict === undefined ? null : verdictLabel(entry.verdict),
-            keyPoint: entry.keyPoint ?? null,
-            missing: missing.has(entry.editorName),
-            unnamed: false
-        }))
-    const named = new Set(listed.map((entry) => entry.editorName))
-    const unlisted = roster
-        .filter((name) => !named.has(name))
-        .map((name) => ({
-            editorName: name,
-            verdict: null,
-            verdictLabel: null,
-            keyPoint: null,
-            missing: missing.has(name),
-            unnamed: true
-        }))
-    return [...listed, ...unlisted]
-}
-
-function normalizeQuote(quote: string): string {
-    return quote.replace(/\s+/g, ' ').trim().toLowerCase()
-}
-
-/**
- * Resolves a top fix's pointer to a live finding.
- *
- * Precedence, narrowest evidence first: an exact quote match inside the member
- * the fix credits, then an exact match from any member, then the same two
- * steps on whitespace-and-case-normalized quotes. The normalized pass exists
- * because a model asked to copy a quote character-for-character will sometimes
- * re-wrap it; it runs LAST so an exact match is never displaced by a fuzzy one.
- *
- * Returns `null` rather than guessing when nothing matches. A top fix that
- * reveals the wrong span is worse than one that reveals none: the user would
- * act on it (Business Rules #4 — only exact or uniquely-contextualized matches
- * are actionable).
- *
- * Returns the CANDIDATE, not just its id, because the cross-member fallback
- * means the finding a fix resolves to may belong to a different editor than
- * the one the fix credits — and the row must then show the owner the user is
- * about to be shown, not the model's claim.
- */
-export function resolveTopFix(
-    fix: { readonly editorName?: string | undefined; readonly quote?: string | undefined },
-    candidates: readonly TopFixCandidate[]
-): TopFixCandidate | null {
-    const quote = fix.quote
-    if (quote === undefined || quote.length === 0) {
-        return null
-    }
-    const owned =
-        fix.editorName === undefined
-            ? []
-            : candidates.filter((candidate) => candidate.editorName === fix.editorName)
-    const normalized = normalizeQuote(quote)
-    const passes: readonly ((candidate: TopFixCandidate) => boolean)[] = [
-        (candidate): boolean => candidate.quote === quote,
-        (candidate): boolean => normalizeQuote(candidate.quote) === normalized
-    ]
-    for (const matches of passes) {
-        const inMember = owned.find(matches)
-        if (inMember) {
-            return inMember
-        }
-        const anywhere = candidates.find(matches)
-        if (anywhere) {
-            return anywhere
-        }
-    }
-    return null
+    return scorecardMembers({
+        memberNames: panel.memberNames,
+        missingMembers: panel.missingMembers,
+        memberVerdicts: panel.result?.memberVerdicts ?? []
+    }).map((entry) => ({
+        ...entry,
+        verdictLabel: entry.verdict === null ? null : verdictLabel(entry.verdict)
+    }))
 }
 
 /** Everything the side panel needs to render one panel run's scorecard. */

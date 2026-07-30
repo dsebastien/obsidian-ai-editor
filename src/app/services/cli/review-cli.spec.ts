@@ -5,7 +5,8 @@ import {
     pluginSettingsSchema
 } from '../../domain/settings/settings-schema'
 import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
-import type { RunHandle } from '../orchestration/run-controller'
+import { panelResultSchema } from '../../domain/operations/contract'
+import type { PanelRunState, RunHandle } from '../orchestration/run-controller'
 import type { EditorSkip, ReviewStart } from '../review-service'
 import { FakeRunHandle, makeState } from './spec-fixtures'
 import {
@@ -351,6 +352,135 @@ describe('shapeRunOutput', () => {
 // Text formatting
 // ---------------------------------------------------------------------------
 
+describe('shapeRunOutput — panel runs', () => {
+    function panelState(overrides: Record<string, unknown> = {}): PanelRunState {
+        return {
+            panelId: 'p-1',
+            panelName: 'Pre-publish Review',
+            memberNames: ['Hater', 'Beginner'],
+            status: 'done',
+            missingMembers: [],
+            resultStale: false,
+            error: null,
+            result: panelResultSchema.parse({
+                kind: 'aggregate-panel',
+                recommendation: 'needs-work',
+                rationale: 'Fix the opening.',
+                memberVerdicts: [{ editorName: 'Hater', verdict: 'kill', keyPoint: 'Weak thesis' }],
+                topFixes: [{ action: 'Rewrite the opening', editorName: 'Hater', quote: 'Hello' }],
+                dissent: [
+                    {
+                        subject: 'Whether the opening works',
+                        positions: [{ editorName: 'Hater', stance: 'It buries the point' }]
+                    }
+                ]
+            }),
+            ...overrides
+        }
+    }
+
+    it('is null for a solo run', () => {
+        expect(
+            shapeRunOutput('Notes/Test.md', new FakeRunHandle([makeState()]), []).panel
+        ).toBeNull()
+    })
+
+    it('shapes the scorecard, reconciled against the run roster', () => {
+        const run = new FakeRunHandle(
+            [makeState()],
+            [{ editorId: 'editor-1', quote: 'Hello', critique: 'Too generic' }],
+            { panel: panelState() }
+        )
+        const panel = shapeRunOutput('Notes/Test.md', run, []).panel
+        expect(panel).toMatchObject({
+            name: 'Pre-publish Review',
+            status: 'done',
+            verdict: 'needs-work',
+            rationale: 'Fix the opening.'
+        })
+        // Beginner is on the roster and the panel never named it: listed with
+        // no verdict rather than silently absent.
+        expect(panel?.members).toEqual([
+            { editor: 'Hater', verdict: 'kill', keyPoint: 'Weak thesis', missing: false },
+            { editor: 'Beginner', verdict: null, keyPoint: null, missing: false }
+        ])
+        expect(panel?.topFixes).toEqual([
+            { rank: 1, action: 'Rewrite the opening', editor: 'Hater', quote: 'Hello' }
+        ])
+        expect(panel?.dissent[0]?.positions[0]).toEqual({
+            editor: 'Hater',
+            stance: 'It buries the point'
+        })
+    })
+
+    it('reports a failed scorecard without touching the member findings', () => {
+        const run = new FakeRunHandle(
+            [makeState()],
+            [{ editorId: 'editor-1', quote: 'Hello', critique: 'Too generic' }],
+            { panel: panelState({ status: 'error', result: null, error: 'rate limit reached' }) }
+        )
+        const output = shapeRunOutput('Notes/Test.md', run, [])
+        expect(output.ok).toBeTrue()
+        expect(output.findings).toHaveLength(1)
+        expect(output.panel).toMatchObject({
+            status: 'error',
+            verdict: null,
+            error: 'rate limit reached'
+        })
+    })
+})
+
+describe('handleReviewCli — panel runs', () => {
+    it('waits for the scorecard before shaping the output', async () => {
+        // The aggregation is dispatched the moment the members settle. A CLI
+        // that returned on `settled` alone would release the run and abort a
+        // request the user has already paid for.
+        let land = (): void => undefined
+        const panelSettled = new Promise<void>((resolve) => {
+            land = resolve
+        })
+        const run = new FakeRunHandle([makeState()], [], {
+            panelSettled,
+            panel: {
+                panelId: 'p-1',
+                panelName: 'Pre-publish Review',
+                memberNames: ['Hater'],
+                status: 'running',
+                missingMembers: [],
+                result: null,
+                resultStale: false,
+                error: null
+            }
+        })
+        setTimeout(() => {
+            run.setPanelState({
+                panelId: 'p-1',
+                panelName: 'Pre-publish Review',
+                memberNames: ['Hater'],
+                status: 'done',
+                missingMembers: [],
+                resultStale: false,
+                error: null,
+                result: panelResultSchema.parse({
+                    kind: 'aggregate-panel',
+                    recommendation: 'publish',
+                    memberVerdicts: [],
+                    topFixes: []
+                })
+            })
+            land()
+        }, 5)
+
+        const output = parseOutput(
+            await handleReviewCli(
+                { file: 'Notes/Test.md' },
+                makeDeps({ runReview: () => Promise.resolve(startedResult(run)) })
+            )
+        )
+        expect(output.panel).toMatchObject({ status: 'done', verdict: 'publish' })
+    })
+})
+
 describe('formatTextOutput', () => {
     it('prints one line per finding with anchor range and suggestion', () => {
         const run = new FakeRunHandle(
@@ -395,6 +525,32 @@ describe('formatTextOutput', () => {
         const run = new FakeRunHandle([makeState()])
         const text = formatTextOutput(shapeRunOutput('Notes/Test.md', run, []))
         expect(text).toBe('No findings.')
+    })
+
+    it('prints the scorecard under the findings', () => {
+        const run = new FakeRunHandle([makeState()], [], {
+            panel: {
+                panelId: 'p-1',
+                panelName: 'Pre-publish Review',
+                memberNames: ['Hater'],
+                status: 'done',
+                missingMembers: [],
+                resultStale: false,
+                error: null,
+                result: panelResultSchema.parse({
+                    kind: 'aggregate-panel',
+                    recommendation: 'publish',
+                    memberVerdicts: [{ editorName: 'Hater', verdict: 'publish' }],
+                    topFixes: [{ action: 'Tighten the close' }]
+                })
+            }
+        })
+        expect(formatTextOutput(shapeRunOutput('Notes/Test.md', run, [])).split('\n')).toEqual([
+            'No findings.',
+            'Panel Pre-publish Review: publish (done)',
+            'Member Hater: publish',
+            'Fix 1: Tighten the close'
+        ])
     })
 })
 
