@@ -1,7 +1,12 @@
 import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
-import type { BackendInstance, BehaviorSettings } from '../../domain/settings/settings-schema'
+import { hasLaunchConsent } from '../../domain/settings/cli-consent'
+import type {
+    BackendInstance,
+    BehaviorSettings,
+    CliBackend
+} from '../../domain/settings/settings-schema'
 import { createApiEditorExecutor } from './api-editor-backend'
-import { cliTimeoutMs, createCliEditorExecutor } from './cli'
+import { cliTimeoutMs, createCliEditorExecutor, getCliToolAdapter } from './cli'
 import { redactSecret } from './providers'
 
 /**
@@ -22,6 +27,14 @@ import { redactSecret } from './providers'
  * - **The timeout.** An API request is bounded by the behavior-level request
  *   timeout; a CLI agent is an order of magnitude slower than a chat
  *   completion and carries its own per-backend budget instead of borrowing it.
+ * - **Consent.** A CLI backend that the user has not allowed to launch THIS
+ *   executable never becomes runnable here. `resolveBackendRef` refuses one
+ *   too, but that is the review path; putting the same refusal at the seam
+ *   where a backend turns into a process means a second caller — the health
+ *   probe, the setup wizard, whatever comes next — cannot start a user's
+ *   binary by forgetting to ask. Consent is the premise of this whole
+ *   subsystem, so it is enforced where the process is created, not where it is
+ *   requested.
  * - **Redaction.** An API backend's error messages are scrubbed of its key
  *   (Business Rules #12). A CLI backend has no key to scrub — its credential
  *   lives in the tool's own login, which the plugin never reads — so its
@@ -102,6 +115,12 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
     const { backend, model, systemPrompt, behavior } = input
     const timeoutMs = input.timeoutMsOverride ?? backendTimeoutMs(backend, behavior)
     if (backend.family === 'cli') {
+        if (!hasLaunchConsent(backend)) {
+            return {
+                redactError: (message: string): string => message,
+                execute: refuseUnconsentedCli(backend)
+            }
+        }
         return {
             // A CLI backend holds no credential of ours: the tool authenticates
             // itself out of the user's own login. There is nothing to redact,
@@ -125,5 +144,29 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
             timeoutMs,
             fetchImpl: input.fetchImpl
         })
+    }
+}
+
+/**
+ * The executor an unconsented CLI backend gets: one error event, no process.
+ *
+ * Shaped exactly like a real executor (same signature, exactly one terminal
+ * event) so every caller — reviews, panels, transforms, the health probe —
+ * reports it through the path it already has, instead of each one needing to
+ * know about consent.
+ */
+function refuseUnconsentedCli(backend: CliBackend): BackendExecutor {
+    const tool = getCliToolAdapter(backend.kind).displayName
+    return async function* refuse(request: OperationRequest): AsyncGenerator<OperationEvent> {
+        yield {
+            type: 'error',
+            runId: request.runId,
+            error: {
+                code: 'unknown',
+                message:
+                    `“${backend.label}” has not been allowed to run yet. Open the Backends tab ` +
+                    `and allow it, so you can see which file ${tool} would start.`
+            }
+        }
     }
 }

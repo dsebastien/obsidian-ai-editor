@@ -131,6 +131,56 @@ describe('createBackendExecutor', () => {
         expect(terminal.error.message).toContain('/definitely/not/here/claude')
     })
 
+    it('refuses a CLI backend the user has not allowed to launch — before the boundary', async () => {
+        // The proof that the refusal comes first: the executable path is one
+        // the boundary would reject on its own. If consent were checked later
+        // (or only by the review path, or only by a dialog), the message would
+        // be about the missing file rather than about the missing permission —
+        // which would mean the process seam had already been reached.
+        const executor = createBackendExecutor({
+            backend: cliBackend({
+                executablePath: '/definitely/not/here/claude',
+                consent: { launchPath: '', toolsPath: '' }
+            }),
+            model: '',
+            systemPrompt: 'Be harsh.',
+            behavior,
+            fetchImpl: globalThis.fetch
+        })
+        const events: OperationEvent[] = []
+        for await (const event of executor.execute(operation(), new AbortController().signal)) {
+            events.push(event)
+        }
+        expect(events).toHaveLength(1)
+        const terminal = events[0]
+        if (terminal?.type !== 'error') {
+            throw new Error('expected a terminal error event')
+        }
+        expect(terminal.error.message).toContain('has not been allowed to run')
+        expect(terminal.error.message).not.toContain('/definitely/not/here/claude')
+    })
+
+    it('refuses a CLI backend whose consent names a DIFFERENT executable', async () => {
+        const executor = createBackendExecutor({
+            backend: cliBackend({
+                executablePath: '/usr/local/bin/claude',
+                consent: { launchPath: '/opt/homebrew/bin/claude', toolsPath: '' }
+            }),
+            model: '',
+            systemPrompt: 'Be harsh.',
+            behavior,
+            fetchImpl: globalThis.fetch
+        })
+        const events: OperationEvent[] = []
+        for await (const event of executor.execute(operation(), new AbortController().signal)) {
+            events.push(event)
+        }
+        expect(events).toHaveLength(1)
+        expect(events[0]?.type === 'error' && events[0].error.message).toContain(
+            'has not been allowed to run'
+        )
+    })
+
     it('never starts a process for an aborted CLI run', async () => {
         const controller = new AbortController()
         controller.abort()
