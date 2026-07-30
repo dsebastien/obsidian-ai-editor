@@ -1,5 +1,7 @@
 import { PluginSettingTab } from 'obsidian'
 import type { App, Plugin } from 'obsidian'
+import { BUY_ME_A_COFFEE_BADGE_DATA_URL } from '../assets/buy-me-a-coffee'
+import { BUY_ME_A_COFFEE_URL, renderSupportSection } from '../ui/support-links'
 import { createSettingsFacade } from './settings-facade'
 import type { SettingsFacade } from './settings-facade'
 import { renderBackendsTab } from './tabs/backends-tab'
@@ -151,16 +153,44 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
         })
 
         const activeTab = SETTINGS_TABS[activeIndex]
-        if (!activeTab) {
-            return
+        if (activeTab) {
+            const ctx: TabContext = {
+                app: this.app,
+                facade: this.facade,
+                refresh: () => this.renderAll()
+            }
+            activeTab.render(content, ctx)
         }
-        const ctx: TabContext = {
-            app: this.app,
-            facade: this.facade,
-            refresh: () => this.renderAll()
-        }
-        activeTab.render(content, ctx)
+
+        // Outside the tab panel on purpose: the support section belongs to no
+        // section, so putting it in one would hide it from everybody who never
+        // opens that section — and would make it part of the panel a screen
+        // reader announces for the tab.
+        this.renderSupport(containerEl)
+
         this.restoreTabFocus(activeButton)
+    }
+
+    /**
+     * The support calls to action. Wording and URLs live in
+     * `ui/support-links.ts` — the one place the whole plugin collection shares
+     * — so this tab renders exactly what the "What's new" tab, the README and
+     * the docs site say. Only the Buy me a coffee badge is plugin-local (the
+     * image asset is), which is why it arrives as a callback.
+     */
+    private renderSupport(containerEl: HTMLElement): void {
+        renderSupportSection(containerEl, (el) => {
+            this.renderBuyMeACoffeeBadge(el)
+        })
+    }
+
+    /** The Buy me a coffee badge, as an image link. */
+    private renderBuyMeACoffeeBadge(contentEl: HTMLElement): void {
+        const linkEl = contentEl.createEl('a', { href: BUY_ME_A_COFFEE_URL })
+        const imgEl = linkEl.createEl('img')
+        imgEl.src = BUY_ME_A_COFFEE_BADGE_DATA_URL
+        imgEl.alt = 'Buy me a coffee'
+        imgEl.width = 175
     }
 
     /**
