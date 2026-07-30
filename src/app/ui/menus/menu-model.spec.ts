@@ -27,6 +27,7 @@ function editorState(overrides: Partial<EditorMenuState> = {}): EditorMenuState 
         editable: true,
         hasSelection: true,
         reviewable: true,
+        askable: true,
         blocked: false,
         actions: [],
         comments: false,
@@ -62,11 +63,24 @@ describe('editorMenuEntries', () => {
         expect(entryIds(editorState({ comments: false }))).not.toContain('comment-selection')
     })
 
-    it('never offers the comment item on a note that cannot be reviewed', () => {
-        // A margin comment IS a scoped review; the same gate must hold.
-        expect(entryIds(editorState({ comments: true, reviewable: false }))).toEqual([])
+    it('never offers the comment item when nothing could answer it', () => {
+        // A margin comment IS a scoped review, so it needs an editor that can
+        // run — `askable`, not `reviewable`: a comment names its own editor,
+        // which an `assign` rule does not override.
+        expect(
+            entryIds(editorState({ comments: true, askable: false, reviewable: false }))
+        ).toEqual([])
         expect(entryIds(editorState({ comments: true, blocked: true }))).toEqual([])
         expect(entryIds(editorState({ comments: true, hasSelection: false }))).toEqual([])
+    })
+
+    it('still offers the two asks when only the note’s rule-assigned pool is unusable', () => {
+        // The regression: `Ask an editor` and `Ask for comments` dispatch with
+        // an editor they NAME (precedence 2 / the comment's own editor), which
+        // outranks an `assign` rule. Gating them on the rule's pool made both
+        // vanish on every note the rule matched, for no reachable reason.
+        const state = editorState({ reviewable: false, askable: true, comments: true })
+        expect(entryIds(state)).toEqual(['ask-editor', 'comment-selection'])
     })
 
     it('lists bound actions first, alphabetical by label, before the review items', () => {
@@ -100,7 +114,7 @@ describe('editorMenuEntries', () => {
     it('offers bound actions on a non-reviewable note the plugin still operates on', () => {
         // A vault whose editors are all rewrite-only: reviewable is false,
         // yet transform actions dispatch — the review items alone are hidden.
-        const state = editorState({ reviewable: false, actions: [action()] })
+        const state = editorState({ reviewable: false, askable: false, actions: [action()] })
         expect(entryIds(state)).toEqual(['action:humanize'])
     })
 
@@ -127,6 +141,7 @@ describe('editorMenuEntries', () => {
                     editable: false,
                     hasSelection: false,
                     reviewable: false,
+                    askable: false,
                     blocked: true
                 })
             )
@@ -176,9 +191,9 @@ describe('actionMenuTitle', () => {
     it('names the panel a verb convenes — one click there is one request per member', () => {
         expect(
             actionMenuTitle(
-                action({ label: 'Critique', verbClass: 'review', panelName: 'Pre-publish Review' })
+                action({ label: 'Critique', verbClass: 'review', panelName: 'Pre-publish review' })
             )
-        ).toBe('Critique (panel: Pre-publish Review)')
+        ).toBe('Critique (panel: Pre-publish review)')
     })
 
     it('leaves an editor-bound verb as the bare label', () => {

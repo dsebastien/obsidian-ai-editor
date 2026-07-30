@@ -35,6 +35,7 @@ export function registerEditorMenu(
                 editable: info.getMode() !== 'preview',
                 hasSelection: editor.somethingSelected(),
                 reviewable: controller.canReview(info),
+                askable: controller.canAskEditor(info),
                 blocked: file === null || !controller.isPluginEnabledFor(file.path),
                 actions: resolveActions(getSettings()),
                 comments: controller.canCommentOnNote()

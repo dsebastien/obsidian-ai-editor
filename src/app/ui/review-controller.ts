@@ -43,6 +43,7 @@ import {
 } from '../services/actions/action-resolution'
 import type { ResolvedAction } from '../services/actions/action-resolution'
 import {
+    hasReviewCapableEditor,
     isPluginDisabledByRule,
     isPluginEnabledForNote,
     isReviewable,
@@ -676,6 +677,38 @@ export class ReviewController {
      */
     isPluginEnabledFor(path: string): boolean {
         return isPluginEnabledForNote(path, this.vaultReader, this.deps.getSettings())
+    }
+
+    /**
+     * Whether the user may be offered "Ask an editor" / "Ask for comments" on
+     * this note: the plugin operates on it, and the VAULT has at least one
+     * review-capable editor.
+     *
+     * Deliberately NOT `canReview`. That predicate resolves the note's DEFAULT
+     * pool, so it says no whenever an `assign` rule matches and its target
+     * cannot run. Neither of these surfaces uses that pool: "Ask an editor"
+     * dispatches with `instructionEditorIds` (precedence 2, which outranks the
+     * rule) and a comment names its own editor — "a rule's `assign` target does
+     * not override the comment's editor" (`comment-job-service.ts`). Gating
+     * them on the pool made both items, and both palette commands, vanish on
+     * every note such a rule matched, with no explanation, while asking any of
+     * the vault's healthy editors would have dispatched fine.
+     *
+     * `canReview` stays the gate for "Review selection" / "Review current
+     * note", which really do dispatch the rule's pool.
+     */
+    canAskEditor(view: MarkdownView): boolean {
+        const file = view.file
+        return file !== null && this.canAskEditorPath(file.path)
+    }
+
+    /** `canAskEditor` for a note that may not be open in a view. */
+    canAskEditorPath(path: string): boolean {
+        const settings = this.deps.getSettings()
+        return (
+            isPluginEnabledForNote(path, this.vaultReader, settings) &&
+            hasReviewCapableEditor(settings)
+        )
     }
 
     /**

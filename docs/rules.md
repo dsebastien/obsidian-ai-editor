@@ -38,8 +38,12 @@ Each row shows what it currently resolves to, and says so when a rule does nothi
 A rule supplies the **default participant pool**. These override it:
 
 - an explicit **Ask an editor**;
+- **Ask for comments** — a [margin comment](margin-comments.md) names its own editor;
 - a **bound action** — you named the verb and it names its own target;
+- `--editors` on the [command line](command-line.md);
 - a **daemon refresh** of a note that was reviewed before, which reuses that review's editors.
+
+Because they override the rule, they stay available even when the rule's own target cannot run: a rule pointing at a disabled editor stops **Review**, not **Ask an editor**.
 
 A kill switch is different: it refuses everything, including all of the above.
 
@@ -67,7 +71,7 @@ If the point is that a note's content must never leave the vault, use a privacy 
 ## Examples
 
 - **Never in my journal**: `Folder` = `Journal`, effect **Disable plugin**.
-- **Blog posts get the full panel**: `Folder` = `Blog`, effect **Assign reviewer**, target _Pre-publish Review (panel)_.
+- **Blog posts get the full panel**: `Folder` = `Blog`, effect **Assign reviewer**, target _Pre-publish review (panel)_.
 - **Drafts get one cheap reviewer**: `Tag` = `draft`, effect **Assign reviewer**, target _Concision Editor_. Put it below the blog rule if a draft can also be a blog post and you want the panel to win.
 - **Only literature notes get the Fact Checker**: `Frontmatter` = `type: literature`, effect **Assign reviewer**, target _Fact Checker_.
 

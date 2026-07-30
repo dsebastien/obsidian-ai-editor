@@ -52,6 +52,18 @@ export interface EditorMenuState {
     /** The note passes the shared reviewability predicate (`isReviewable`). */
     readonly reviewable: boolean
     /**
+     * The user may be OFFERED an ask on this note: the plugin operates on it
+     * and the vault has a review-capable editor (`canAskEditor`).
+     *
+     * Separate from `reviewable` because the two asks do not dispatch the
+     * note's default pool: "Ask an editor" names its editor
+     * (`instructionEditorIds`, which outranks an `assign` rule) and a comment
+     * names its own. Gating them on `reviewable` hid both items on every note
+     * an `assign` rule matched whose target could not run — with no
+     * explanation, while any healthy editor would have answered.
+     */
+    readonly askable: boolean
+    /**
      * The plugin does not operate on this note: privacy-excluded (Business
      * Rules #7) or switched off by a binding rule (plan §4b). Both produce the
      * same menu outcome — nothing offered — so one flag covers them; the
@@ -98,10 +110,12 @@ export function actionMenuIcon(verbClass: VerbClass): string {
  * bound actions first — alphabetical by label, capped at `ACTION_MENU_CAP` —
  * then "Review selection", "Ask an editor…" and "Ask for comments…".
  * Everything requires a non-empty selection in an editable view on a note the
- * plugin operates on; the review items additionally need the note to be
- * reviewable, the bound actions do not (each action's own dispatchability was
- * already resolved upstream — undispatchable actions never reach
- * `state.actions`).
+ * plugin operates on. Beyond that the three tail items split on WHICH pool
+ * they dispatch: "Review selection" needs the note to be `reviewable` (it runs
+ * the note's default pool, rule included), while the two asks need only
+ * `askable` (they name their own editor, which outranks the rule). The bound
+ * actions need neither — each action's own dispatchability was already
+ * resolved upstream, so undispatchable actions never reach `state.actions`.
  *
  * "Ask for comments…" comes last on purpose: it is the only item that does
  * NOT produce something to watch. It parks a background job whose answer
@@ -124,7 +138,10 @@ export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEn
         entries.push({ kind: 'action', action })
     }
     if (state.reviewable) {
-        entries.push({ kind: 'review-selection' }, { kind: 'ask-editor' })
+        entries.push({ kind: 'review-selection' })
+    }
+    if (state.askable) {
+        entries.push({ kind: 'ask-editor' })
         if (state.comments) {
             entries.push({ kind: 'comment-selection' })
         }

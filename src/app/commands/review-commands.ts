@@ -95,16 +95,17 @@ export function registerReviewCommands(
         id: 'ask-editor',
         name: 'Ask an editor',
         editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
-            // Same availability as `Review selection`: the modal dispatches a
-            // selection-scoped review, so the gates must agree with what
-            // `startReview` would accept.
+            // NOT `canReview`: the modal dispatches with the editor the user
+            // picks (`instructionEditorIds`, precedence 2), which outranks a
+            // matching `assign` rule — so the note's rule-assigned pool being
+            // unusable must not hide the command (see `canAskEditor`).
             if (!(ctx instanceof MarkdownView)) {
                 return false
             }
             const allowed = canReviewSelection({
                 editable: ctx.getMode() !== 'preview',
                 hasSelection: editor.somethingSelected(),
-                reviewable: controller.canReview(ctx)
+                reviewable: controller.canAskEditor(ctx)
             })
             if (!allowed) {
                 return false
@@ -122,14 +123,17 @@ export function registerReviewCommands(
         name: 'Ask for comments',
         editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
             // A margin comment IS a review scoped to the span, so it takes the
-            // same gate — plus a comment store to park it in.
+            // same gate as `Ask an editor` — plus a comment store to park it
+            // in. `canAskEditor`, not `canReview`: a comment names its own
+            // editor, and "a rule's `assign` target does not override the
+            // comment's editor" (`comment-job-service.ts`).
             if (!(ctx instanceof MarkdownView) || !controller.canCommentOnNote()) {
                 return false
             }
             const allowed = canReviewSelection({
                 editable: ctx.getMode() !== 'preview',
                 hasSelection: editor.somethingSelected(),
-                reviewable: controller.canReview(ctx)
+                reviewable: controller.canAskEditor(ctx)
             })
             if (!allowed) {
                 return false
