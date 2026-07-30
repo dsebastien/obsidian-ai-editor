@@ -32,6 +32,9 @@ import type { CliToolAdapter } from './tools'
  *   returned iterable, including a programming error in this module.
  * - Cancellation and the timeout both terminate the run AND the process tree
  *   — the boundary owns that, and both arrive here as typed outcomes.
+ * - A run whose process tree could NOT be terminated fails, whatever the tool
+ *   said. That is the one outcome the boundary cannot make safe, so it is
+ *   reported rather than delivered underneath a good-looking answer.
  * - Error messages are status-only. The tool's own error text is never
  *   forwarded: an agent CLI echoes its configuration when it fails, and its
  *   configuration holds its credentials (Business Rules #12).
@@ -121,7 +124,6 @@ function codeForFailure(code: CliProcessFailureCode): OperationErrorDetail['code
             return 'invalid-output'
         case 'invalid-executable':
         case 'invalid-argument':
-        case 'invalid-environment':
         case 'run-dir-failed':
         case 'spawn-failed':
         case 'nonzero-exit':
@@ -218,6 +220,32 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                               code: codeForFailure(outcome.code),
                               message: messageForFailure(outcome)
                           }
+                }
+                return
+            }
+            if (outcome.kill === 'survived') {
+                // The tool answered, and the boundary could not clean up after
+                // it: something in its tree ignored SIGKILL (or taskkill could
+                // not be run) and is still there — still holding the note text
+                // that went in on stdin, still able to reach the network, and
+                // now without the temporary directory it was given.
+                //
+                // The answer is discarded rather than delivered with a warning
+                // attached. There is no durable place in the run contract to
+                // hang a warning on a successful result, and a containment
+                // failure the user is not told about is exactly what the
+                // consent dialog promised would not happen. It costs a good
+                // review; it does not cost the leak, which happened either way.
+                yield {
+                    type: 'error',
+                    runId,
+                    error: {
+                        code: 'unknown',
+                        message:
+                            `${adapter.displayName} answered, but some of its processes could ` +
+                            'not be stopped and may still be running. Check them before running ' +
+                            'this backend again.'
+                    }
                 }
                 return
             }

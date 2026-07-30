@@ -6,6 +6,7 @@ type OperationErrorCode = Extract<OperationEvent, { type: 'error' }>['error']['c
 import { backendRefSchema, type BackendRef } from '../../../domain/settings/settings-schema'
 import { toStderrDiagnostics, BoundedCapture } from './capture'
 import type { StderrDiagnostics } from './capture'
+import type { KillResult } from './kill'
 import {
     cliTimeoutMs,
     createCliEditorExecutor,
@@ -40,8 +41,8 @@ function stderr(bytes = 0, text = ''): StderrDiagnostics {
     return toStderrDiagnostics(capture)
 }
 
-function okOutcome(stdout: string): CliProcessOutcome {
-    return { ok: true, stdout, stderr: stderr(), durationMs: 12 }
+function okOutcome(stdout: string, kill: KillResult | null = 'already-gone'): CliProcessOutcome {
+    return { ok: true, stdout, stderr: stderr(), durationMs: 12, kill }
 }
 
 function failedOutcome(
@@ -181,7 +182,6 @@ describe('createCliEditorExecutor — boundary failures', () => {
         ['stdout-overflow', 'invalid-output'],
         ['invalid-executable', 'unknown'],
         ['invalid-argument', 'unknown'],
-        ['invalid-environment', 'unknown'],
         ['run-dir-failed', 'unknown'],
         ['spawn-failed', 'unknown'],
         ['nonzero-exit', 'unknown'],
@@ -190,6 +190,24 @@ describe('createCliEditorExecutor — boundary failures', () => {
         const { events } = await run(failedOutcome(failure))
         expect(events).toHaveLength(1)
         expect(events[0]?.type === 'error' && events[0].error.code).toBe(code)
+    })
+
+    it('fails a run whose process tree could not be stopped, even though the tool answered', async () => {
+        // Containment is the premise the consent dialog was granted on. A leak
+        // the user is never told about is the one failure this whole boundary
+        // exists to prevent, and there is no durable place to hang a warning on
+        // a successful result — so the good answer is given up instead.
+        const { events } = await run(okOutcome(claudeSuccessEnvelope(VALID_REVIEW), 'survived'))
+        expect(events).toHaveLength(1)
+        const message = events[0]?.type === 'error' ? events[0].error.message : ''
+        expect(message).toContain('could not be stopped')
+        expect(message).toContain('Claude Code')
+    })
+
+    it('delivers the result when the tree ended normally', async () => {
+        const { events } = await run(okOutcome(claudeSuccessEnvelope(VALID_REVIEW), 'already-gone'))
+        expect(events).toHaveLength(1)
+        expect(events[0]?.type).toBe('result')
     })
 
     it('names the timeout setting so the fix is in the message', async () => {

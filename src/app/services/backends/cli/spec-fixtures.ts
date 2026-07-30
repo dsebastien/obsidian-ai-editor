@@ -50,6 +50,33 @@ process.stdout.write(JSON.stringify({ parent: process.pid, grandchild: grandchil
 setTimeout(() => {}, 600000);
 `
 
+/**
+ * Spawns a sleeping grandchild that INHERITS the stdio pipes, then exits 0.
+ *
+ * The shape of an agent that leaves a background helper behind — an MCP
+ * server, a watcher, a language server. The parent's exit status says the tool
+ * succeeded; the descendant is still there holding the note text, and because
+ * it holds the pipes the `close` event never arrives either.
+ */
+export const CLEAN_EXIT_WITH_INHERITING_GRANDCHILD = `
+const { spawn } = require('node:child_process');
+const grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000);'], { stdio: 'inherit' });
+process.stdout.write(JSON.stringify({ parent: process.pid, grandchild: grandchild.pid }) + '\\n');
+process.exit(0);
+`
+
+/**
+ * Writes a marker file at `argv[1]` before doing anything else, then sleeps.
+ *
+ * Lets a spec assert that a program was never EXECUTED, rather than only that
+ * the outcome said `cancelled` — the outcome cannot tell "refused before the
+ * OS was asked" apart from "started and then killed fast enough".
+ */
+export const MARK_AND_SLEEP = `
+require('node:fs').writeFileSync(process.argv[1], 'ran');
+setTimeout(() => {}, 600000);
+`
+
 /** Whether a pid is still running (signal 0 delivers nothing). */
 export function isProcessAlive(pid: number): boolean {
     try {

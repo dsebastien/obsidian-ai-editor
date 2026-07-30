@@ -17,7 +17,6 @@ export type {
 export { cliCandidatePaths, cliCommandName, detectCliExecutables, detectionSummary } from './detect'
 export type { CliCandidate, CliDetectionResult } from './detect'
 export { buildCliEnv } from './env'
-export type { CliEnvResult, EnvProblem } from './env'
 export { validateExecutablePath } from './executable'
 export type { ExecutableProbe, ExecutableProblem, ExecutableValidation } from './executable'
 export { DEFAULT_KILL_GRACE_MS, runKillEscalation } from './kill'

@@ -22,9 +22,7 @@ const SOURCE = {
 
 describe('buildCliEnv', () => {
     it('starts from nothing — unrelated secrets in the source environment do not reach the child', () => {
-        const result = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
-        expect(result.ok).toBe(true)
-        const env = result.ok ? result.env : {}
+        const env = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
         expect(Object.keys(env).sort()).toEqual([
             'HOME',
             'LANG',
@@ -39,110 +37,53 @@ describe('buildCliEnv', () => {
         expect(env['SSH_AUTH_SOCK']).toBeUndefined()
     })
 
+    it('has no way to add a variable: the input carries nothing user-supplied', () => {
+        // The pass-through list this module used to accept had no caller and
+        // no setting behind it, so it was removed rather than left as a door
+        // with no lock on it. Whatever a user configures, an API key in their
+        // shell environment is not forwarded — the tools authenticate from
+        // their own login under HOME.
+        const env = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
+        expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
+        expect(env['LD_PRELOAD']).toBeUndefined()
+    })
+
     it('forwards HOME and PATH — the tool finds its own credentials and sub-tools', () => {
-        const result = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
-        expect(result.ok ? result.env['HOME'] : '').toBe('/home/seb')
-        expect(result.ok ? result.env['PATH'] : '').toBe('/usr/bin:/bin')
+        const env = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
+        expect(env['HOME']).toBe('/home/seb')
+        expect(env['PATH']).toBe('/usr/bin:/bin')
     })
 
     it('points the child temp directory at the run directory instead of the system one', () => {
         const posix = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
-        expect(posix.ok ? posix.env['TMPDIR'] : '').toBe('/tmp/run-1')
+        expect(posix['TMPDIR']).toBe('/tmp/run-1')
         const win = buildCliEnv({
             platform: 'win32',
             sourceEnv: { SystemRoot: 'C:\\Windows', TEMP: 'C:\\Users\\seb\\AppData\\Local\\Temp' },
             runDir: 'C:\\Temp\\run-1'
         })
-        expect(win.ok ? win.env['TEMP'] : '').toBe('C:\\Temp\\run-1')
-        expect(win.ok ? win.env['TMP'] : '').toBe('C:\\Temp\\run-1')
+        expect(win['TEMP']).toBe('C:\\Temp\\run-1')
+        expect(win['TMP']).toBe('C:\\Temp\\run-1')
     })
 
     it('disables colour so ANSI escapes cannot corrupt the JSON protocol', () => {
-        const result = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
-        expect(result.ok ? result.env['NO_COLOR'] : '').toBe('1')
-        expect(result.ok ? result.env['TERM'] : '').toBe('dumb')
+        const env = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
+        expect(env['NO_COLOR']).toBe('1')
+        expect(env['TERM']).toBe('dumb')
     })
 
-    it('forwards explicitly configured API-key variables by value', () => {
-        const result = buildCliEnv({
+    it('cannot be poisoned through a prototype-shaped variable name in the source', () => {
+        const env = buildCliEnv({
             platform: 'posix',
-            sourceEnv: SOURCE,
-            passThroughNames: ['ANTHROPIC_API_KEY'],
+            sourceEnv: { ...SOURCE, ['__proto__']: '{"polluted":true}' },
             runDir: '/tmp/run-1'
         })
-        expect(result.ok ? result.env['ANTHROPIC_API_KEY'] : '').toBe('sk-configured')
-    })
-
-    it('skips a configured variable that is not set rather than defaulting it', () => {
-        const result = buildCliEnv({
-            platform: 'posix',
-            sourceEnv: SOURCE,
-            passThroughNames: ['NOT_SET_ANYWHERE'],
-            runDir: '/tmp/run-1'
-        })
-        expect(result.ok).toBe(true)
-        expect(result.ok ? 'NOT_SET_ANYWHERE' in result.env : true).toBe(false)
-    })
-
-    it('refuses a configured variable that injects code or redirects the tool', () => {
-        for (const name of [
-            'LD_PRELOAD',
-            'DYLD_INSERT_LIBRARIES',
-            'NODE_OPTIONS',
-            'BASH_ENV',
-            'PATH',
-            'HTTPS_PROXY',
-            'GIT_SSH_COMMAND',
-            'TMPDIR'
-        ]) {
-            const result = buildCliEnv({
-                platform: 'posix',
-                sourceEnv: SOURCE,
-                passThroughNames: [name],
-                runDir: '/tmp/run-1'
-            })
-            expect(result.ok).toBe(false)
-            expect(result.ok ? '' : result.code).toBe('denied-name')
-        }
-    })
-
-    it('matches the denied list case-insensitively', () => {
-        const result = buildCliEnv({
-            platform: 'posix',
-            sourceEnv: { ld_preload: '/tmp/evil.so' },
-            passThroughNames: ['ld_preload'],
-            runDir: '/tmp/run-1'
-        })
-        expect(result.ok ? '' : result.code).toBe('denied-name')
-    })
-
-    it('refuses a malformed variable name', () => {
-        for (const name of ['', '1KEY', 'MY KEY', 'MY-KEY', 'A'.repeat(200)]) {
-            const result = buildCliEnv({
-                platform: 'posix',
-                sourceEnv: SOURCE,
-                passThroughNames: [name],
-                runDir: '/tmp/run-1'
-            })
-            expect(result.ok ? '' : result.code).toBe('invalid-name')
-        }
-    })
-
-    it('cannot be poisoned through a prototype-shaped variable name', () => {
-        const result = buildCliEnv({
-            platform: 'posix',
-            sourceEnv: SOURCE,
-            passThroughNames: ['__proto__'],
-            runDir: '/tmp/run-1'
-        })
-        // Refused as a name (leading underscores are legal, but the value is
-        // absent) — what matters is that nothing on Object.prototype moved.
-        expect(result.ok).toBe(true)
+        expect(Object.keys(env)).not.toContain('__proto__')
         expect(({} as Record<string, unknown>)['polluted']).toBeUndefined()
     })
 
     it('forwards the Windows variables process creation needs', () => {
-        const result = buildCliEnv({
+        const env = buildCliEnv({
             platform: 'win32',
             sourceEnv: {
                 SystemRoot: 'C:\\Windows',
@@ -157,7 +98,6 @@ describe('buildCliEnv', () => {
             },
             runDir: 'C:\\Temp\\run-1'
         })
-        const env = result.ok ? result.env : {}
         expect(env['SystemRoot']).toBe('C:\\Windows')
         expect(env['USERPROFILE']).toBe('C:\\Users\\seb')
         expect(env['PATHEXT']).toBe('.COM;.EXE')

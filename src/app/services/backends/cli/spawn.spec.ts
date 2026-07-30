@@ -1,7 +1,11 @@
-import { existsSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { spawnCliProcess, validateCliArguments, MAX_ARGUMENT_LENGTH } from './spawn'
 import {
+    CLEAN_EXIT_WITH_INHERITING_GRANDCHILD,
+    MARK_AND_SLEEP,
     READ_STDIN_AND_ECHO,
     REPORT_SANDBOX,
     SLEEP_FOREVER,
@@ -259,18 +263,6 @@ describe('spawnCliProcess — refusals before anything starts', () => {
         expect(outcome.ok ? '' : outcome.code).toBe('invalid-executable')
     })
 
-    it('refuses an environment variable that would inject code', async () => {
-        const { command, args } = inlineScript('')
-        const outcome = await spawnCliProcess({
-            executablePath: command,
-            args,
-            stdin: '',
-            timeoutMs: TIMEOUT_MS,
-            passThroughEnvNames: ['LD_PRELOAD']
-        })
-        expect(outcome.ok ? '' : outcome.code).toBe('invalid-environment')
-    })
-
     it('refuses an argument that looks like smuggled content', async () => {
         const { command } = inlineScript('')
         const outcome = await spawnCliProcess({
@@ -338,6 +330,33 @@ describe('spawnCliProcess — bounds', () => {
         expect(outcome.ok ? '' : outcome.code).toBe('cancelled')
     })
 
+    it('never asks the OS for a process when the signal is already aborted', async () => {
+        // The outcome code alone cannot tell "refused before anything started"
+        // apart from "started, then killed quickly enough". The marker file
+        // can: the fixture writes it as its very first statement, so if it
+        // never appears, the program never ran.
+        const marker = join(tmpdir(), `ai-editor-spec-marker-${String(process.pid)}.txt`)
+        rmSync(marker, { force: true })
+        const controller = new AbortController()
+        controller.abort()
+        const { command, args } = inlineScript(MARK_AND_SLEEP)
+        const outcome = await spawnCliProcess({
+            executablePath: command,
+            args: [...args, marker],
+            stdin: '',
+            timeoutMs: TIMEOUT_MS,
+            killGraceMs: 1_000,
+            signal: controller.signal
+        })
+        expect(outcome.ok ? '' : outcome.code).toBe('cancelled')
+        // A process was never created, so there was never a tree to end.
+        expect(outcome.kill).toBeNull()
+        // Generous: if a process HAD been created, the write happens within
+        // milliseconds of the runtime starting.
+        expect(await waitUntil(() => existsSync(marker), 1_000)).toBe(false)
+        rmSync(marker, { force: true })
+    })
+
     it('kills the WHOLE tree on cancel — a sleeping grandchild dies too', async () => {
         const controller = new AbortController()
         const tracked = trackedRunDir()
@@ -358,6 +377,36 @@ describe('spawnCliProcess — bounds', () => {
         expect(await waitUntil(() => !isProcessAlive(pids.parent))).toBe(true)
         expect(await waitUntil(() => !isProcessAlive(pids.grandchild))).toBe(true)
         expect(outcome.ok ? null : outcome.kill).not.toBe('survived')
+    })
+
+    it('kills the leftover tree of a tool that exited CLEANLY, and still reports success', async () => {
+        // The case the previous rule here missed entirely: exit status 0, so
+        // nothing looked wrong, while a descendant that inherited the pipes
+        // kept running with the note text and network access — and the run
+        // directory was deleted out from under it.
+        const tracked = trackedRunDir()
+        const outcome = await run(CLEAN_EXIT_WITH_INHERITING_GRANDCHILD, {
+            killGraceMs: 2_000,
+            createRunDir: tracked.create
+        })
+
+        // The run itself succeeded: the tool did its job and said so.
+        expect(outcome.ok).toBe(true)
+        const pids = JSON.parse(outcome.stdout.trim()) as { parent: number; grandchild: number }
+        expect(pids.grandchild).toBeGreaterThan(0)
+
+        // Verified, not assumed: the descendant is actually gone.
+        expect(await waitUntil(() => !isProcessAlive(pids.grandchild))).toBe(true)
+        expect(outcome.kill).not.toBeNull()
+        expect(outcome.kill).not.toBe('survived')
+    })
+
+    it('reports how the tree ended even on a completely ordinary run', async () => {
+        const outcome = await run('process.stdout.write("done");')
+        expect(outcome.ok).toBe(true)
+        expect(outcome.stdout).toBe('done')
+        // A tool that cleaned up after itself costs one liveness probe.
+        expect(outcome.kill).toBe('already-gone')
     })
 
     it('kills a tool that ignores the graceful signal', async () => {
