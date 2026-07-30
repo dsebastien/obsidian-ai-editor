@@ -5,7 +5,7 @@ nav_order: 2
 
 # Usage
 
-> The plugin is in early development. The review loop below is the first working slice; panels, actions, push-back threads, and margin comments are coming next.
+> The plugin is in early development. The review loop and action verbs below are working; full panel scorecards, push-back threads, and margin comments are coming next.
 
 ## Getting started
 
@@ -30,6 +30,17 @@ nav_order: 2
 - The **status bar** shows the number of open findings for the active note.
 - Notes above the configured word threshold ask for confirmation before anything is sent.
 - Editors that cannot run (no backend, disabled backend, no model…) are reported, never silently skipped.
+
+## Actions
+
+Actions are verbs you run on a selection: built-in ones (rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions) plus your own custom actions. Each action is bound to an editor in **Settings → AI Editor → Actions** — the starter pack binds sensible defaults (for example humanize → Humanizer, rephrase → Concision Editor) so the selection menu works out of the box.
+
+- **Right-click a selection**: bound actions appear at the top of the context menu, with **Review selection** and **Ask an editor…** below them.
+- **Command palette**: every bound action is also a command (for example "Humanize"), so you can assign hotkeys via Obsidian's hotkey settings. Commands appear and disappear as you change bindings — no reload needed — and hotkeys survive renames.
+- **Rewrite verbs** (rephrase, summarize, simplify, humanize) never touch your text directly: the proposal appears as an inline diff below the selection — old text struck through, new text highlighted — with **Accept** and **Reject** (Enter/Esc while the widget has focus). Accept is a single undo step, and only applies while the selected text is unchanged; editing it dismisses the stale proposal.
+- **Continue writing / Say more** insert a proposed continuation at the cursor, through the same preview.
+- **Critique, find evidence, identify assumptions** run as reviews: findings arrive as highlights, exactly like Review selection. These three can also be bound to a panel, in which case every panel member runs the action.
+- Excluded notes never dispatch actions, and an action whose editor is disabled or misconfigured is hidden rather than broken (the Actions tab tells you why).
 
 ## Daemon mode (opt-in)
 
