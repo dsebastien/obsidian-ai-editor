@@ -1076,6 +1076,123 @@
     color: var(--text-muted);
 }
 
+/* --- Panel scorecard (plan M6) --------------------------------------------
+   Sits at the top of a panel run. The double border is the panel's "ringed"
+   signature (Business Rules #11: editors are solid, panels are ringed), so
+   the block reads as ONE entity above the member sections. */
+
+.ai-editor-scorecard {
+    @apply flex flex-col gap-2 rounded p-2.5;
+    border: 1px solid var(--background-modifier-border);
+    outline: 1px solid var(--background-modifier-border);
+    outline-offset: 2px;
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-scorecard-header {
+    @apply flex flex-wrap items-center gap-1.5;
+}
+
+.ai-editor-scorecard-ring {
+    @apply inline-block shrink-0 rounded-full;
+    width: 10px;
+    height: 10px;
+    background-color: transparent;
+    border: 2px solid var(--text-accent);
+}
+
+.ai-editor-scorecard-name {
+    @apply text-sm font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-scorecard-status {
+    @apply text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-scorecard-failed .ai-editor-scorecard-status,
+.ai-editor-scorecard-detail {
+    @apply text-xs;
+    color: var(--text-error);
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-scorecard-rationale {
+    @apply text-xs;
+    color: var(--text-normal);
+}
+
+.ai-editor-scorecard-members {
+    @apply flex flex-col gap-1;
+}
+
+.ai-editor-scorecard-member {
+    @apply flex flex-wrap items-center gap-1.5 text-xs;
+}
+
+.ai-editor-scorecard-member-name {
+    @apply font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-scorecard-missing {
+    @apply rounded-full px-2 py-0.5 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    color: var(--text-faint);
+}
+
+.ai-editor-scorecard-keypoint {
+    color: var(--text-muted);
+}
+
+.ai-editor-scorecard-subheader {
+    @apply text-xs font-medium uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+}
+
+.ai-editor-scorecard-fixes {
+    @apply m-0 flex list-decimal flex-col gap-1 pl-5 text-xs;
+}
+
+.ai-editor-scorecard-fix-button {
+    @apply cursor-pointer p-0 text-left text-xs underline;
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--text-normal);
+}
+
+.ai-editor-scorecard-fix-button:hover {
+    color: var(--text-accent);
+}
+
+.ai-editor-scorecard-fix-source {
+    @apply ml-1.5 text-xs;
+    color: var(--text-faint);
+}
+
+.ai-editor-scorecard-dissent {
+    @apply flex flex-col gap-1.5;
+}
+
+.ai-editor-scorecard-dissent-item {
+    @apply flex flex-col gap-0.5 rounded p-1.5 text-xs;
+    border-left: 3px solid var(--color-purple, var(--text-accent));
+    background-color: var(--background-primary-alt);
+}
+
+.ai-editor-scorecard-dissent-subject {
+    @apply font-medium;
+    color: var(--text-normal);
+}
+
+.ai-editor-scorecard-dissent-position {
+    @apply flex flex-wrap gap-1.5;
+    color: var(--text-muted);
+}
+
 .ai-editor-panel-section {
     @apply flex flex-col gap-1.5 rounded p-2;
     border: 1px solid var(--background-modifier-border);

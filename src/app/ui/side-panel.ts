@@ -8,8 +8,11 @@ import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
+import { buildScorecardView } from './panel-scorecard'
+import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
 import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
+import { verdictLabel } from './verdict-label'
 
 /**
  * Side panel (`ItemView` workspace leaf): a header bound to the panel's note
@@ -122,24 +125,6 @@ function statusLabel(state: EditorRunState): string {
     }
 }
 
-/**
- * Human labels for the wire verdict vocabulary. The wire tokens
- * (publish/needs-work/kill) mirror the vault panels' scorecards and are what
- * prompts instruct models to emit — but as a pill next to an editor's name,
- * "Publish" reads like an action button and "Kill" is needlessly harsh, so
- * the display says what the verdict MEANS for this note instead.
- */
-function verdictLabel(verdict: NonNullable<EditorRunState['verdict']>): string {
-    switch (verdict) {
-        case 'publish':
-            return 'All good'
-        case 'needs-work':
-            return 'Needs work'
-        case 'kill':
-            return 'Not ready'
-    }
-}
-
 export class ReviewSidePanelView extends ItemView {
     private readonly provider: SidePanelStateProvider
     private panelState: SidePanelState | null = null
@@ -232,6 +217,7 @@ export class ReviewSidePanelView extends ItemView {
             return
         }
 
+        this.renderScorecard(root, binding)
         this.renderSeverityFilter(root, binding)
         this.renderSkips(root, binding.skips)
 
@@ -287,6 +273,159 @@ export class ReviewSidePanelView extends ItemView {
         button.addEventListener('click', () => {
             state.review.startReview()
         })
+    }
+
+    /**
+     * The panel scorecard (plan M6), at the TOP of a panel run: the panel's
+     * overall verdict, where the aggregation stands, one row per member, the
+     * ranked fixes and the dissent. Absent entirely for a solo run.
+     *
+     * It sits above the member sections and never replaces them — an
+     * aggregation that failed costs a synthesis, not the reviews.
+     */
+    private renderScorecard(root: HTMLElement, binding: SidePanelBinding): void {
+        const panel = binding.run.getPanelState()
+        if (panel === null) {
+            return
+        }
+        const view = buildScorecardView(panel, this.topFixCandidates(binding))
+        const box = root.createDiv({
+            cls: `ai-editor-scorecard ai-editor-scorecard-${view.status.kind}`
+        })
+
+        const header = box.createDiv({ cls: 'ai-editor-scorecard-header' })
+        // Ringed, like every other panel affordance (Business Rules #11).
+        header.createSpan({ cls: 'ai-editor-scorecard-ring' }).setAttribute('aria-hidden', 'true')
+        header.createSpan({ cls: 'ai-editor-scorecard-name', text: view.panelName })
+        if (view.verdict !== null) {
+            header.createSpan({
+                cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${view.verdict.verdict}`,
+                text: view.verdict.label
+            })
+        }
+
+        box.createDiv({ cls: 'ai-editor-scorecard-status', text: view.status.label })
+        if (view.status.detail !== null) {
+            box.createDiv({ cls: 'ai-editor-scorecard-detail', text: view.status.detail })
+        }
+        if (view.rationale !== null && view.rationale.length > 0) {
+            box.createDiv({ cls: 'ai-editor-scorecard-rationale', text: view.rationale })
+        }
+
+        this.renderScorecardMembers(box, view)
+        this.renderTopFixes(box, binding, view)
+        this.renderDissent(box, view)
+    }
+
+    /**
+     * Live findings a top fix may point at. Deliberately NOT filtered by the
+     * severity lens: the panel ranked these fixes across everything the
+     * members reported, and a lens that hid the target would turn a ranked
+     * action into a dead row.
+     */
+    private topFixCandidates(binding: SidePanelBinding): TopFixCandidate[] {
+        const candidates: TopFixCandidate[] = []
+        for (const state of binding.run.getEditorStates()) {
+            for (const id of state.findingIds) {
+                const finding = binding.run.findings.get(id)
+                if (
+                    finding === null ||
+                    (finding.status !== 'open' && finding.status !== 'preview')
+                ) {
+                    continue
+                }
+                candidates.push({
+                    id: finding.id,
+                    editorName: state.editorName,
+                    quote: finding.raw.quote
+                })
+            }
+        }
+        return candidates
+    }
+
+    private renderScorecardMembers(box: HTMLElement, view: ScorecardView): void {
+        if (view.members.length === 0) {
+            return
+        }
+        const list = box.createDiv({ cls: 'ai-editor-scorecard-members' })
+        for (const member of view.members) {
+            const row = list.createDiv({ cls: 'ai-editor-scorecard-member' })
+            row.createSpan({ cls: 'ai-editor-scorecard-member-name', text: member.editorName })
+            if (member.missing) {
+                row.createSpan({
+                    cls: 'ai-editor-scorecard-missing',
+                    text: 'No review — not weighed'
+                })
+            } else if (member.verdict !== null && member.verdictLabel !== null) {
+                row.createSpan({
+                    cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${member.verdict}`,
+                    text: member.verdictLabel
+                })
+            }
+            if (member.keyPoint !== null && member.keyPoint.length > 0) {
+                row.createSpan({ cls: 'ai-editor-scorecard-keypoint', text: member.keyPoint })
+            }
+        }
+    }
+
+    /**
+     * Ranked fixes. A fix whose pointer resolved is a real button that reveals
+     * the member finding it came from; one that carries no pointer (a
+     * structural fix, or a quote no live finding has) renders as plain text —
+     * a control that cannot act must not look like one.
+     */
+    private renderTopFixes(box: HTMLElement, binding: SidePanelBinding, view: ScorecardView): void {
+        if (view.topFixes.length === 0) {
+            return
+        }
+        box.createDiv({ cls: 'ai-editor-scorecard-subheader', text: 'Top fixes' })
+        const list = box.createEl('ol', { cls: 'ai-editor-scorecard-fixes' })
+        for (const fix of view.topFixes) {
+            this.renderTopFix(list.createEl('li'), binding, fix)
+        }
+    }
+
+    private renderTopFix(item: HTMLElement, binding: SidePanelBinding, fix: ScorecardTopFix): void {
+        const findingId = fix.findingId
+        if (findingId === null) {
+            item.createSpan({ cls: 'ai-editor-scorecard-fix-text', text: fix.action })
+        } else {
+            const button = item.createEl('button', {
+                cls: 'ai-editor-scorecard-fix-button',
+                text: fix.action
+            })
+            button.setAttribute('aria-label', `${fix.action} — show the finding it comes from`)
+            button.addEventListener('click', () => binding.revealFinding(findingId))
+        }
+        if (fix.editorName !== null) {
+            item.createSpan({ cls: 'ai-editor-scorecard-fix-source', text: fix.editorName })
+        }
+    }
+
+    /**
+     * Dissent, as structure: the subject, then each member's own position.
+     * Never collapsed into one sentence — the disagreement is what the panel
+     * knows that a single editor could not have told the user.
+     */
+    private renderDissent(box: HTMLElement, view: ScorecardView): void {
+        if (view.dissent.length === 0) {
+            return
+        }
+        box.createDiv({ cls: 'ai-editor-scorecard-subheader', text: 'Where the members disagreed' })
+        const list = box.createDiv({ cls: 'ai-editor-scorecard-dissent' })
+        for (const entry of view.dissent) {
+            const item = list.createDiv({ cls: 'ai-editor-scorecard-dissent-item' })
+            item.createDiv({ cls: 'ai-editor-scorecard-dissent-subject', text: entry.subject })
+            for (const position of entry.positions) {
+                const row = item.createDiv({ cls: 'ai-editor-scorecard-dissent-position' })
+                row.createSpan({
+                    cls: 'ai-editor-scorecard-member-name',
+                    text: position.editorName
+                })
+                row.createSpan({ text: position.stance })
+            }
+        }
     }
 
     /**
