@@ -7,14 +7,16 @@ import type { ProviderAdapter } from './types'
 
 /**
  * Adapter registry: one stateless adapter per provider profile.
- * 'openai-compatible' shares the OpenAI adapter — the base URL override is
- * the only difference, handled inside `buildRequest` via `config.kind`.
+ * 'openrouter' and 'openai-compatible' share the OpenAI adapter — base
+ * URL, headers, and reasoning passthrough differences are handled inside
+ * `buildRequest` via `config.kind`.
  */
 export function getProviderAdapter(kind: ApiProviderKind): ProviderAdapter {
     switch (kind) {
         case 'anthropic':
             return anthropicAdapter
         case 'openai':
+        case 'openrouter':
         case 'openai-compatible':
             return openAiAdapter
         case 'azure-openai':

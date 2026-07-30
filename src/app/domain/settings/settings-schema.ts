@@ -43,6 +43,10 @@ export type PromptSource = z.infer<typeof promptSourceSchema>
 export const apiProviderKindSchema = z.enum([
     'anthropic',
     'openai',
+    // Dedicated OpenRouter profile: OpenAI-compatible wire format with the
+    // base URL, attribution headers, and reasoning passthrough preset so
+    // setup is paste-key-and-go. Enum order is the add-backend menu order.
+    'openrouter',
     'openai-compatible',
     'azure-openai',
     'ollama'
@@ -82,15 +86,17 @@ export const apiBackendSchema = z.object({
      */
     thinkingBudgetTokens: z.number().int().min(1_024).max(32_000).default(8_192),
     /**
-     * OpenAI + Azure OpenAI: `reasoning_effort` passthrough. 'default' sends
-     * nothing (provider default); other values are forwarded verbatim.
+     * OpenAI + Azure OpenAI: `reasoning_effort` passthrough; OpenRouter:
+     * forwarded as `reasoning: { effort }` (its unified reasoning param).
+     * 'default' sends nothing (provider default).
      */
     reasoningEffort: z.enum(['default', 'minimal', 'low', 'medium', 'high']).default('default'),
     /**
-     * openai-compatible only (advanced): raw JSON object merged into the
-     * request body — thinking/reasoning flags vary per host (OpenRouter,
-     * Groq, LM Studio…), so an escape hatch beats per-host switches.
-     * Validated as a JSON object at save time; the adapter re-validates.
+     * openai-compatible + openrouter (advanced): raw JSON object merged into
+     * the request body — flags vary per host/model (Groq, LM Studio,
+     * OpenRouter provider routing…), so an escape hatch beats per-host
+     * switches. Validated as a JSON object at save time; the adapter
+     * re-validates.
      */
     extraBodyJson: z.string().max(20_000).default(''),
     enabled: z.boolean().default(true)

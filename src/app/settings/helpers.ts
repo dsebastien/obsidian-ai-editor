@@ -27,6 +27,7 @@ import type {
 const API_KIND_LABELS: Record<ApiProviderKind, string> = {
     'anthropic': 'Anthropic',
     'openai': 'OpenAI',
+    'openrouter': 'OpenRouter',
     'openai-compatible': 'OpenAI-compatible',
     'azure-openai': 'Azure OpenAI',
     'ollama': 'Ollama'

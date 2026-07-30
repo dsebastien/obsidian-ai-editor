@@ -12,18 +12,24 @@ import {
 } from './types'
 
 /**
- * OpenAI Chat Completions adapter. Also serves the 'openai-compatible' kind
- * (OpenRouter, Groq, LM Studio…) via the instance's `baseUrl` override —
- * the base URL replaces `https://api.openai.com/v1` wholesale, so
- * compatible bases that include their own path prefix work unchanged.
+ * OpenAI Chat Completions adapter. Also serves two sibling kinds over the
+ * same wire format:
+ * - 'openrouter': dedicated profile — base URL preset to
+ *   `https://openrouter.ai/api/v1`, attribution headers sent (OpenRouter's
+ *   recommended `HTTP-Referer`/`X-Title`), and `reasoningEffort` forwarded
+ *   as its unified `reasoning: { effort }` parameter.
+ * - 'openai-compatible': generic (Groq, LM Studio…) via the instance's
+ *   `baseUrl` override — the base URL replaces the default wholesale, so
+ *   compatible bases that include their own path prefix work unchanged.
  *
  * Structured output: native OpenAI gets `response_format: json_schema`
- * (server-enforced); compatible servers get the broadly-supported
- * `json_object` mode — the schema still rides in the prompt and Zod
- * validation remains the enforcement boundary either way.
+ * (server-enforced); OpenRouter and compatible servers get the
+ * broadly-supported `json_object` mode — the schema still rides in the
+ * prompt and Zod validation remains the enforcement boundary either way.
  */
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 function trimTrailingSlash(url: string): string {
     return url.endsWith('/') ? url.slice(0, -1) : url
@@ -95,10 +101,17 @@ function parseExtraBody(config: ApiBackend): Record<string, unknown> {
 export const openAiAdapter: ProviderAdapter = {
     buildRequest(input: BuildRequestInput): HttpRequestDescriptor {
         const { operation, systemPrompt, model, config } = input
-        if (config.kind === 'openai' && config.apiKey.length === 0) {
+        if (
+            (config.kind === 'openai' || config.kind === 'openrouter') &&
+            config.apiKey.length === 0
+        ) {
+            const providerName = config.kind === 'openai' ? 'OpenAI' : 'OpenRouter'
             throw new ProviderError(
                 'invalid-config',
-                redactSecret(`OpenAI backend "${config.label}" has no API key`, config.apiKey)
+                redactSecret(
+                    `${providerName} backend "${config.label}" has no API key`,
+                    config.apiKey
+                )
             )
         }
         if (config.kind === 'openai-compatible' && config.baseUrl.length === 0) {
@@ -116,13 +129,20 @@ export const openAiAdapter: ProviderAdapter = {
                 redactSecret(`Backend "${config.label}" has no model configured`, config.apiKey)
             )
         }
+        const defaultBaseUrl = config.kind === 'openrouter' ? OPENROUTER_BASE_URL : DEFAULT_BASE_URL
         const baseUrl = trimTrailingSlash(
-            config.baseUrl.length > 0 ? config.baseUrl : DEFAULT_BASE_URL
+            config.baseUrl.length > 0 ? config.baseUrl : defaultBaseUrl
         )
         const headers: Record<string, string> = { 'content-type': 'application/json' }
         if (config.apiKey.length > 0) {
             // Local compatible servers (LM Studio, llama.cpp) run keyless.
             headers['authorization'] = `Bearer ${config.apiKey}`
+        }
+        if (config.kind === 'openrouter') {
+            // OpenRouter's recommended attribution headers (per-app
+            // analytics). Static values only — nothing user-derived.
+            headers['http-referer'] = 'https://github.com/dsebastien/obsidian-ai-editor'
+            headers['x-title'] = 'AI Editor (Obsidian)'
         }
         const responseFormat =
             config.kind === 'openai'
@@ -148,10 +168,19 @@ export const openAiAdapter: ProviderAdapter = {
         if (config.kind === 'openai' && config.reasoningEffort !== 'default') {
             body['reasoning_effort'] = config.reasoningEffort
         }
-        // Compatible endpoints only: thinking/reasoning flags vary per host,
-        // so the advanced raw-JSON escape hatch merges into the body (extras
-        // win on key collisions — that is the point of an override).
-        if (config.kind === 'openai-compatible' && config.extraBodyJson.trim().length > 0) {
+        // OpenRouter: unified reasoning parameter (applies across routed
+        // models; ignored by models without reasoning support).
+        if (config.kind === 'openrouter' && config.reasoningEffort !== 'default') {
+            body['reasoning'] = { effort: config.reasoningEffort }
+        }
+        // OpenRouter + compatible endpoints: thinking/provider-routing flags
+        // vary per host, so the advanced raw-JSON escape hatch merges into
+        // the body (extras win on key collisions — that is the point of an
+        // override).
+        if (
+            (config.kind === 'openrouter' || config.kind === 'openai-compatible') &&
+            config.extraBodyJson.trim().length > 0
+        ) {
             body = { ...body, ...parseExtraBody(config) }
         }
         return {

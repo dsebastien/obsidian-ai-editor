@@ -10,7 +10,8 @@ import type { TabContext } from './shared'
 const BASE_URL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'anthropic': 'Optional — defaults to https://api.anthropic.com',
     'openai': 'Optional — defaults to https://api.openai.com/v1',
-    'openai-compatible': 'https://openrouter.ai/api/v1',
+    'openrouter': 'Optional — defaults to https://openrouter.ai/api/v1',
+    'openai-compatible': 'https://api.groq.com/openai/v1',
     'azure-openai': 'https://<resource>.openai.azure.com',
     'ollama': 'http://localhost:11434'
 }
@@ -28,6 +29,7 @@ function isJsonObject(value: string): boolean {
 const MODEL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'anthropic': 'e.g. claude-sonnet-4-5',
     'openai': 'e.g. gpt-5.2',
+    'openrouter': 'e.g. anthropic/claude-sonnet-4.5',
     'openai-compatible': 'Model id expected by the endpoint',
     'azure-openai': 'Model behind the deployment',
     'ollama': 'e.g. llama3.3'
@@ -226,7 +228,7 @@ export class BackendModal extends Modal {
                     })
                 })
         }
-        if (kind === 'openai' || kind === 'azure-openai') {
+        if (kind === 'openai' || kind === 'azure-openai' || kind === 'openrouter') {
             new Setting(contentEl)
                 .setName('Reasoning effort')
                 .setDesc("How hard reasoning models think. 'Default' sends nothing.")
@@ -248,7 +250,7 @@ export class BackendModal extends Modal {
                     })
                 })
         }
-        if (kind === 'openai-compatible') {
+        if (kind === 'openai-compatible' || kind === 'openrouter') {
             new Setting(contentEl)
                 .setName('Extra request body (advanced)')
                 .setDesc(
@@ -273,6 +275,10 @@ export class BackendModal extends Modal {
         }
         if (this.draft.kind === 'openai-compatible' && this.draft.baseUrl.length === 0) {
             new Notice('OpenAI-compatible backends need a base URL.')
+            return
+        }
+        if (this.draft.kind === 'openrouter' && this.draft.apiKey.trim().length === 0) {
+            new Notice('OpenRouter backends need an API key.')
             return
         }
         if (this.draft.kind === 'azure-openai' && this.draft.azureDeployment.trim().length === 0) {

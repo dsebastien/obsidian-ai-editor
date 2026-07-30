@@ -290,3 +290,67 @@ describe('openAiAdapter.capabilities', () => {
         })
     })
 })
+
+describe('openrouter profile', () => {
+    const buildOpenRouter = (overrides: Parameters<typeof makeConfig>[0] = {}) =>
+        openAiAdapter.buildRequest({
+            operation: reviewOperation(),
+            systemPrompt: 'persona',
+            model: 'anthropic/claude-sonnet-4.5',
+            config: makeConfig({ kind: 'openrouter', apiKey: 'sk-or-key', ...overrides })
+        })
+
+    it('defaults the base URL to the OpenRouter endpoint', () => {
+        const request = buildOpenRouter()
+        expect(request.url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    })
+
+    it('honors an explicit base URL override', () => {
+        const request = buildOpenRouter({ baseUrl: 'https://proxy.example.com/api/v1' })
+        expect(request.url).toBe('https://proxy.example.com/api/v1/chat/completions')
+    })
+
+    it('sends the attribution headers and bearer auth', () => {
+        const request = buildOpenRouter()
+        expect(request.headers['authorization']).toBe('Bearer sk-or-key')
+        expect(request.headers['http-referer']).toBe(
+            'https://github.com/dsebastien/obsidian-ai-editor'
+        )
+        expect(request.headers['x-title']).toBe('AI Editor (Obsidian)')
+    })
+
+    it('requires an API key', () => {
+        expect(() => buildOpenRouter({ apiKey: '' })).toThrow(
+            /OpenRouter backend .* has no API key/
+        )
+    })
+
+    it('uses json_object mode (schema rides in the prompt)', () => {
+        const body = JSON.parse(buildOpenRouter().body) as { response_format: { type: string } }
+        expect(body.response_format).toEqual({ type: 'json_object' })
+    })
+
+    it("forwards reasoning effort as OpenRouter's unified reasoning param", () => {
+        const body = JSON.parse(buildOpenRouter({ reasoningEffort: 'high' }).body) as Record<
+            string,
+            unknown
+        >
+        expect(body['reasoning']).toEqual({ effort: 'high' })
+        expect(body['reasoning_effort']).toBeUndefined()
+    })
+
+    it('omits the reasoning param on default effort', () => {
+        const body = JSON.parse(buildOpenRouter().body) as Record<string, unknown>
+        expect(body['reasoning']).toBeUndefined()
+    })
+
+    it('merges the advanced extra request body (extras win)', () => {
+        const body = JSON.parse(
+            buildOpenRouter({
+                extraBodyJson: '{"provider": {"order": ["anthropic"]}, "stream": true}'
+            }).body
+        ) as Record<string, unknown>
+        expect(body['provider']).toEqual({ order: ['anthropic'] })
+        expect(body['stream']).toBe(true)
+    })
+})
