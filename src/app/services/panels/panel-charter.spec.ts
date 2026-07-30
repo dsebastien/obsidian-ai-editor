@@ -39,7 +39,7 @@ class FakeVault implements VaultReader {
 function makePanel(charter: Record<string, unknown>): PanelConfig {
     return panelConfigSchema.parse({
         id: 'panel-1',
-        name: 'Pre-publish Review',
+        name: 'Pre-publish review',
         memberEditorIds: ['editor-1'],
         charter
     })

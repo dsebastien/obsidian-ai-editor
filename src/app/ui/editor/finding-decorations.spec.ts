@@ -546,10 +546,10 @@ describe('findingDecorationsField', () => {
             const state = stateWith(
                 'alpha beta gamma',
                 setFindingsEffect.of([
-                    findingSpec({ editorName: 'Hater', panelName: 'Pre-publish Review' })
+                    findingSpec({ editorName: 'Hater', panelName: 'Pre-publish review' })
                 ])
             )
-            expect(marksOf(state)[0]?.title).toContain('member of Pre-publish Review (panel)')
+            expect(marksOf(state)[0]?.title).toContain('member of Pre-publish review (panel)')
         })
 
         it('re-derives the title when a mark goes stale in place', () => {

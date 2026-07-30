@@ -355,7 +355,7 @@ describe('shapeRunOutput — panel runs', () => {
     function panelState(overrides: Record<string, unknown> = {}): PanelRunState {
         return {
             panelId: 'p-1',
-            panelName: 'Pre-publish Review',
+            panelName: 'Pre-publish review',
             memberNames: ['Hater', 'Beginner'],
             status: 'done',
             missingMembers: [],
@@ -392,7 +392,7 @@ describe('shapeRunOutput — panel runs', () => {
         )
         const panel = shapeRunOutput('Notes/Test.md', run, []).panel
         expect(panel).toMatchObject({
-            name: 'Pre-publish Review',
+            name: 'Pre-publish review',
             status: 'done',
             verdict: 'needs-work',
             rationale: 'Fix the opening.'
@@ -442,7 +442,7 @@ describe('handleReviewCli — panel runs', () => {
             panelSettled,
             panel: {
                 panelId: 'p-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 memberNames: ['Hater'],
                 status: 'running',
                 missingMembers: [],
@@ -454,7 +454,7 @@ describe('handleReviewCli — panel runs', () => {
         setTimeout(() => {
             run.setPanelState({
                 panelId: 'p-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 memberNames: ['Hater'],
                 status: 'done',
                 missingMembers: [],
@@ -530,7 +530,7 @@ describe('formatTextOutput', () => {
         const run = new FakeRunHandle([makeState()], [], {
             panel: {
                 panelId: 'p-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 memberNames: ['Hater'],
                 status: 'done',
                 missingMembers: [],
@@ -546,7 +546,7 @@ describe('formatTextOutput', () => {
         })
         expect(formatTextOutput(shapeRunOutput('Notes/Test.md', run, [])).split('\n')).toEqual([
             'No findings.',
-            'Panel Pre-publish Review: publish (done)',
+            'Panel Pre-publish review: publish (done)',
             'Member Hater: publish',
             'Fix 1: Tighten the close'
         ])

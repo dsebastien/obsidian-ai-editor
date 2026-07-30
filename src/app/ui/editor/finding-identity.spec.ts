@@ -18,11 +18,11 @@ describe('findingMarkTitle', () => {
         expect(
             findingMarkTitle({
                 editorName: 'Hater',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 severity: 'suggestion',
                 stale: false
             })
-        ).toBe('Hater — suggestion · member of Pre-publish Review (panel)')
+        ).toBe('Hater — suggestion · member of Pre-publish review (panel)')
     })
 
     test('an empty panel name is not a panel', () => {

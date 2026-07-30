@@ -82,7 +82,7 @@ Six editors, one panel, and default action bindings — all fully editable, all 
 | Humanizer               | Machine-generated fingerprints: uniform rhythm, inflated phrasing |
 | Beginner Reader         | Undefined jargon, skipped reasoning steps, unstated prerequisites |
 
-The **Pre-publish Review** panel bundles Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer behind one charter: _is this ready to publish under the author's name?_
+The **Pre-publish review** panel bundles Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer behind one charter: _is this ready to publish under the author's name?_
 
 Default action bindings: rephrase, summarize and simplify → Concision Editor; humanize → Humanizer; critique and identify assumptions → Devil's Advocate; find evidence → Fact Checker. **Continue writing** and **Say more** are deliberately left unbound — no seeded persona is an authorial voice, so any default would be a bad one.
 

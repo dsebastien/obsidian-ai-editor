@@ -23,7 +23,7 @@ function result(overrides: Partial<PanelResult> = {}): PanelResult {
 function panel(overrides: Partial<PanelRunState> = {}): PanelRunState {
     return {
         panelId: 'p-1',
-        panelName: 'Pre-publish Review',
+        panelName: 'Pre-publish review',
         memberNames: ['Hater', 'Beginner'],
         status: 'done',
         missingMembers: [],
@@ -54,11 +54,11 @@ describe('buildScorecardView status', () => {
                 panel({ status, result: status === 'done' ? result() : null }),
                 []
             )
-            expect(view.panelName).toBe('Pre-publish Review')
+            expect(view.panelName).toBe('Pre-publish review')
             // The block sits directly above the member EDITORS' sections, so
             // the name has to say which kind it is (Business Rules #11) — the
             // ring next to it is decoration.
-            expect(view.panelLabel).toBe('Pre-publish Review (panel)')
+            expect(view.panelLabel).toBe('Pre-publish review (panel)')
             expect(view.status.label.length).toBeGreaterThan(0)
         }
     })

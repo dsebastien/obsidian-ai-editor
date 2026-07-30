@@ -51,7 +51,7 @@ function makeEditor(overrides: Record<string, unknown> = {}): EditorConfig {
 function makePanel(overrides: Record<string, unknown> = {}): PanelConfig {
     return panelConfigSchema.parse({
         id: 'panel-1',
-        name: 'Pre-publish Review',
+        name: 'Pre-publish review',
         memberEditorIds: ['editor-1'],
         ...overrides
     })
@@ -255,7 +255,7 @@ describe('resolveActionBinding', () => {
         // four surfaces each finding the name for themselves.
         const settings = makeSettings({
             editors: [makeEditor()],
-            panels: [makePanel({ name: 'Pre-publish Review', memberEditorIds: ['editor-1'] })]
+            panels: [makePanel({ name: 'Pre-publish review', memberEditorIds: ['editor-1'] })]
         })
         const resolution = resolveActionBinding(
             settings,
@@ -269,7 +269,7 @@ describe('resolveActionBinding', () => {
             throw new Error(`Expected ok, got ${resolution.reason}`)
         }
         expect(resolution.action.panelId).toBe('panel-1')
-        expect(resolution.action.panelName).toBe('Pre-publish Review')
+        expect(resolution.action.panelName).toBe('Pre-publish review')
     })
 
     it('refuses a panel binding on transform and generate verbs', () => {

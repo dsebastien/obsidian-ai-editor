@@ -134,7 +134,7 @@ describe('seedStarterPack', () => {
         }
     })
 
-    it('wires the Pre-publish Review panel to the four planned members', () => {
+    it('wires the Pre-publish review panel to the four planned members', () => {
         const seeded = seedStarterPack(freshSettings())
         const panel = seeded.panels[0]
         expect(panel).toBeDefined()

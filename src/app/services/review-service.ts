@@ -413,7 +413,7 @@ export function augmentSystemPrompt(basePrompt: string, instruction: string): st
  * Appends a panel's charter to a member editor's composed system prompt (plan
  * M6). Same seam as `augmentSystemPrompt`, different framing and a different
  * author: the charter is the PANEL's shared brief — "you are reviewing as part
- * of the Pre-publish Review panel; weigh the reader's first pass double" —
+ * of the Pre-publish review panel; weigh the reader's first pass double" —
  * while an instruction is the user's ask for one run.
  *
  * It lands BEFORE the instruction so the per-run ask stays last (most salient),

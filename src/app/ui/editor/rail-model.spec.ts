@@ -274,7 +274,7 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
         return state({
             editors: members,
             panel: {
-                name: 'Pre-publish Review',
+                name: 'Pre-publish review',
                 color: 'var(--color-pink)',
                 status: 'ready',
                 memberIds: ['e-1', 'e-2'],
@@ -298,12 +298,12 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
     it('names the panel as a panel in its accessible name, not only by shape', () => {
         // A ring is invisible to assistive tech; #11 has to hold there too.
         const vm = buildRailViewModel(withPanel())
-        expect(vm.panel?.ariaLabel).toContain('Pre-publish Review (panel)')
+        expect(vm.panel?.ariaLabel).toContain('Pre-publish review (panel)')
         expect(vm.panel?.title).toContain('open the review panel')
     })
 
     it('names the member GROUP as a panel too — the bracket is decoration', () => {
-        expect(buildRailViewModel(withPanel()).panel?.groupLabel).toBe('Pre-publish Review (panel)')
+        expect(buildRailViewModel(withPanel()).panel?.groupLabel).toBe('Pre-publish review (panel)')
     })
 
     it('carries the verdict as the chip badge once the scorecard exists', () => {
@@ -324,7 +324,7 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
             state({
                 editors: members,
                 panel: {
-                    name: 'Pre-publish Review',
+                    name: 'Pre-publish review',
                     color: 'var(--color-pink)',
                     status: 'running',
                     memberIds: ['e-1', 'e-2']
@@ -348,7 +348,7 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
             const vm = buildRailViewModel(withPanel({ status }))
             expect(vm.panel?.status).toBe(status)
             expect(vm.panel?.ariaLabel.length).toBeGreaterThan(
-                'Pre-publish Review (panel) — '.length
+                'Pre-publish review (panel) — '.length
             )
         }
     })

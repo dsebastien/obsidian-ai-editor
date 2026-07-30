@@ -20,7 +20,7 @@ A **panel** is a group of editors that review together and are then summed up. I
 | **Aggregation backend**        | Which backend writes the summary                                  |
 | **Aggregation model override** | Only shown when a backend is set                                  |
 
-The starter pack ships **Pre-publish Review**: Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer, behind one question — _is this ready to publish under the author's name, to a smart audience that did not ask to read it?_
+The starter pack ships **Pre-publish review**: Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer, behind one question — _is this ready to publish under the author's name, to a smart audience that did not ask to read it?_
 
 ## The charter does two jobs
 
@@ -30,7 +30,7 @@ The seeded charter is worth reading before writing your own. It names the four f
 
 ## Run one
 
-- Bind a **review-class action** (critique, find evidence, identify assumptions, or a custom report-findings action) to the panel, then run it from the selection context menu or the palette. The menu says _"Critique (panel: Pre-publish Review)"_, because one press is one request per member.
+- Bind a **review-class action** (critique, find evidence, identify assumptions, or a custom report-findings action) to the panel, then run it from the selection context menu or the palette. The menu says _"Critique (panel: Pre-publish review)"_, because one press is one request per member.
 - Or assign the panel to a scope with a [binding rule](rules.md) — every review of a note in that folder, with that tag, or of that note type then convenes the panel.
 
 The members review in parallel exactly like ordinary editors: same highlights, same cards, same retry, same triage.

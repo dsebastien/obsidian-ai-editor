@@ -30,7 +30,7 @@ Each action is bound to one editor (or, for review-class actions, a panel) in **
 - **Right-click a selection**: the bound actions appear at the top of the context menu, with **Review selection**, **Ask for comments…** and **Ask an editor…** underneath.
 - **Command palette**: every bound action is also a command (for example "Humanize"), so you can assign it a hotkey in **Settings → Hotkeys**. Commands appear and disappear as you change bindings — no reload needed — and hotkeys survive renames, because command ids are stable.
 
-An action bound to a panel says so in both places: _"Critique (panel: Pre-publish Review)"_. One press there is one request per member.
+An action bound to a panel says so in both places: _"Critique (panel: Pre-publish review)"_. One press there is one request per member.
 
 ## What each class does
 

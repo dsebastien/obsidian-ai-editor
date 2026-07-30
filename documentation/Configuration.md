@@ -45,7 +45,7 @@ Behavior tab → **Import & export**. Both directions operate on one JSON docume
 ## Notable defaults
 
 - No backend configured → the setup wizard, never an error dump.
-- Starter pack seeded on first run (idempotent): Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader + the Pre-publish Review panel + default action bindings (rephrase/summarize/simplify → Concision Editor, humanize → Humanizer, critique/identify assumptions → Devil's Advocate, find evidence → Fact Checker; continue/say more left unbound). Verbs the user already bound are never overridden.
+- Starter pack seeded on first run (idempotent): Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader + the Pre-publish review panel + default action bindings (rephrase/summarize/simplify → Concision Editor, humanize → Humanizer, critique/identify assumptions → Devil's Advocate, find evidence → Fact Checker; continue/say more left unbound). Verbs the user already bound are never overridden.
 - Exclusions default to empty; nothing is ever sent without a user action regardless.
 
 ## Key storage disclosure

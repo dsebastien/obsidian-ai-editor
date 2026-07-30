@@ -405,10 +405,10 @@ describe('augmentSystemPrompt', () => {
 
 describe('augmentPanelCharter', () => {
     it('appends the charter as a framed block naming the panel', () => {
-        const prompt = augmentPanelCharter('Be harsh.', 'Pre-publish Review', 'Weigh the reader.')
+        const prompt = augmentPanelCharter('Be harsh.', 'Pre-publish review', 'Weigh the reader.')
         expect(prompt).toStartWith('Be harsh.')
         expect(prompt).toContain('<panel-charter>\nWeigh the reader.\n</panel-charter>')
-        expect(prompt).toContain('"Pre-publish Review" panel')
+        expect(prompt).toContain('"Pre-publish review" panel')
     })
 
     it('keeps the member in its own lane — a panel must not homogenize members', () => {
@@ -443,7 +443,7 @@ describe('buildEditorPrompt', () => {
     it('puts the charter after the persona and the instruction last', async () => {
         const built = await buildEditorPrompt(
             promptInput({
-                panelCharter: { panelName: 'Pre-publish Review', text: 'Weigh the reader.' },
+                panelCharter: { panelName: 'Pre-publish review', text: 'Weigh the reader.' },
                 instructionText: 'Focus on the opening.'
             })
         )
@@ -477,7 +477,7 @@ describe('buildEditorPrompt', () => {
                     ...settings,
                     behavior: { ...settings.behavior, responseLanguageOverride: 'French' }
                 },
-                panelCharter: { panelName: 'Pre-publish Review', text: 'Weigh the reader.' },
+                panelCharter: { panelName: 'Pre-publish review', text: 'Weigh the reader.' },
                 instructionText: 'Focus on the opening.'
             })
         )
@@ -1523,7 +1523,7 @@ describe('startReview panel runs', () => {
             panels: [
                 {
                     id: 'p-1',
-                    name: 'Pre-publish Review',
+                    name: 'Pre-publish review',
                     memberEditorIds: ['e-1', 'e-2'],
                     charter: { text: CHARTER, notePaths: [] }
                 }
@@ -1554,7 +1554,7 @@ describe('startReview panel runs', () => {
         // Every member carries the charter, and it names the panel it serves.
         for (const body of memberRequests) {
             expect(body).toContain(CHARTER)
-            expect(body).toContain('Pre-publish Review')
+            expect(body).toContain('Pre-publish review')
         }
     })
 
@@ -1572,7 +1572,7 @@ describe('startReview panel runs', () => {
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)
         }
-        expect(result.run.getPanelState()?.panelName).toBe('Pre-publish Review')
+        expect(result.run.getPanelState()?.panelName).toBe('Pre-publish review')
         await result.run.panelSettled
 
         const state = result.run.getPanelState()
@@ -1699,7 +1699,7 @@ describe('startReview panel runs', () => {
             panels: [
                 {
                     id: 'p-1',
-                    name: 'Pre-publish Review',
+                    name: 'Pre-publish review',
                     memberEditorIds: ['e-1', 'e-2'],
                     charter: { text: CHARTER, notePaths: [] },
                     aggregationBackend: { backendId: 'gone', model: '' }

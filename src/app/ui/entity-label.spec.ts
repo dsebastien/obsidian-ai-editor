@@ -10,7 +10,7 @@ import {
 
 describe('entityName', () => {
     it('marks a panel in the name itself, so the distinction survives in an accessible name', () => {
-        expect(entityName('panel', 'Pre-publish Review')).toBe('Pre-publish Review (panel)')
+        expect(entityName('panel', 'Pre-publish review')).toBe('Pre-publish review (panel)')
     })
 
     it('leaves an editor unmarked — the marker only stands out while it is rare', () => {
@@ -20,8 +20,8 @@ describe('entityName', () => {
 
 describe('entityOptionText', () => {
     it('carries BOTH signals for a panel: the ring glyph and the word', () => {
-        const text = entityOptionText('panel', 'Pre-publish Review')
-        expect(text).toBe('◎ Pre-publish Review (panel)')
+        const text = entityOptionText('panel', 'Pre-publish review')
+        expect(text).toBe('◎ Pre-publish review (panel)')
         expect(text).toContain(PANEL_MARKER)
     })
 
@@ -36,8 +36,8 @@ describe('entityOptionText', () => {
 
 describe('actionDisplayLabel', () => {
     it('names the panel a verb convenes, because that is the cost the user is choosing', () => {
-        expect(actionDisplayLabel('Critique', 'Pre-publish Review')).toBe(
-            'Critique (panel: Pre-publish Review)'
+        expect(actionDisplayLabel('Critique', 'Pre-publish review')).toBe(
+            'Critique (panel: Pre-publish review)'
         )
     })
 
@@ -53,8 +53,8 @@ describe('memberSectionName', () => {
     })
 
     test('keeps the editor identity inside its panel', () => {
-        expect(memberSectionName('Hater', 'Pre-publish Review')).toBe(
-            'Hater — member of Pre-publish Review (panel)'
+        expect(memberSectionName('Hater', 'Pre-publish review')).toBe(
+            'Hater — member of Pre-publish review (panel)'
         )
     })
 })

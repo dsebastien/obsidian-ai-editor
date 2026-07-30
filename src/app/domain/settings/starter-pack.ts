@@ -208,7 +208,7 @@ export const STARTER_ACTION_BINDINGS: readonly {
     { actionId: 'identify-assumptions', editorName: "Devil's Advocate" }
 ]
 
-export const STARTER_PANEL_NAME = 'Pre-publish Review'
+export const STARTER_PANEL_NAME = 'Pre-publish review'
 
 /** Panel membership, by persona name (plan §5.8; wired to UUIDs at seed time). */
 export const STARTER_PANEL_MEMBER_NAMES: readonly string[] = [

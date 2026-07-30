@@ -269,7 +269,7 @@ describe('preview assembly equals dispatch assembly', () => {
             panels: [
                 {
                     id: 'p-1',
-                    name: 'Pre-publish Review',
+                    name: 'Pre-publish review',
                     memberEditorIds: ['editor-1'],
                     charter: {
                         text: 'Rank by what blocks publication.',
@@ -311,7 +311,7 @@ describe('preview assembly equals dispatch assembly', () => {
         if (preview.status !== 'ready') {
             return
         }
-        expect(preview.preview.panelCharter?.panelName).toBe('Pre-publish Review')
+        expect(preview.preview.panelCharter?.panelName).toBe('Pre-publish review')
         expect(preview.preview.panelCharter?.text).toContain('Weigh the reader first.')
         expect(preview.preview.systemPrompt).toContain('<charter-note path="Meta/Charter.md">')
         expect(preview.preview.systemPrompt).toBe(sink.prompt ?? '')

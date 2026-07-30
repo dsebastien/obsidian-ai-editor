@@ -1364,7 +1364,7 @@ describe('RunController panel runs', () => {
         const panelRun = controller.startRun({
             snapshot: snapshot(),
             editors: members,
-            panel: { panelId: 'panel-1', panelName: 'Pre-publish Review' }
+            panel: { panelId: 'panel-1', panelName: 'Pre-publish review' }
         })
         const soloRun = controller.startRun({
             snapshot: createSnapshot({ filePath: 'notes/other.md', text: DOC }),
@@ -1395,7 +1395,7 @@ describe('RunController panel runs', () => {
             editors: [member('a', 'Devil’s Advocate'), member('b', 'Beginner Reader')],
             panel: {
                 panelId: 'panel-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 aggregate: async function* (request) {
                     requests.push({ members: request.members })
                     await Promise.resolve()
@@ -1409,7 +1409,7 @@ describe('RunController panel runs', () => {
         await run.panelSettled
 
         const state = run.getPanelState()
-        expect(state?.panelName).toBe('Pre-publish Review')
+        expect(state?.panelName).toBe('Pre-publish review')
         expect(state?.status).toBe('done')
         expect(state?.result?.topFixes.map((fix) => fix.action)).toEqual(['Tighten the opening'])
         expect(state?.missingMembers).toEqual([])
@@ -1852,7 +1852,7 @@ describe('RunHandle.continueEditor', () => {
             editors: [spec],
             panel: {
                 panelId: 'panel-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 aggregate: async function* (request) {
                     await Promise.resolve()
                     yield {
@@ -1899,7 +1899,7 @@ describe('RunHandle.continueEditor', () => {
             editors: [spec],
             panel: {
                 panelId: 'panel-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 aggregate: async function* (request) {
                     await Promise.resolve()
                     yield {
@@ -1941,7 +1941,7 @@ describe('RunHandle.continueEditor', () => {
             editors: [scriptedEditor('alpha', (runId) => [result(runId, [])])],
             panel: {
                 panelId: 'panel-1',
-                panelName: 'Pre-publish Review',
+                panelName: 'Pre-publish review',
                 aggregate: async function* (request) {
                     await gate
                     yield {
@@ -1975,7 +1975,7 @@ describe('RunHandle.continueEditor', () => {
                 scriptedEditor('alpha', (runId) => [result(runId, [])]),
                 scriptedEditor('beta', (runId) => [result(runId, [])])
             ],
-            panel: { panelId: 'panel-1', panelName: 'Pre-publish Review' }
+            panel: { panelId: 'panel-1', panelName: 'Pre-publish review' }
         })
         await run.panelSettled
         expect(run.getPanelState()?.memberNames).toEqual(['Editor alpha', 'Editor beta'])
