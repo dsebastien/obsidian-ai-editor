@@ -4,6 +4,8 @@ import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { resolveActionById, resolveActions } from '../services/actions/action-resolution'
 import type { ReviewController } from '../ui/review-controller'
 import { canRunBoundAction } from './command-gates'
+import { diffCommands } from './command-sync'
+import type { CommandDiff, CommandView } from './command-sync'
 
 /**
  * Dynamic per-action palette commands (design doc "Interaction surfaces"
@@ -26,7 +28,7 @@ import { canRunBoundAction } from './command-gates'
 // Pure: desired set + diff
 // ---------------------------------------------------------------------------
 
-export interface ActionCommandView {
+export interface ActionCommandView extends CommandView {
     /** Stable command id: `action-<bindingId>`. */
     readonly id: string
     /** Palette name — the action's sentence-case label. */
@@ -43,26 +45,18 @@ export function desiredActionCommands(settings: PluginSettingsV1): ActionCommand
     }))
 }
 
-export interface ActionCommandDiff {
-    /** Commands to (re)register: new ids, or same id with a changed name. */
-    readonly add: readonly ActionCommandView[]
-    /** Command ids to remove. */
-    readonly remove: readonly string[]
-}
+export type ActionCommandDiff = CommandDiff<ActionCommandView>
 
 /**
  * Diffs the registered command set (id → name) against the desired one.
  * Unchanged commands are touched by neither list, so a settings mutation
- * that does not affect actions is a no-op.
+ * that does not affect actions is a no-op. Shared rules — see `command-sync`.
  */
 export function diffActionCommands(
     registered: ReadonlyMap<string, string>,
     desired: readonly ActionCommandView[]
 ): ActionCommandDiff {
-    const desiredIds = new Set(desired.map((command) => command.id))
-    const remove = [...registered.keys()].filter((id) => !desiredIds.has(id))
-    const add = desired.filter((command) => registered.get(command.id) !== command.name)
-    return { add, remove }
+    return diffCommands(registered, desired)
 }
 
 // ---------------------------------------------------------------------------
