@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { validateExecutablePath } from './executable'
+import type { ExecutableProbe } from './executable'
 import type { KillEscalationInput, KillResult } from './kill'
 import { DEFAULT_KILL_GRACE_MS, DEFAULT_KILL_POLL_MS, runKillEscalation } from './kill'
+import { nodeExecutableProbe } from './node-fs'
 import type { CliPlatform } from './platform'
 
 /**
@@ -80,10 +83,63 @@ export function isTreeAlive(platform: CliPlatform, pid: number): boolean {
     }
 }
 
-/** Where `taskkill` lives, resolved explicitly rather than through PATH. */
-function taskkillPath(sourceEnv: Readonly<Record<string, string | undefined>>): string {
-    const systemRoot = sourceEnv['SystemRoot'] ?? sourceEnv['windir'] ?? 'C:\\Windows'
-    return `${systemRoot}\\System32\\taskkill.exe`
+/** The install location Windows guarantees, used when the environment lies. */
+const FALLBACK_WINDOWS_ROOT = 'C:\\Windows'
+
+/** Appended to a Windows root to reach the tool. */
+const TASKKILL_SUFFIX = '\\System32\\taskkill.exe'
+
+/**
+ * Where `taskkill` lives — resolved explicitly rather than through PATH, and
+ * then put through the SAME gate as the tool the user configured.
+ *
+ * `SystemRoot`/`windir` come from the renderer's environment, which is exactly
+ * the thing this folder refuses to trust anywhere else. A poisoned value would
+ * otherwise redirect the kill at an attacker-chosen binary — so the assembled
+ * path is validated, and a path that does not validate falls back to the
+ * literal system location rather than being run on faith.
+ *
+ * Returns the validated absolute path, or null when neither candidate is a
+ * runnable program (a Windows install with no `taskkill.exe` is not a machine
+ * this plugin can terminate a tree on; `isTreeAlive` then reports the truth).
+ */
+export function resolveTaskkillPath(
+    sourceEnv: Readonly<Record<string, string | undefined>>,
+    probe: ExecutableProbe
+): string | null {
+    const roots = [sourceEnv['SystemRoot'], sourceEnv['windir'], FALLBACK_WINDOWS_ROOT]
+    for (const root of roots) {
+        if (typeof root !== 'string' || root.length === 0) {
+            continue
+        }
+        const candidate = `${root}${TASKKILL_SUFFIX}`
+        const validation = validateExecutablePath({
+            platform: 'win32',
+            path: candidate,
+            probe
+        })
+        if (validation.ok) {
+            return validation.path
+        }
+    }
+    return null
+}
+
+/**
+ * The environment `taskkill.exe` gets: the two variables Windows needs to
+ * create a process at all, derived from the path we just validated rather than
+ * copied from the renderer.
+ *
+ * Inheriting `process.env` here — which is what this call used to do — handed
+ * every token in the Obsidian process to a program spawned outside the
+ * boundary's own chokepoint, for no benefit: `taskkill` is invoked by absolute
+ * path and reads nothing else.
+ */
+export function taskkillEnv(executablePath: string): Record<string, string> {
+    const root = executablePath.endsWith(TASKKILL_SUFFIX)
+        ? executablePath.slice(0, executablePath.length - TASKKILL_SUFFIX.length)
+        : FALLBACK_WINDOWS_ROOT
+    return { SystemRoot: root, windir: root }
 }
 
 async function sendPosix(pid: number, signal: 'graceful' | 'forced'): Promise<void> {
@@ -111,16 +167,39 @@ async function sendPosix(pid: number, signal: 'graceful' | 'forced'): Promise<vo
 
 async function sendWindows(
     pid: number,
-    sourceEnv: Readonly<Record<string, string | undefined>>
+    sourceEnv: Readonly<Record<string, string | undefined>>,
+    probe: ExecutableProbe
 ): Promise<void> {
+    const executablePath = resolveTaskkillPath(sourceEnv, probe)
+    if (executablePath === null) {
+        // Nothing to run. `isAlive` decides the outcome, which will be
+        // `survived` — the honest answer, and the one the caller surfaces.
+        return
+    }
     // `/T` walks the child tree, `/F` forces. There is no graceful variant
     // worth a separate call: Windows' polite path only reaches windowed
     // processes, which a headless CLI agent is not.
+    //
+    // Through `createCliChild` like everything else in this folder: same
+    // no-shell option type, same argument array, and an environment built
+    // here rather than inherited.
     await new Promise<void>((resolve) => {
-        const child = spawn(taskkillPath(sourceEnv), ['/PID', String(pid), '/T', '/F'], {
-            stdio: 'ignore',
-            windowsHide: true
-        })
+        let child
+        try {
+            child = createCliChild(executablePath, ['/PID', String(pid), '/T', '/F'], {
+                cwd: taskkillEnv(executablePath)['SystemRoot'] ?? FALLBACK_WINDOWS_ROOT,
+                env: taskkillEnv(executablePath),
+                detached: false
+            })
+        } catch {
+            resolve()
+            return
+        }
+        // Nothing reads these; draining keeps a chatty refusal from filling a
+        // pipe buffer and stalling the exit we are waiting for.
+        child.stdout?.resume()
+        child.stderr?.resume()
+        child.stdin?.end()
         child.on('error', () => {
             resolve()
         })
@@ -137,6 +216,8 @@ export interface KillProcessTreeInput {
     readonly pollMs?: number
     /** Used only to locate `taskkill.exe`; defaults to the real environment. */
     readonly sourceEnv?: Readonly<Record<string, string | undefined>>
+    /** Seam for the taskkill path check; defaults to the real filesystem. */
+    readonly executableProbe?: ExecutableProbe
 }
 
 /**
@@ -152,10 +233,11 @@ export async function killProcessTree(input: KillProcessTreeInput): Promise<Kill
         return 'already-gone'
     }
     const sourceEnv = input.sourceEnv ?? process.env
+    const probe = input.executableProbe ?? nodeExecutableProbe
     const escalation: KillEscalationInput = {
         send:
             platform === 'win32'
-                ? (): Promise<void> => sendWindows(pid, sourceEnv)
+                ? (): Promise<void> => sendWindows(pid, sourceEnv, probe)
                 : (signal): Promise<void> => sendPosix(pid, signal),
         isAlive: () => isTreeAlive(platform, pid),
         graceMs: input.graceMs ?? DEFAULT_KILL_GRACE_MS,
