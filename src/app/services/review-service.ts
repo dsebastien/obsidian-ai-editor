@@ -15,6 +15,7 @@ import { resolveCliModel } from './backends/cli'
 import { ExcludedTargetError, assembleContext } from './context/context-assembler'
 import type { AssembledContext } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
+import { createCachingVaultReader } from './context/caching-vault-reader'
 import type { VaultReader } from './context/vault-reader.intf'
 import type {
     RunController,
@@ -720,8 +721,17 @@ export function resolveReviewParticipants(
  * results, never thrown.
  */
 export async function startReview(input: StartReviewInput): Promise<ReviewStart> {
-    const { settings, snapshot, vault, runController } = input
+    const { settings, snapshot, runController } = input
     const behavior = settings.behavior
+    // ONE view of the vault for the whole run. Every editor assembles its own
+    // context, and every assembly walks the same link graph, checks the same
+    // notes against the same exclusions and reads the same attachments — so
+    // without this a panel of eight members reads twenty notes eight times
+    // (measured in `perf/perf.bench.spec.ts`). It also makes the run coherent:
+    // every member is briefed on the same vault, even if the user saves a file
+    // while the contexts are being assembled. Scoped to this call and thrown
+    // away with it — see `createCachingVaultReader`.
+    const vault = createCachingVaultReader(input.vault)
     // Renderer `fetch` is the deliberate transport for API providers
     // (streaming for verified SSE providers, buffered otherwise —
     // `requestUrl` cannot stream; see Architecture — Backends). Callers

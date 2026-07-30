@@ -12,6 +12,7 @@ import {
     editorConfigSchema,
     promptSourceSchema
 } from '../domain/settings/settings-schema'
+import { createCachingVaultReader } from '../services/context/caching-vault-reader'
 import { assembleContext } from '../services/context/context-assembler'
 import type { NoteMetadata, VaultReader } from '../services/context/vault-reader.intf'
 import {
@@ -479,9 +480,39 @@ describe('perf: context assembly with a big budget and many linked notes', () =>
             const elapsed = performance.now() - started
             // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
             console.log(
-                `  ⏱  assembleContext ×8 editors / 20 linked notes: ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads`
+                `  ⏱  assembleContext ×8 editors / 20 linked notes (raw): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads`
             )
             expect(elapsed).toBeLessThan(2_000)
+            // The number the caching reader exists to fix: 8 editors, 20
+            // notes, 160 reads.
+            expect(vault.reads).toBe(8 * LINKED_NOTES)
+        },
+        BENCH_TIMEOUT_MS
+    )
+
+    test(
+        'through ONE run-scoped reader, eight editors read each note once',
+        async () => {
+            const vault = new CountingVault()
+            const shared = createCachingVaultReader(vault)
+            const started = performance.now()
+            for (let index = 0; index < 8; index += 1) {
+                await assembleContext({
+                    editor,
+                    voiceProfile,
+                    behavior,
+                    vault: shared,
+                    notePath: NOTE_PATH,
+                    noteText
+                })
+            }
+            const elapsed = performance.now() - started
+            // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
+            console.log(
+                `  ⏱  assembleContext ×8 editors / 20 linked notes (run-scoped reader): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads`
+            )
+            expect(vault.reads).toBe(LINKED_NOTES)
+            expect(vault.metadataReads).toBe(LINKED_NOTES + 1)
         },
         BENCH_TIMEOUT_MS
     )

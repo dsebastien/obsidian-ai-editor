@@ -1728,3 +1728,99 @@ describe('startReview panel runs', () => {
         expect(result.run.getEditorState('e-2')?.status).toBe('error')
     })
 })
+
+describe('startReview — one view of the vault per run', () => {
+    /** Counts every question the run asks the vault. */
+    class CountingVault implements VaultReader {
+        reads = 0
+        metadataReads = 0
+        outgoingReads = 0
+        readonly notes = new Map<string, string>()
+        readonly links = new Map<string, string[]>()
+
+        readNote(path: string): Promise<string | null> {
+            this.reads += 1
+            return Promise.resolve(this.notes.get(path) ?? null)
+        }
+
+        resolveLink(): string | null {
+            return null
+        }
+
+        getOutgoingLinks(path: string): string[] {
+            this.outgoingReads += 1
+            return this.links.get(path) ?? []
+        }
+
+        getNoteMetadata(): NoteMetadata | null {
+            this.metadataReads += 1
+            return { tags: [], frontmatter: {} }
+        }
+
+        getNoteTypeIds(): readonly string[] {
+            return []
+        }
+    }
+
+    it('reads each linked note ONCE however many editors attach it', async () => {
+        const vault = new CountingVault()
+        vault.links.set('Notes/Test.md', ['Refs/One.md', 'Refs/Two.md'])
+        vault.notes.set('Refs/One.md', 'one')
+        vault.notes.set('Refs/Two.md', 'two')
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', includeLinkedNotes: true }),
+                makeEditor({ id: 'e-2', includeLinkedNotes: true }),
+                makeEditor({ id: 'e-3', includeLinkedNotes: true }),
+                makeEditor({ id: 'e-4', includeLinkedNotes: true })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault,
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody())
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // Four editors, two linked notes each: two reads, not eight.
+        expect(vault.reads).toBe(2)
+        expect(vault.outgoingReads).toBe(1)
+    })
+
+    it('still attaches the linked notes to EVERY editor', async () => {
+        // The cache must not be observable in the output — a run that read
+        // less and sent less would be a bug wearing a benchmark's clothes.
+        const vault = new CountingVault()
+        vault.links.set('Notes/Test.md', ['Refs/One.md'])
+        vault.notes.set('Refs/One.md', 'REFERENCE CONTENT')
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', includeLinkedNotes: true }),
+                makeEditor({ id: 'e-2', includeLinkedNotes: true })
+            ]
+        })
+        const bodies: string[] = []
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault,
+            runController: new RunController(),
+            fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => {
+                const body = init?.body
+                bodies.push(typeof body === 'string' ? body : '')
+                return fetchReturning(anthropicReviewBody())(input, init)
+            }) as typeof fetch
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        await result.run.settled
+        expect(bodies).toHaveLength(2)
+        for (const body of bodies) {
+            expect(body).toContain('REFERENCE CONTENT')
+        }
+    })
+})
