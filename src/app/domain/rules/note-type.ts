@@ -96,6 +96,65 @@ function baseName(path: string): string {
     return dot > 0 ? fileName.slice(0, dot) : fileName
 }
 
+// ---------------------------------------------------------------------------
+// Filename-regex recognition — bounded on purpose
+// ---------------------------------------------------------------------------
+
+/**
+ * Longest pattern and longest input this plugin will evaluate.
+ *
+ * A `regex` mapping is a pattern from ANOTHER plugin's settings, executed
+ * synchronously inside decisions that run constantly (rail refresh, menu build,
+ * every command gate). `try/catch` covers an invalid pattern; it does not cover
+ * catastrophic backtracking, and a hung renderer thread takes the settings tab
+ * that would let the user fix the pattern down with it. Both bounds are far
+ * above any real note-type pattern or file name, and they turn the worst case
+ * from unbounded into "short input, short pattern".
+ */
+const MAX_RECOGNITION_PATTERN_CHARS = 200
+const MAX_RECOGNITION_INPUT_CHARS = 200
+
+/**
+ * Nested quantifiers — `(a+)+`, `(x*)*`, `([a-z]+){2,}` — the shape that turns
+ * a failing match into exponential backtracking. Refusing the shape is coarse
+ * (a few legitimate patterns are refused with it), and that is the right
+ * trade: a refused mapping recognizes one note type less, a pathological one
+ * freezes Obsidian.
+ */
+const NESTED_QUANTIFIER = /\([^)]*[*+][^)]*\)\s*[*+{]/
+
+/**
+ * Compiled patterns, keyed by their source. Recognition asks the same handful
+ * of mappings on every refresh, so recompiling per call is pure waste; `null`
+ * caches a pattern that must never be run (invalid, too long, unsafe shape).
+ * Bounded so a vault whose registry churns cannot grow it without limit.
+ */
+const compiledPatterns = new Map<string, RegExp | null>()
+const MAX_CACHED_PATTERNS = 500
+
+/** The compiled pattern for a mapping value, or null when it must not run. */
+function recognitionPattern(value: string): RegExp | null {
+    const cached = compiledPatterns.get(value)
+    if (cached !== undefined) {
+        return cached
+    }
+    let pattern: RegExp | null = null
+    if (value.length <= MAX_RECOGNITION_PATTERN_CHARS && !NESTED_QUANTIFIER.test(value)) {
+        try {
+            pattern = new RegExp(value)
+        } catch {
+            // User-authored pattern from another plugin's settings: an invalid
+            // regex must never take down a menu build.
+            pattern = null
+        }
+    }
+    if (compiledPatterns.size >= MAX_CACHED_PATTERNS) {
+        compiledPatterns.clear()
+    }
+    compiledPatterns.set(value, pattern)
+    return pattern
+}
+
 /** Whether one enabled mapping recognizes the note. */
 function mappingMatches(
     mapping: OskNoteTypeMapping,
@@ -109,14 +168,13 @@ function mappingMatches(
             return anyTagMatches(mapping.value, facts.tags)
         case 'folder':
             return folderContainsPath(mapping.value, facts.path)
-        case 'regex':
-            // User-authored pattern from another plugin's settings: an invalid
-            // regex must never take down a menu build.
-            try {
-                return new RegExp(mapping.value).test(baseName(facts.path))
-            } catch {
-                return false
-            }
+        case 'regex': {
+            const pattern = recognitionPattern(mapping.value)
+            return (
+                pattern !== null &&
+                pattern.test(baseName(facts.path).slice(0, MAX_RECOGNITION_INPUT_CHARS))
+            )
+        }
         default:
             // `formula` and anything a future Starter Kit adds: not evaluable
             // here, so it never recognizes anything.

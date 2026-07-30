@@ -27,7 +27,6 @@ import {
     dismissableFindingIds,
     planBulkAccept
 } from '../commands/bulk-triage'
-import { resolveActionVerb } from '../domain/actions/verb-registry'
 import type { ActionVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
@@ -36,7 +35,11 @@ import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
-import { resolveActionById, resolveCustomInstruction } from '../services/actions/action-resolution'
+import {
+    resolveActionById,
+    resolveActions,
+    resolveBoundActionVerb
+} from '../services/actions/action-resolution'
 import type { ResolvedAction } from '../services/actions/action-resolution'
 import {
     isPluginEnabledForNote,
@@ -66,7 +69,7 @@ import { previewEditorContext } from '../services/context-preview-service'
 import type { ContextPreviewResult } from '../services/context-preview-service'
 import { AskEditorModal } from './ask-editor-modal'
 import { ContextPreviewModal } from './context-preview-modal'
-import { previewEditorChoices } from './context-preview-model'
+import { previewActionChoices, previewEditorChoices } from './context-preview-model'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
 import {
@@ -748,27 +751,18 @@ export class ReviewController {
      */
     private async resolveBoundVerb(resolved: ResolvedAction): Promise<ActionVerb | null> {
         const settings = this.deps.getSettings()
-        if (resolved.kind === 'built-in') {
-            return resolveActionVerb(resolved.actionId)
-        }
-        const binding = settings.actions.find((candidate) => candidate.id === resolved.bindingId)
-        if (!binding || binding.customVerbClass === null) {
-            new Notice('This action is no longer available — check the Actions settings tab.')
-            return null
-        }
-        const instruction = await resolveCustomInstruction(
-            binding.customInstruction,
-            this.vaultReader,
-            settings.behavior
-        )
-        const verb = resolveActionVerb(resolved.actionId, {
-            label: resolved.label,
-            verbClass: binding.customVerbClass,
-            instruction
-        })
+        const verb = await resolveBoundActionVerb(settings, this.vaultReader, resolved)
         if (verb === null) {
+            // Two causes, one refusal each: the binding is gone from the
+            // settings, or every instruction note it references is missing or
+            // excluded. Both mean nothing dispatches.
+            const binding = settings.actions.find(
+                (candidate) => candidate.id === resolved.bindingId
+            )
             new Notice(
-                `${resolved.label}: its instruction notes are missing or excluded — nothing to send.`
+                !binding || binding.customVerbClass === null
+                    ? 'This action is no longer available — check the Actions settings tab.'
+                    : `${resolved.label}: its instruction notes are missing or excluded — nothing to send.`
             )
         }
         return verb
@@ -967,7 +961,11 @@ export class ReviewController {
         new ContextPreviewModal(this.deps.app, {
             notePath,
             choices,
-            resolve: (editorId: string): Promise<ContextPreviewResult> => {
+            actions: previewActionChoices(resolveActions(this.deps.getSettings())),
+            resolve: (
+                editorId: string,
+                actionBindingId: string | null
+            ): Promise<ContextPreviewResult> => {
                 const settings = this.deps.getSettings()
                 const editor = settings.editors.find((candidate) => candidate.id === editorId)
                 if (!editor) {
@@ -981,7 +979,8 @@ export class ReviewController {
                     settings,
                     vault: this.vaultReader,
                     notePath,
-                    noteText
+                    noteText,
+                    ...(actionBindingId === null ? {} : { actionBindingId })
                 })
             }
         }).open()

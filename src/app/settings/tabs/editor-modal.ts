@@ -265,6 +265,10 @@ export class EditorModal extends Modal {
             choices: [
                 { id: draft.id, name: draft.name.trim().length > 0 ? draft.name : 'This editor' }
             ],
+            // No action picker here: the question this button answers is
+            // "what does the persona I am writing send", and an action's
+            // instruction belongs to the dispatch surfaces.
+            actions: [],
             resolve: (): Promise<ContextPreviewResult> =>
                 previewEditorContext({
                     editor: draft,

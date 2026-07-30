@@ -2,6 +2,7 @@ import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import type { ContextPreview, ContextPreviewResult } from '../services/context-preview-service'
 import { sectionStatusLabel } from '../services/context/context-budget'
 import type { ContextSection } from '../services/context/context-budget'
+import type { ResolvedAction } from '../services/actions/action-resolution'
 import { skipReasonLabel } from '../services/review-service'
 
 /**
@@ -20,6 +21,32 @@ import { skipReasonLabel } from '../services/review-service'
 export interface PreviewEditorChoice {
     readonly id: string
     readonly name: string
+}
+
+/** One entry of the preview's action picker (`id === null` = plain review). */
+export interface PreviewActionChoice {
+    readonly id: string | null
+    readonly name: string
+}
+
+/** The picker entry for "no action" — a plain review of the note. */
+export const PREVIEW_NO_ACTION: PreviewActionChoice = { id: null, name: 'Review (no action)' }
+
+/**
+ * The action picker's entries: a plain review first, then every DISPATCHABLE
+ * bound action, in settings order.
+ *
+ * This picker exists because an action's instruction is content that leaves the
+ * vault and the preview could not show it: a custom action inlines its
+ * referenced notes into the instruction, so up to `CUSTOM_INSTRUCTION_MAX_CHARS`
+ * of vault text can ride a run that the "what will be sent" surface described
+ * without them.
+ */
+export function previewActionChoices(actions: readonly ResolvedAction[]): PreviewActionChoice[] {
+    return [
+        PREVIEW_NO_ACTION,
+        ...actions.map((action) => ({ id: action.bindingId, name: action.label }))
+    ]
 }
 
 /**
@@ -50,6 +77,8 @@ export function refusalMessage(result: Exclude<ContextPreviewResult, { status: '
             return `Nothing to preview: ${result.notePath} could not be read.`
         case 'editor-missing':
             return 'Nothing to preview: this editor no longer exists.'
+        case 'action-unavailable':
+            return `Nothing would be sent: ${result.label} cannot run — it was removed, or every note its instruction references is missing or excluded.`
     }
 }
 
@@ -96,6 +125,17 @@ export function previewSummaryLines(preview: ContextPreview): string[] {
             `Over budget by ${formatChars(budget.overBudgetChars)}: the system prompt and the reviewed note are never truncated, so this request exceeds the budget. Raise the context budget or review a shorter note.`
         )
     }
+    const instruction = preview.instruction
+    if (instruction !== null) {
+        // An action's instruction is content leaving the vault — a custom one
+        // inlines its referenced notes — and it is NOT part of the budget, so
+        // it gets its own line rather than hiding inside the totals.
+        lines.push(
+            instruction.inSystemPrompt
+                ? `Instruction (${instruction.label}): ${formatChars(instruction.text.length)}, appended to the system prompt below.`
+                : `Instruction (${instruction.label}): ${formatChars(instruction.text.length)}, sent with the request — not part of the system prompt, and not counted in the budget above.`
+        )
+    }
     if (preview.backendLabel !== null) {
         lines.push(`Backend: ${preview.backendLabel}.`)
     } else if (preview.backendIssue !== null) {
@@ -129,15 +169,22 @@ export function sectionRows(preview: ContextPreview): SectionRow[] {
  */
 export function previewClipboardText(preview: ContextPreview): string {
     const rows = sectionRows(preview).map((row) => `- ${row.name}: ${row.detail}`)
+    const instruction = preview.instruction
     return [
         `AI Editor — what will be sent`,
         `Editor: ${preview.editorName}`,
         `Note: ${preview.notePath}`,
+        ...(instruction === null ? [] : [`Action: ${instruction.label}`]),
         '',
         ...previewSummaryLines(preview),
         '',
         'Sections:',
         ...rows,
+        // A transform/generate instruction is never inside the system prompt,
+        // so pasting the prompt alone would not reproduce the request.
+        ...(instruction === null || instruction.inSystemPrompt
+            ? []
+            : ['', 'Instruction:', instruction.text]),
         '',
         'System prompt:',
         preview.systemPrompt

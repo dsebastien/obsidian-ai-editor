@@ -1,5 +1,5 @@
-import { getBuiltInVerb } from '../../domain/actions/verb-registry'
-import type { VerbClass } from '../../domain/actions/verb-registry'
+import { getBuiltInVerb, resolveActionVerb } from '../../domain/actions/verb-registry'
+import type { ActionVerb, VerbClass } from '../../domain/actions/verb-registry'
 import type {
     ActionBinding,
     BehaviorSettings,
@@ -240,6 +240,42 @@ export function resolveActionById(
     }
     const resolution = resolveActionBinding(settings, binding)
     return resolution.ok ? resolution.action : null
+}
+
+/**
+ * The verb a resolved action actually dispatches: the registry entry for a
+ * built-in id, or the custom action's own verb with its instruction resolved
+ * fresh from the vault (direct text + referenced notes, follow-links included,
+ * Business Rules #8). `null` when the action vanished from the settings, lost
+ * its class, or its instruction resolves to nothing — sending an empty
+ * directive would bill a backend to ask for nothing.
+ *
+ * Shared on purpose: the dispatch path and the "what will be sent" preview both
+ * call it, so the preview can never show a different instruction from the one
+ * the request carries. Callers own the messaging — this returns a value.
+ */
+export async function resolveBoundActionVerb(
+    settings: PluginSettingsV1,
+    vault: VaultReader,
+    resolved: ResolvedAction
+): Promise<ActionVerb | null> {
+    if (resolved.kind === 'built-in') {
+        return resolveActionVerb(resolved.actionId)
+    }
+    const binding = settings.actions.find((candidate) => candidate.id === resolved.bindingId)
+    if (!binding || binding.customVerbClass === null) {
+        return null
+    }
+    const instruction = await resolveCustomInstruction(
+        binding.customInstruction,
+        vault,
+        settings.behavior
+    )
+    return resolveActionVerb(resolved.actionId, {
+        label: resolved.label,
+        verbClass: binding.customVerbClass,
+        instruction
+    })
 }
 
 // ---------------------------------------------------------------------------

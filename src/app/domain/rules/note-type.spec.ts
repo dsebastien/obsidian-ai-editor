@@ -104,6 +104,39 @@ describe('noteTypeIdsFromRegistry', () => {
         expect(noteTypeIdsFromRegistry({ path: 'a.md', tags: [] }, broken)).toEqual([])
     })
 
+    it('refuses a catastrophically backtracking pattern instead of running it', () => {
+        // `(a+)+$` against a long non-matching name is the classic exponential
+        // case. The assertion that matters is the TIME: an unbounded evaluation
+        // hangs the renderer thread, taking the settings tab that would let the
+        // user fix the foreign plugin's mapping down with it.
+        const evil: readonly OskNoteType[] = [
+            { name: 'Evil', mappings: [{ type: 'regex', value: '(a+)+$', enabled: true }] }
+        ]
+        const path = `Notes/${'a'.repeat(40)}!.md`
+        const started = performance.now()
+        expect(noteTypeIdsFromRegistry({ path, tags: [] }, evil)).toEqual([])
+        expect(performance.now() - started).toBeLessThan(1_000)
+    })
+
+    it('refuses a pattern longer than the recognition bound', () => {
+        const long: readonly OskNoteType[] = [
+            {
+                name: 'Long',
+                mappings: [{ type: 'regex', value: `${'x'.repeat(201)}|.*`, enabled: true }]
+            }
+        ]
+        expect(noteTypeIdsFromRegistry({ path: 'a.md', tags: [] }, long)).toEqual([])
+    })
+
+    it('still matches a long file name within the input bound', () => {
+        const prefix: readonly OskNoteType[] = [
+            { name: 'Prefix', mappings: [{ type: 'regex', value: '^Draft', enabled: true }] }
+        ]
+        expect(
+            noteTypeIdsFromRegistry({ path: `Draft ${'x'.repeat(5_000)}.md`, tags: [] }, prefix)
+        ).toEqual(['prefix'])
+    })
+
     it('yields nothing for an empty registry', () => {
         expect(noteTypeIdsFromRegistry({ path: 'a.md', tags: ['type/personal'] }, [])).toEqual([])
     })

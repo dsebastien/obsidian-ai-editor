@@ -7,7 +7,7 @@ import {
     refusalMessage,
     sectionRows
 } from './context-preview-model'
-import type { PreviewEditorChoice } from './context-preview-model'
+import type { PreviewActionChoice, PreviewEditorChoice } from './context-preview-model'
 
 /**
  * "What will be sent" modal (plan M5): shows the ACTUAL assembled context for
@@ -23,16 +23,26 @@ import type { PreviewEditorChoice } from './context-preview-model'
  *   `context-preview-model.ts` and every number from the assembler's budget
  *   report, so what the user reads is what the request carries.
  *
- * Thin glue by construction: picker → resolve → render. Re-resolving on every
+ * Thin glue by construction: pickers → resolve → render. Re-resolving on every
  * picker change is deliberate — each editor has its own persona, voice-profile
- * opt-in and linked-note settings, so there is no shared result to cache, and
- * a stale panel here would be a lie.
+ * opt-in and linked-note settings, and each action its own instruction, so
+ * there is no shared result to cache and a stale panel here would be a lie.
+ *
+ * The ACTION picker is the second half of the honesty rule: a bound action adds
+ * an instruction to the request, and a custom action inlines its referenced
+ * vault notes into it, so previewing only the plain review would understate
+ * what leaves the vault.
  */
 export class ContextPreviewModal extends Modal {
     private readonly choices: readonly PreviewEditorChoice[]
-    private readonly resolve: (editorId: string) => Promise<ContextPreviewResult>
+    private readonly actions: readonly PreviewActionChoice[]
+    private readonly resolve: (
+        editorId: string,
+        actionBindingId: string | null
+    ) => Promise<ContextPreviewResult>
     private readonly notePath: string
     private selectedEditorId: string
+    private selectedActionId: string | null = null
     private bodyEl: HTMLElement | null = null
     private latest: ContextPreviewResult | null = null
     /** Guards against an out-of-order resolve landing after a newer one. */
@@ -43,12 +53,17 @@ export class ContextPreviewModal extends Modal {
         input: {
             readonly notePath: string
             readonly choices: readonly PreviewEditorChoice[]
-            readonly resolve: (editorId: string) => Promise<ContextPreviewResult>
+            readonly actions: readonly PreviewActionChoice[]
+            readonly resolve: (
+                editorId: string,
+                actionBindingId: string | null
+            ) => Promise<ContextPreviewResult>
         }
     ) {
         super(app)
         this.notePath = input.notePath
         this.choices = input.choices
+        this.actions = input.actions
         this.resolve = input.resolve
         this.selectedEditorId = input.choices[0]?.id ?? ''
     }
@@ -77,6 +92,21 @@ export class ContextPreviewModal extends Modal {
                 }
                 dropdown.setValue(this.selectedEditorId).onChange((value) => {
                     this.selectedEditorId = value
+                    void this.load()
+                })
+            })
+        }
+
+        // Offered only when there is something to choose: a vault with no
+        // dispatchable action would get a picker with one entry, which is
+        // chrome, not information.
+        if (this.actions.length > 1) {
+            new Setting(this.contentEl).setName('Action').addDropdown((dropdown) => {
+                for (const action of this.actions) {
+                    dropdown.addOption(action.id ?? '', action.name)
+                }
+                dropdown.setValue('').onChange((value) => {
+                    this.selectedActionId = value.length === 0 ? null : value
                     void this.load()
                 })
             })
@@ -112,7 +142,7 @@ export class ContextPreviewModal extends Modal {
         }
         body.empty()
         body.createEl('p', { cls: 'ai-editor-preview-status', text: 'Assembling…' })
-        const result = await this.resolve(this.selectedEditorId)
+        const result = await this.resolve(this.selectedEditorId, this.selectedActionId)
         if (token !== this.renderToken || this.bodyEl !== body) {
             return // a newer selection already took over, or the modal closed
         }

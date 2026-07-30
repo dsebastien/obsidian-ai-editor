@@ -259,3 +259,142 @@ describe('preview assembly equals dispatch assembly', () => {
         expect(preview.preview.systemPrompt).toBe(sink.prompt ?? '')
     })
 })
+
+describe('previewing a bound action', () => {
+    const customAction = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+        id: 'action-1',
+        actionId: 'action-1',
+        customName: 'Check the numbers',
+        customVerbClass: 'review',
+        customInstruction: {
+            text: 'Flag every unsupported number.',
+            notePaths: ['Meta/Numbers.md'],
+            followLinks: false
+        },
+        binding: { targetType: 'editor', targetId: 'editor-1' },
+        ...overrides
+    })
+
+    it('shows the instruction notes a custom action inlines, which no other surface does', async () => {
+        const settings = makeSettings({ actions: [customAction()] })
+        const vault = new FakeVault()
+        vault.notes.set('Meta/Numbers.md', 'Numbers must cite a source.')
+
+        const plain = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        const withAction = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT,
+            actionBindingId: 'action-1'
+        })
+        expect(plain.status).toBe('ready')
+        expect(withAction.status).toBe('ready')
+        if (plain.status !== 'ready' || withAction.status !== 'ready') {
+            return
+        }
+        expect(plain.preview.instruction).toBeNull()
+        // The referenced note's content is exactly what the old preview hid.
+        expect(plain.preview.systemPrompt).not.toContain('Numbers must cite a source.')
+        expect(withAction.preview.instruction).toMatchObject({
+            label: 'Check the numbers',
+            verbClass: 'review',
+            inSystemPrompt: true
+        })
+        expect(withAction.preview.instruction?.text).toContain('Numbers must cite a source.')
+        expect(withAction.preview.systemPrompt).toContain('Numbers must cite a source.')
+    })
+
+    it('keeps a transform instruction OUT of the system prompt, and says so', async () => {
+        const settings = makeSettings({
+            actions: [customAction({ customVerbClass: 'transform' })]
+        })
+        const vault = new FakeVault()
+        vault.notes.set('Meta/Numbers.md', 'Numbers must cite a source.')
+        const result = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT,
+            actionBindingId: 'action-1'
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        // It still LEAVES the vault — it rides the operation payload — so it is
+        // reported, just not as part of the prompt.
+        expect(result.preview.instruction).toMatchObject({ inSystemPrompt: false })
+        expect(result.preview.instruction?.text).toContain('Numbers must cite a source.')
+        expect(result.preview.systemPrompt).not.toContain('Numbers must cite a source.')
+    })
+
+    it('never inlines an excluded instruction note (Business Rules #7)', async () => {
+        const settings = makeSettings({
+            actions: [customAction()],
+            behavior: { excludedFolders: ['Meta'] }
+        })
+        const vault = new FakeVault()
+        vault.notes.set('Meta/Numbers.md', 'Numbers must cite a source.')
+        const result = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT,
+            actionBindingId: 'action-1'
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        expect(result.preview.instruction?.text).not.toContain('Numbers must cite a source.')
+    })
+
+    it('refuses an action that no longer resolves, like the dispatch does', async () => {
+        const settings = makeSettings({ actions: [customAction()] })
+        const vault = new FakeVault()
+        const gone = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT,
+            actionBindingId: 'action-does-not-exist'
+        })
+        expect(gone).toEqual({ status: 'action-unavailable', label: 'This action' })
+
+        // Every referenced note missing and no direct text: nothing to send.
+        const empty = makeSettings({
+            actions: [
+                customAction({
+                    customInstruction: {
+                        text: '',
+                        notePaths: ['Meta/Gone.md'],
+                        followLinks: false
+                    }
+                })
+            ]
+        })
+        const emptied = await previewEditorContext({
+            editor: empty.editors[0]!,
+            settings: empty,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT,
+            actionBindingId: 'action-1'
+        })
+        expect(emptied).toEqual({
+            status: 'action-unavailable',
+            label: 'Check the numbers'
+        })
+    })
+})

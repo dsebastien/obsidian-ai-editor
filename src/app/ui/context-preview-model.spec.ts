@@ -1,10 +1,12 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 import { editorConfigSchema, pluginSettingsSchema } from '../domain/settings/settings-schema'
 import type { ContextPreview } from '../services/context-preview-service'
 import type { ContextSection } from '../services/context/context-budget'
 import {
+    PREVIEW_NO_ACTION,
     formatChars,
     formatCount,
+    previewActionChoices,
     previewClipboardText,
     previewEditorChoices,
     previewSummaryLines,
@@ -29,6 +31,7 @@ function preview(overrides: Partial<ContextPreview> = {}): ContextPreview {
         editorId: 'editor-1',
         editorName: 'Hater',
         notePath: 'Articles/Draft.md',
+        instruction: null,
         systemPrompt: 'Be harsh.',
         sections: [
             section({ kind: 'system-prompt', label: 'System prompt', path: null }),
@@ -215,5 +218,86 @@ describe('refusalMessage', () => {
             'Gone.md'
         )
         expect(refusalMessage({ status: 'editor-missing' })).toContain('no longer exists')
+    })
+})
+
+describe('a previewed action instruction', () => {
+    it('is a summary line of its own, because the budget does not cover it', () => {
+        const inPrompt = previewSummaryLines(
+            preview({
+                instruction: {
+                    label: 'Check the numbers',
+                    verbClass: 'review',
+                    text: 'x'.repeat(1_500),
+                    inSystemPrompt: true
+                }
+            })
+        )
+        expect(inPrompt.some((line) => line.includes('1 500 characters'))).toBe(true)
+        expect(inPrompt.some((line) => line.includes('appended to the system prompt'))).toBe(true)
+
+        const inPayload = previewSummaryLines(
+            preview({
+                instruction: {
+                    label: 'Zing',
+                    verbClass: 'transform',
+                    text: 'Zing it.',
+                    inSystemPrompt: false
+                }
+            })
+        )
+        expect(inPayload.some((line) => line.includes('not part of the system prompt'))).toBe(true)
+    })
+
+    it('rides the clipboard payload when the prompt would not carry it', () => {
+        const text = previewClipboardText(
+            preview({
+                instruction: {
+                    label: 'Zing',
+                    verbClass: 'transform',
+                    text: 'Zing it.',
+                    inSystemPrompt: false
+                }
+            })
+        )
+        expect(text).toContain('Action: Zing')
+        expect(text).toContain('Instruction:\nZing it.')
+
+        // A review-class instruction is already inside the prompt, so repeating
+        // it would misrepresent the request as carrying it twice.
+        const review = previewClipboardText(
+            preview({
+                instruction: {
+                    label: 'Check',
+                    verbClass: 'review',
+                    text: 'Check it.',
+                    inSystemPrompt: true
+                }
+            })
+        )
+        expect(review).toContain('Action: Check')
+        expect(review).not.toContain('Instruction:\nCheck it.')
+    })
+
+    it('explains an action that cannot run', () => {
+        expect(refusalMessage({ status: 'action-unavailable', label: 'Zing' })).toContain('Zing')
+    })
+})
+
+describe('previewActionChoices', () => {
+    it('leads with the plain review, then every dispatchable action', () => {
+        expect(
+            previewActionChoices([
+                {
+                    bindingId: 'a1',
+                    actionId: 'critique',
+                    label: 'Critique',
+                    verbClass: 'review',
+                    kind: 'built-in',
+                    editorIds: ['e1']
+                }
+            ])
+        ).toEqual([PREVIEW_NO_ACTION, { id: 'a1', name: 'Critique' }])
+        expect(previewActionChoices([])).toEqual([PREVIEW_NO_ACTION])
     })
 })
