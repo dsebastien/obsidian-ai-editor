@@ -11,7 +11,8 @@ import type {
     BindingRule,
     BuiltInActionId,
     IntegrityIssue,
-    PluginSettingsV1
+    PluginSettingsV1,
+    VerbClass
 } from '../domain/settings/settings-schema'
 
 /**
@@ -353,6 +354,28 @@ export function setBuiltInActionBinding(
         return
     }
     settings.actions.push(actionBindingSchema.parse({ id: actionId, actionId, binding: target }))
+}
+
+/**
+ * Sets a custom action's verb class (null = not picked yet) and drops a
+ * binding the new class cannot use: only review-class actions may target a
+ * panel, so keeping the panel would make the action vanish from every surface
+ * (`resolveActionBinding` → `panel-binding-invalid`) instead of showing the
+ * change taking hold. Unknown entity ids are a no-op.
+ */
+export function setCustomActionClass(
+    settings: PluginSettingsV1,
+    entityId: string,
+    verbClass: VerbClass | null
+): void {
+    const action = settings.actions.find((candidate) => candidate.id === entityId)
+    if (!action) {
+        return
+    }
+    action.customVerbClass = verbClass
+    if (verbClass !== 'review' && action.binding?.targetType === 'panel') {
+        action.binding = null
+    }
 }
 
 // ---------------------------------------------------------------------------

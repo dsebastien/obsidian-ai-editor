@@ -15,7 +15,8 @@ import {
     moveItem,
     normalizeChipValue,
     ruleSummary,
-    setBuiltInActionBinding
+    setBuiltInActionBinding,
+    setCustomActionClass
 } from './helpers'
 
 const fixture = (): PluginSettingsV1 =>
@@ -168,6 +169,46 @@ describe('setBuiltInActionBinding', () => {
 
         setBuiltInActionBinding(settings, 'rephrase', null)
         expect(settings.actions.find((action) => action.actionId === 'rephrase')).toBeUndefined()
+    })
+})
+
+describe('setCustomActionClass', () => {
+    const customOf = (settings: PluginSettingsV1) =>
+        settings.actions.find((action) => action.id === 'c1')
+
+    test('sets the class and clears a panel binding the new class cannot use', () => {
+        const settings = fixture()
+        // The fixture's custom action is bound to a panel.
+        setCustomActionClass(settings, 'c1', 'review')
+        expect(customOf(settings)?.customVerbClass).toEqual('review')
+        expect(customOf(settings)?.binding).toEqual({ targetType: 'panel', targetId: 'p1' })
+
+        setCustomActionClass(settings, 'c1', 'transform')
+        expect(customOf(settings)?.customVerbClass).toEqual('transform')
+        // Kept, it would resolve to `panel-binding-invalid` and the action
+        // would silently vanish from every surface.
+        expect(customOf(settings)?.binding).toBeNull()
+    })
+
+    test('keeps an editor binding across every class, and accepts clearing the class', () => {
+        const settings = fixture()
+        setCustomActionClass(settings, 'c1', 'transform')
+        const action = customOf(settings)
+        if (!action) {
+            throw new Error('missing custom action')
+        }
+        action.binding = { targetType: 'editor', targetId: 'e1' }
+        for (const verbClass of ['generate', 'review', 'transform', null] as const) {
+            setCustomActionClass(settings, 'c1', verbClass)
+            expect(customOf(settings)?.customVerbClass).toEqual(verbClass)
+            expect(customOf(settings)?.binding).toEqual({ targetType: 'editor', targetId: 'e1' })
+        }
+    })
+
+    test('is a no-op for an unknown entity id', () => {
+        const settings = fixture()
+        setCustomActionClass(settings, 'ghost', 'review')
+        expect(settings.actions.map((action) => action.customVerbClass)).toEqual([null, null])
     })
 })
 

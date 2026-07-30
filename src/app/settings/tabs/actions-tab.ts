@@ -1,19 +1,29 @@
 import { Setting } from 'obsidian'
-import { builtInActionIdSchema } from '../../domain/settings/settings-schema'
-import type { ActionBinding, BuiltInActionId } from '../../domain/settings/settings-schema'
-import { getBuiltInVerb } from '../../domain/actions/verb-registry'
+import { builtInActionIdSchema, verbClassSchema } from '../../domain/settings/settings-schema'
+import type {
+    ActionBinding,
+    BuiltInActionId,
+    VerbClass
+} from '../../domain/settings/settings-schema'
+import { getBuiltInVerb, verbClassLabel } from '../../domain/actions/verb-registry'
 import { generateId } from '../../domain/ids'
 import {
     actionInvalidReasonLabel,
     resolveActionBinding
 } from '../../services/actions/action-resolution'
-import { ConfirmModal, populateTargetDropdown, renderPromptTextArea } from '../components'
+import {
+    ConfirmModal,
+    populateTargetDropdown,
+    renderNoteRefsEditor,
+    renderPromptTextArea
+} from '../components'
 import {
     builtInActionLabel,
     decodeActionTarget,
     encodeActionTarget,
     isBuiltInActionId,
-    setBuiltInActionBinding
+    setBuiltInActionBinding,
+    setCustomActionClass
 } from '../helpers'
 import { commit } from './shared'
 import type { TabContext } from './shared'
@@ -32,8 +42,14 @@ const BUILT_IN_ACTION_DESCRIPTIONS: Record<BuiltInActionId, string> = {
 
 /**
  * Actions tab: bind each built-in verb to an editor or panel, and manage
- * custom actions (name + instruction prompt + binding). Panels are marked
- * with a ring glyph and their own optgroup in every binding dropdown.
+ * custom actions (name + what it does + instruction prompt + instruction
+ * notes + binding). Panels are marked with a ring glyph and their own
+ * optgroup in every binding dropdown.
+ *
+ * The tab mirrors `resolveActionBinding` rather than restating its rules: the
+ * panel option only appears where a panel is a valid target (review-class
+ * verbs, built-in or custom), and any bound-but-undispatchable action says
+ * why it is hidden instead of quietly disappearing.
  */
 export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
@@ -88,7 +104,11 @@ export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): voi
 
     new Setting(containerEl)
         .setName('Add custom action')
-        .setDesc('Your own verb for the selection menu, with its own instruction prompt.')
+        .setDesc(
+            'Your own verb, with its own instruction. Pick what it does — rewrite the ' +
+                'selection, write more at the cursor, or report findings — and it appears in ' +
+                'the selection menu and the command palette like a built-in one.'
+        )
         .addButton((button) => {
             button
                 .setButtonText('Add custom action')
@@ -139,6 +159,7 @@ function renderCustomActionRows(
         )
     }
 
+    const reviewClass = action.customVerbClass === 'review'
     const row = new Setting(containerEl).setClass('ai-editor-custom-action-row')
     row.addText((text) => {
         text.setPlaceholder('Action name')
@@ -150,9 +171,30 @@ function renderCustomActionRows(
         })
     })
     row.addDropdown((dropdown) => {
-        // Custom actions are transform-class (they rewrite the selection),
-        // so a panel target is never valid for them.
-        populateTargetDropdown(dropdown, settings, { noneLabel: 'Not bound', includePanels: false })
+        // No default: the class decides whether the result replaces the
+        // selection, is inserted after it, or comes back as findings, and
+        // guessing would silently overwrite text the user asked about.
+        dropdown.addOption('', 'Pick what it does…')
+        for (const verbClass of verbClassSchema.options) {
+            dropdown.addOption(verbClass, verbClassLabel(verbClass))
+        }
+        dropdown.setValue(action.customVerbClass ?? '')
+        dropdown.onChange((value) => {
+            const next = verbClassSchema.safeParse(value)
+            commit(
+                ctx,
+                (draft) => {
+                    setCustomActionClass(draft, action.id, next.success ? next.data : null)
+                },
+                { refresh: true }
+            )
+        })
+    })
+    row.addDropdown((dropdown) => {
+        populateTargetDropdown(dropdown, settings, {
+            noneLabel: 'Not bound',
+            includePanels: reviewClass
+        })
         dropdown.setValue(encodeActionTarget(action.binding))
         dropdown.onChange((value) => {
             mutate(
@@ -192,7 +234,7 @@ function renderCustomActionRows(
 
     renderPromptTextArea(containerEl, {
         name: 'Instruction',
-        desc: 'What this action asks the bound editor to do.',
+        desc: customInstructionDesc(action.customVerbClass),
         placeholder: 'Turn the selection into a numbered checklist…',
         get: () => action.customInstruction.text,
         set: (value) => {
@@ -201,6 +243,43 @@ function renderCustomActionRows(
             })
         }
     })
+    renderNoteRefsEditor(containerEl, {
+        app: ctx.app,
+        name: 'Instruction notes',
+        desc: 'Vault notes appended to the instruction, in order, read fresh on every run.',
+        getPaths: () => action.customInstruction.notePaths,
+        setPaths: (paths) =>
+            ctx.facade.update((draft) => {
+                const target = draft.actions.find((item) => item.id === action.id)
+                if (target) {
+                    target.customInstruction.notePaths = paths
+                }
+            }),
+        followLinks: {
+            get: () => action.customInstruction.followLinks,
+            set: (value) =>
+                ctx.facade.update((draft) => {
+                    const target = draft.actions.find((item) => item.id === action.id)
+                    if (target) {
+                        target.customInstruction.followLinks = value
+                    }
+                })
+        }
+    })
+}
+
+/** What the instruction is asked to describe, per class. */
+function customInstructionDesc(verbClass: VerbClass | null): string {
+    switch (verbClass) {
+        case 'transform':
+            return 'How to rewrite the selection. The result replaces it, after you accept the diff.'
+        case 'generate':
+            return 'What to write at the cursor. The result is inserted, after you accept it.'
+        case 'review':
+            return 'What to look for. The result comes back as findings on the note, nothing is rewritten.'
+        case null:
+            return 'What this action asks the bound editor to do. Pick what it does first.'
+    }
 }
 
 /**
