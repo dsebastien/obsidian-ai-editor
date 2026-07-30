@@ -70,7 +70,10 @@ export interface SetupWizardState {
 }
 
 /** Why a step refuses to advance. `null` = it may be left. */
-export type SetupAdvanceBlock = { readonly code: 'backend-incomplete'; readonly message: string }
+export type SetupAdvanceBlock = {
+    readonly code: 'backend-incomplete' | 'backend-model-required'
+    readonly message: string
+}
 
 /** Step index (0-based) — drives the "Step n of m" line and Back availability. */
 export function setupStepIndex(stepId: SetupWizardStepId): number {
@@ -112,10 +115,22 @@ export function setupAdvanceBlock(state: SetupWizardState): SetupAdvanceBlock | 
         return null
     }
     const validation = validateApiBackend(state.draft.backend)
-    if (validation.ok) {
-        return null
+    if (!validation.ok) {
+        return { code: 'backend-incomplete', message: validation.message }
     }
-    return { code: 'backend-incomplete', message: validation.message }
+    if (validation.backend.defaultModel.trim().length === 0) {
+        // The Backends tab legitimately saves a model-less backend — a user may
+        // set the model per editor. The WIZARD may not: it wires what it adds
+        // as the global default, so a model-less backend here is the exact
+        // "a label with no model is a backend that exists and cannot run" case
+        // this step exists to refuse, and it would make every editor that
+        // inherits the default resolve `no-model-configured`.
+        return {
+            code: 'backend-model-required',
+            message: 'Enter the model this backend should use — without one, nothing can run.'
+        }
+    }
+    return null
 }
 
 /** The next step id, or null on the last one (where the CTA finishes instead). */
@@ -169,11 +184,20 @@ export function applySetupWizard(
     draft: SetupWizardDraft
 ): PluginSettingsV1 {
     const choiceById = new Map(draft.editors.map((choice) => [choice.id, choice.enabled]))
-    const backends =
-        draft.backend === null ? settings.backends : [...settings.backends, draft.backend]
+    // The validated value, not the draft. `setupAdvanceBlock` normalized a COPY
+    // and threw it away, so a pasted base URL kept the whitespace it arrived
+    // with — `http://localhost:11434 ` reaches the adapter, which only strips a
+    // trailing slash, and `new URL()` then throws on every request from a
+    // backend whose settings field looks correct. Validating here means the
+    // wizard and the Backends tab persist byte-identical configurations.
+    // An invalid backend cannot reach Finish (the step refuses to advance), so
+    // treating one as "no backend" is a defensive branch, not a silent drop.
+    const validated = draft.backend === null ? null : validateApiBackend(draft.backend)
+    const backend = validated !== null && validated.ok ? validated.backend : null
+    const backends = backend === null ? settings.backends : [...settings.backends, backend]
     const defaultBackend =
-        draft.backend !== null && settings.defaultBackend === null
-            ? { backendId: draft.backend.id, model: '' }
+        backend !== null && settings.defaultBackend === null
+            ? { backendId: backend.id, model: '' }
             : settings.defaultBackend
     return {
         ...settings,
@@ -206,6 +230,14 @@ export function applySetupWizard(
 export interface SetupOutcome {
     readonly backendAdded: boolean
     readonly becameDefaultBackend: boolean
+    /**
+     * Whether ANY backend would exist afterwards — the one the wizard adds or
+     * one that was already configured. A countable fact, not a verdict: it is
+     * what lets the summary point at the right tab when nothing will run,
+     * instead of inferring the cause from the editor count and blaming the
+     * Backends tab for a problem that lives in the Editors tab.
+     */
+    readonly hasBackend: boolean
     readonly enabledEditorCount: number
     readonly voiceNoteCount: number
     readonly daemonMode: boolean
@@ -217,6 +249,7 @@ export function setupOutcome(settings: PluginSettingsV1, draft: SetupWizardDraft
     return {
         backendAdded,
         becameDefaultBackend: backendAdded && settings.defaultBackend === null,
+        hasBackend: backendAdded || settings.backends.length > 0,
         enabledEditorCount: draft.editors.filter((choice) => choice.enabled).length,
         voiceNoteCount: draft.voiceNotePaths.length,
         daemonMode: draft.daemonMode

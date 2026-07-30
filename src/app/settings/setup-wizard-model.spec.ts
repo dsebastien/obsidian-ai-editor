@@ -19,6 +19,7 @@ import {
 const OUTCOME: SetupOutcome = {
     backendAdded: true,
     becameDefaultBackend: true,
+    hasBackend: true,
     enabledEditorCount: 3,
     voiceNoteCount: 0,
     daemonMode: false
@@ -106,9 +107,12 @@ describe('setupSummaryLines', () => {
         expect(lines[0]).toContain('No editor is enabled')
     })
 
-    it('blames the missing backend when editors are enabled but cannot run', () => {
-        const lines = setupSummaryLines({ ...OUTCOME, backendAdded: false }, false)
-        expect(lines[0]).toContain('No usable backend')
+    it('names the Backends tab only when there really is no backend', () => {
+        const lines = setupSummaryLines(
+            { ...OUTCOME, backendAdded: false, hasBackend: false },
+            false
+        )
+        expect(lines[0]).toContain('No backend configured')
     })
 
     it('says nothing alarming when the setup can run', () => {
@@ -147,5 +151,31 @@ describe('setupSummaryLines', () => {
         expect(setupSummaryLines({ ...OUTCOME, daemonMode: true }, true).join(' ')).toContain(
             'Daemon mode on'
         )
+    })
+})
+
+describe('the summary states a cause it can actually prove', () => {
+    it('stays cause-neutral when a backend exists and editors are enabled', () => {
+        // The editor count alone cannot distinguish "no backend" from "every
+        // enabled editor has its review capability off" or "the only backend is
+        // disabled" — and pointing at the Backends tab for those is wrong.
+        const line = setupSummaryLines(
+            { ...OUTCOME, backendAdded: false, hasBackend: true, enabledEditorCount: 3 },
+            false
+        )[0]
+        expect(line).not.toContain('No backend configured')
+        expect(line).toContain('Backends and Editors tabs')
+    })
+
+    it('says nothing about causes when a review will run', () => {
+        expect(setupSummaryLines(OUTCOME, true)[0]).not.toContain('nothing will run')
+    })
+})
+
+describe('the welcome copy counts the steps it actually has', () => {
+    it('agrees with the progress indicator beneath it', () => {
+        const welcome = stepBody('welcome').join(' ')
+        expect(welcome).toContain('six short steps')
+        expect(stepProgressLabel('welcome')).toContain(`of ${SETUP_WIZARD_STEPS.length}`)
     })
 })

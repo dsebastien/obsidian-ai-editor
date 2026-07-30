@@ -138,6 +138,17 @@ describe('setupAdvanceBlock', () => {
         expect(block?.message).toBe('A label is required.')
     })
 
+    it('refuses a backend with no model — the half-filled case the plan names', () => {
+        // The Backends tab allows it (a user may set the model per editor); the
+        // wizard cannot, because it wires what it adds as the GLOBAL default,
+        // and every editor inheriting it would resolve `no-model-configured`.
+        const block = setupAdvanceBlock(
+            stateAt('backend', { ...draft, backend: makeBackend({ defaultModel: '  ' }) })
+        )
+        expect(block?.code).toBe('backend-model-required')
+        expect(block?.message).toContain('model')
+    })
+
     it('applies the same per-kind rules the Backends tab applies', () => {
         const block = setupAdvanceBlock(
             stateAt('backend', {
@@ -301,6 +312,29 @@ describe('applySetupWizard', () => {
         expect(next.rules).toEqual(settings.rules)
     })
 
+    it('persists the VALIDATED backend, not the draft the user typed', () => {
+        // `setupAdvanceBlock` normalized a copy and threw it away, so a pasted
+        // base URL kept its whitespace: `http://localhost:11434 ` becomes
+        // `http://localhost:11434 /api/chat`, which `new URL()` rejects — every
+        // review failing on a backend whose settings field looks correct.
+        const settings = makeSettings()
+        const next = applySetupWizard(settings, {
+            ...initialSetupDraft(settings),
+            backend: makeBackend({
+                kind: 'ollama',
+                label: '  Local Ollama  ',
+                baseUrl: 'http://localhost:11434 ',
+                extraBodyJson: '  {"think": true}  '
+            })
+        })
+        const added = next.backends[next.backends.length - 1]
+        expect(added).toMatchObject({
+            label: 'Local Ollama',
+            baseUrl: 'http://localhost:11434',
+            extraBodyJson: '{"think": true}'
+        })
+    })
+
     it('produces a schema-valid settings value', () => {
         const settings = makeSettings()
         const next = applySetupWizard(settings, {
@@ -329,6 +363,7 @@ describe('setupOutcome', () => {
         expect(outcome).toEqual({
             backendAdded: true,
             becameDefaultBackend: true,
+            hasBackend: true,
             enabledEditorCount: 1,
             voiceNoteCount: 2,
             daemonMode: true

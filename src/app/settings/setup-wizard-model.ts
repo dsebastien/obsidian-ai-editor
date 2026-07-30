@@ -29,12 +29,22 @@ export function stepProgressLabel(stepId: SetupWizardStepId): string {
     return `Step ${setupStepIndex(stepId) + 1} of ${SETUP_STEP_COUNT}`
 }
 
+/**
+ * The welcome step's step count, derived rather than written. The copy said
+ * "five short steps" while `SETUP_WIZARD_STEPS` had six and the progress line
+ * right beneath it read "Step 1 of 6" — the first sentence a new user reads
+ * disagreeing with the indicator next to it. Deriving it means the copy cannot
+ * drift from the step list again.
+ */
+const STEP_COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+const STEP_COUNT_WORD = STEP_COUNT_WORDS[SETUP_STEP_COUNT] ?? String(SETUP_STEP_COUNT)
+
 /** Body paragraphs of a step, in order. */
 const STEP_BODIES: Record<SetupWizardStepId, readonly string[]> = {
     welcome: [
         'AI Editor reviews the note you are writing with editors you configure — personas with their own instructions, each reporting findings you accept or dismiss one by one. It also rewrites selections and continues your text, always as a suggestion you approve first.',
         'Nothing is ever sent to an AI backend without an explicit action from you, and nothing is ever written into a note without your confirmation.',
-        'This wizard takes five short steps. You can leave any of them empty and change everything later in the settings.'
+        `This wizard takes ${STEP_COUNT_WORD} short steps. You can leave any of them empty and change everything later in the settings.`
     ],
     backend: [
         'An editor needs a backend to run: a provider, a key, and a model. Pick the provider you have an account with — or Ollama to run models locally, which sends nothing off your machine.',
@@ -133,10 +143,16 @@ export function nextButtonLabel(stepId: SetupWizardStepId): string {
 export function setupSummaryLines(outcome: SetupOutcome, canReview: boolean): readonly string[] {
     const lines: string[] = []
     if (!canReview) {
+        // The cause is inferred from facts the outcome carries, and stops at
+        // what those facts actually prove. Deriving it from the editor count
+        // alone told a user whose editors all had `review` off — or whose only
+        // backend was disabled — to go add a backend, which is the wrong tab.
         lines.push(
             outcome.enabledEditorCount === 0
                 ? 'No editor is enabled, so nothing will run yet. Enable one in the Editors tab.'
-                : 'No usable backend yet, so nothing will run. Add one in the Backends tab.'
+                : !outcome.hasBackend
+                  ? 'No backend configured yet, so nothing will run. Add one in the Backends tab.'
+                  : 'Nothing will run yet — check that a backend is enabled and has a model, and that an editor can review, in the Backends and Editors tabs.'
         )
     }
     if (outcome.backendAdded) {
