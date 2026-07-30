@@ -69,7 +69,15 @@ describe('isBulkAcceptable', () => {
             { id: 'ok', anchor: { from: 0, to: 3, state: 'anchored' as const }, suggestion: 'ABC' },
             { id: 'stale', anchor: { from: 4, to: 7, state: 'stale' as const }, suggestion: 'DEF' },
             { id: 'orphan', anchor: null, suggestion: 'GHI' },
-            { id: 'no-sug', anchor: { from: 8, to: 9, state: 'anchored' as const } }
+            { id: 'no-sug', anchor: { from: 8, to: 9, state: 'anchored' as const } },
+            // Anchored but with no anchored text: `accept()` refuses
+            // ('unanchored'), so neither predicate may advertise it.
+            {
+                id: 'no-anchored-text',
+                anchor: { from: 0, to: 3, state: 'anchored' as const },
+                suggestion: 'JKL',
+                anchoredText: null
+            }
         ]
         const candidates: BulkCandidateFinding[] = []
         for (const input of inputs) {
@@ -79,13 +87,20 @@ describe('isBulkAcceptable', () => {
                 editorId: 'editor-1',
                 raw: raw(input.suggestion),
                 anchor: input.anchor,
-                anchoredText: input.anchor ? 'abc' : null,
+                anchoredText: 'anchoredText' in input ? null : input.anchor ? 'abc' : null,
                 matchStrategy: 'exact'
             })
             candidates.push(finding)
         }
         for (const finding of candidates) {
-            expect(isBulkAcceptable(finding)).toBe(store.isActionable(asFindingId(finding.id)))
+            const actionable = store.isActionable(asFindingId(finding.id))
+            expect(isBulkAcceptable(finding)).toBe(actionable)
+            // …and neither may advertise something `accept()` would refuse
+            // for a reason other than the live-text precondition.
+            if (!actionable) {
+                const outcome = store.accept(asFindingId(finding.id), 'abc def ghi')
+                expect(outcome.ok).toBe(false)
+            }
         }
     })
 })

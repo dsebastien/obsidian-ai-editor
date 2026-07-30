@@ -155,7 +155,14 @@ export class FindingStore {
 
     /**
      * Whether a finding's suggestion can currently be previewed/accepted:
-     * non-terminal status, anchored, not stale, and a suggestion exists.
+     * non-terminal status, anchored, not stale, an anchored text to verify the
+     * precondition against, and a suggestion.
+     *
+     * Every clause mirrors an `accept()` refusal, so this predicate never
+     * advertises a finding the apply path would reject — the panel's
+     * "Accept all (n)" count, `planBulkAccept`/`isBulkAcceptable` and the
+     * card's Accept button all read it (equivalence pinned in
+     * `bulk-triage.spec.ts`).
      */
     isActionable(id: FindingId): boolean {
         const finding = this.findings.get(id)
@@ -165,6 +172,7 @@ export class FindingStore {
         return (
             !TERMINAL_STATUSES.includes(finding.status) &&
             finding.anchor !== null &&
+            finding.anchoredText !== null &&
             finding.anchor.state === 'anchored' &&
             typeof finding.raw.suggestion === 'string' &&
             finding.raw.suggestion.length > 0
