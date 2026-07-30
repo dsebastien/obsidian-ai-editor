@@ -1,0 +1,261 @@
+import { describe, expect, it } from 'bun:test'
+import {
+    apiBackendSchema,
+    editorConfigSchema,
+    pluginSettingsSchema
+} from '../domain/settings/settings-schema'
+import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
+import { createSnapshot } from '../domain/snapshot'
+import { previewEditorContext } from './context-preview-service'
+import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
+import { RunController } from './orchestration/run-controller'
+import { startReview } from './review-service'
+
+const API_KEY = 'sk-preview-secret-1'
+const NOTE_PATH = 'Articles/Draft.md'
+const NOTE_TEXT = 'Hello world. This draft needs work.'
+
+function makeBackend(overrides: Partial<ApiBackend> = {}): ApiBackend {
+    return apiBackendSchema.parse({
+        id: 'backend-1',
+        family: 'api',
+        kind: 'anthropic',
+        label: 'Claude',
+        apiKey: API_KEY,
+        defaultModel: 'claude-test-1',
+        ...overrides
+    })
+}
+
+function makeEditor(overrides: Record<string, unknown> = {}): EditorConfig {
+    return editorConfigSchema.parse({
+        id: 'editor-1',
+        name: 'Hater',
+        prompt: { text: 'Be harsh.', notePaths: ['Meta/Persona.md'] },
+        ...overrides
+    })
+}
+
+function makeSettings(overrides: Record<string, unknown> = {}): PluginSettingsV1 {
+    return pluginSettingsSchema.parse({
+        backends: [makeBackend()],
+        defaultBackend: { backendId: 'backend-1', model: '' },
+        editors: [makeEditor()],
+        voiceProfile: { text: 'Write plainly.', notePaths: [], followLinks: false },
+        ...overrides
+    })
+}
+
+class FakeVault implements VaultReader {
+    readonly notes = new Map<string, string>([
+        [NOTE_PATH, NOTE_TEXT],
+        ['Meta/Persona.md', 'Never praise.']
+    ])
+    readonly metadata = new Map<string, NoteMetadata>()
+    readonly links = new Map<string, string[]>()
+
+    async readNote(path: string): Promise<string | null> {
+        return this.notes.get(path) ?? null
+    }
+
+    resolveLink(): string | null {
+        return null
+    }
+
+    getOutgoingLinks(path: string): string[] {
+        return [...(this.links.get(path) ?? [])]
+    }
+
+    getNoteMetadata(path: string): NoteMetadata | null {
+        return this.metadata.get(path) ?? { tags: [], frontmatter: {} }
+    }
+
+    getNoteTypeIds(): readonly string[] {
+        return []
+    }
+}
+
+/**
+ * Captures the system prompt of the request a real review dispatch sends. The
+ * response body is irrelevant — the assertion is about what went OUT.
+ */
+function capturingFetch(sink: { prompt: string | null }): typeof fetch {
+    return ((_url: string, init?: RequestInit) => {
+        const raw = typeof init?.body === 'string' ? init.body : '{}'
+        const body = JSON.parse(raw) as Record<string, unknown>
+        sink.prompt = typeof body['system'] === 'string' ? body['system'] : null
+        return Promise.resolve(new Response('data: {"type":"message_stop"}\n\n', { status: 200 }))
+    }) as unknown as typeof fetch
+}
+
+describe('previewEditorContext', () => {
+    it('returns the prompt, the sections and the resolved backend', async () => {
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings: makeSettings(),
+            vault: new FakeVault(),
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        expect(result.preview.editorName).toBe('Hater')
+        expect(result.preview.notePath).toBe(NOTE_PATH)
+        expect(result.preview.systemPrompt).toContain('Write plainly.')
+        expect(result.preview.systemPrompt).toContain('Be harsh.')
+        expect(result.preview.systemPrompt).toContain(
+            '<context-note role="prompt-ref" path="Meta/Persona.md">'
+        )
+        expect(result.preview.sections.map((s) => s.kind)).toEqual([
+            'system-prompt',
+            'reviewed-note',
+            'prompt-ref'
+        ])
+        expect(result.preview.backendLabel).toBe('Claude (claude-test-1)')
+        expect(result.preview.backendIssue).toBeNull()
+    })
+
+    it('reads the note from the vault when the caller has no live buffer', async () => {
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings: makeSettings(),
+            vault: new FakeVault(),
+            notePath: NOTE_PATH
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        const note = result.preview.sections.find((s) => s.kind === 'reviewed-note')
+        expect(note?.sourceChars).toBe(NOTE_TEXT.length)
+    })
+
+    it('reports an unreadable note instead of previewing an empty one', async () => {
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings: makeSettings(),
+            vault: new FakeVault(),
+            notePath: 'Gone.md'
+        })
+        expect(result).toEqual({ status: 'note-unreadable', notePath: 'Gone.md' })
+    })
+
+    it('refuses an excluded note (Business Rules #7) instead of showing its text', async () => {
+        const vault = new FakeVault()
+        vault.metadata.set(NOTE_PATH, { tags: ['secret'], frontmatter: {} })
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings: makeSettings({ behavior: { excludedTags: ['secret'] } }),
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(result).toEqual({ status: 'excluded', notePath: NOTE_PATH })
+    })
+
+    it('refuses a rule-disabled note and names the rule (plan §4b)', async () => {
+        const settings = makeSettings({
+            rules: [
+                {
+                    id: 'rule-1',
+                    name: 'No AI here',
+                    match: { matchType: 'folder', value: 'Articles' },
+                    effect: 'disabled',
+                    defaultTarget: null
+                }
+            ]
+        })
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings,
+            vault: new FakeVault(),
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(result).toEqual({
+            status: 'rule-disabled',
+            notePath: NOTE_PATH,
+            ruleLabel: 'No AI here'
+        })
+    })
+
+    it('names the blocking reason when the editor has no usable backend', async () => {
+        const result = await previewEditorContext({
+            editor: makeEditor(),
+            settings: makeSettings({
+                backends: [makeBackend({ enabled: false })]
+            }),
+            vault: new FakeVault(),
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        // The prompt is still shown: the user asked what would be sent, and
+        // "nothing, because the backend is off" is the honest answer to give
+        // alongside it, not instead of it.
+        expect(result.preview.systemPrompt.length).toBeGreaterThan(0)
+        expect(result.preview.backendLabel).toBeNull()
+        expect(result.preview.backendIssue).toBe('backend-disabled')
+    })
+
+    it('previews the editor VALUE it is given, not the one in settings', async () => {
+        // The settings dialog previews an unsaved draft; this is that contract.
+        const draft = makeEditor({
+            name: 'Draft persona',
+            prompt: { text: 'UNSAVED', notePaths: [] }
+        })
+        const result = await previewEditorContext({
+            editor: draft,
+            settings: makeSettings(),
+            vault: new FakeVault(),
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+        expect(result.status).toBe('ready')
+        if (result.status !== 'ready') {
+            return
+        }
+        expect(result.preview.systemPrompt).toContain('UNSAVED')
+        expect(result.preview.systemPrompt).not.toContain('Be harsh.')
+    })
+})
+
+describe('preview assembly equals dispatch assembly', () => {
+    it('shows byte-for-byte the system prompt a review actually sends', async () => {
+        const settings = makeSettings()
+        const vault = new FakeVault()
+        const sink: { prompt: string | null } = { prompt: null }
+
+        const preview = await previewEditorContext({
+            editor: settings.editors[0]!,
+            settings,
+            vault,
+            notePath: NOTE_PATH,
+            noteText: NOTE_TEXT
+        })
+
+        const started = await startReview({
+            settings,
+            snapshot: createSnapshot({ filePath: NOTE_PATH, text: NOTE_TEXT }),
+            vault,
+            runController: new RunController(() => 4),
+            fetchImpl: capturingFetch(sink)
+        })
+        expect(started.status).toBe('started')
+        if (started.status === 'started') {
+            await started.run.settled
+        }
+
+        expect(preview.status).toBe('ready')
+        if (preview.status !== 'ready') {
+            return
+        }
+        expect(sink.prompt).not.toBeNull()
+        expect(preview.preview.systemPrompt).toBe(sink.prompt ?? '')
+    })
+})

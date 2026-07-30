@@ -6,7 +6,7 @@ import type { DocumentSnapshot } from '../domain/snapshot'
 import { hashText } from '../domain/snapshot'
 import { createApiEditorExecutor } from './backends/api-editor-backend'
 import { redactSecret } from './backends/providers'
-import { ExcludedTargetError, assembleContext } from './context/context-assembler'
+import { ExcludedTargetError } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { RunController } from './orchestration/run-controller'
@@ -19,7 +19,7 @@ import type {
     TransformTarget
 } from './orchestration/transform-run'
 import {
-    composeSystemPrompt,
+    buildEditorPrompt,
     countWords,
     isRequestedSelectionValid,
     resolveApiBackend,
@@ -262,15 +262,17 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
     // -- Assemble the persona context (same machinery as reviews) ------------
     let systemPrompt: string
     try {
-        const context = await assembleContext({
-            editor,
-            voiceProfile: settings.voiceProfile,
-            behavior,
-            vault,
-            notePath: snapshot.filePath,
-            noteText: snapshot.text
-        })
-        systemPrompt = composeSystemPrompt(context)
+        // Same entry point as reviews and threads: whatever the "what will be
+        // sent" preview shows for this editor is what an action sends too.
+        systemPrompt = (
+            await buildEditorPrompt({
+                editor,
+                settings,
+                vault,
+                notePath: snapshot.filePath,
+                noteText: snapshot.text
+            })
+        ).systemPrompt
     } catch (cause) {
         // Defense in depth: the upfront check already covered the target.
         if (cause instanceof ExcludedTargetError) {

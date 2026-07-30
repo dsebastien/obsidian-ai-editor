@@ -3,14 +3,14 @@ import type { ThreadBeginFailure } from '../domain/operations/thread'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createApiEditorExecutor } from './backends/api-editor-backend'
 import { redactSecret } from './backends/providers'
-import { ExcludedTargetError, assembleContext } from './context/context-assembler'
+import { ExcludedTargetError } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { FindingId } from '../domain/ids'
 import type { RunController, ThreadTurnResolution } from './orchestration/run-controller'
 import { noteRuleOutcome } from './rules/note-rules'
 import type { EditorSkip } from './review-service'
-import { composeSystemPrompt, resolveApiBackend, reviewTimeoutMs } from './review-service'
+import { buildEditorPrompt, resolveApiBackend, reviewTimeoutMs } from './review-service'
 
 /**
  * Push-back entry point: turns a user message on one finding into a
@@ -132,15 +132,17 @@ export async function startThreadTurn(input: StartThreadTurnServiceInput): Promi
     // -- Assemble the persona context (same machinery as reviews) ------------
     let systemPrompt: string
     try {
-        const context = await assembleContext({
-            editor,
-            voiceProfile: settings.voiceProfile,
-            behavior,
-            vault,
-            notePath,
-            noteText: input.currentText
-        })
-        systemPrompt = composeSystemPrompt(context)
+        // Same entry point as reviews and actions (`buildEditorPrompt`): the
+        // persona a push-back argues with is the one the preview showed.
+        systemPrompt = (
+            await buildEditorPrompt({
+                editor,
+                settings,
+                vault,
+                notePath,
+                noteText: input.currentText
+            })
+        ).systemPrompt
     } catch (cause) {
         // Defense in depth: the upfront check already covered the target.
         if (cause instanceof ExcludedTargetError) {

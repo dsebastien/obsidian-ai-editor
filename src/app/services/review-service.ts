@@ -353,6 +353,68 @@ export function augmentSystemPrompt(basePrompt: string, instruction: string): st
 }
 
 // ---------------------------------------------------------------------------
+// The one prompt-build entry point
+// ---------------------------------------------------------------------------
+
+export interface BuildEditorPromptInput {
+    readonly editor: EditorConfig
+    readonly settings: PluginSettingsV1
+    readonly vault: VaultReader
+    /** Vault-relative path of the note the operation targets. */
+    readonly notePath: string
+    /** Its text — the live editor buffer where one exists, else vault state. */
+    readonly noteText: string
+    /**
+     * Per-run instruction text (ask-an-editor, a bound review verb). Appended
+     * last via `augmentSystemPrompt`; blank or absent leaves the prompt as
+     * assembled.
+     */
+    readonly instructionText?: string
+}
+
+export interface EditorPrompt {
+    /** Assembly detail: attachments, sections, budget report. */
+    readonly context: AssembledContext
+    /**
+     * The exact string handed to the provider adapter as the system prompt —
+     * attachments serialized, instruction appended. What the preview shows and
+     * what the backend receives are this one value.
+     */
+    readonly systemPrompt: string
+}
+
+/**
+ * Assembles one editor's context and composes its final system prompt.
+ *
+ * THE single entry point for "what will this editor be sent": every dispatch
+ * path (review, transform/generate, push-back thread) and the "what will be
+ * sent" preview call this and nothing else. That is the whole reason it
+ * exists — a preview that re-derived the prompt would drift from the request,
+ * and a trust surface that drifts is worse than none. Callers that need the
+ * budget report read `context`; callers that only send read `systemPrompt`.
+ *
+ * Throws `ExcludedTargetError` when the target note is excluded (Business
+ * Rules #7) — every caller already turns that into its own typed refusal.
+ */
+export async function buildEditorPrompt(input: BuildEditorPromptInput): Promise<EditorPrompt> {
+    const context = await assembleContext({
+        editor: input.editor,
+        voiceProfile: input.settings.voiceProfile,
+        behavior: input.settings.behavior,
+        vault: input.vault,
+        notePath: input.notePath,
+        noteText: input.noteText
+    })
+    const composed = composeSystemPrompt(context)
+    const instructionText = input.instructionText ?? ''
+    return {
+        context,
+        systemPrompt:
+            instructionText.length > 0 ? augmentSystemPrompt(composed, instructionText) : composed
+    }
+}
+
+// ---------------------------------------------------------------------------
 // API editor specs
 // ---------------------------------------------------------------------------
 
@@ -542,24 +604,23 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     const editorSpecs: RunEditorSpec[] = []
     try {
         for (const participant of participants) {
-            const context = await assembleContext({
+            const built = await buildEditorPrompt({
                 editor: participant.editor,
-                voiceProfile: settings.voiceProfile,
-                behavior,
+                settings,
                 vault,
                 notePath: snapshot.filePath,
-                noteText: snapshot.text
+                noteText: snapshot.text,
+                instructionText:
+                    instruction && instruction.editorIds.includes(participant.editor.id)
+                        ? instruction.text
+                        : undefined
             })
-            const composedPrompt = composeSystemPrompt(context)
             editorSpecs.push(
                 createEditorSpec({
                     editor: participant.editor,
                     backend: participant.backend,
                     model: participant.model,
-                    systemPrompt:
-                        instruction && instruction.editorIds.includes(participant.editor.id)
-                            ? augmentSystemPrompt(composedPrompt, instruction.text)
-                            : composedPrompt,
+                    systemPrompt: built.systemPrompt,
                     timeoutMs: reviewTimeoutMs(behavior),
                     fetchImpl
                 })
