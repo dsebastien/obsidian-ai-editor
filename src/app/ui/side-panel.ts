@@ -6,20 +6,28 @@ import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type { EditorRunState, RunHandle } from '../services/orchestration/run-controller'
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
+import type { ReviewGate } from '../services/reviewability'
+import { panelReviewButtonState } from './panel-review-button'
 import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
 
 /**
- * Side panel (`ItemView` workspace leaf): the list view over the active
- * file's review run — per-editor status sections, findings (anchored ones
- * click through to the editor span, unanchored ones grouped separately),
- * summaries/verdicts, and the skip report.
+ * Side panel (`ItemView` workspace leaf): a header bound to the panel's note
+ * (name + Review button, issue #16) over the list view of that note's review
+ * run — per-editor status sections, findings (anchored ones click through to
+ * the editor span, unanchored ones grouped separately), summaries/verdicts,
+ * and the skip report.
  *
  * The view is deliberately dumb: the `ReviewController` computes a
- * `SidePanelBinding` (run handle + display metadata + reveal callback) and
- * pushes it via `setBinding`; the panel subscribes to the run handle itself
- * for live updates while bound. All DOM goes through `createEl`/`createDiv`
- * (never `innerHTML`) on `contentEl`, so popout placement is safe.
+ * `SidePanelState` (the bound note + its reviewability answer, plus the run
+ * binding when there is a run) and pushes it via `setPanelState`; the panel
+ * subscribes to the run handle itself for live updates while bound. All DOM
+ * goes through `createEl`/`createDiv` (never `innerHTML`) on `contentEl`, so
+ * popout placement is safe.
+ *
+ * The header exists even with no run — that is the whole point of the Review
+ * button: a note with no findings yet is exactly when the user wants to start
+ * one from here.
  */
 
 export const REVIEW_PANEL_VIEW_TYPE = 'ai-editor-review'
@@ -32,7 +40,6 @@ export interface SidePanelEditorInfo {
 
 export interface SidePanelBinding {
     readonly filePath: string
-    readonly fileName: string
     readonly run: RunHandle
     readonly editors: readonly SidePanelEditorInfo[]
     readonly skips: readonly EditorSkip[]
@@ -49,8 +56,40 @@ export interface SidePanelBinding {
     readonly dismissAll: (editorId: string) => void
 }
 
-/** Pulls the current binding when the panel (re)opens or refreshes itself. */
-export type SidePanelBindingProvider = () => SidePanelBinding | null
+/**
+ * The panel's bound note and what can be done with it (issue #16). Present
+ * whether or not a run exists — a note that was never reviewed still needs a
+ * Review button.
+ */
+export interface PanelReviewTarget {
+    /** File name of the bound note; null when the panel is bound to nothing. */
+    readonly noteName: string | null
+    /** Shared reviewability answer for the bound note; null when unbound. */
+    readonly gate: ReviewGate | null
+    /**
+     * Whether a review run (or a per-editor retry) is in flight for the bound
+     * note. A THUNK, not a value: the panel re-renders on run notifications
+     * without a fresh push from the controller, so a captured boolean would
+     * leave a spinner turning after the run settled.
+     */
+    readonly isBusy: () => boolean
+    /**
+     * Dispatches the shared whole-note review for the bound note. Refuses on
+     * its own terms (Notice) when the button's state and reality disagree —
+     * the state is derived at render time, so a run that started a moment ago
+     * must not be replaced by a click on a stale-looking button.
+     */
+    readonly startReview: () => void
+}
+
+/** Everything the panel renders: the bound note's header + its run, if any. */
+export interface SidePanelState {
+    readonly review: PanelReviewTarget
+    readonly binding: SidePanelBinding | null
+}
+
+/** Pulls the current state when the panel (re)opens or refreshes itself. */
+export type SidePanelStateProvider = () => SidePanelState
 
 const SEVERITY_ICONS: Record<Severity, string> = {
     info: 'info',
@@ -102,11 +141,11 @@ function verdictLabel(verdict: NonNullable<EditorRunState['verdict']>): string {
 }
 
 export class ReviewSidePanelView extends ItemView {
-    private readonly provider: SidePanelBindingProvider
-    private binding: SidePanelBinding | null = null
+    private readonly provider: SidePanelStateProvider
+    private panelState: SidePanelState | null = null
     private unsubscribe: (() => void) | null = null
 
-    constructor(leaf: WorkspaceLeaf, provider: SidePanelBindingProvider) {
+    constructor(leaf: WorkspaceLeaf, provider: SidePanelStateProvider) {
         super(leaf)
         this.provider = provider
         this.navigation = false
@@ -125,28 +164,31 @@ export class ReviewSidePanelView extends ItemView {
     }
 
     override onOpen(): Promise<void> {
-        this.setBinding(this.provider())
+        this.setPanelState(this.provider())
         return Promise.resolve()
     }
 
     override onClose(): Promise<void> {
         this.unsubscribe?.()
         this.unsubscribe = null
-        this.binding = null
+        this.panelState = null
         return Promise.resolve()
     }
 
     /**
-     * Binds the panel to a run (or clears it). Re-subscribes only when the
-     * run handle actually changed, so streaming updates keep flowing while
-     * the controller pushes refreshed bindings for the same run.
+     * Points the panel at a note and (when there is one) its run.
+     * Re-subscribes only when the run handle actually changed, so streaming
+     * updates keep flowing while the controller pushes refreshed states for
+     * the same run.
      */
-    setBinding(binding: SidePanelBinding | null): void {
-        if (this.binding?.run !== binding?.run) {
+    setPanelState(state: SidePanelState): void {
+        const previous = this.panelState?.binding?.run ?? null
+        const next = state.binding?.run ?? null
+        if (previous !== next) {
             this.unsubscribe?.()
-            this.unsubscribe = binding ? binding.run.subscribe(() => this.render()) : null
+            this.unsubscribe = next === null ? null : next.subscribe(() => this.render())
         }
-        this.binding = binding
+        this.panelState = state
         this.render()
     }
 
@@ -171,24 +213,79 @@ export class ReviewSidePanelView extends ItemView {
         contentEl.empty()
         const root = contentEl.createDiv({ cls: 'ai-editor-panel' })
 
-        const binding = this.binding
+        const state = this.panelState
+        if (!state) {
+            return
+        }
+        this.renderHeader(root, state)
+
+        const binding = state.binding
         if (!binding) {
             root.createDiv({
                 cls: 'ai-editor-panel-empty',
-                text: 'No review yet. Open a note and run “Review current note”.'
+                text:
+                    state.review.noteName === null
+                        ? 'No review yet. Open a note, then select Review.'
+                        : 'No review yet. Select Review to start one.'
             })
             return
         }
-
-        root.createDiv({ cls: 'ai-editor-panel-file', text: binding.fileName })
 
         this.renderSeverityFilter(root, binding)
         this.renderSkips(root, binding.skips)
 
         const colorById = new Map(binding.editors.map((editor) => [editor.id, editor.color]))
-        for (const state of binding.run.getEditorStates()) {
-            this.renderEditorSection(root, binding, state, colorById.get(state.editorId) ?? '')
+        for (const editorState of binding.run.getEditorStates()) {
+            this.renderEditorSection(
+                root,
+                binding,
+                editorState,
+                colorById.get(editorState.editorId) ?? ''
+            )
         }
+    }
+
+    /**
+     * Header: the bound note's name plus the Review button (issue #16).
+     *
+     * The button state is derived at RENDER time from the live `isBusy()`, so
+     * the run subscription's re-renders animate it and stop animating it
+     * without any push from the controller. It is a real `<button>` — keyboard
+     * reachable, `disabled` when refused (so Enter/Space do nothing at all
+     * rather than dispatching into a refusal), with the bound note in its
+     * accessible name.
+     */
+    private renderHeader(root: HTMLElement, state: SidePanelState): void {
+        const header = root.createDiv({ cls: 'ai-editor-panel-header' })
+        header.createDiv({
+            cls: 'ai-editor-panel-file',
+            text: state.review.noteName ?? 'No note'
+        })
+        const vm = panelReviewButtonState({
+            noteName: state.review.noteName,
+            gate: state.review.gate,
+            busy: state.review.isBusy()
+        })
+        const button = header.createEl('button', {
+            cls: 'ai-editor-panel-review-button',
+            attr: { type: 'button' }
+        })
+        if (vm.busy) {
+            // Purely decorative: the label and the accessible name already say
+            // "Reviewing…", so the spinner carries no information of its own
+            // and must not be announced.
+            button
+                .createSpan({ cls: 'ai-editor-panel-review-spinner' })
+                .setAttribute('aria-hidden', 'true')
+        }
+        button.createSpan({ text: vm.text })
+        button.setAttribute('aria-label', vm.ariaLabel)
+        button.title = vm.tooltip
+        button.disabled = vm.disabled
+        button.toggleClass('is-busy', vm.busy)
+        button.addEventListener('click', () => {
+            state.review.startReview()
+        })
     }
 
     /**

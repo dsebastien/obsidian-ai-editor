@@ -19,6 +19,7 @@ import type {
     NavigationTarget,
     TriageMemory
 } from '../commands/finding-navigation'
+import { canCancelRun } from '../commands/command-gates'
 import { TriageCursorStore } from '../commands/triage-cursor'
 import {
     bulkAcceptNotice,
@@ -40,8 +41,10 @@ import type { ResolvedAction } from '../services/actions/action-resolution'
 import {
     isPluginEnabledForNote,
     isReviewable,
-    reviewCapableEditors
+    reviewCapableEditors,
+    reviewGate
 } from '../services/reviewability'
+import type { ReviewGate } from '../services/reviewability'
 import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type {
     EditorRunStatus,
@@ -92,7 +95,7 @@ import { ObsidianVaultReader } from './obsidian-vault-reader'
 import { SeverityFilterStore, passesSeverityFilter, severityFilterNotice } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
-import type { SidePanelBinding } from './side-panel'
+import type { SidePanelBinding, SidePanelState } from './side-panel'
 
 /**
  * Per-view glue between the review pipeline and the Obsidian editor UI:
@@ -1755,14 +1758,89 @@ export class ReviewController {
         }
     }
 
-    /** Current side-panel binding for the (last) active markdown file. */
-    getPanelBinding(): SidePanelBinding | null {
+    /**
+     * Everything the side panel renders for the (last) active markdown file:
+     * its Review target (issue #16) plus the run binding when there is a run.
+     *
+     * The target exists even when the binding does not — no note open, note
+     * never reviewed, note kill-switched — because the button has something to
+     * say in every one of those cases and the panel would otherwise be a blank
+     * leaf. The gate is the SHARED `reviewGate`, so the tooltip cannot claim a
+     * reason `startReview` would not give.
+     */
+    getPanelState(): SidePanelState {
+        const path = this.resolveActiveFilePath()
+        return {
+            review: {
+                noteName: path === null ? null : (path.split('/').pop() ?? path),
+                gate: path === null ? null : this.reviewGateFor(path),
+                // Read live at render time: the panel re-renders on run
+                // notifications, so a captured boolean would leave the spinner
+                // turning after the run settled.
+                isBusy: (): boolean => this.hasRunInFlight(path),
+                startReview: (): void => {
+                    this.startPanelReview()
+                }
+            },
+            binding: this.getPanelBinding()
+        }
+    }
+
+    /** The shared reviewability answer for a note, reasons included. */
+    private reviewGateFor(path: string): ReviewGate {
+        return reviewGate(path, this.vaultReader, this.deps.getSettings())
+    }
+
+    /**
+     * Whether a review run or retry is in flight for a file. Same predicate
+     * the `Cancel review` command gates on (`canCancelRun`) — the panel button
+     * refuses exactly when cancelling is possible, which is the definition of
+     * "busy" the issue asks for, expressed once.
+     *
+     * A transform/generate run deliberately does NOT count: `startReview`
+     * never replaces a transform run, so a review dispatched alongside one
+     * destroys nothing (the shared concurrency gate just queues the request).
+     */
+    private hasRunInFlight(path: string | null): boolean {
+        const run = path === null ? null : this.deps.runController.getRun(path)
+        return canCancelRun({ hasRun: run !== null, settled: run?.isSettled() ?? true })
+    }
+
+    /**
+     * Side-panel Review button dispatch (issue #16): the shared whole-note
+     * review path, via `reviewFile` so the note is opened/revealed first —
+     * findings are highlights in the text, and a review whose results the user
+     * cannot see is a bill for nothing.
+     *
+     * REFUSES while a run is in flight instead of cancel-replacing it
+     * (`RunController.startRun` cancels the previous run for the same file):
+     * the panel is displaying that run's findings, and destroying them from
+     * the surface that shows them is never what a click meant. The check is
+     * re-done here rather than trusted from the rendered button state, because
+     * a run may have started between the last render and the click.
+     */
+    private startPanelReview(): void {
+        const path = this.resolveActiveFilePath()
+        if (path === null || this.disposed) {
+            new Notice('Open a note to review it.')
+            return
+        }
+        if (this.hasRunInFlight(path)) {
+            new Notice('A review is already running for this note — cancel it to start over.')
+            return
+        }
+        void this.reviewFile(path)
+    }
+
+    /** Current run binding for the (last) active markdown file, if any. */
+    private getPanelBinding(): SidePanelBinding | null {
         const path = this.resolveActiveFilePath()
         if (!path) {
             return null
         }
-        // Kill switch / exclusion: the panel is chrome like the rail, so it
-        // shows the file's empty state rather than a run the user cannot act on.
+        // Kill switch / exclusion: the run list is chrome like the rail, so it
+        // gives way to the file's empty state rather than showing a run the
+        // user cannot act on. The header's button stays, and says why.
         if (!this.isPluginEnabledFor(path)) {
             return null
         }
@@ -1773,7 +1851,6 @@ export class ReviewController {
         const colors = this.editorColors()
         return {
             filePath: path,
-            fileName: path.split('/').pop() ?? path,
             run,
             editors: run.getEditorStates().map((state) => ({
                 id: state.editorId,
@@ -2711,11 +2788,11 @@ export class ReviewController {
     }
 
     private updatePanels(): void {
-        const binding = this.getPanelBinding()
+        const state = this.getPanelState()
         for (const leaf of this.deps.app.workspace.getLeavesOfType(REVIEW_PANEL_VIEW_TYPE)) {
             const view = leaf.view
             if (view instanceof ReviewSidePanelView) {
-                view.setBinding(binding)
+                view.setPanelState(state)
             }
         }
     }

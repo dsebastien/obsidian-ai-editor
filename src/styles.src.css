@@ -982,9 +982,59 @@
     color: var(--text-muted);
 }
 
+/* Header row: bound note name + the Review button (issue #16). The name
+   truncates rather than wrapping, so the button never moves as notes change. */
+.ai-editor-panel-header {
+    @apply flex items-center gap-2;
+}
+
 .ai-editor-panel-file {
-    @apply text-sm font-medium;
+    @apply min-w-0 flex-1 truncate text-sm font-medium;
     color: var(--text-normal);
+}
+
+.ai-editor-panel-review-button {
+    @apply flex shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    color: var(--text-normal);
+    box-shadow: none;
+}
+
+.ai-editor-panel-review-button:hover:not(:disabled),
+.ai-editor-panel-review-button:focus-visible {
+    background-color: var(--interactive-hover);
+}
+
+/* Refused (no note, excluded, kill-switched, no editor) or busy: the tooltip
+   carries the reason, so the visual only has to stop inviting the click. */
+.ai-editor-panel-review-button:disabled {
+    @apply cursor-default opacity-60;
+}
+
+.ai-editor-panel-review-spinner {
+    @apply shrink-0 rounded-full;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--background-modifier-border);
+    border-top-color: var(--text-accent);
+    animation: ai-editor-spin 0.8s linear infinite;
+}
+
+@keyframes ai-editor-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* WCAG 2.2.2/2.3.3: a review can legitimately run for minutes (slow local
+   models), so the spinner would rotate the whole time. Motion-sensitive users
+   get a static ring — the button's own label ("Reviewing…") is what actually
+   reports the state, the spinner only reinforces it. */
+@media (prefers-reduced-motion: reduce) {
+    .ai-editor-panel-review-spinner {
+        animation: none;
+    }
 }
 
 .ai-editor-panel-skips {

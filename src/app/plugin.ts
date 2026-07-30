@@ -197,7 +197,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         const doRegister = (): void => {
             this.registerView(
                 REVIEW_PANEL_VIEW_TYPE,
-                (leaf) => new ReviewSidePanelView(leaf, () => reviewController.getPanelBinding())
+                (leaf) => new ReviewSidePanelView(leaf, () => reviewController.getPanelState())
             )
         }
         try {
