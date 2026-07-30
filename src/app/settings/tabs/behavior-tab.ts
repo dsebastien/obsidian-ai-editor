@@ -195,7 +195,7 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
         })
     new Setting(containerEl)
         .setName('Strip frontmatter')
-        .setDesc('Remove frontmatter from the text sent to backends.')
+        .setDesc('Remove frontmatter from the note and from every attached note before sending.')
         .addToggle((toggle) => {
             toggle.setValue(settings.behavior.stripFrontmatter)
             toggle.onChange((value) => {

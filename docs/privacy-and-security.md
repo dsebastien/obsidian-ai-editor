@@ -45,7 +45,7 @@ For an API backend, one request carries:
 
 Nothing else. No vault listing, no file names beyond the ones attached, no metadata sweep.
 
-**Strip frontmatter** (Behavior tab, off by default) removes the frontmatter from the text sent to backends.
+**Strip frontmatter** (Behavior tab, off by default) removes the leading frontmatter block from the reviewed note **and** from every attached note, in the request payload and in what the preview reports. Nothing else in the text is touched. When your selection is inside the frontmatter — you asked an action to rewrite the frontmatter itself — the block is sent, because it is the thing you pointed at.
 
 Run **Preview what will be sent** to see the exact assembly for one editor and one note — total characters against the budget, one row per section with its size and whether the budget truncated or dropped it, and the verbatim system prompt with a copy button. It sends nothing. It assembles through the same code a real request uses, so it cannot drift from what would actually be sent.
 

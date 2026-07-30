@@ -40,7 +40,7 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 | **Excluded folders**            | list   | empty   | Notes under these folders never leave the vault     |
 | **Excluded tags**               | list   | empty   | Notes carrying these tags never leave the vault     |
 | **Respect frontmatter opt-out** | toggle | `on`    | Notes with `ai_editor: false` are excluded entirely |
-| **Strip frontmatter**           | toggle | `off`   | Remove frontmatter from the text sent to backends   |
+| **Strip frontmatter**           | toggle | `off`   | Remove frontmatter from every note sent to backends |
 
 Up to 200 folders and 200 tags.
 
@@ -48,7 +48,7 @@ Up to 200 folders and 200 tags.
 
 | Setting                        | Type     | Default | What it does                                                      |
 | ------------------------------ | -------- | ------- | ----------------------------------------------------------------- |
-| **Response language override** | text     | empty   | Empty means answer in each note's own language                    |
+| **Response language override** | text     | empty   | Answer in this language; empty means each note's own language     |
 | **Default comment editor**     | dropdown | None    | Editor handling margin comments unless rerouted per comment       |
 | **Margin comment column**      | toggle   | `on`    | Show margin comments beside the text; off keeps them in the panel |
 

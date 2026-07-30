@@ -1,4 +1,5 @@
 import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
+import { stripFrontmatterBlock } from '../../domain/frontmatter'
 import { hasLaunchConsent } from '../../domain/settings/cli-consent'
 import type {
     BackendInstance,
@@ -18,8 +19,13 @@ import { redactSecret } from './providers'
  * (reviews, panel aggregation, transforms, threads, health checks) asks for an
  * executor here and gets one back; none of them branches on `family`, so a
  * surface cannot accidentally support one family and not the other, and a
- * future family cannot be half-wired. The three things that legitimately
- * differ between families are decided here, once:
+ * future family cannot be half-wired. Being the one seam every request crosses
+ * is also why the payload privacy policy lives here (`applyFrontmatterPolicy`):
+ * a guarantee about what leaves the vault must not depend on each dispatch
+ * path remembering it.
+ *
+ * The four things that legitimately differ between families are decided here,
+ * once:
  *
  * - **Which executor.** `createApiEditorExecutor` and `createCliEditorExecutor`
  *   have deliberately identical signatures and the same exactly-one-terminal-
@@ -110,6 +116,75 @@ export function resolvedBackendLabel(backend: BackendInstance, model: string): s
     return model.length > 0 ? `${backend.label} (${model})` : `${backend.label} (tool default)`
 }
 
+/**
+ * Applies `behavior.stripFrontmatter` to the request payload.
+ *
+ * The seam is here, at the last point before a request becomes bytes on a wire
+ * or on a pipe, because EVERY dispatch path in the plugin — review, panel
+ * aggregation, transform, insert-at, thread, background comment, CLI, daemon,
+ * health check — asks `createBackendExecutor` for its executor. Stripping at
+ * each construction site would make the guarantee a habit; stripping here makes
+ * it structural, and a future request kind that carries document text gets it
+ * by adding one case below rather than by remembering.
+ *
+ * Three request kinds carry the document: `review`, `transform-selection` and
+ * `insert-at`. All three also carry OFFSETS into that text, so removing a
+ * prefix means shifting them by the same number — the strip only ever removes a
+ * leading block, so a single subtraction is exact.
+ *
+ * When an offset points INSIDE the frontmatter, the request is left untouched
+ * instead of being clamped: the user selected the frontmatter (or asked to
+ * insert above it), so the frontmatter IS the target, and sending a clamped
+ * empty span would silently transform the wrong thing. Nothing is sent that the
+ * user did not point at.
+ *
+ * Findings are unaffected: anchoring matches quotes against the run's own
+ * snapshot text (full, unstripped), so a quote from the body still resolves to
+ * its real position in the document.
+ */
+export function applyFrontmatterPolicy(
+    request: OperationRequest,
+    behavior: BehaviorSettings
+): OperationRequest {
+    if (!behavior.stripFrontmatter) {
+        return request
+    }
+    switch (request.kind) {
+        case 'review':
+        case 'transform-selection':
+        case 'insert-at':
+            break
+        default:
+            return request // carries no document text
+    }
+    const { text, removedChars } = stripFrontmatterBlock(request.text)
+    if (removedChars === 0) {
+        return request
+    }
+    if (request.kind === 'insert-at') {
+        return request.position < removedChars
+            ? request
+            : { ...request, text, position: request.position - removedChars }
+    }
+    const selection = request.selection
+    if (selection === undefined) {
+        return { ...request, text }
+    }
+    if (selection.from < removedChars) {
+        return request
+    }
+    return {
+        ...request,
+        text,
+        selection: { from: selection.from - removedChars, to: selection.to - removedChars }
+    }
+}
+
+/** Wraps an executor so every request passes the frontmatter policy. */
+function withRequestPolicy(execute: BackendExecutor, behavior: BehaviorSettings): BackendExecutor {
+    return (request, signal) => execute(applyFrontmatterPolicy(request, behavior), signal)
+}
+
 /** Builds the executor + redaction pair for one resolved backend. */
 export function createBackendExecutor(input: CreateBackendExecutorInput): ResolvedBackendExecutor {
     const { backend, model, systemPrompt, behavior } = input
@@ -127,23 +202,29 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
             // and pretending otherwise would suggest a protection that is not
             // there.
             redactError: (message: string): string => message,
-            execute: createCliEditorExecutor({
-                backendConfig: backend,
-                model,
-                systemPrompt,
-                timeoutMs
-            })
+            execute: withRequestPolicy(
+                createCliEditorExecutor({
+                    backendConfig: backend,
+                    model,
+                    systemPrompt,
+                    timeoutMs
+                }),
+                behavior
+            )
         }
     }
     return {
         redactError: (message: string): string => redactSecret(message, backend.apiKey),
-        execute: createApiEditorExecutor({
-            backendConfig: backend,
-            model,
-            systemPrompt,
-            timeoutMs,
-            fetchImpl: input.fetchImpl
-        })
+        execute: withRequestPolicy(
+            createApiEditorExecutor({
+                backendConfig: backend,
+                model,
+                systemPrompt,
+                timeoutMs,
+                fetchImpl: input.fetchImpl
+            }),
+            behavior
+        )
     }
 }
 

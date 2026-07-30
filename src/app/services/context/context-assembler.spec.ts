@@ -938,3 +938,52 @@ describe('assembleContext — a pathological link graph stays bounded', () => {
         expect(result.sections).toHaveLength(2 + 20)
     })
 })
+
+describe('assembleContext — strip frontmatter (privacy control)', () => {
+    const WITH_FM = '---\nclient: ACME\nlifetime_value: 4200\n---\n# Draft\n\nBody sentence.'
+
+    test('leaves frontmatter in place when the setting is off (default)', async () => {
+        const result = await assembleContext({
+            editor: editor({ prompt: { text: 'PERSONA', notePaths: ['Refs/Style.md'] } }),
+            voiceProfile: voice(),
+            behavior: behavior(),
+            vault: vaultOf({ 'Refs/Style.md': { content: '---\nsecret: yes\n---\nStyle.' } }),
+            notePath: NOTE_PATH,
+            noteText: WITH_FM
+        })
+        expect(result.attachments[0]?.content).toContain('secret: yes')
+        expect(result.sections[1]?.sourceChars).toBe(WITH_FM.length)
+    })
+
+    test('strips the block from the note AND every attachment when on', async () => {
+        const result = await assembleContext({
+            editor: editor({ prompt: { text: 'PERSONA', notePaths: ['Refs/Style.md'] } }),
+            voiceProfile: voice(),
+            behavior: behavior({ stripFrontmatter: true }),
+            vault: vaultOf({ 'Refs/Style.md': { content: '---\nsecret: yes\n---\nStyle.' } }),
+            notePath: NOTE_PATH,
+            noteText: WITH_FM
+        })
+        const attachment = result.attachments[0]
+        expect(attachment?.content).toBe('Style.')
+        expect(attachment?.content).not.toContain('---')
+        expect(result.systemPrompt).not.toContain('secret')
+        // The reviewed note's budget row reports the REDUCED size, so the
+        // "what will be sent" preview cannot contradict the setting.
+        expect(result.sections[1]?.sourceChars).toBe('# Draft\n\nBody sentence.'.length)
+        expect(result.sections[1]?.sentChars).toBe('# Draft\n\nBody sentence.'.length)
+    })
+
+    test('is a no-op on a note without frontmatter', async () => {
+        const plain = '# Draft\n\nBody.'
+        const result = await assembleContext({
+            editor: editor(),
+            voiceProfile: voice(),
+            behavior: behavior({ stripFrontmatter: true }),
+            vault: vaultOf({}),
+            notePath: NOTE_PATH,
+            noteText: plain
+        })
+        expect(result.sections[1]?.sourceChars).toBe(plain.length)
+    })
+})

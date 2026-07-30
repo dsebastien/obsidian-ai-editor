@@ -9,6 +9,7 @@ import {
     type CliBackend
 } from '../../domain/settings/settings-schema'
 import {
+    applyFrontmatterPolicy,
     backendTimeoutMs,
     createBackendExecutor,
     resolvedBackendLabel,
@@ -202,5 +203,106 @@ describe('createBackendExecutor', () => {
                 error: { code: 'cancelled', message: 'Run cancelled' }
             }
         ])
+    })
+})
+
+describe('applyFrontmatterPolicy', () => {
+    const off = behavior
+    const on = { ...behavior, stripFrontmatter: true }
+    const FM = '---\nclient: ACME\n---\n'
+    const BODY = 'A sentence to review.'
+
+    function review(overrides: Partial<OperationRequest> = {}): OperationRequest {
+        return { ...operation(), text: `${FM}${BODY}`, ...overrides } as OperationRequest
+    }
+
+    it('is inert when the setting is off', () => {
+        const request = review()
+        expect(applyFrontmatterPolicy(request, off)).toBe(request)
+    })
+
+    it('removes the block from a whole-note review', () => {
+        const result = applyFrontmatterPolicy(review(), on)
+        expect(result.kind === 'review' && result.text).toBe(BODY)
+    })
+
+    it('is inert on a request kind that carries no document text', () => {
+        const request: OperationRequest = {
+            contractVersion: CONTRACT_VERSION,
+            runId: 'run-1',
+            snapshotHash: 'hash-1',
+            kind: 'thread-turn',
+            findingId: 'f-1',
+            quote: 'q',
+            critique: 'c',
+            history: [],
+            message: 'why?'
+        }
+        expect(applyFrontmatterPolicy(request, on)).toBe(request)
+    })
+
+    it('shifts a selection so it still points at the same span', () => {
+        const from = FM.length + 2
+        const to = FM.length + 10
+        const result = applyFrontmatterPolicy(review({ selection: { from, to } }), on)
+        expect(result.kind).toBe('review')
+        if (result.kind !== 'review') {
+            return
+        }
+        expect(result.selection).toEqual({ from: 2, to: 10 })
+        expect(result.text.slice(2, 10)).toBe(`${FM}${BODY}`.slice(from, to))
+    })
+
+    it('shifts an insert-at position', () => {
+        const request: OperationRequest = {
+            contractVersion: CONTRACT_VERSION,
+            runId: 'run-1',
+            snapshotHash: 'hash-1',
+            kind: 'insert-at',
+            text: `${FM}${BODY}`,
+            position: FM.length + 5
+        }
+        const result = applyFrontmatterPolicy(request, on)
+        expect(result.kind === 'insert-at' && result.position).toBe(5)
+    })
+
+    it('sends the frontmatter when the target span is inside it', () => {
+        // The user selected the frontmatter and asked an action to rewrite it:
+        // clamping to an empty span would transform the wrong thing silently.
+        const request = review({ selection: { from: 4, to: 16 } })
+        expect(applyFrontmatterPolicy(request, on)).toBe(request)
+    })
+
+    it('leaves a note without frontmatter identical', () => {
+        const request = review({ text: BODY })
+        expect(applyFrontmatterPolicy(request, on)).toBe(request)
+    })
+})
+
+describe('createBackendExecutor — request policy', () => {
+    it('strips frontmatter from the payload the transport actually sends', async () => {
+        const bodies: string[] = []
+        const fetchImpl = ((_url: string | URL, init?: RequestInit) => {
+            bodies.push(typeof init?.body === 'string' ? init.body : '')
+            return Promise.resolve(new Response('{}', { status: 200 }))
+        }) as unknown as typeof fetch
+        const executor = createBackendExecutor({
+            backend: apiBackend(),
+            model: 'claude-test-1',
+            systemPrompt: 'You are an editor.',
+            behavior: { ...behavior, stripFrontmatter: true },
+            fetchImpl
+        })
+        const request: OperationRequest = {
+            ...operation(),
+            kind: 'review',
+            text: '---\nclient: ACME\n---\nBody sentence.'
+        }
+        for await (const _event of executor.execute(request, new AbortController().signal)) {
+            void _event
+        }
+        expect(bodies).toHaveLength(1)
+        expect(bodies[0]).toContain('Body sentence.')
+        expect(bodies[0]).not.toContain('ACME')
     })
 })

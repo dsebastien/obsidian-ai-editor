@@ -3,6 +3,7 @@ import type {
     EditorConfig,
     PromptSource
 } from '../../domain/settings/settings-schema'
+import { stripFrontmatterBlock } from '../../domain/frontmatter'
 import {
     allocateAttachments,
     sectionKindLabel,
@@ -124,6 +125,11 @@ export class ExcludedTargetError extends Error {
  * the rule too). Missing notes and unresolvable wikilinks are skipped
  * silently.
  *
+ * Frontmatter: with `behavior.stripFrontmatter` on, the leading frontmatter
+ * block is removed from the reviewed note AND from every attachment before
+ * either is measured or serialized, so the budget report and the preview
+ * describe the reduced request rather than the file on disk.
+ *
  * Budget: `behavior.contextBudgetChars` covers system prompt + note text +
  * attachments, spent in the priority order documented in
  * `context-budget.ts` — the system prompt and the reviewed note are never
@@ -133,7 +139,18 @@ export class ExcludedTargetError extends Error {
  * silently.
  */
 export async function assembleContext(input: AssembleContextInput): Promise<AssembledContext> {
-    const { editor, voiceProfile, behavior, vault, notePath, noteText } = input
+    const { editor, voiceProfile, behavior, vault, notePath } = input
+    // Privacy control (`behavior.stripFrontmatter`): the reviewed note and
+    // every attached note lose their leading frontmatter block before anything
+    // measures or sends them. Applied HERE — not at each call site — so the
+    // budget `sections` and the "what will be sent" preview report the reduced
+    // sizes; a preview that still showed the frontmatter would contradict the
+    // setting. The request payload's own copy of the document text is stripped
+    // at the executor seam (`backend-executor.ts`), which is the other half of
+    // the same guarantee.
+    const stripFrontmatter = (text: string): string =>
+        behavior.stripFrontmatter ? stripFrontmatterBlock(text).text : text
+    const noteText = stripFrontmatter(input.noteText)
 
     // -- The target itself must not be excluded (Business Rules #7) -----------
     if (isExcluded(notePath, vault.getNoteMetadata(notePath), behavior)) {
@@ -261,7 +278,14 @@ export async function assembleContext(input: AssembleContextInput): Promise<Asse
         if (content === null) {
             continue
         }
-        readable.push({ path: candidate.path, reason: candidate.reason, content })
+        // An attached note is treated exactly like the reviewed one: the
+        // setting is about what leaves the vault, not about which note it
+        // came from.
+        readable.push({
+            path: candidate.path,
+            reason: candidate.reason,
+            content: stripFrontmatter(content)
+        })
     }
 
     const budgetChars = behavior.contextBudgetChars

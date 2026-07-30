@@ -12,6 +12,7 @@ import { reviewGate } from './reviewability'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
     augmentPanelCharter,
+    augmentResponseLanguage,
     augmentSystemPrompt,
     buildEditorPrompt,
     composeSystemPrompt,
@@ -461,6 +462,43 @@ describe('buildEditorPrompt', () => {
         )
         const solo = await buildEditorPrompt(promptInput({}))
         expect(withCharter.systemPrompt).toBe(solo.systemPrompt)
+    })
+
+    it('adds no language block by default', async () => {
+        const built = await buildEditorPrompt(promptInput({}))
+        expect(built.systemPrompt).not.toContain('<response-language>')
+    })
+
+    it('puts the configured response language last, after the instruction', async () => {
+        const settings = makeSettings()
+        const built = await buildEditorPrompt(
+            promptInput({
+                settings: {
+                    ...settings,
+                    behavior: { ...settings.behavior, responseLanguageOverride: 'French' }
+                },
+                panelCharter: { panelName: 'Pre-publish Review', text: 'Weigh the reader.' },
+                instructionText: 'Focus on the opening.'
+            })
+        )
+        const instructionAt = built.systemPrompt.indexOf('<user-instruction>')
+        const languageAt = built.systemPrompt.indexOf('<response-language>')
+        expect(languageAt).toBeGreaterThan(instructionAt)
+        expect(built.systemPrompt).toContain('French')
+    })
+})
+
+describe('augmentResponseLanguage', () => {
+    it('is inert for an empty or blank value', () => {
+        expect(augmentResponseLanguage('Be harsh.', '')).toBe('Be harsh.')
+        expect(augmentResponseLanguage('Be harsh.', '  \n\t ')).toBe('Be harsh.')
+    })
+
+    it('delimits the value and keeps quotes in the document language', () => {
+        const prompt = augmentResponseLanguage('Be harsh.', '  Nederlands  ')
+        expect(prompt.startsWith('Be harsh.\n\n')).toBeTrue()
+        expect(prompt).toContain('<response-language>\nNederlands\n</response-language>')
+        expect(prompt).toContain('verbatim')
     })
 })
 

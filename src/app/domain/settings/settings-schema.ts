@@ -317,8 +317,18 @@ export const behaviorSettingsSchema = z.object({
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
     /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */
     respectFrontmatterOptOut: z.boolean().default(true),
+    /**
+     * Removes the leading frontmatter block from the reviewed note, from every
+     * attached note, and from the document text in the request payload
+     * (`services/context/context-assembler.ts` for the first two + the budget
+     * report, `services/backends/backend-executor.ts` for the payload).
+     */
     stripFrontmatter: z.boolean().default(false),
-    /** '' → answer in the note's language; otherwise a fixed language. */
+    /**
+     * '' → answer in the note's language; otherwise a fixed language, appended
+     * as the last block of every composed system prompt including the panel
+     * chairperson's (`augmentResponseLanguage` in `services/review-service.ts`).
+     */
     responseLanguageOverride: z.string().max(50).default(''),
     /** Editor handling async margin comments by default. */
     defaultCommentEditorId: z.string().default(''),

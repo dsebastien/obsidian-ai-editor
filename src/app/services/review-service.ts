@@ -442,6 +442,36 @@ export function augmentPanelCharter(
     return [basePrompt, block].filter((segment) => segment.length > 0).join('\n\n')
 }
 
+/**
+ * Appends the `behavior.responseLanguageOverride` directive to a composed
+ * system prompt. Empty (the default) leaves the prompt untouched, which is the
+ * documented behavior: "answer in each note's own language" is what a model
+ * does when nobody tells it otherwise.
+ *
+ * Applied to BOTH prompt authors — `buildEditorPrompt` for every editor run and
+ * `createPanelSpec` for the panel chairperson — because a setting that reworded
+ * the reviews but not the scorecard would be worse than none. It lands LAST,
+ * after the charter and the per-run instruction: it is about the answer's form,
+ * and the last line of a prompt is the one a model is least likely to lose.
+ *
+ * The value is user text, so it is delimited rather than interpolated into a
+ * sentence, for the same reason `augmentSystemPrompt` delimits an instruction:
+ * it can only direct the prose, never the output contract, which is enforced by
+ * the tool schema and Zod regardless of what the prompt says.
+ */
+export function augmentResponseLanguage(basePrompt: string, language: string): string {
+    const trimmed = language.trim()
+    if (trimmed.length === 0) {
+        return basePrompt
+    }
+    const block = [
+        'Write every piece of prose you produce — critiques, suggestions, summaries, rationales — in the following language, whatever language the document is written in:',
+        `<response-language>\n${trimmed}\n</response-language>`,
+        'Quotes taken from the document stay in the document’s own language, verbatim.'
+    ].join('\n')
+    return [basePrompt, block].filter((segment) => segment.length > 0).join('\n\n')
+}
+
 // ---------------------------------------------------------------------------
 // The one prompt-build entry point
 // ---------------------------------------------------------------------------
@@ -514,12 +544,16 @@ export async function buildEditorPrompt(input: BuildEditorPromptInput): Promise<
         ? augmentPanelCharter(composed, charter.panelName, charter.text)
         : composed
     const instructionText = input.instructionText ?? ''
+    const withInstruction =
+        instructionText.length > 0 ? augmentSystemPrompt(withCharter, instructionText) : withCharter
     return {
         context,
-        systemPrompt:
-            instructionText.length > 0
-                ? augmentSystemPrompt(withCharter, instructionText)
-                : withCharter
+        // Language last: standing output-form configuration, after everything
+        // that directs WHAT to look at.
+        systemPrompt: augmentResponseLanguage(
+            withInstruction,
+            input.settings.behavior.responseLanguageOverride
+        )
     }
 }
 
@@ -935,10 +969,17 @@ function createPanelSpec(input: {
     if (!resolution.ok) {
         return { panelId: panel.id, panelName: panel.name }
     }
+    // The chairperson answers in the configured language too — and the budget
+    // is charged for the directive, so the aggregation's fixed cost is the
+    // prompt that is actually sent.
+    const chairPrompt = augmentResponseLanguage(
+        input.charterText,
+        settings.behavior.responseLanguageOverride
+    )
     const executor = createBackendExecutor({
         backend: resolution.backend,
         model: resolution.model,
-        systemPrompt: input.charterText,
+        systemPrompt: chairPrompt,
         behavior: settings.behavior,
         fetchImpl: input.fetchImpl
     })
@@ -950,7 +991,7 @@ function createPanelSpec(input: {
         // note is exactly where an unbounded payload would hurt.
         budget: {
             contextBudgetChars: settings.behavior.contextBudgetChars,
-            charterChars: input.charterText.length
+            charterChars: chairPrompt.length
         },
         redactError: executor.redactError,
         aggregate: executor.execute
