@@ -209,10 +209,25 @@ export const refineProposalResultSchema = z.object({
 
 export const threadTurnResultSchema = z.object({
     kind: z.literal('thread-turn'),
-    reply: z.string().max(SHORT_TEXT_MAX),
+    /** What the editor says back; shown verbatim in the finding card's thread. */
+    reply: z.string().min(1).max(SHORT_TEXT_MAX),
+    /**
+     * True when the editor WITHDRAWS the finding: the push-back convinced it,
+     * so the finding is auto-dismissed and `reply` is the withdrawal note.
+     * Conceding and revising are mutually exclusive — a withdrawn finding has
+     * no suggestion left to apply, so `revisedSuggestion`/`revisedCritique`
+     * are ignored when this is true.
+     */
+    concede: z.boolean().default(false),
+    /**
+     * Sharpened critique when the editor HOLDS its position; replaces the
+     * finding's critique in place (the thread carries the reasoning).
+     */
+    revisedCritique: z.string().max(SHORT_TEXT_MAX).optional(),
     /** A thread turn may end with a revised suggestion for the finding. */
     revisedSuggestion: z.string().max(SHORT_TEXT_MAX).optional()
 })
+export type ThreadTurnResult = z.infer<typeof threadTurnResultSchema>
 
 export const panelResultSchema = z.object({
     kind: z.literal('aggregate-panel'),

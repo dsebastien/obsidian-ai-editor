@@ -83,7 +83,9 @@ function kindRules(operation: OperationRequest): string[] {
         case 'thread-turn':
             return [
                 "Reply to the user's message in the context of the finding and prior turns.",
-                'Provide "revisedSuggestion" only when the exchange changed your proposed replacement for the quoted text.'
+                'Set "concede" to true ONLY when the push-back convinced you the finding does not hold — you are withdrawing it, and "reply" says why in one or two sentences. A withdrawn finding is dismissed, so do not also send a revised critique or suggestion.',
+                'Otherwise hold your position: keep "concede" false, and use "revisedCritique" and/or "revisedSuggestion" when the exchange sharpened what you are asking for. Omit both when nothing changed.',
+                '"revisedSuggestion" must be a complete replacement for the quoted text, not a diff or commentary.'
             ]
         case 'aggregate-panel':
             return [

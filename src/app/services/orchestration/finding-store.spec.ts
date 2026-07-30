@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { createAnchor, type TextChange } from '../../domain/anchoring/anchor'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
+import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
 import { FindingStore, type NewFinding } from './finding-store'
 
 const DOC = 'The quick brown fox jumps over the lazy dog'
@@ -298,5 +299,222 @@ describe('FindingStore.removeMany', () => {
         const store = new FindingStore(() => notifications++)
         store.removeMany([asFindingId('missing')])
         expect(notifications).toEqual(0)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Push-back threads
+// ---------------------------------------------------------------------------
+
+describe('FindingStore.beginThreadTurn', () => {
+    it('records the push-back as the pending turn without touching the thread', () => {
+        let notifications = 0
+        const store = new FindingStore(() => notifications++)
+        const finding = store.add(makeInput())
+        notifications = 0
+
+        const begun = store.beginThreadTurn(finding.id, '  I disagree — this is intentional  ')
+        expect(begun.ok).toBeTrue()
+        const tracked = store.get(finding.id)
+        expect(tracked?.threadTurn).toEqual({
+            status: 'pending',
+            message: 'I disagree — this is intentional'
+        })
+        expect(tracked?.thread).toEqual([])
+        expect(notifications).toEqual(1)
+    })
+
+    it('refuses blank messages, unknown ids, terminal findings and double turns', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        expect(store.beginThreadTurn(finding.id, '   ')).toEqual({
+            ok: false,
+            reason: 'blank-message'
+        })
+        expect(store.beginThreadTurn(asFindingId('missing'), 'hi')).toEqual({
+            ok: false,
+            reason: 'not-found'
+        })
+        expect(store.beginThreadTurn(finding.id, 'first').ok).toBeTrue()
+        expect(store.beginThreadTurn(finding.id, 'second')).toEqual({
+            ok: false,
+            reason: 'in-flight'
+        })
+
+        const dismissed = store.add(makeInput())
+        store.dismiss(dismissed.id)
+        expect(store.beginThreadTurn(dismissed.id, 'hi')).toEqual({
+            ok: false,
+            reason: 'invalid-status'
+        })
+    })
+
+    it('allows a retry after a failed turn but stops at the cap', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        expect(store.beginThreadTurn(finding.id, 'first').ok).toBeTrue()
+        store.failThreadTurn(finding.id, 'Network error')
+        // A failed turn is replaced, not counted.
+        expect(store.beginThreadTurn(finding.id, 'again').ok).toBeTrue()
+
+        for (let turn = 0; turn < THREAD_MAX_TURNS; turn++) {
+            store.completeThreadTurn(finding.id, {
+                kind: 'hold',
+                reply: `reply ${turn}`,
+                revisedCritique: null,
+                revisedSuggestion: null
+            })
+            if (turn < THREAD_MAX_TURNS - 1) {
+                expect(store.beginThreadTurn(finding.id, `push ${turn}`).ok).toBeTrue()
+            }
+        }
+        expect(store.get(finding.id)?.thread).toHaveLength(THREAD_MAX_TURNS * 2)
+        expect(store.beginThreadTurn(finding.id, 'one more')).toEqual({
+            ok: false,
+            reason: 'cap-reached'
+        })
+    })
+})
+
+describe('FindingStore.completeThreadTurn', () => {
+    it('appends the exchange in order and keeps the finding open on a hold', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'I disagree')
+        const held = store.completeThreadTurn(finding.id, {
+            kind: 'hold',
+            reply: 'Still reads as an accident',
+            revisedCritique: null,
+            revisedSuggestion: null
+        })
+        expect(held?.thread).toEqual([
+            { role: 'user', content: 'I disagree' },
+            { role: 'editor', content: 'Still reads as an accident' }
+        ])
+        expect(held?.threadTurn).toBeNull()
+        expect(held?.status).toEqual('open')
+        expect(held?.conceded).toBeFalse()
+    })
+
+    it('updates critique and suggestion in place, re-deriving actionability', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'give me something better')
+        const held = store.completeThreadTurn(finding.id, {
+            kind: 'hold',
+            reply: 'Here is a tighter version',
+            revisedCritique: 'The repetition buries the verb',
+            revisedSuggestion: 'swift auburn'
+        })
+        expect(held?.raw.critique).toEqual('The repetition buries the verb')
+        expect(held?.raw.suggestion).toEqual('swift auburn')
+        // Anchor and precondition base untouched → still acceptable.
+        expect(held?.anchor).toEqual(finding.anchor)
+        expect(held?.anchoredText).toEqual(finding.anchoredText)
+        expect(store.isActionable(finding.id)).toBeTrue()
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+    })
+
+    it('keeps a revised suggestion display-only when the span went stale', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'rework it')
+        // The user edits the span while the turn is in flight.
+        store.applyTextChanges([{ from: 6, to: 9, insertedLength: 1 }])
+        expect(store.get(finding.id)?.anchor?.state).toEqual('stale')
+        store.completeThreadTurn(finding.id, {
+            kind: 'hold',
+            reply: 'Revised',
+            revisedCritique: null,
+            revisedSuggestion: 'brand new text'
+        })
+        expect(store.get(finding.id)?.raw.suggestion).toEqual('brand new text')
+        expect(store.isActionable(finding.id)).toBeFalse()
+        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'stale' })
+    })
+
+    it('drops a preview back to open when the suggestion changed', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.preview(finding.id)
+        store.beginThreadTurn(finding.id, 'rework it')
+        expect(
+            store.completeThreadTurn(finding.id, {
+                kind: 'hold',
+                reply: 'Revised',
+                revisedCritique: null,
+                revisedSuggestion: 'brand new text'
+            })?.status
+        ).toEqual('open')
+
+        // An unchanged suggestion leaves the preview alone.
+        const other = store.add(makeInput())
+        store.preview(other.id)
+        store.beginThreadTurn(other.id, 'why?')
+        expect(
+            store.completeThreadTurn(other.id, {
+                kind: 'hold',
+                reply: 'Because.',
+                revisedCritique: 'Sharper',
+                revisedSuggestion: null
+            })?.status
+        ).toEqual('preview')
+    })
+
+    it('dismisses and flags the finding when the editor concedes', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'it is intentional')
+        const conceded = store.completeThreadTurn(finding.id, {
+            kind: 'concede',
+            reply: 'Understood, withdrawing it'
+        })
+        expect(conceded?.status).toEqual('dismissed')
+        expect(conceded?.conceded).toBeTrue()
+        expect(conceded?.thread).toHaveLength(2)
+        expect(store.isActionable(finding.id)).toBeFalse()
+    })
+
+    it('never undoes an accept that landed while the turn was in flight', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'it is intentional')
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+        const conceded = store.completeThreadTurn(finding.id, {
+            kind: 'concede',
+            reply: 'Withdrawing it'
+        })
+        expect(conceded?.status).toEqual('accepted')
+        expect(conceded?.conceded).toBeFalse()
+        // The exchange is still recorded.
+        expect(conceded?.thread).toHaveLength(2)
+    })
+
+    it('ignores late events with no pending turn or no finding', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        const outcome = { kind: 'concede', reply: 'late' } as const
+        expect(store.completeThreadTurn(finding.id, outcome)).toBeNull()
+        expect(store.completeThreadTurn(asFindingId('missing'), outcome)).toBeNull()
+        store.beginThreadTurn(finding.id, 'push')
+        store.failThreadTurn(finding.id, 'Cancelled')
+        expect(store.completeThreadTurn(finding.id, outcome)).toBeNull()
+    })
+})
+
+describe('FindingStore.failThreadTurn', () => {
+    it('keeps the message with its reason and leaves the thread untouched', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'I disagree')
+        const failed = store.failThreadTurn(finding.id, 'Request timed out')
+        expect(failed?.threadTurn).toEqual({
+            status: 'failed',
+            message: 'I disagree',
+            reason: 'Request timed out'
+        })
+        expect(failed?.thread).toEqual([])
+        // Idempotent: no pending turn left to fail.
+        expect(store.failThreadTurn(finding.id, 'again')).toBeNull()
     })
 })

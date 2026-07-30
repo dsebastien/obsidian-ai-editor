@@ -3,6 +3,8 @@ import { mapAnchorThroughChanges, verifyPrecondition } from '../../domain/anchor
 import type { MatchStrategy } from '../../domain/anchoring/match'
 import type { FindingId, RunId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
+import { isThreadFull } from '../../domain/operations/thread'
+import type { ThreadMessage, ThreadOutcome, ThreadTurn } from '../../domain/operations/thread'
 
 /**
  * Finding lifecycle state machine (review minor #34).
@@ -47,6 +49,19 @@ export interface TrackedFinding {
     readonly status: FindingStatus
     /** Set when status is `superseded`: the finding that replaced this one. */
     readonly supersededBy: FindingId | null
+    /**
+     * Push-back thread: COMPLETED exchanges only, strictly alternating
+     * `user, editor, …` (see `domain/operations/thread`). Session-scoped.
+     */
+    readonly thread: readonly ThreadMessage[]
+    /** In-flight or failed push-back turn; `null` when the thread is idle. */
+    readonly threadTurn: ThreadTurn | null
+    /**
+     * True when the editor WITHDREW this finding during a thread (status is
+     * then `dismissed`). Distinguishes "the editor conceded" from "the user
+     * dismissed it" in Notices and reports.
+     */
+    readonly conceded: boolean
 }
 
 /** Input for registering a freshly anchored finding (status starts at `open`). */
@@ -71,6 +86,21 @@ export type AcceptFailureReason =
 export type AcceptResult =
     | { readonly ok: true; readonly finding: TrackedFinding }
     | { readonly ok: false; readonly reason: AcceptFailureReason }
+
+/** Why a push-back could not be sent. */
+export type ThreadBeginFailure =
+    | 'not-found'
+    /** The finding is terminal (accepted / rejected / dismissed / superseded). */
+    | 'invalid-status'
+    /** A turn is already in flight for this finding. */
+    | 'in-flight'
+    /** `THREAD_MAX_TURNS` completed exchanges reached. */
+    | 'cap-reached'
+    | 'blank-message'
+
+export type ThreadBeginResult =
+    | { readonly ok: true; readonly finding: TrackedFinding }
+    | { readonly ok: false; readonly reason: ThreadBeginFailure }
 
 const TERMINAL_STATUSES: readonly FindingStatus[] = [
     'accepted',
@@ -106,7 +136,10 @@ export class FindingStore {
             anchoredText: input.anchoredText,
             matchStrategy: input.matchStrategy,
             status: 'open',
-            supersededBy: null
+            supersededBy: null,
+            thread: [],
+            threadTurn: null,
+            conceded: false
         }
         this.findings.set(finding.id, finding)
         this.notify()
@@ -268,6 +301,115 @@ export class FindingStore {
         if (changed) {
             this.notify()
         }
+    }
+
+    // -- Push-back threads ----------------------------------------------------
+
+    /**
+     * Records a user push-back as the finding's in-flight turn. The message is
+     * NOT appended to `thread` — it joins it (together with the reply) only
+     * when the turn completes, keeping `thread` strictly alternating and
+     * replay-safe.
+     *
+     * Refusals mirror what the UI must not offer: a terminal finding has
+     * nothing left to argue about, one turn at a time keeps the history
+     * linear, and the cap bounds cost. A previous FAILED turn is simply
+     * replaced (that is the retry path).
+     */
+    beginThreadTurn(id: FindingId, message: string): ThreadBeginResult {
+        const trimmed = message.trim()
+        if (trimmed.length === 0) {
+            return { ok: false, reason: 'blank-message' }
+        }
+        const finding = this.findings.get(id)
+        if (!finding) {
+            return { ok: false, reason: 'not-found' }
+        }
+        if (TERMINAL_STATUSES.includes(finding.status)) {
+            return { ok: false, reason: 'invalid-status' }
+        }
+        if (finding.threadTurn?.status === 'pending') {
+            return { ok: false, reason: 'in-flight' }
+        }
+        if (isThreadFull(finding.thread)) {
+            return { ok: false, reason: 'cap-reached' }
+        }
+        return {
+            ok: true,
+            finding: this.update(finding, {
+                threadTurn: { status: 'pending', message: trimmed }
+            })
+        }
+    }
+
+    /**
+     * Lands a completed turn: the pending message and the editor's reply join
+     * `thread`, then the outcome is applied.
+     *
+     * - `concede` → the finding is dismissed and flagged `conceded` (only when
+     *   it is still open/preview: the user may have accepted it while the turn
+     *   was in flight, and an applied edit is not undone by a late withdrawal).
+     * - `hold` → the critique and/or suggestion are updated IN PLACE (not
+     *   superseded: it is the same observation, refined — `supersede` stays
+     *   for the refine-proposal flow that mints a new finding). The anchor and
+     *   `anchoredText` are untouched, so `isActionable` re-derives the accept
+     *   precondition for the new suggestion for free: a span that went stale
+     *   while the turn was in flight keeps the revised suggestion
+     *   display-only (Business Rules #3). A finding sitting in `preview` with
+     *   a CHANGED suggestion falls back to `open` — the diff on screen is no
+     *   longer the proposal.
+     *
+     * Returns `null` when the turn no longer belongs to the store (the
+     * finding was removed by a retry, or its pending turn was already
+     * resolved): a late backend event must never resurrect it.
+     */
+    completeThreadTurn(id: FindingId, outcome: ThreadOutcome): TrackedFinding | null {
+        const finding = this.findings.get(id)
+        if (!finding || finding.threadTurn?.status !== 'pending') {
+            return null
+        }
+        const thread: ThreadMessage[] = [
+            ...finding.thread,
+            { role: 'user', content: finding.threadTurn.message },
+            { role: 'editor', content: outcome.reply }
+        ]
+        if (outcome.kind === 'concede') {
+            const dismissable = finding.status === 'open' || finding.status === 'preview'
+            return this.update(finding, {
+                thread,
+                threadTurn: null,
+                ...(dismissable ? { status: 'dismissed' as const, conceded: true } : {})
+            })
+        }
+        const suggestion = outcome.revisedSuggestion ?? finding.raw.suggestion
+        const suggestionChanged = suggestion !== finding.raw.suggestion
+        return this.update(finding, {
+            thread,
+            threadTurn: null,
+            raw: {
+                ...finding.raw,
+                critique: outcome.revisedCritique ?? finding.raw.critique,
+                ...(suggestion === undefined ? {} : { suggestion })
+            },
+            ...(suggestionChanged && finding.status === 'preview'
+                ? { status: 'open' as const }
+                : {})
+        })
+    }
+
+    /**
+     * Marks the in-flight turn failed (backend error, timeout, or run cancel).
+     * The message is kept so the card can show what was sent and let the user
+     * try again; `thread` stays untouched (no half exchange ever enters it).
+     */
+    failThreadTurn(id: FindingId, reason: string): TrackedFinding | null {
+        const finding = this.findings.get(id)
+        if (!finding || finding.threadTurn?.status !== 'pending') {
+            return null
+        }
+        return this.update(finding, {
+            threadTurn: { status: 'failed', message: finding.threadTurn.message, reason }
+        })
     }
 
     private close(id: FindingId, status: 'rejected' | 'dismissed'): TrackedFinding | null {
