@@ -13,6 +13,7 @@ import type {
     PanelConfig,
     PluginSettingsV1
 } from '../../domain/settings/settings-schema'
+import { FOLLOWED_LINKS_CAP } from '../context/context-assembler'
 import type { NoteMetadata, VaultReader } from '../context/vault-reader.intf'
 import {
     CUSTOM_INSTRUCTION_MAX_CHARS,
@@ -79,8 +80,11 @@ class FakeVault implements VaultReader {
     readonly notes = new Map<string, string>()
     readonly metadata = new Map<string, NoteMetadata>()
     readonly noteTypeIds = new Map<string, readonly string[]>()
+    readonly links = new Map<string, readonly string[]>()
+    readonly reads: string[] = []
 
     async readNote(path: string): Promise<string | null> {
+        this.reads.push(path)
         return this.notes.get(path) ?? null
     }
 
@@ -88,8 +92,8 @@ class FakeVault implements VaultReader {
         return null
     }
 
-    getOutgoingLinks(): string[] {
-        return []
+    getOutgoingLinks(path: string): string[] {
+        return [...(this.links.get(path) ?? [])]
     }
 
     getNoteMetadata(path: string): NoteMetadata | null {
@@ -300,13 +304,14 @@ describe('resolveActionBinding', () => {
 
     // -- Custom actions -----------------------------------------------------
 
-    it('resolves a custom action as a transform verb labeled by its name', () => {
+    it('resolves a custom action with its own class, labeled by its name', () => {
         const settings = makeSettings({
             actions: [
                 makeBinding({
                     id: 'custom-1',
                     actionId: 'custom-1',
                     customName: '  Make checklist  ',
+                    customVerbClass: 'transform',
                     customInstruction: {
                         text: 'Turn the selection into a checklist.',
                         notePaths: [],
@@ -324,11 +329,86 @@ describe('resolveActionBinding', () => {
         expect(resolution.action.label).toBe('Make checklist')
     })
 
+    it('carries a custom generate class through to the resolved action', () => {
+        const binding = makeBinding({
+            id: 'custom-1',
+            actionId: 'custom-1',
+            customName: 'Draft a counter-argument',
+            customVerbClass: 'generate',
+            customInstruction: { text: 'Argue the other side.', notePaths: [], followLinks: false }
+        })
+        const resolution = resolveActionBinding(makeSettings(), binding)
+        if (!resolution.ok) {
+            throw new Error(`Expected ok, got ${resolution.reason}`)
+        }
+        expect(resolution.action.verbClass).toBe('generate')
+    })
+
+    it('refuses a custom action whose class was never picked', () => {
+        const noClass = makeBinding({
+            id: 'custom-1',
+            actionId: 'custom-1',
+            customName: 'Named',
+            customInstruction: { text: 'Do it.', notePaths: [], followLinks: false }
+        })
+        expect(noClass.customVerbClass).toBeNull()
+        expectInvalid(resolveActionBinding(makeSettings(), noClass), 'custom-class-missing')
+    })
+
+    it('lets a review-class custom action target a panel, fanning out to its members', () => {
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Hater' })],
+            panels: [makePanel({ memberEditorIds: ['editor-1', 'editor-2'] })]
+        })
+        const resolution = resolveActionBinding(
+            settings,
+            makeBinding({
+                id: 'custom-1',
+                actionId: 'custom-1',
+                customName: 'Check the numbers',
+                customVerbClass: 'review',
+                customInstruction: {
+                    text: 'Flag every unsupported number.',
+                    notePaths: [],
+                    followLinks: false
+                },
+                binding: { targetType: 'panel', targetId: 'panel-1' }
+            })
+        )
+        if (!resolution.ok) {
+            throw new Error(`Expected ok, got ${resolution.reason}`)
+        }
+        expect(resolution.action.verbClass).toBe('review')
+        expect(resolution.action.editorIds).toEqual(['editor-1', 'editor-2'])
+    })
+
+    it('requires the review capability for a review-class custom action', () => {
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ capabilities: { review: false, rewrite: true, research: false } })
+            ]
+        })
+        expectInvalid(
+            resolveActionBinding(
+                settings,
+                makeBinding({
+                    id: 'custom-1',
+                    actionId: 'custom-1',
+                    customName: 'Check the numbers',
+                    customVerbClass: 'review',
+                    customInstruction: { text: 'Flag them.', notePaths: [], followLinks: false }
+                })
+            ),
+            'no-capability'
+        )
+    })
+
     it('refuses a custom action without a name or without instruction content', () => {
         const noName = makeBinding({
             id: 'custom-1',
             actionId: 'custom-1',
             customName: '   ',
+            customVerbClass: 'transform',
             customInstruction: { text: 'Do it.', notePaths: [], followLinks: false }
         })
         expectInvalid(resolveActionBinding(makeSettings(), noName), 'blank-custom')
@@ -336,6 +416,7 @@ describe('resolveActionBinding', () => {
             id: 'custom-2',
             actionId: 'custom-2',
             customName: 'Named',
+            customVerbClass: 'transform',
             customInstruction: { text: '  ', notePaths: [], followLinks: false }
         })
         expectInvalid(resolveActionBinding(makeSettings(), noInstruction), 'blank-custom')
@@ -344,26 +425,30 @@ describe('resolveActionBinding', () => {
             id: 'custom-3',
             actionId: 'custom-3',
             customName: 'Named',
+            customVerbClass: 'transform',
             customInstruction: { text: '', notePaths: ['Style.md'], followLinks: false }
         })
         expect(resolveActionBinding(makeSettings(), notesOnly).ok).toBe(true)
     })
 
-    it('refuses a custom action bound to a panel (custom actions are transform-class)', () => {
+    it('refuses a non-review custom action bound to a panel', () => {
         const settings = makeSettings({ panels: [makePanel()] })
-        expectInvalid(
-            resolveActionBinding(
-                settings,
-                makeBinding({
-                    id: 'custom-1',
-                    actionId: 'custom-1',
-                    customName: 'Named',
-                    customInstruction: { text: 'Do it.', notePaths: [], followLinks: false },
-                    binding: { targetType: 'panel', targetId: 'panel-1' }
-                })
-            ),
-            'panel-binding-invalid'
-        )
+        for (const customVerbClass of ['transform', 'generate'] as const) {
+            expectInvalid(
+                resolveActionBinding(
+                    settings,
+                    makeBinding({
+                        id: 'custom-1',
+                        actionId: 'custom-1',
+                        customName: 'Named',
+                        customVerbClass,
+                        customInstruction: { text: 'Do it.', notePaths: [], followLinks: false },
+                        binding: { targetType: 'panel', targetId: 'panel-1' }
+                    })
+                ),
+                'panel-binding-invalid'
+            )
+        }
     })
 })
 
@@ -406,6 +491,7 @@ describe('actionInvalidReasonLabel', () => {
         const reasons = [
             'unbound',
             'blank-custom',
+            'custom-class-missing',
             'panel-binding-invalid',
             'target-missing',
             'target-disabled',
@@ -454,6 +540,72 @@ describe('resolveCustomInstruction', () => {
         )
         expect(result).toBe('Rewrite.')
         expect(result).not.toContain('secret content')
+    })
+
+    it('follows the links of referenced notes when the source opts in', async () => {
+        const vault = new FakeVault()
+        vault.notes.set('Style.md', 'Root guide.')
+        vault.notes.set('Tone.md', 'Linked tone note.')
+        vault.links.set('Style.md', ['Tone.md'])
+        const source = { text: 'Rewrite.', notePaths: ['Style.md'], followLinks: true }
+        const followed = await resolveCustomInstruction(source, vault, behavior)
+        expect(followed).toContain('path="Style.md"')
+        expect(followed).toContain('Linked tone note.')
+        // Same source with the toggle off inlines the root only.
+        const notFollowed = await resolveCustomInstruction(
+            { ...source, followLinks: false },
+            vault,
+            behavior
+        )
+        expect(notFollowed).not.toContain('Linked tone note.')
+    })
+
+    it('never follows an excluded note and never inlines an excluded link', async () => {
+        const vault = new FakeVault()
+        vault.notes.set('Private/Style.md', 'root secret')
+        vault.notes.set('Leak.md', 'leaked from a private note')
+        vault.notes.set('Style.md', 'Root guide.')
+        vault.notes.set('Private/Tone.md', 'private tone')
+        vault.links.set('Private/Style.md', ['Leak.md'])
+        vault.links.set('Style.md', ['Private/Tone.md'])
+        const result = await resolveCustomInstruction(
+            {
+                text: 'Rewrite.',
+                notePaths: ['Private/Style.md', 'Style.md'],
+                followLinks: true
+            },
+            vault,
+            { ...behavior, excludedFolders: ['Private'] }
+        )
+        expect(result).not.toContain('root secret')
+        expect(result).not.toContain('leaked from a private note')
+        expect(result).not.toContain('private tone')
+        expect(result).toContain('Root guide.')
+        // Excluded notes are decided before any read, not filtered after.
+        expect(vault.reads).toEqual(['Style.md'])
+    })
+
+    it('caps followed links per referenced note and inlines each note once', async () => {
+        const vault = new FakeVault()
+        vault.notes.set('Style.md', 'Root guide.')
+        const linked: string[] = []
+        for (let index = 0; index < FOLLOWED_LINKS_CAP + 5; index++) {
+            const path = `Linked-${index}.md`
+            linked.push(path)
+            vault.notes.set(path, `content ${index}`)
+        }
+        // The last link is also the root, and a duplicate of an earlier link.
+        vault.links.set('Style.md', [...linked, ...linked, 'Style.md'])
+        const result = await resolveCustomInstruction(
+            { text: '', notePaths: ['Style.md'], followLinks: true },
+            vault,
+            behavior
+        )
+        // 1 root + exactly FOLLOWED_LINKS_CAP followed notes, no repeats.
+        expect(vault.reads.length).toBe(FOLLOWED_LINKS_CAP + 1)
+        expect(new Set(vault.reads).size).toBe(vault.reads.length)
+        expect(result).toContain('content 0')
+        expect(result).not.toContain(`content ${FOLLOWED_LINKS_CAP}`)
     })
 
     it('truncates to the operation contract instruction cap', async () => {

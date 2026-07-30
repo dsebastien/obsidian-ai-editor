@@ -48,6 +48,7 @@ describe('desiredActionCommands', () => {
                 id: 'custom-uuid-1',
                 actionId: 'custom-uuid-1',
                 customName: 'Make checklist',
+                customVerbClass: 'transform',
                 customInstruction: { text: 'Checklist it.', notePaths: [], followLinks: false },
                 binding: BOUND
             }

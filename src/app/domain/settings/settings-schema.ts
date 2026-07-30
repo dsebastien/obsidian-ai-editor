@@ -199,6 +199,15 @@ export const actionTargetSchema = z.object({
 })
 export type ActionTarget = z.infer<typeof actionTargetSchema>
 
+/**
+ * What a verb does to the note — the execution pipeline it runs through.
+ * Built-in verbs carry it in the verb registry; a custom action states it
+ * here, because the same instruction text can mean "rewrite this", "write
+ * more here" or "tell me what is wrong with this".
+ */
+export const verbClassSchema = z.enum(['transform', 'generate', 'review'])
+export type VerbClass = z.infer<typeof verbClassSchema>
+
 export const actionBindingSchema = z.object({
     id: z.string().min(1),
     /** Built-in verb id, or a UUID for custom actions. */
@@ -206,6 +215,16 @@ export const actionBindingSchema = z.object({
     /** Custom actions carry their own display name + instruction prompt. */
     customName: z.string().max(100).default(''),
     customInstruction: promptSourceSchema.default({ text: '', notePaths: [], followLinks: false }),
+    /**
+     * Custom actions only (built-ins take their class from the verb
+     * registry). Deliberately REQUIRED rather than defaulted: the class
+     * decides whether the result replaces the selection, is inserted after
+     * it, or comes back as findings, and silently guessing "transform" would
+     * make "check this for factual errors" overwrite the checked text. A
+     * custom action without a class resolves to `custom-class-missing` and is
+     * offered nowhere until the user picks one.
+     */
+    customVerbClass: verbClassSchema.nullable().default(null),
     binding: actionTargetSchema.nullable().default(null)
 })
 export type ActionBinding = z.infer<typeof actionBindingSchema>

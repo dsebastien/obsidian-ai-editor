@@ -7,6 +7,7 @@ import type {
     PluginSettingsV1,
     PromptSource
 } from '../../domain/settings/settings-schema'
+import { FOLLOWED_LINKS_CAP } from '../context/context-assembler'
 import { isExcluded } from '../context/exclusions'
 import type { VaultReader } from '../context/vault-reader.intf'
 import { resolveApiBackend } from '../review-service'
@@ -19,10 +20,10 @@ import { resolveApiBackend } from '../review-service'
  * One decision point for "can this bound action run right now?" so menus,
  * command gates, and the dispatch glue can never disagree:
  * - Built-in verbs take their label/class/instruction from the verb
- *   registry; custom actions are TRANSFORM-class (they rewrite the
- *   selection with the user's own instruction) and resolve their
- *   instruction from the `customInstruction` prompt source at dispatch
- *   time (`resolveCustomInstruction`).
+ *   registry; a custom action states its own class (`customVerbClass`) and
+ *   resolves its instruction from the `customInstruction` prompt source at
+ *   dispatch time (`resolveCustomInstruction`). Both shapes reach the
+ *   dispatch paths as the registry's `ActionVerb`.
  * - Editor targets must be enabled, hold the capability the verb class
  *   needs (`review` for review-class verbs, `rewrite` for
  *   transform/generate), and their backend must resolve — mirroring the
@@ -32,8 +33,8 @@ import { resolveApiBackend } from '../review-service'
  *   the run fans out to EACH member editor with the verb instruction; the
  *   charter/aggregation scorecard is M6). A transform or generate verb
  *   produces exactly one replacement/insertion, so a panel binding is
- *   invalid for it — the settings UI refuses to create one, and resolution
- *   refuses any that predates that rule.
+ *   invalid for it — built-in or custom alike; the settings UI refuses to
+ *   create one, and resolution refuses any that predates that rule.
  *
  * An action that cannot dispatch is simply not offered (design rule: no
  * non-functional UI) — `resolveActions` returns only the dispatchable ones.
@@ -67,6 +68,8 @@ export type ActionInvalidReason =
     | 'unbound'
     /** Custom action without a name or without any instruction content. */
     | 'blank-custom'
+    /** Custom action whose verb class was never picked (no default — see the schema). */
+    | 'custom-class-missing'
     /** Transform/generate/custom verb bound to a panel (review-class only). */
     | 'panel-binding-invalid'
     /** The bound editor/panel no longer exists. */
@@ -91,6 +94,8 @@ export function actionInvalidReasonLabel(reason: ActionInvalidReason): string {
             return 'not bound to an editor'
         case 'blank-custom':
             return 'needs a name and an instruction'
+        case 'custom-class-missing':
+            return 'needs an action type'
         case 'panel-binding-invalid':
             return 'bound to a panel — this action needs a single editor'
         case 'target-missing':
@@ -134,10 +139,11 @@ export function resolveActionBinding(
     binding: ActionBinding
 ): ActionResolution {
     const verb = getBuiltInVerb(binding.actionId)
-    const verbClass: VerbClass = verb ? verb.verbClass : 'transform'
     let label: string
+    let verbClass: VerbClass
     if (verb) {
         label = verb.label
+        verbClass = verb.verbClass
     } else {
         label = binding.customName.trim()
         const hasInstruction =
@@ -146,6 +152,10 @@ export function resolveActionBinding(
         if (label.length === 0 || !hasInstruction) {
             return { ok: false, reason: 'blank-custom' }
         }
+        if (binding.customVerbClass === null) {
+            return { ok: false, reason: 'custom-class-missing' }
+        }
+        verbClass = binding.customVerbClass
     }
     const target = binding.binding
     if (!target) {
@@ -244,34 +254,65 @@ export const CUSTOM_INSTRUCTION_MAX_CHARS = 10_000
 
 /**
  * Resolves a custom action's instruction prompt source to the instruction
- * string the transform operation carries: the direct text first, then each
- * referenced note inlined as a delimited block, resolved fresh at dispatch
- * time (Business Rules #8). Excluded notes are never read (Business Rules
- * #7); missing notes are skipped silently; duplicates are inlined once. The
- * result is truncated to `CUSTOM_INSTRUCTION_MAX_CHARS` (the operation
- * contract's instruction cap). `followLinks` is not expanded here — the
- * custom-instruction UI does not offer it, and an instruction is a directive,
- * not context.
+ * string the operation carries: the direct text first, then each referenced
+ * note inlined as a delimited block, resolved fresh at dispatch time
+ * (Business Rules #8). With `followLinks` on, the notes each referenced note
+ * links to follow it — depth 1, embeds included, in link order, capped at
+ * `FOLLOWED_LINKS_CAP` per referenced note, exactly like context assembly
+ * (`assembleContext`), so one toggle means one thing plugin-wide.
+ *
+ * Excluded notes are never read and excluded notes are never followed
+ * (Business Rules #7); missing notes are skipped silently; every note is
+ * inlined at most once.
+ *
+ * The result is truncated to `CUSTOM_INSTRUCTION_MAX_CHARS` (the operation
+ * contract's instruction cap). The direct text comes first precisely so that
+ * cap can only ever cut reference material, never the directive itself.
  */
 export async function resolveCustomInstruction(
     source: PromptSource,
     vault: VaultReader,
     behavior: BehaviorSettings
 ): Promise<string> {
+    const seen = new Set<string>()
+    const eligible = (path: string): boolean => {
+        if (seen.has(path)) {
+            return false
+        }
+        seen.add(path)
+        return !isExcluded(path, vault.getNoteMetadata(path), behavior)
+    }
+
+    // Candidate paths first (exclusions decided before any content is read),
+    // each referenced note immediately followed by its own links.
+    const paths: string[] = []
+    for (const path of source.notePaths) {
+        if (!eligible(path)) {
+            continue
+        }
+        paths.push(path)
+        if (!source.followLinks) {
+            continue
+        }
+        let followed = 0
+        for (const linked of vault.getOutgoingLinks(path)) {
+            if (followed >= FOLLOWED_LINKS_CAP) {
+                break
+            }
+            if (!eligible(linked)) {
+                continue
+            }
+            paths.push(linked)
+            followed++
+        }
+    }
+
     const segments: string[] = []
     const text = source.text.trim()
     if (text.length > 0) {
         segments.push(text)
     }
-    const seen = new Set<string>()
-    for (const path of source.notePaths) {
-        if (seen.has(path)) {
-            continue
-        }
-        seen.add(path)
-        if (isExcluded(path, vault.getNoteMetadata(path), behavior)) {
-            continue
-        }
+    for (const path of paths) {
         const content = await vault.readNote(path)
         if (content === null) {
             continue

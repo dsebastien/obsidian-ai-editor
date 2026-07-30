@@ -102,6 +102,7 @@ export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): voi
                                 id,
                                 actionId: id,
                                 customName: 'New action',
+                                customVerbClass: null,
                                 customInstruction: {
                                     text: '',
                                     notePaths: [],

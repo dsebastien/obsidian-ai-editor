@@ -1,4 +1,6 @@
-import type { BuiltInActionId } from '../settings/settings-schema'
+import type { BuiltInActionId, VerbClass } from '../settings/settings-schema'
+
+export type { VerbClass }
 
 /**
  * Built-in action verb registry: the pure id → { label, class, instruction }
@@ -22,15 +24,23 @@ import type { BuiltInActionId } from '../settings/settings-schema'
  * person, concrete mandates, explicit restraint rules.
  */
 
-export type VerbClass = 'transform' | 'generate' | 'review'
-
-export interface BuiltInVerb {
-    readonly id: BuiltInActionId
+/**
+ * A dispatchable verb — the ONE shape every dispatch path works against, so
+ * a custom action travels the same code as a built-in one. Built-ins come
+ * from {@link BUILT_IN_VERBS}; a custom action supplies its own label, class
+ * and already-resolved instruction (its prompt source is read fresh from the
+ * vault at dispatch time — Business Rules #8).
+ */
+export interface ActionVerb {
     /** Sentence-case UI label (menus, commands, notices). */
     readonly label: string
     readonly verbClass: VerbClass
     /** The verb's prompt: operation instruction or review-prompt augment. */
     readonly instruction: string
+}
+
+export interface BuiltInVerb extends ActionVerb {
+    readonly id: BuiltInActionId
 }
 
 const REPHRASE_INSTRUCTION = `Rephrase the selected text: say the same thing, better. Preserve the meaning, the facts, and the author's voice; improve clarity, rhythm, and word choice. Keep roughly the same length and level of detail — this is a reformulation, not a summary and not an expansion. Never introduce information that is not in the original, and never drop a nuance that is. Keep the original language of the text and its markdown conventions (links, emphasis, lists) intact unless a formatting change is itself the improvement.`
@@ -123,4 +133,36 @@ const VERBS_BY_ID: ReadonlyMap<string, BuiltInVerb> = new Map(
  */
 export function getBuiltInVerb(actionId: string): BuiltInVerb | null {
     return VERBS_BY_ID.get(actionId) ?? null
+}
+
+/**
+ * The single entry point every dispatch path uses to turn an action id into
+ * the verb it runs: the registry entry for a built-in id, otherwise the
+ * custom action's own verb. Returns null when neither applies — an unknown id
+ * with no custom verb supplied, or a custom verb whose resolved instruction is
+ * blank (a directive that says nothing cannot be dispatched).
+ *
+ * Built-ins win over a supplied custom verb: a persisted binding must never be
+ * able to redefine what "Humanize" does behind the shared label.
+ */
+export function resolveActionVerb(actionId: string, custom?: ActionVerb): ActionVerb | null {
+    const builtIn = getBuiltInVerb(actionId)
+    if (builtIn) {
+        return builtIn
+    }
+    if (custom && custom.instruction.trim().length > 0) {
+        return custom
+    }
+    return null
+}
+
+const VERB_CLASS_LABELS: Record<VerbClass, string> = {
+    transform: 'Rewrite the selection',
+    generate: 'Write more at the cursor',
+    review: 'Report findings'
+}
+
+/** Sentence-case label for a verb class (settings dropdown, notices). */
+export function verbClassLabel(verbClass: VerbClass): string {
+    return VERB_CLASS_LABELS[verbClass]
 }

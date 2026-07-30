@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { builtInActionIdSchema } from '../settings/settings-schema'
-import { BUILT_IN_VERBS, getBuiltInVerb } from './verb-registry'
+import { builtInActionIdSchema, verbClassSchema } from '../settings/settings-schema'
+import { BUILT_IN_VERBS, getBuiltInVerb, resolveActionVerb, verbClassLabel } from './verb-registry'
 
 describe('verb registry', () => {
     it('covers every built-in action id exactly once', () => {
@@ -54,5 +54,45 @@ describe('verb registry', () => {
         expect(rephrase?.label).toBe('Rephrase')
         expect(getBuiltInVerb('not-a-verb')).toBeNull()
         expect(getBuiltInVerb('4f2b7a9e-0000-0000-0000-000000000000')).toBeNull()
+    })
+})
+
+describe('resolveActionVerb', () => {
+    const custom = {
+        label: 'Make a checklist',
+        verbClass: 'generate' as const,
+        instruction: 'Turn this into a checklist.'
+    }
+
+    it('resolves a built-in id from the registry, ignoring any supplied custom verb', () => {
+        // A persisted binding must never redefine what "Humanize" does.
+        expect(resolveActionVerb('humanize', custom)).toEqual(getBuiltInVerb('humanize') as never)
+    })
+
+    it('resolves a custom verb for a non-registry id, class included', () => {
+        const verb = resolveActionVerb('4f2b7a9e-0000-0000-0000-000000000000', custom)
+        expect(verb).toEqual(custom)
+    })
+
+    it('returns null without a custom verb, or when its instruction is blank', () => {
+        expect(resolveActionVerb('4f2b7a9e-0000-0000-0000-000000000000')).toBeNull()
+        expect(
+            resolveActionVerb('4f2b7a9e-0000-0000-0000-000000000000', {
+                ...custom,
+                instruction: '   \n'
+            })
+        ).toBeNull()
+    })
+})
+
+describe('verbClassLabel', () => {
+    it('labels every class distinctly in sentence case', () => {
+        const labels = verbClassSchema.options.map((option) => verbClassLabel(option))
+        for (const label of labels) {
+            expect(label.length).toBeGreaterThan(0)
+            expect(label).toBe(label.trim())
+            expect(label[0]).toBe(label[0]?.toUpperCase() ?? '')
+        }
+        expect(new Set(labels).size).toBe(labels.length)
     })
 })

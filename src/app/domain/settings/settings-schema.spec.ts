@@ -58,6 +58,23 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         ).toEqual(false)
     })
 
+    it('leaves a custom action without a verb class rather than guessing one', () => {
+        // Guessing 'transform' would let "check this for errors" overwrite the
+        // checked text; resolution refuses until the user picks a class.
+        expect(actionBindingSchema.parse({ id: 'a-1', actionId: 'a-1' }).customVerbClass).toBeNull()
+        expect(
+            actionBindingSchema.parse({ id: 'a-1', actionId: 'a-1', customVerbClass: 'review' })
+                .customVerbClass
+        ).toEqual('review')
+        expect(
+            actionBindingSchema.safeParse({
+                id: 'a-1',
+                actionId: 'a-1',
+                customVerbClass: 'nonsense'
+            }).success
+        ).toBe(false)
+    })
+
     it('defaults the first-run flags to false', () => {
         expect(DEFAULT_PLUGIN_SETTINGS.starterPackSeeded).toEqual(false)
         expect(DEFAULT_PLUGIN_SETTINGS.onboarded).toEqual(false)
