@@ -11,7 +11,8 @@ import {
     isExcluded,
     isPluginEnabledForNote,
     isReviewable,
-    reviewCapableEditors
+    reviewCapableEditors,
+    reviewGate
 } from './reviewability'
 import type { NoteFactsSource } from './rules/note-rules'
 
@@ -275,5 +276,130 @@ describe('binding rules', () => {
         const facts = factsOf(NO_METADATA_EXCLUSIONS)
         expect(isPluginEnabledForNote('Notes/idea.md', facts, settings)).toBe(true)
         expect(isReviewable('Notes/idea.md', facts, settings)).toBe(false)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// reviewGate — the one evaluation `isReviewable` / `isPluginEnabledForNote`
+// project (surfaces that must SAY WHY read this)
+// ---------------------------------------------------------------------------
+
+describe('reviewGate', () => {
+    const facts = factsOf(NO_METADATA_EXCLUSIONS)
+
+    it('is ok for a reviewable note', () => {
+        expect(reviewGate('Notes/idea.md', facts, makeSettings())).toEqual({ status: 'ok' })
+    })
+
+    it('reports the privacy exclusion', () => {
+        const settings = makeSettings({ behavior: { excludedFolders: ['Private'] } })
+        expect(reviewGate('Private/journal.md', facts, settings)).toEqual({ status: 'excluded' })
+    })
+
+    it('reports the kill switch with the rule label', () => {
+        const settings = makeSettings({
+            rules: [
+                {
+                    id: 'r1',
+                    name: 'No journals',
+                    match: { matchType: 'folder', value: 'Journal' },
+                    effect: 'disabled'
+                }
+            ]
+        })
+        expect(reviewGate('Journal/2026-07-30.md', facts, settings)).toEqual({
+            status: 'rule-disabled',
+            ruleLabel: 'No journals'
+        })
+    })
+
+    it('falls back to the rule match expression when the rule is unnamed', () => {
+        const settings = makeSettings({
+            rules: [
+                {
+                    id: 'r1',
+                    match: { matchType: 'tag', value: 'private' },
+                    effect: 'disabled'
+                }
+            ]
+        })
+        const gate = reviewGate(
+            'Notes/idea.md',
+            factsOf({ tags: ['#private'], frontmatter: {} }),
+            settings
+        )
+        expect(gate.status).toBe('rule-disabled')
+        if (gate.status === 'rule-disabled') {
+            expect(gate.ruleLabel.length).toBeGreaterThan(0)
+        }
+    })
+
+    it('reports no-editor last, so a configuration fix is not blamed on privacy', () => {
+        expect(reviewGate('Notes/idea.md', facts, makeSettings({ editors: [] }))).toEqual({
+            status: 'no-editor'
+        })
+    })
+
+    it('privacy outranks the kill switch when both match', () => {
+        const settings = makeSettings({
+            behavior: { excludedFolders: ['Private'] },
+            rules: [
+                {
+                    id: 'r1',
+                    name: 'No privates',
+                    match: { matchType: 'folder', value: 'Private' },
+                    effect: 'disabled'
+                }
+            ]
+        })
+        expect(reviewGate('Private/a.md', facts, settings)).toEqual({ status: 'excluded' })
+    })
+
+    it('the kill switch outranks a missing editor', () => {
+        const settings = makeSettings({
+            editors: [],
+            rules: [
+                {
+                    id: 'r1',
+                    name: 'Off here',
+                    match: { matchType: 'folder', value: 'Journal' },
+                    effect: 'disabled'
+                }
+            ]
+        })
+        expect(reviewGate('Journal/a.md', facts, settings)).toEqual({
+            status: 'rule-disabled',
+            ruleLabel: 'Off here'
+        })
+    })
+
+    it('agrees with isReviewable and isPluginEnabledForNote in every case', () => {
+        const cases: readonly { settings: PluginSettingsV1; path: string }[] = [
+            { settings: makeSettings(), path: 'Notes/idea.md' },
+            {
+                settings: makeSettings({ behavior: { excludedFolders: ['Private'] } }),
+                path: 'Private/a.md'
+            },
+            { settings: makeSettings({ editors: [] }), path: 'Notes/idea.md' },
+            {
+                settings: makeSettings({
+                    rules: [
+                        {
+                            id: 'r1',
+                            match: { matchType: 'folder', value: 'Journal' },
+                            effect: 'disabled'
+                        }
+                    ]
+                }),
+                path: 'Journal/a.md'
+            }
+        ]
+        for (const { settings, path } of cases) {
+            const gate = reviewGate(path, facts, settings)
+            expect(isReviewable(path, facts, settings)).toBe(gate.status === 'ok')
+            expect(isPluginEnabledForNote(path, facts, settings)).toBe(
+                gate.status === 'ok' || gate.status === 'no-editor'
+            )
+        }
     })
 })
