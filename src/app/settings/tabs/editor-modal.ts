@@ -3,6 +3,10 @@ import type { App } from 'obsidian'
 import { editorConfigSchema } from '../../domain/settings/settings-schema'
 import type { EditorConfig } from '../../domain/settings/settings-schema'
 import { generateId } from '../../domain/ids'
+import { previewEditorContext } from '../../services/context-preview-service'
+import type { ContextPreviewResult } from '../../services/context-preview-service'
+import { ContextPreviewModal } from '../../ui/context-preview-modal'
+import { ObsidianVaultReader } from '../../ui/obsidian-vault-reader'
 import {
     populateBackendDropdown,
     renderColorField,
@@ -213,6 +217,15 @@ export class EditorModal extends Modal {
         }
 
         new Setting(contentEl)
+            .setName('Preview what will be sent')
+            .setDesc(
+                'Assemble this editor’s context for the active note and show it, exactly as it would be sent. Uses the unsaved values above.'
+            )
+            .addButton((button) => {
+                button.setButtonText('Preview').onClick(() => this.preview())
+            })
+
+        new Setting(contentEl)
             .addButton((button) => {
                 button.setButtonText('Cancel').onClick(() => this.close())
             })
@@ -222,6 +235,40 @@ export class EditorModal extends Modal {
                     .setCta()
                     .onClick(() => this.save())
             })
+    }
+
+    /**
+     * Opens the "what will be sent" preview for the DRAFT — the values in this
+     * dialog, saved or not. Previewing the persona you are currently writing is
+     * the whole point of the button; previewing the saved one would answer a
+     * question nobody asked.
+     *
+     * The note is the workspace's active file read from the vault, not a live
+     * buffer: the settings dialog covers the editor, so there is no focused
+     * markdown view to read unsaved text from. The palette command
+     * (`Preview what will be sent`) is the surface that uses the live buffer.
+     */
+    private preview(): void {
+        const file = this.app.workspace.getActiveFile()
+        if (!file) {
+            new Notice('Open a note first — the preview needs something to assemble against.')
+            return
+        }
+        const notePath = file.path
+        const draft = structuredClone(this.draft)
+        new ContextPreviewModal(this.app, {
+            notePath,
+            choices: [
+                { id: draft.id, name: draft.name.trim().length > 0 ? draft.name : 'This editor' }
+            ],
+            resolve: (): Promise<ContextPreviewResult> =>
+                previewEditorContext({
+                    editor: draft,
+                    settings: this.ctx.facade.getSettings(),
+                    vault: new ObsidianVaultReader(this.app),
+                    notePath
+                })
+        }).open()
     }
 
     private save(): void {

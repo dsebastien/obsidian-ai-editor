@@ -57,6 +57,13 @@ export type ContextPreviewResult =
       }
     /** The note is gone or unreadable; there is no text to preview against. */
     | { readonly status: 'note-unreadable'; readonly notePath: string }
+    /**
+     * The editor was deleted while the preview was open. `previewEditorContext`
+     * never returns this — it takes an editor VALUE — but the modal's resolver
+     * looks the editor up per render so it always shows the CURRENT persona,
+     * and that lookup can come back empty.
+     */
+    | { readonly status: 'editor-missing' }
 
 export interface PreviewContextInput {
     /**

@@ -58,7 +58,11 @@ import { countWords, skipReasonLabel, startReview } from '../services/review-ser
 import type { EditorSkip, RunInstruction } from '../services/review-service'
 import { startThreadTurn } from '../services/thread-service'
 import { startAction } from '../services/transform-service'
+import { previewEditorContext } from '../services/context-preview-service'
+import type { ContextPreviewResult } from '../services/context-preview-service'
 import { AskEditorModal } from './ask-editor-modal'
+import { ContextPreviewModal } from './context-preview-modal'
+import { previewEditorChoices } from './context-preview-model'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
 import {
@@ -874,6 +878,70 @@ export class ReviewController {
                 editorIds: [editorId],
                 text: instruction
             })
+        }).open()
+    }
+
+    // -- "What will be sent" preview ------------------------------------------
+
+    /**
+     * Whether the preview command is offered: an open markdown note the plugin
+     * operates on at all, and at least one enabled editor to preview. The
+     * refusal statuses still exist in the service (a rule can land while the
+     * modal is open), but a command that can only report "switched off here"
+     * has no reason to be in the palette.
+     */
+    canPreviewContext(view: MarkdownView): boolean {
+        const file = view.file
+        if (!file || this.disposed) {
+            return false
+        }
+        return (
+            this.isPluginEnabledFor(file.path) &&
+            previewEditorChoices(this.deps.getSettings()).length > 0
+        )
+    }
+
+    /**
+     * Opens the preview for the view's note. The note text comes from the LIVE
+     * editor buffer, not the vault: unsaved edits are what a review would
+     * send, so a preview reading vault state would understate (or overstate)
+     * the request the user is about to make.
+     *
+     * The editor is re-resolved from settings at resolve time (not captured):
+     * the modal stays open across settings edits, and previewing a persona the
+     * user has since changed is exactly the staleness this surface must not
+     * have.
+     */
+    openContextPreview(view: MarkdownView): void {
+        const file = view.file
+        if (!file || this.disposed) {
+            return
+        }
+        const notePath = file.path
+        const choices = previewEditorChoices(this.deps.getSettings())
+        if (choices.length === 0) {
+            return // unreachable behind `canPreviewContext`; fail closed
+        }
+        new ContextPreviewModal(this.deps.app, {
+            notePath,
+            choices,
+            resolve: (editorId: string): Promise<ContextPreviewResult> => {
+                const settings = this.deps.getSettings()
+                const editor = settings.editors.find((candidate) => candidate.id === editorId)
+                if (!editor) {
+                    // Deleted while the modal was open: the honest answer is
+                    // that this editor no longer exists, not a stale prompt.
+                    return Promise.resolve({ status: 'editor-missing' })
+                }
+                const noteText = view.file?.path === notePath ? view.editor.getValue() : undefined
+                return previewEditorContext({
+                    editor,
+                    settings,
+                    vault: this.vaultReader,
+                    notePath,
+                    noteText
+                })
+            }
         }).open()
     }
 

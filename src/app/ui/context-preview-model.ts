@@ -1,4 +1,5 @@
-import type { ContextPreview } from '../services/context-preview-service'
+import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
+import type { ContextPreview, ContextPreviewResult } from '../services/context-preview-service'
 import { sectionStatusLabel } from '../services/context/context-budget'
 import type { ContextSection } from '../services/context/context-budget'
 import { skipReasonLabel } from '../services/review-service'
@@ -14,6 +15,43 @@ import { skipReasonLabel } from '../services/review-service'
  * another is worse than no spec, and a trust surface must read identically
  * wherever it is opened.
  */
+
+/** One entry of the preview's editor picker. */
+export interface PreviewEditorChoice {
+    readonly id: string
+    readonly name: string
+}
+
+/**
+ * Editors the picker offers: the ENABLED ones, in settings order. A disabled
+ * editor never runs, so "what would it send" has no honest answer. The
+ * settings dialog's own Preview button bypasses this and previews the editor
+ * being edited whatever its state — there the question is about the draft, not
+ * about the next run.
+ */
+export function previewEditorChoices(settings: PluginSettingsV1): PreviewEditorChoice[] {
+    return settings.editors
+        .filter((editor) => editor.enabled)
+        .map((editor) => ({ id: editor.id, name: editor.name }))
+}
+
+/**
+ * What a refusal reads as in the modal. Kept here so the two refusals stay
+ * distinguishable in words, not just in a status string: `excluded` is fixed in
+ * the Behavior tab, `rule-disabled` in the Rules tab.
+ */
+export function refusalMessage(result: Exclude<ContextPreviewResult, { status: 'ready' }>): string {
+    switch (result.status) {
+        case 'excluded':
+            return `Nothing would be sent: ${result.notePath} is excluded from AI processing. Change that in the Behavior tab's privacy exclusions.`
+        case 'rule-disabled':
+            return `Nothing would be sent: the binding rule "${result.ruleLabel}" switches AI Editor off for this note. Change that in the Rules tab.`
+        case 'note-unreadable':
+            return `Nothing to preview: ${result.notePath} could not be read.`
+        case 'editor-missing':
+            return 'Nothing to preview: this editor no longer exists.'
+    }
+}
 
 /** Groups an integer in threes with thin, unambiguous separators. */
 export function formatCount(value: number): string {

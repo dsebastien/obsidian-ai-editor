@@ -16,6 +16,9 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  *   captures the range synchronously (selection-capture contract, design §1).
  * - `Ask an editor` — same gate as `Review selection`; captures the range +
  *   hash synchronously, then opens the freeform modal (design §6 decision 1).
+ * - `Preview what will be sent` — the trust surface (plan M5): assembles the
+ *   REAL context for the active note through the same `buildEditorPrompt` a
+ *   dispatch uses and shows it read-only. Sends nothing.
  * - `Open review panel` — reveals the side-panel leaf.
  * - `Cancel review` — the active file's run is still unsettled.
  * - `Next finding` / `Previous finding` — triage stepping through the
@@ -99,6 +102,22 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
                 return true
             }
             controller.openAskEditorModal(ctx, editor)
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'preview-context',
+        name: 'Preview what will be sent',
+        checkCallback: (checking: boolean): boolean => {
+            const view = plugin.app.workspace.getActiveViewOfType(MarkdownView)
+            if (!view || !controller.canPreviewContext(view)) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.openContextPreview(view)
             return true
         }
     })

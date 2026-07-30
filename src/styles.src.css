@@ -483,6 +483,77 @@
     color: var(--text-normal);
 }
 
+/* "What will be sent" preview modal (src/app/ui/context-preview-modal.ts).
+   Wider than the other dialogs on purpose: it exists to be READ, and the
+   system prompt it shows is long. */
+.modal.ai-editor-preview-modal {
+    width: min(780px, 96vw);
+}
+
+.ai-editor-preview-note {
+    @apply mt-0 mb-2 text-sm;
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
+.ai-editor-preview-status,
+.ai-editor-preview-refusal {
+    @apply my-3 text-sm;
+}
+
+.ai-editor-preview-refusal {
+    color: var(--text-warning, var(--color-yellow, orange));
+}
+
+.ai-editor-preview-summary {
+    @apply my-2 pl-5 text-sm;
+}
+
+.ai-editor-preview-sections {
+    @apply my-2 text-sm;
+}
+
+.ai-editor-preview-row {
+    @apply flex items-baseline justify-between gap-3 py-1;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-editor-preview-row-name {
+    @apply min-w-0;
+    word-break: break-word;
+}
+
+.ai-editor-preview-row-detail {
+    @apply shrink-0;
+    color: var(--text-muted);
+}
+
+/* Truncated and dropped rows must be distinguishable without relying on
+   colour alone — the detail text spells out the consequence, so this is
+   emphasis, not the signal itself. */
+.ai-editor-preview-row-truncated .ai-editor-preview-row-detail {
+    color: var(--text-warning, var(--color-yellow, orange));
+}
+
+.ai-editor-preview-row-dropped {
+    opacity: 0.75;
+}
+
+.ai-editor-preview-row-dropped .ai-editor-preview-row-detail {
+    color: var(--text-error, var(--color-red, red));
+}
+
+.ai-editor-preview-prompt {
+    @apply my-2 w-full overflow-auto p-2 text-xs;
+    max-height: 40vh;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    user-select: text;
+}
+
 /* ========================================
    PERSONA RAIL (src/app/ui/editor/rail.ts,
    mounted by src/app/ui/review-controller.ts)

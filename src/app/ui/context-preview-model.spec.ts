@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test'
+import { editorConfigSchema, pluginSettingsSchema } from '../domain/settings/settings-schema'
 import type { ContextPreview } from '../services/context-preview-service'
 import type { ContextSection } from '../services/context/context-budget'
 import {
     formatChars,
     formatCount,
     previewClipboardText,
+    previewEditorChoices,
     previewSummaryLines,
+    refusalMessage,
     sectionRows
 } from './context-preview-model'
 
@@ -161,5 +164,56 @@ describe('previewClipboardText', () => {
         expect(text).toContain('Editor: Hater')
         expect(text).toContain('Note: Articles/Draft.md')
         expect(text).toContain('- Reviewed note — Articles/Draft.md: 100 characters')
+    })
+})
+
+describe('previewEditorChoices', () => {
+    test('offers the enabled editors in settings order', () => {
+        const settings = pluginSettingsSchema.parse({
+            editors: [
+                editorConfigSchema.parse({ id: 'a', name: 'Hater' }),
+                editorConfigSchema.parse({ id: 'b', name: 'Off', enabled: false }),
+                editorConfigSchema.parse({ id: 'c', name: 'Humanizer' })
+            ]
+        })
+        expect(previewEditorChoices(settings)).toEqual([
+            { id: 'a', name: 'Hater' },
+            { id: 'c', name: 'Humanizer' }
+        ])
+    })
+
+    test('is empty when no editor is enabled', () => {
+        const settings = pluginSettingsSchema.parse({
+            editors: [editorConfigSchema.parse({ id: 'a', name: 'Off', enabled: false })]
+        })
+        expect(previewEditorChoices(settings)).toEqual([])
+    })
+})
+
+describe('refusalMessage', () => {
+    test('sends the excluded case to the Behavior tab and the rule case to the Rules tab', () => {
+        expect(refusalMessage({ status: 'excluded', notePath: 'Private/D.md' })).toContain(
+            'Behavior tab'
+        )
+        expect(
+            refusalMessage({
+                status: 'rule-disabled',
+                notePath: 'Private/D.md',
+                ruleLabel: 'No AI here'
+            })
+        ).toContain('Rules tab')
+    })
+
+    test('names the rule so the user can find it', () => {
+        expect(
+            refusalMessage({ status: 'rule-disabled', notePath: 'D.md', ruleLabel: 'No AI here' })
+        ).toContain('"No AI here"')
+    })
+
+    test('distinguishes an unreadable note from a deleted editor', () => {
+        expect(refusalMessage({ status: 'note-unreadable', notePath: 'Gone.md' })).toContain(
+            'Gone.md'
+        )
+        expect(refusalMessage({ status: 'editor-missing' })).toContain('no longer exists')
     })
 })

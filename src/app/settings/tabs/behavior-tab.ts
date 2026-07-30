@@ -81,7 +81,11 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
     )
     renderIntField(
         'Context budget (characters)',
-        'Total budget per run across the note, linked notes, and referenced notes.',
+        'Total budget per run across the system prompt, the note, and every attached note. ' +
+            'The system prompt and the reviewed note are never truncated; attached notes ' +
+            'are spent in order (prompt notes, wikilinked notes, links followed from prompt ' +
+            'notes, then the reviewed note’s own links) and the last ones are dropped first. ' +
+            'Run “Preview what will be sent” to see exactly what a note costs.',
         settings.behavior.contextBudgetChars,
         1_000,
         2_000_000,
