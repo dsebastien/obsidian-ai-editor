@@ -4,6 +4,7 @@ import {
     ALL_SECTIONS,
     TRANSFER_SECTIONS,
     exportCounts,
+    exportSecretRisks,
     exportSettingsJson,
     importPlanIsEmpty,
     planImportFromJson
@@ -16,9 +17,12 @@ import {
     EXPORT_KEY_NOTICE,
     IMPORT_KEY_NOTICE,
     adjustmentLine,
+    exportRiskLines,
     exportSummaryLine,
     hasSelection,
+    importDestinationLines,
     importErrorMessage,
+    importParticipationLine,
     importSummaryLines,
     normalizeExportPath,
     rejectionLine,
@@ -32,7 +36,11 @@ import {
  * through the facade.
  *
  * Both dialogs state the API-key rule on screen, because "my keys are in this
- * file" is the one wrong assumption a user could act on by sharing it.
+ * file" is the one wrong assumption a user could act on by sharing it. The
+ * export dialog additionally names any backend whose base URL or advanced
+ * request body could still hold a credential, and the import dialog names the
+ * HOST each imported backend points at — a file that adds a review
+ * participant is a file that adds a destination for your notes.
  */
 
 // ---------------------------------------------------------------------------
@@ -44,6 +52,7 @@ export class ExportSettingsModal extends Modal {
     private readonly selection: Record<TransferSection, boolean> = { ...ALL_SECTIONS }
     private path = DEFAULT_EXPORT_PATH
     private summaryEl: HTMLElement | null = null
+    private riskEl: HTMLElement | null = null
 
     constructor(app: App, getSettings: () => PluginSettingsV1) {
         super(app)
@@ -56,9 +65,10 @@ export class ExportSettingsModal extends Modal {
         const { contentEl } = this
 
         contentEl.createEl('p', {
-            text: 'Pick what to include. The file is plain JSON — safe to share, keep in the vault, or paste into another vault.'
+            text: 'Pick what to include. The file is plain JSON — keep it in the vault, or paste it into another vault.'
         })
         contentEl.createEl('p', { cls: 'ai-editor-transfer-notice', text: EXPORT_KEY_NOTICE })
+        this.riskEl = contentEl.createDiv({ cls: 'ai-editor-transfer-risks' })
 
         for (const section of TRANSFER_SECTIONS) {
             new Setting(contentEl).setName(sectionTitle(section)).addToggle((toggle) => {
@@ -105,14 +115,20 @@ export class ExportSettingsModal extends Modal {
 
     override onClose(): void {
         this.summaryEl = null
+        this.riskEl = null
         this.contentEl.empty()
     }
 
     private renderSummary(): void {
+        const settings = this.getSettings()
         if (this.summaryEl) {
-            this.summaryEl.setText(
-                exportSummaryLine(exportCounts(this.getSettings(), this.selection))
-            )
+            this.summaryEl.setText(exportSummaryLine(exportCounts(settings, this.selection)))
+        }
+        if (this.riskEl) {
+            this.riskEl.empty()
+            for (const line of exportRiskLines(exportSecretRisks(settings, this.selection))) {
+                this.riskEl.createEl('p', { cls: 'ai-editor-transfer-notice', text: line })
+            }
         }
     }
 
@@ -143,7 +159,12 @@ export class ExportSettingsModal extends Modal {
         if (json === null) {
             return
         }
-        const path = normalizeExportPath(this.path)
+        const target = normalizeExportPath(this.path)
+        if (!target.ok) {
+            new Notice(target.message)
+            return
+        }
+        const path = target.path
         const existing = this.app.vault.getAbstractFileByPath(path)
         if (existing instanceof TFolder) {
             new Notice(`${path} is a folder — pick a file name.`)
@@ -266,7 +287,12 @@ export class ImportSettingsModal extends Modal {
     }
 
     private async load(): Promise<void> {
-        const path = normalizeExportPath(this.path)
+        const target = normalizeExportPath(this.path)
+        if (!target.ok) {
+            new Notice(target.message)
+            return
+        }
+        const path = target.path
         const file = this.app.vault.getFileByPath(path)
         if (!file) {
             new Notice(`No file at ${path}.`)
@@ -305,6 +331,21 @@ export class ImportSettingsModal extends Modal {
         const summary = body.createEl('ul', { cls: 'ai-editor-transfer-summary-list' })
         for (const line of importSummaryLines(plan)) {
             summary.createEl('li', { text: line })
+        }
+        // Where the notes would go, and who would see them — before the
+        // confirmation, not after: counts alone never say which host a
+        // backend points at, and an imported editor joins every review.
+        const destinations = importDestinationLines(plan)
+        if (destinations.length > 0) {
+            body.createEl('h4', { text: 'Where these backends send your notes' })
+            const list = body.createEl('ul', { cls: 'ai-editor-transfer-lines' })
+            for (const line of destinations) {
+                list.createEl('li', { text: line })
+            }
+        }
+        const participation = importParticipationLine(plan)
+        if (participation !== null) {
+            body.createEl('p', { cls: 'ai-editor-transfer-notice', text: participation })
         }
         if (plan.adjustments.length > 0) {
             body.createEl('h4', { text: 'Adjusted' })

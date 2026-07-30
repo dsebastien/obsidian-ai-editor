@@ -7,6 +7,7 @@ import {
     TRANSFER_SECTIONS,
     applyImportPlan,
     exportCounts,
+    exportSecretRisks,
     exportSettings,
     exportSettingsJson,
     importPlanIsEmpty,
@@ -113,6 +114,25 @@ describe('exportSettings', () => {
         expect(exportSettingsJson(populated(), ALL_SECTIONS)).not.toContain('sk-secret')
     })
 
+    it('names the backends whose export can still carry a credential', () => {
+        const settings = settingsOf({
+            backends: [
+                { ...apiBackend('plain', ''), baseUrl: 'https://api.openai.com/v1' },
+                { ...apiBackend('query', ''), baseUrl: 'https://gw.example/v1?api-key=SECRET' },
+                { ...apiBackend('userinfo', ''), baseUrl: 'https://user:pass@host/v1' },
+                { ...apiBackend('body', ''), extraBodyJson: '{"api_key":"SECRET"}' },
+                { id: 'cli', family: 'cli', kind: 'codex', label: 'Codex' }
+            ]
+        })
+        expect(exportSecretRisks(settings, ALL_SECTIONS)).toEqual([
+            { label: 'Backend query', risks: ['base-url-credentials'] },
+            { label: 'Backend userinfo', risks: ['base-url-credentials'] },
+            { label: 'Backend body', risks: ['extra-body'] }
+        ])
+        // Not exporting backends cannot leak a backend field.
+        expect(exportSecretRisks(settings, only('editors'))).toEqual([])
+    })
+
     it('omits unselected sections entirely instead of emptying them', () => {
         const document = exportSettings(populated(), only('editors', 'voiceProfile'))
         expect(Object.keys(document).sort()).toEqual([
@@ -205,7 +225,28 @@ describe('planImport', () => {
         const plan = planOf({ backends: [apiBackend('b1', 'sk-someone-elses')] })
         const backend = plan.additions.backends[0]
         expect(backend).toMatchObject({ apiKey: '' })
-        expect(plan.adjustments).toEqual([{ kind: 'api-key-cleared', label: 'Backend b1' }])
+        expect(plan.adjustments).toEqual([
+            { kind: 'api-key-cleared', label: 'Backend b1' },
+            { kind: 'backend-disabled', label: 'Backend b1' }
+        ])
+    })
+
+    it('imports API backends switched off, and says so once per backend', () => {
+        const plan = planOf({
+            backends: [
+                apiBackend('b1', ''),
+                { ...apiBackend('b2', ''), enabled: false },
+                { id: 'b3', family: 'cli', kind: 'codex', label: 'Codex' }
+            ]
+        })
+        expect(plan.additions.backends.map((backend) => backend.enabled)).toEqual([
+            false,
+            false,
+            false
+        ])
+        // Only the one that ARRIVED enabled is an adjustment: reporting a
+        // backend that was already off would be noise, not disclosure.
+        expect(plan.adjustments).toEqual([{ kind: 'backend-disabled', label: 'Backend b1' }])
     })
 
     it('regenerates every id and remaps references inside the import', () => {
@@ -235,7 +276,10 @@ describe('planImport', () => {
         expect(critique).toMatchObject({ id: 'critique', actionId: 'critique' })
         // A custom action's id and action id stay the same value.
         expect(custom?.actionId).toEqual(custom?.id)
-        expect(plan.adjustments).toEqual([{ kind: 'voice-profile-replaced' }])
+        expect(plan.adjustments).toEqual([
+            { kind: 'backend-disabled', label: 'Backend b1' },
+            { kind: 'voice-profile-replaced' }
+        ])
     })
 
     it('importing the same file twice adds two independent sets', () => {
@@ -374,6 +418,88 @@ describe('planImport', () => {
         expect(plan.additions.panels.map((panel) => panel.name)).toEqual(['Fits'])
         expect(plan.rejected).toEqual([
             { section: 'panels', index: 1, label: 'Does not fit', reason: 'section-full' }
+        ])
+    })
+
+    it('a capped-out entity leaves no dangling reference behind it', () => {
+        // 199 of the 200 allowed editors are already here, so exactly one of
+        // the two imported editors fits — and the panel spanning both must not
+        // arrive pointing at an editor that was never added.
+        const current = settingsOf({
+            editors: Array.from({ length: 199 }, (_, index) => ({
+                id: `own-${index}`,
+                name: `Own ${index}`
+            }))
+        })
+        const plan = planOf(
+            {
+                editors: [
+                    { id: 'x1', name: 'Fits' },
+                    { id: 'x2', name: 'Does not fit' }
+                ],
+                panels: [{ id: 'px', name: 'Both', memberEditorIds: ['x1', 'x2'] }]
+            },
+            current
+        )
+        const [kept] = plan.additions.editors
+        expect(plan.additions.editors.map((editor) => editor.name)).toEqual(['Fits'])
+        expect(plan.additions.panels[0]?.memberEditorIds).toEqual([kept?.id ?? ''])
+        expect(plan.rejected).toEqual([
+            { section: 'editors', index: 1, label: 'Does not fit', reason: 'section-full' }
+        ])
+        expect(plan.adjustments).toEqual([{ kind: 'members-dropped', label: 'Both', count: 1 }])
+    })
+
+    it('clears an action/rule target whose entity was capped out', () => {
+        const current = settingsOf({
+            panels: Array.from({ length: 50 }, (_, index) => ({
+                id: `p${index}`,
+                name: `Panel ${index}`,
+                memberEditorIds: ['e1']
+            })),
+            editors: [{ id: 'e1', name: 'Member' }]
+        })
+        const plan = planOf(
+            {
+                panels: [{ id: 'px', name: 'No room', memberEditorIds: ['e1'] }],
+                rules: [
+                    {
+                        id: 'rx',
+                        name: 'Blog',
+                        match: { matchType: 'folder', value: 'Blog' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'panel', targetId: 'px' }
+                    }
+                ]
+            },
+            current
+        )
+        expect(plan.additions.panels).toEqual([])
+        expect(plan.additions.rules[0]?.defaultTarget).toBeNull()
+        expect(plan.adjustments).toEqual([{ kind: 'target-cleared', label: 'Blog' }])
+    })
+
+    it('a panel rejected for having no members frees its room for the next one', () => {
+        const current = settingsOf({
+            panels: Array.from({ length: 49 }, (_, index) => ({
+                id: `p${index}`,
+                name: `Panel ${index}`,
+                memberEditorIds: ['e1']
+            })),
+            editors: [{ id: 'e1', name: 'Member' }]
+        })
+        const plan = planOf(
+            {
+                panels: [
+                    { id: 'x1', name: 'Nobody here', memberEditorIds: ['ghost'] },
+                    { id: 'x2', name: 'Real', memberEditorIds: ['e1'] }
+                ]
+            },
+            current
+        )
+        expect(plan.additions.panels.map((panel) => panel.name)).toEqual(['Real'])
+        expect(plan.rejected).toEqual([
+            { section: 'panels', index: 0, label: 'Nobody here', reason: 'no-member-editor' }
         ])
     })
 

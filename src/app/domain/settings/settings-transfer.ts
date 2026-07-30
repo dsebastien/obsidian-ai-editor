@@ -27,17 +27,28 @@ import type {
  * document, and import one back with validation, id regeneration, and a plan
  * the user confirms before anything is written (plan M5).
  *
- * Three rules this module exists to enforce:
+ * Four rules this module exists to enforce:
  *
  * 1. **API keys never leave the vault.** Exported API backends carry an empty
  *    `apiKey`, and an import clears it too — even when the file being imported
  *    has one (a hand-written file, or a copied `data.json`). Both directions
  *    matter: a shared export must not leak a key, and importing someone else's
- *    file must not silently start billing their account. The only other field
- *    that could carry a secret is the advanced `extraBodyJson` escape hatch;
- *    it travels as-is because it is functional request configuration, and
- *    blanking it would break the backend it configures.
- * 2. **Imports add, they never overwrite.** Every imported entity gets a fresh
+ *    file must not silently start billing their account. The other two fields
+ *    that CAN carry a secret — `baseUrl` (a gateway URL with the token in a
+ *    query parameter or in userinfo) and the advanced `extraBodyJson` escape
+ *    hatch — travel as-is, because they are functional request configuration
+ *    and blanking them would break the backend they configure. So they are
+ *    DECLARED instead: `exportSecretRisks` names the backends whose export
+ *    could carry one, and the export dialog says so rather than asserting the
+ *    file holds no secrets.
+ * 2. **An imported backend is a destination, and a destination is never
+ *    trusted silently.** Stripping the key protects nobody: Ollama needs no
+ *    key at all, and an imported enabled editor would join every review — so a
+ *    foreign file could ship note text and every attachment to a host the user
+ *    never saw. API-family backends therefore arrive **disabled**, with an
+ *    adjustment saying so, and the confirmation lists what each one points at.
+ *    Enabling a backend means opening the Backends tab, where its URL is.
+ * 3. **Imports add, they never overwrite.** Every imported entity gets a fresh
  *    id, so importing a file twice produces two independent sets instead of
  *    half-merging them onto whatever happened to share an id. References
  *    INSIDE the import are remapped to the new ids; a reference to something
@@ -46,10 +57,14 @@ import type {
  *    editors still live in), and otherwise cleared with an adjustment note.
  *    `voiceProfile` is the one exception — a single value cannot be "added",
  *    so it replaces, and the confirmation says so.
- * 3. **Nothing is silent.** Every entity that could not be kept is a typed
+ * 4. **Nothing is silent.** Every entity that could not be kept is a typed
  *    rejection, and every reference that had to be cleared is a typed
  *    adjustment. The caller shows both, with the counts, and only then commits
  *    `applyImportPlan`.
+ *
+ * Section caps are decided BEFORE any reference is remapped (see `planImport`):
+ * trimming afterwards would leave the survivors pointing at ids that were never
+ * added, which rule 4 exists to prevent.
  */
 
 // ---------------------------------------------------------------------------
@@ -165,6 +180,67 @@ function withoutApiKey(backend: BackendInstance): BackendInstance {
     return backend.family === 'api' ? { ...backend, apiKey: '' } : backend
 }
 
+// ---------------------------------------------------------------------------
+// Export: what the file can still carry
+// ---------------------------------------------------------------------------
+
+/** A field of an exported backend that can hold a credential. */
+export type ExportSecretRisk =
+    /** The base URL carries userinfo or a key/token query parameter. */
+    | 'base-url-credentials'
+    /** A non-empty advanced request body, which some hosts take the token in. */
+    | 'extra-body'
+
+export interface ExportBackendRisk {
+    readonly label: string
+    readonly risks: readonly ExportSecretRisk[]
+}
+
+/**
+ * Query keys and URL shapes that mean "this URL is itself a credential".
+ * Deliberately broad: the cost of a false positive is one extra sentence in a
+ * dialog, the cost of a false negative is a shared file with a live token.
+ */
+const CREDENTIAL_URL_PATTERN = /@|(?:^|[?&#])[^=&#]*(?:key|token|secret|password|pwd|auth|sig)=/i
+
+/** Whether a base URL looks like it carries a credential. */
+export function baseUrlCarriesCredentials(baseUrl: string): boolean {
+    return CREDENTIAL_URL_PATTERN.test(baseUrl.trim())
+}
+
+/**
+ * The backends in this export whose remaining fields could still hold a
+ * secret. `apiKey` is stripped by {@link exportSettings}; `baseUrl` and
+ * `extraBodyJson` are not, because they configure the request. The export
+ * dialog states these instead of claiming the file contains no credentials —
+ * an absolute promise the format cannot keep.
+ */
+export function exportSecretRisks(
+    settings: PluginSettingsV1,
+    selection: TransferSelection
+): readonly ExportBackendRisk[] {
+    if (!selection.backends) {
+        return []
+    }
+    const flagged: ExportBackendRisk[] = []
+    for (const backend of settings.backends) {
+        if (backend.family !== 'api') {
+            continue
+        }
+        const risks: ExportSecretRisk[] = []
+        if (baseUrlCarriesCredentials(backend.baseUrl)) {
+            risks.push('base-url-credentials')
+        }
+        if (backend.extraBodyJson.trim().length > 0) {
+            risks.push('extra-body')
+        }
+        if (risks.length > 0) {
+            flagged.push({ label: backend.label, risks })
+        }
+    }
+    return flagged
+}
+
 /** How many entities each selected section contributes, in section order. */
 export function exportCounts(
     settings: PluginSettingsV1,
@@ -209,6 +285,12 @@ export interface ImportRejection {
 export type ImportAdjustment =
     /** An API key was dropped; the backend needs one re-entered to run. */
     | { readonly kind: 'api-key-cleared'; readonly label: string }
+    /**
+     * An API backend arrived switched off. An imported backend names a HOST,
+     * and nothing should be able to dispatch to a host the user has not looked
+     * at — enabling it means opening the Backends tab, where its URL is.
+     */
+    | { readonly kind: 'backend-disabled'; readonly label: string }
     /** A backend reference pointed outside the import: inherit the default. */
     | { readonly kind: 'backend-cleared'; readonly label: string }
     /** An action/rule target pointed outside the import: left unbound. */
@@ -308,6 +390,17 @@ export function planImport(
     const actions = salvage('actions', source, actionBindingSchema, rejected)
     const rules = salvage('rules', source, bindingRuleSchema, rejected)
 
+    // -- Decide the surviving set BEFORE remapping ----------------------------
+    // A cap applied after remapping trims entities other entities already point
+    // at, leaving references to ids that are never added and no adjustment
+    // saying so. So each section's survivors are settled first, in dependency
+    // order (backends → editors → panels → actions → rules), and only then do
+    // ids get generated and references rewritten. An entity capped out is
+    // therefore indistinguishable, to everything that referenced it, from an
+    // entity that was never in the file: the reference is cleared and reported.
+    const keptBackends = capSection('backends', backends, current.backends.length, rejected)
+    const keptEditors = capSection('editors', editors, current.editors.length, rejected)
+
     // -- Fresh ids, and the maps every reference is rewritten through ---------
     const taken = new Set<string>([
         ...current.backends.map((entity) => entity.id),
@@ -332,15 +425,21 @@ export function planImport(
     const editorIds = new Map<string, string>()
     const panelIds = new Map<string, string>()
 
-    const newBackends = backends.map((backend) => {
+    const newBackends = keptBackends.map((backend) => {
         const id = freshId()
         backendIds.set(backend.id, id)
-        if (backend.family === 'api' && backend.apiKey.length > 0) {
-            adjustments.push({ kind: 'api-key-cleared', label: backend.label })
+        if (backend.family === 'api') {
+            if (backend.apiKey.length > 0) {
+                adjustments.push({ kind: 'api-key-cleared', label: backend.label })
+            }
+            if (backend.enabled) {
+                adjustments.push({ kind: 'backend-disabled', label: backend.label })
+            }
+            return { ...backend, id, apiKey: '', enabled: false }
         }
-        return { ...withoutApiKey(backend), id }
+        return { ...backend, id }
     })
-    const newEditors = editors.map((editor) => {
+    const newEditors = keptEditors.map((editor) => {
         const id = freshId()
         editorIds.set(editor.id, id)
         return { ...editor, id }
@@ -374,34 +473,45 @@ export function planImport(
         backend: remapBackendRef(editor.backend, editor.name)
     }))
 
-    const remappedPanels: PanelConfig[] = []
-    panels.forEach((panel, index) => {
+    // Members resolve against the editors that will actually be added (capped
+    // set) plus the ones already here, so a panel whose only members were
+    // capped out is rejected as memberless rather than added pointing at
+    // nothing. The member pass runs BEFORE the panel cap, so room freed by a
+    // rejected panel goes to the next one.
+    const withMembers: Salvaged<PanelConfig>[] = []
+    const droppedMembers = new Map<string, number>()
+    for (const entry of panels) {
+        const panel = entry.entity
         const members = panel.memberEditorIds
             .map((memberId) => remap(editorIds, currentEditorIds, memberId))
             .filter((memberId): memberId is string => memberId !== null)
-        const dropped = panel.memberEditorIds.length - members.length
         if (members.length === 0) {
             // The schema requires at least one member, and a panel with none
             // is not a panel — reject rather than invent a member.
             rejected.push({
                 section: 'panels',
-                index,
+                index: entry.index,
                 label: panel.name,
                 reason: 'no-member-editor'
             })
-            return
+            continue
         }
+        droppedMembers.set(panel.id, panel.memberEditorIds.length - members.length)
+        withMembers.push({ index: entry.index, entity: { ...panel, memberEditorIds: members } })
+    }
+    const keptPanels = capSection('panels', withMembers, current.panels.length, rejected)
+    const remappedPanels: PanelConfig[] = keptPanels.map((panel) => {
+        const dropped = droppedMembers.get(panel.id) ?? 0
         if (dropped > 0) {
             adjustments.push({ kind: 'members-dropped', label: panel.name, count: dropped })
         }
         const id = freshId()
         panelIds.set(panel.id, id)
-        remappedPanels.push({
+        return {
             ...panel,
             id,
-            memberEditorIds: members,
             aggregationBackend: remapBackendRef(panel.aggregationBackend, panel.name)
-        })
+        }
     })
 
     const remapTarget = (target: ActionTarget | null, label: string): ActionTarget | null => {
@@ -424,32 +534,52 @@ export function planImport(
             .filter((action) => builtInActionIdSchema.safeParse(action.actionId).success)
             .map((action) => action.actionId)
     )
-    const remappedActions: ActionBinding[] = []
-    actions.forEach((action, index) => {
+    const bindable: Salvaged<ActionBinding>[] = []
+    for (const entry of actions) {
+        const action = entry.entity
         const builtIn = builtInActionIdSchema.safeParse(action.actionId).success
-        const label = builtIn ? action.actionId : action.customName
         if (builtIn && boundBuiltIns.has(action.actionId)) {
             // Two bindings for one verb would give the verb two menu entries
             // and make every lookup depend on array order.
-            rejected.push({ section: 'actions', index, label, reason: 'already-bound' })
-            return
+            rejected.push({
+                section: 'actions',
+                index: entry.index,
+                label: action.actionId,
+                reason: 'already-bound'
+            })
+            continue
         }
         if (builtIn) {
             boundBuiltIns.add(action.actionId)
         }
+        bindable.push(entry)
+    }
+    const remappedActions: ActionBinding[] = capSection(
+        'actions',
+        bindable,
+        current.actions.length,
+        rejected
+    ).map((action) => {
+        const builtIn = builtInActionIdSchema.safeParse(action.actionId).success
+        const label = builtIn ? action.actionId : action.customName
         // A built-in binding keeps the verb as its entity id (the convention
         // `setBuiltInActionBinding` writes); a custom action's id IS its
         // action id, so both halves get the same fresh value.
         const id = builtIn ? freshId(action.actionId) : freshId()
-        remappedActions.push({
+        return {
             ...action,
             id,
             actionId: builtIn ? action.actionId : id,
             binding: remapTarget(action.binding, label)
-        })
+        }
     })
 
-    const remappedRules: BindingRule[] = rules.map((rule) => {
+    const remappedRules: BindingRule[] = capSection(
+        'rules',
+        rules,
+        current.rules.length,
+        rejected
+    ).map((rule) => {
         const label =
             rule.name.length > 0 ? rule.name : `${rule.match.matchType}: ${rule.match.value}`
         return {
@@ -459,13 +589,12 @@ export function planImport(
         }
     })
 
-    // -- Section caps: report what does not fit instead of failing the save ---
     const additions = {
-        backends: capSection('backends', newBackends, current.backends.length, rejected),
-        editors: capSection('editors', remappedEditors, current.editors.length, rejected),
-        panels: capSection('panels', remappedPanels, current.panels.length, rejected),
-        actions: capSection('actions', remappedActions, current.actions.length, rejected),
-        rules: capSection('rules', remappedRules, current.rules.length, rejected)
+        backends: newBackends,
+        editors: remappedEditors,
+        panels: remappedPanels,
+        actions: remappedActions,
+        rules: remappedRules
     }
 
     // -- Voice profile: a single value, so it replaces ------------------------
@@ -500,13 +629,23 @@ export function planImport(
     }
 }
 
+/**
+ * One salvaged entity plus its index in the IMPORTED section — carried through
+ * every filtering pass so a rejection always reports the position the user can
+ * find in the file, not a position in some intermediate array.
+ */
+interface Salvaged<T> {
+    readonly index: number
+    readonly entity: T
+}
+
 /** Parses one section's elements individually; failures become rejections. */
 function salvage<T>(
     section: Exclude<TransferSection, 'voiceProfile'>,
     source: Record<string, unknown>,
     schema: z.ZodType<T>,
     rejected: ImportRejection[]
-): T[] {
+): Salvaged<T>[] {
     const raw = source[section]
     if (raw === undefined) {
         return []
@@ -515,11 +654,11 @@ function salvage<T>(
         rejected.push({ section, index: 0, label: '', reason: 'invalid' })
         return []
     }
-    const kept: T[] = []
+    const kept: Salvaged<T>[] = []
     raw.forEach((element, index) => {
         const parsed = schema.safeParse(element)
         if (parsed.success) {
-            kept.push(parsed.data)
+            kept.push({ index, entity: parsed.data })
             return
         }
         rejected.push({ section, index, label: rawLabel(element), reason: 'invalid' })
@@ -542,26 +681,30 @@ function rawLabel(element: unknown): string {
     return ''
 }
 
-/** Trims a section to its schema maximum, rejecting the overflow. */
+/**
+ * Trims a section to its schema maximum, rejecting the overflow.
+ *
+ * Runs before ids are generated and references remapped, so an entity that
+ * does not fit is simply absent from the id maps — every reference to it is
+ * then cleared through the normal `remap` path and reported as an adjustment,
+ * instead of surviving as a pointer to something never added.
+ */
 function capSection<T extends { readonly id: string }>(
     section: Exclude<TransferSection, 'voiceProfile'>,
-    entities: readonly T[],
+    entries: readonly Salvaged<T>[],
     existingCount: number,
     rejected: ImportRejection[]
 ): T[] {
     const room = Math.max(0, SECTION_MAX[section] - existingCount)
-    if (entities.length <= room) {
-        return [...entities]
-    }
-    entities.slice(room).forEach((entity, offset) => {
+    for (const entry of entries.slice(room)) {
         rejected.push({
             section,
-            index: room + offset,
-            label: entityLabel(entity),
+            index: entry.index,
+            label: entityLabel(entry.entity),
             reason: 'section-full'
         })
-    })
-    return entities.slice(0, room)
+    }
+    return entries.slice(0, room).map((entry) => entry.entity)
 }
 
 function entityLabel(entity: { readonly id: string }): string {

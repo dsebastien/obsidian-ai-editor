@@ -4,6 +4,7 @@ import {
     ALL_SECTIONS,
     TRANSFER_SECTIONS,
     exportCounts,
+    exportSecretRisks,
     planImport
 } from '../domain/settings/settings-transfer'
 import type {
@@ -15,9 +16,12 @@ import type {
 import {
     DEFAULT_EXPORT_PATH,
     adjustmentLine,
+    exportRiskLines,
     exportSummaryLine,
     hasSelection,
+    importDestinationLines,
     importErrorMessage,
+    importParticipationLine,
     importSummaryLines,
     normalizeExportPath,
     rejectionLine,
@@ -34,15 +38,44 @@ const planOf = (raw: unknown): SettingsImportPlan => {
 
 describe('normalizeExportPath', () => {
     it('appends .json, trims, and drops a leading slash', () => {
-        expect(normalizeExportPath('  Backups/settings ')).toEqual('Backups/settings.json')
-        expect(normalizeExportPath('/Backups/settings.json')).toEqual('Backups/settings.json')
-        expect(normalizeExportPath('settings.JSON')).toEqual('settings.JSON')
+        expect(normalizeExportPath('  Backups/settings ')).toEqual({
+            ok: true,
+            path: 'Backups/settings.json'
+        })
+        expect(normalizeExportPath('/Backups/settings.json')).toEqual({
+            ok: true,
+            path: 'Backups/settings.json'
+        })
+        expect(normalizeExportPath('settings.JSON')).toEqual({ ok: true, path: 'settings.JSON' })
     })
 
     it('falls back to the default name for empty or folder-only input', () => {
-        expect(normalizeExportPath('   ')).toEqual(DEFAULT_EXPORT_PATH)
-        expect(normalizeExportPath('/')).toEqual(DEFAULT_EXPORT_PATH)
-        expect(normalizeExportPath('Backups/')).toEqual(`Backups/${DEFAULT_EXPORT_PATH}`)
+        expect(normalizeExportPath('   ')).toEqual({ ok: true, path: DEFAULT_EXPORT_PATH })
+        expect(normalizeExportPath('/')).toEqual({ ok: true, path: DEFAULT_EXPORT_PATH })
+        expect(normalizeExportPath('Backups/')).toEqual({
+            ok: true,
+            path: `Backups/${DEFAULT_EXPORT_PATH}`
+        })
+    })
+
+    it('refuses to leave the vault, however the traversal is spelled', () => {
+        for (const raw of [
+            '../ai-editor-settings.json',
+            'Backups/../../escape.json',
+            '..\\escape.json',
+            '/../escape',
+            './../escape.json'
+        ]) {
+            const result = normalizeExportPath(raw)
+            expect(result.ok).toBe(false)
+        }
+    })
+
+    it('keeps a folder whose name merely starts with dots', () => {
+        expect(normalizeExportPath('..hidden/settings')).toEqual({
+            ok: true,
+            path: '..hidden/settings.json'
+        })
     })
 })
 
@@ -119,6 +152,7 @@ describe('rejection and adjustment lines', () => {
     it('has a line for every adjustment kind', () => {
         const adjustments: ImportAdjustment[] = [
             { kind: 'api-key-cleared', label: 'Claude' },
+            { kind: 'backend-disabled', label: 'Claude' },
             { kind: 'backend-cleared', label: 'Concision' },
             { kind: 'target-cleared', label: 'Zing' },
             { kind: 'members-dropped', label: 'Duo', count: 1 },
@@ -141,5 +175,79 @@ describe('rejection and adjustment lines', () => {
         for (const error of errors) {
             expect(importErrorMessage(error).length).toBeGreaterThan(0)
         }
+    })
+})
+
+describe('import destination disclosure', () => {
+    it('names the host every imported backend would send notes to', () => {
+        const plan = planOf({
+            backends: [
+                {
+                    id: 'b1',
+                    family: 'api',
+                    kind: 'openai-compatible',
+                    label: 'Gateway',
+                    baseUrl: 'https://gw.example/v1',
+                    extraBodyJson: '{"route":"cheap"}'
+                },
+                { id: 'b2', family: 'api', kind: 'anthropic', label: 'Claude' },
+                { id: 'b3', family: 'cli', kind: 'codex', label: 'Codex' }
+            ]
+        })
+        const lines = importDestinationLines(plan)
+        expect(lines[0]).toContain('https://gw.example/v1')
+        expect(lines[0]).toContain('custom request body')
+        // No base URL means the provider default — still stated, never blank.
+        expect(lines[1]).toContain('anthropic default')
+        expect(lines[2]).toContain('local command')
+    })
+
+    it('says that imported editors will join every review', () => {
+        expect(
+            importParticipationLine(
+                planOf({
+                    editors: [
+                        { id: 'e1', name: 'One' },
+                        { id: 'e2', name: 'Two', enabled: false },
+                        { id: 'e3', name: 'Three', capabilities: { review: false } }
+                    ]
+                })
+            )
+        ).toContain('1 imported editor')
+        // Nothing to warn about when nothing would participate.
+        expect(
+            importParticipationLine(
+                planOf({ editors: [{ id: 'e1', name: 'One', enabled: false }] })
+            )
+        ).toBeNull()
+    })
+})
+
+describe('exportRiskLines', () => {
+    it('says nothing when no exported field can carry a credential', () => {
+        const settings = pluginSettingsSchema.parse({
+            backends: [{ id: 'b1', family: 'api', kind: 'anthropic', label: 'Claude' }]
+        })
+        expect(exportRiskLines(exportSecretRisks(settings, ALL_SECTIONS))).toEqual([])
+    })
+
+    it('names the backend and the reason when one can', () => {
+        const settings = pluginSettingsSchema.parse({
+            backends: [
+                {
+                    id: 'b1',
+                    family: 'api',
+                    kind: 'openai-compatible',
+                    label: 'Gateway',
+                    baseUrl: 'https://gw.example/v1?api-key=SECRET',
+                    extraBodyJson: '{"api_key":"SECRET"}'
+                }
+            ]
+        })
+        const lines = exportRiskLines(exportSecretRisks(settings, ALL_SECTIONS))
+        expect(lines).toHaveLength(2)
+        expect(lines[1]).toContain('Gateway')
+        expect(lines[1]).toContain('base URL')
+        expect(lines[1]).toContain('custom request body')
     })
 })

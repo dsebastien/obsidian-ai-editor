@@ -46,6 +46,6 @@ Two families behind one adapter contract (per-instance capability negotiation: s
 
 ## Persistence
 
-- Settings (editors, panels, actions, rules, providers): plugin `data.json`, schema-versioned with migrations, stable UUIDs, referential integrity on delete. Transfer in and out of a vault goes through `domain/settings/settings-transfer.ts` (pure): export strips API keys, import validates per entity, regenerates ids, remaps references, and returns a plan the user confirms before anything is written.
+- Settings (editors, panels, actions, rules, providers): plugin `data.json`, schema-versioned with migrations, stable UUIDs, referential integrity on delete. Transfer in and out of a vault goes through `domain/settings/settings-transfer.ts` (pure): export strips API keys and declares the fields that can still hold one; import validates per entity, applies section caps BEFORE remapping (so a capped-out entity leaves no dangling reference), regenerates ids, remaps references, brings API backends in disabled, and returns a plan — destinations included — that the user confirms before anything is written.
 - Findings/runs: ephemeral (in-memory per session).
 - Async margin comments: sidecar repository under the plugin data dir — schema version, quote+prefix+suffix anchors with fuzzy re-anchor on open, rename handling, corruption recovery, interrupted-job semantics on restart (Retry; no fake resumption).
