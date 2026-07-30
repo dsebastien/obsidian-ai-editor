@@ -10,6 +10,7 @@ import { renderVoiceTab } from './tabs/voice-tab'
 import { renderRulesTab } from './tabs/rules-tab'
 import { renderBehaviorTab } from './tabs/behavior-tab'
 import type { TabContext } from './tabs/shared'
+import { isTabNavigationKey, nextTabIndex } from './tab-keyboard'
 
 /**
  * The plugin instance as the settings tab sees it. When the plugin
@@ -36,6 +37,16 @@ const SETTINGS_TABS: readonly SettingsTabDefinition[] = [
     { id: 'behavior', label: 'Behavior', render: renderBehaviorTab }
 ]
 
+/** DOM id of one tab button — the `aria-labelledby` target of its panel. */
+function tabDomId(tabId: string): string {
+    return `ai-editor-settings-tab-${tabId}`
+}
+
+/** DOM id of the panel a tab controls (`aria-controls`). */
+function panelDomId(tabId: string): string {
+    return `ai-editor-settings-panel-${tabId}`
+}
+
 /**
  * Tabbed settings tab (Backends / Editors / Panels / Actions / Voice & style
  * / Rules / Behavior). The active tab lives in memory only — reopening the
@@ -49,6 +60,8 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
     private readonly facade: SettingsFacade
     private activeTabId: string
     private tabVisible = false
+    /** True while a re-render was caused by the user moving between tabs. */
+    private pendingTabFocus = false
 
     constructor(app: App, plugin: SettingsTabPlugin) {
         super(app, plugin)
@@ -82,26 +95,62 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
             cls: 'ai-editor-settings-tabbar',
             attr: { 'role': 'tablist', 'aria-label': 'AI Editor settings sections' }
         })
-        const content = containerEl.createDiv({ cls: 'ai-editor-settings-content' })
+        const activeIndex = Math.max(
+            0,
+            SETTINGS_TABS.findIndex((tab) => tab.id === this.activeTabId)
+        )
+        const content = containerEl.createDiv({
+            cls: 'ai-editor-settings-content',
+            attr: {
+                'role': 'tabpanel',
+                // Programmatically focusable so activating a tab can put focus
+                // on the section it just revealed — see `selectTab`.
+                'tabindex': '-1',
+                'id': panelDomId(this.activeTabId),
+                'aria-labelledby': tabDomId(this.activeTabId)
+            }
+        })
 
-        for (const tab of SETTINGS_TABS) {
-            const isActive = tab.id === this.activeTabId
+        let activeButton: HTMLElement | null = null
+        SETTINGS_TABS.forEach((tab, index) => {
+            const isActive = index === activeIndex
             const button = tabBar.createEl('button', {
                 cls: isActive ? 'ai-editor-settings-tab is-active' : 'ai-editor-settings-tab',
                 text: tab.label,
-                attr: { 'role': 'tab', 'type': 'button', 'aria-selected': String(isActive) }
+                attr: {
+                    'role': 'tab',
+                    'type': 'button',
+                    'id': tabDomId(tab.id),
+                    'aria-selected': String(isActive),
+                    'aria-controls': panelDomId(tab.id),
+                    // Roving tabindex: ONE stop for the whole bar. Tab moves
+                    // past the tablist to the settings themselves, arrows move
+                    // within it — the ARIA tabs pattern, and the reason the
+                    // arrow handler below is not optional once `role=tab` is
+                    // on these buttons.
+                    'tabindex': isActive ? '0' : '-1'
+                }
             })
+            if (isActive) {
+                activeButton = button
+            }
             button.addEventListener('click', () => {
-                if (this.activeTabId === tab.id) {
+                this.selectTab(tab.id)
+            })
+            button.addEventListener('keydown', (event: KeyboardEvent) => {
+                if (!isTabNavigationKey(event.key)) {
                     return
                 }
-                this.activeTabId = tab.id
-                this.renderAll()
+                event.preventDefault()
+                const target = nextTabIndex(event.key, index, SETTINGS_TABS.length)
+                const next = SETTINGS_TABS[target]
+                if (next) {
+                    this.selectTab(next.id)
+                }
             })
-        }
+        })
 
-        const activeTab =
-            SETTINGS_TABS.find((tab) => tab.id === this.activeTabId) ?? SETTINGS_TABS[0]
+        const activeTab = SETTINGS_TABS[activeIndex]
         if (!activeTab) {
             return
         }
@@ -111,5 +160,37 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
             refresh: () => this.renderAll()
         }
         activeTab.render(content, ctx)
+        this.restoreTabFocus(activeButton)
+    }
+
+    /**
+     * Switches tabs and re-renders. Selection FOLLOWS focus (the pattern's
+     * default for a bar whose panels are cheap to build), so an arrow key
+     * both moves and activates — one gesture, and the panel under the tab is
+     * always the one being announced.
+     */
+    private selectTab(tabId: string): void {
+        if (this.activeTabId === tabId) {
+            return
+        }
+        this.activeTabId = tabId
+        this.pendingTabFocus = true
+        this.renderAll()
+    }
+
+    /**
+     * `renderAll` empties the whole container, so the element the user was
+     * standing on is destroyed along with everything else — focus falls back
+     * to the document and a keyboard user loses the bar entirely after one
+     * arrow press. Focus is put back on the tab they moved to, and only when
+     * the re-render came from THEIR action (never on the load-time re-render,
+     * which would steal focus from wherever they had got to).
+     */
+    private restoreTabFocus(activeButton: HTMLElement | null): void {
+        if (!this.pendingTabFocus) {
+            return
+        }
+        this.pendingTabFocus = false
+        activeButton?.focus()
     }
 }
