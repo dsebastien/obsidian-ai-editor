@@ -177,6 +177,13 @@ export interface ReviewCliRunInput {
     readonly settings: PluginSettingsV1
     readonly snapshot: DocumentSnapshot
     readonly confirmedLargeNote: boolean
+    /**
+     * The editors `--editors` named, resolved to ids; absent when the flag was
+     * not passed. Threaded into `startReview`'s `editorIds` so the choice
+     * OVERRIDES a matching `assign` binding rule instead of being invisible
+     * to participant resolution (see `selectEditors`).
+     */
+    readonly editorIds?: readonly string[]
 }
 
 export interface ReviewCliDeps {
@@ -263,7 +270,8 @@ export function parseReviewCliArgs(
 // ---------------------------------------------------------------------------
 
 export type EditorSelection =
-    | { readonly ok: true; readonly settings: PluginSettingsV1 }
+    /** `editorIds` is null when the flag was absent: the note's default pool. */
+    | { readonly ok: true; readonly editorIds: readonly string[] | null }
     | {
           readonly ok: false
           readonly unknown: readonly string[]
@@ -271,20 +279,30 @@ export type EditorSelection =
       }
 
 /**
- * Narrows the settings to the requested editors. Tokens match an editor id
- * exactly or an editor name case-insensitively (first match wins on
- * duplicate names); duplicates collapse. Any unknown OR disabled token fails
- * the whole selection: a partial review behind a typo would be silent data
- * loss for scripts, and an explicitly requested disabled editor would
- * otherwise be dropped by the pipeline without even a skip entry (the run
- * only reports skips for ENABLED editors that cannot participate).
+ * Resolves `--editors` to editor IDS. Tokens match an editor id exactly or an
+ * editor name case-insensitively (first match wins on duplicate names);
+ * duplicates collapse. Any unknown OR disabled token fails the whole
+ * selection: a partial review behind a typo would be silent data loss for
+ * scripts, and an explicitly requested disabled editor would otherwise be
+ * dropped by the pipeline without even a skip entry (the run only reports
+ * skips for ENABLED editors that cannot participate).
+ *
+ * IDS, not a narrowed settings object. Handing `startReview` a settings whose
+ * `editors` had been filtered made the flag invisible to
+ * `resolveReviewParticipants`: with no requested pool it fell through to
+ * precedence 4, the binding rule — and then resolved that rule AGAINST THE
+ * NARROWED LIST. A vault with an `assign` rule pointing at an editor the flag
+ * excluded answered `no-editors` blaming a rule whose target was perfectly
+ * healthy, and the editor the user asked for never ran. Carrying the ids lets
+ * precedence 3 apply, which is what the documented contract says ("Rules
+ * supply the DEFAULT pool only — a user or daemon choice wins").
  */
 export function selectEditors(
     settings: PluginSettingsV1,
     requested: readonly string[] | null
 ): EditorSelection {
     if (requested === null) {
-        return { ok: true, settings }
+        return { ok: true, editorIds: null }
     }
     const matched: EditorConfig[] = []
     const unknown: string[] = []
@@ -311,7 +329,7 @@ export function selectEditors(
     if (unknown.length > 0 || disabled.length > 0) {
         return { ok: false, unknown, disabled }
     }
-    return { ok: true, settings: { ...settings, editors: matched } }
+    return { ok: true, editorIds: matched.map((editor) => editor.id) }
 }
 
 // ---------------------------------------------------------------------------
@@ -595,7 +613,10 @@ export async function handleReviewCli(
         )
     }
 
-    const selection = selectEditors(deps.getSettings(), args.editors)
+    // Read ONCE: the selection and the dispatch must agree about the vault's
+    // editors even if the user edits settings between the two.
+    const settings = deps.getSettings()
+    const selection = selectEditors(settings, args.editors)
     if (!selection.ok) {
         const parts: string[] = []
         if (selection.unknown.length > 0) {
@@ -613,9 +634,10 @@ export async function handleReviewCli(
     let start: ReviewStart
     try {
         start = await deps.runReview({
-            settings: selection.settings,
+            settings,
             snapshot,
-            confirmedLargeNote: args.confirmLarge
+            confirmedLargeNote: args.confirmLarge,
+            ...(selection.editorIds === null ? {} : { editorIds: selection.editorIds })
         })
         if (start.status === 'started') {
             // The scorecard too, not just the members: a panel run dispatches

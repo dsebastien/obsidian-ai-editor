@@ -21,14 +21,14 @@ Not to be confused with [CLI backends](cli-backends.md), which are the other dir
 
 _Review a note with the configured AI editors._
 
-| Flag              | Value            | Notes                                                                      |
-| ----------------- | ---------------- | -------------------------------------------------------------------------- |
-| `--file`          | `<path>`         | **Required.** Vault path, with or without `.md`, or link text              |
-| `--editors`       | `<ids-or-names>` | Comma-separated. Default: every enabled editor. Names are case-insensitive |
-| `--format`        | `json` \| `text` | Default `json`                                                             |
-| `--confirm-large` | flag             | Confirm reviewing a note above the size warning threshold                  |
+| Flag              | Value            | Notes                                                                    |
+| ----------------- | ---------------- | ------------------------------------------------------------------------ |
+| `--file`          | `<path>`         | **Required.** Vault path, with or without `.md`, or link text            |
+| `--editors`       | `<ids-or-names>` | Comma-separated; overrides a matching rule. Default: the note's own pool |
+| `--format`        | `json` \| `text` | Default `json`                                                           |
+| `--confirm-large` | flag             | Confirm reviewing a note above the size warning threshold                |
 
-It runs through the **exact same pipeline** as the **Review current note** command, so it refuses for the same reasons and honours the same rules, exclusions and size guard. It waits for the run to settle — including the [panel scorecard](panels.md) when the run is a panel run — and then prints one document.
+It runs through the **exact same pipeline** as the **Review current note** command, so it refuses for the same reasons and honours the same rules, exclusions and size guard. `--editors` is a choice you made, so it wins over a [rule](rules.md) that assigns a reviewer to the note — rules only supply the default. An unknown or disabled name fails the whole call rather than silently reviewing with fewer editors. It waits for the run to settle — including the [panel scorecard](panels.md) when the run is a panel run — and then prints one document.
 
 If the note is **open in a markdown view**, the snapshot comes from the live editor buffer (unsaved edits included), the run is bound to that view, and the findings show up on the rail, in the highlights and in the panel just like a review you started by hand. If the note is not open, the saved file is used and the run is discarded once the output is shaped.
 

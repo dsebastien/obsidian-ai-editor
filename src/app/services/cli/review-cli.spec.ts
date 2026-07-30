@@ -7,6 +7,8 @@ import {
 import type { EditorConfig, PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import { panelResultSchema } from '../../domain/operations/contract'
 import type { PanelRunState, RunHandle } from '../orchestration/run-controller'
+import type { RuleOutcome } from '../../domain/rules/rule-engine'
+import { resolveReviewParticipants } from '../review-service'
 import type { EditorSkip, ReviewStart } from '../review-service'
 import { FakeRunHandle, makeState } from './spec-fixtures'
 import {
@@ -137,11 +139,11 @@ describe('selectEditors', () => {
         ]
     })
 
-    it('passes the settings through untouched when no editors are requested', () => {
+    it('asks for no particular pool when no editors are requested', () => {
         const selection = selectEditors(settings, null)
         expect(selection.ok).toBe(true)
         if (selection.ok) {
-            expect(selection.settings).toBe(settings)
+            expect(selection.editorIds).toBeNull()
         }
     })
 
@@ -149,10 +151,7 @@ describe('selectEditors', () => {
         const selection = selectEditors(settings, ['editor-2', 'hater'])
         expect(selection.ok).toBe(true)
         if (selection.ok) {
-            expect(selection.settings.editors.map((editor) => editor.id)).toEqual([
-                'editor-2',
-                'editor-1'
-            ])
+            expect(selection.editorIds).toEqual(['editor-2', 'editor-1'])
         }
     })
 
@@ -160,7 +159,7 @@ describe('selectEditors', () => {
         const selection = selectEditors(settings, ['Hater', 'editor-1'])
         expect(selection.ok).toBe(true)
         if (selection.ok) {
-            expect(selection.settings.editors).toHaveLength(1)
+            expect(selection.editorIds).toEqual(['editor-1'])
         }
     })
 
@@ -188,14 +187,14 @@ describe('selectEditors', () => {
         }
     })
 
-    it('still passes disabled editors through when none are explicitly requested', () => {
+    it('stays silent about disabled editors when none are explicitly requested', () => {
         const withDisabled = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Sleeper', enabled: false })]
         })
         const selection = selectEditors(withDisabled, null)
         expect(selection.ok).toBe(true)
         if (selection.ok) {
-            expect(selection.settings).toBe(withDisabled)
+            expect(selection.editorIds).toBeNull()
         }
     })
 })
@@ -610,13 +609,62 @@ describe('handleReviewCli', () => {
         expect(deps.runInputs).toHaveLength(0)
     })
 
-    it('narrows the settings to the requested editors', async () => {
+    it('carries the requested editors as ids, leaving the settings intact', async () => {
         const settings = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Concision Editor' })]
         })
         const deps = makeDeps({ getSettings: () => settings })
         await handleReviewCli({ file: 'Notes/Test.md', editors: 'concision editor' }, deps)
-        expect(deps.runInputs[0]?.settings.editors.map((editor) => editor.id)).toEqual(['editor-2'])
+        expect(deps.runInputs[0]?.editorIds).toEqual(['editor-2'])
+        // The vault's editor list is NOT narrowed: a narrowed list is what
+        // `resolveReviewParticipants` would resolve a binding rule against.
+        expect(deps.runInputs[0]?.settings.editors.map((editor) => editor.id)).toEqual([
+            'editor-1',
+            'editor-2'
+        ])
+    })
+
+    it('omits editorIds entirely when --editors was not passed', async () => {
+        const deps = makeDeps()
+        await handleReviewCli({ file: 'Notes/Test.md' }, deps)
+        expect(deps.runInputs[0]?.editorIds).toBeUndefined()
+    })
+
+    it('lets --editors override an assign rule instead of being filtered by it', async () => {
+        // The regression this pins: narrowing `settings.editors` hid the flag
+        // from participant resolution, which then fell through to the binding
+        // rule and resolved it against the NARROWED list — answering
+        // `no-editors` and blaming a rule whose target was perfectly healthy.
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Blog Editor' })],
+            rules: [
+                {
+                    id: 'rule-1',
+                    name: 'Blog rule',
+                    match: { matchType: 'folder', value: 'Notes' },
+                    effect: 'assign',
+                    defaultTarget: { targetType: 'editor', targetId: 'editor-2' }
+                }
+            ]
+        })
+        const deps = makeDeps({ getSettings: () => settings })
+        await handleReviewCli({ file: 'Notes/Test.md', editors: 'Hater' }, deps)
+        const input = deps.runInputs[0]
+        expect(input?.editorIds).toEqual(['editor-1'])
+
+        // And what `startReview` would then resolve: the asked-for editor,
+        // not the rule's — precedence 3 over precedence 4.
+        const ruleOutcome: RuleOutcome = {
+            kind: 'assigned',
+            ruleId: 'rule-1',
+            ruleLabel: 'Blog rule',
+            target: { targetType: 'editor', targetId: 'editor-2' }
+        }
+        const pool = resolveReviewParticipants(input?.settings ?? settings, ruleOutcome, {
+            editorIds: input?.editorIds
+        })
+        expect(pool.participants.map((participant) => participant.editor.id)).toEqual(['editor-1'])
+        expect(pool.skips).toEqual([])
     })
 
     it('returns excluded when the pipeline refuses the note', async () => {

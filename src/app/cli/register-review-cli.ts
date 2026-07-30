@@ -64,6 +64,9 @@ export function registerReviewCli(input: {
                 runController,
                 fetchImpl: window.fetch.bind(window),
                 confirmedLargeNote: run.confirmedLargeNote,
+                // `--editors` as precedence 3, so it overrides a matching
+                // `assign` binding rule rather than being resolved against it.
+                ...(run.editorIds ? { editorIds: run.editorIds } : {}),
                 ...(live ? { refreshSnapshot: live.refreshSnapshot } : {})
             })
             if (result.status === 'started' && live) {
