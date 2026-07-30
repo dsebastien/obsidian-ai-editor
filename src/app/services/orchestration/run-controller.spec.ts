@@ -1273,7 +1273,8 @@ describe('RunController panel runs', () => {
                 kind: 'aggregate-panel',
                 recommendation: 'needs-work',
                 memberVerdicts: [],
-                topFixes: ['Tighten the opening'],
+                topFixes: [{ action: 'Tighten the opening' }],
+                dissent: [],
                 missingMembers: []
             }
         }
@@ -1365,7 +1366,7 @@ describe('RunController panel runs', () => {
         const state = run.getPanelState()
         expect(state?.panelName).toBe('Pre-publish Review')
         expect(state?.status).toBe('done')
-        expect(state?.result?.topFixes).toEqual(['Tighten the opening'])
+        expect(state?.result?.topFixes.map((fix) => fix.action)).toEqual(['Tighten the opening'])
         expect(state?.missingMembers).toEqual([])
         expect(requests).toHaveLength(1)
         expect(requests[0]?.members.map((entry) => entry.editorName)).toEqual([

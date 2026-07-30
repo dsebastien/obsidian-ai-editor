@@ -164,7 +164,14 @@ export const aggregatePanelRequestSchema = baseRequest.extend({
                 findings: z.array(rawFindingSchema).max(200),
                 summary: z.string().max(SHORT_TEXT_MAX).optional(),
                 verdict: verdictSchema.optional(),
-                failed: z.boolean().default(false)
+                failed: z.boolean().default(false),
+                /**
+                 * How many of this member's findings the aggregation budget
+                 * left out (see `domain/panels/panel-aggregation.ts`). Carried
+                 * so the chairperson knows the member's list is a prefix and
+                 * does not write "nothing else was reported" over a truncation.
+                 */
+                omittedFindings: z.number().int().min(0).max(1_000).default(0)
             })
         )
         .min(1)
@@ -243,20 +250,67 @@ export const threadTurnResultSchema = z.object({
 })
 export type ThreadTurnResult = z.infer<typeof threadTurnResultSchema>
 
+/**
+ * One ranked action from the scorecard. `action` is the instruction; the two
+ * optional fields are a POINTER back to the member finding it came from, so
+ * the UI can reveal that finding in the note instead of leaving the user to
+ * search for the span a sentence describes. They are optional because a
+ * legitimate top fix can be structural ("cut the second half") and anchor to
+ * no single span — an invented pointer would be worse than none.
+ */
+export const panelTopFixSchema = z.object({
+    /** The concrete action, imperative and self-contained. */
+    action: z.string().min(1).max(1_000),
+    /** Name of the member that reported the finding this fix comes from. */
+    editorName: z.string().max(200).optional(),
+    /** That finding's quote, copied verbatim so it resolves to the same span. */
+    quote: z.string().max(QUOTE_MAX).optional()
+})
+export type PanelTopFix = z.infer<typeof panelTopFixSchema>
+
+/**
+ * One disagreement between members, kept as structure rather than prose.
+ *
+ * Dissent is the reason a panel is worth more than one editor: four readers
+ * who agree tell you what one would have. A free-text field invites the model
+ * to average the disagreement into a balanced sentence and lose which member
+ * held which position — so the subject and the per-member positions are
+ * separate fields, and the UI can name the sides.
+ */
+export const panelDissentSchema = z.object({
+    /** What the members disagree about, in one line. */
+    subject: z.string().min(1).max(500),
+    positions: z
+        .array(
+            z.object({
+                editorName: z.string().max(200),
+                /** That member's position, in its own terms — never merged. */
+                stance: z.string().min(1).max(1_000)
+            })
+        )
+        .min(1)
+        .max(20)
+})
+export type PanelDissent = z.infer<typeof panelDissentSchema>
+
 export const panelResultSchema = z.object({
     kind: z.literal('aggregate-panel'),
     recommendation: verdictSchema,
+    /** One line stating what the panel concluded, beyond the verdict token. */
+    rationale: z.string().max(SHORT_TEXT_MAX).optional(),
     memberVerdicts: z
         .array(
             z.object({
                 editorName: z.string().max(200),
                 verdict: verdictSchema.optional(),
+                /** That member's one-line rationale for its verdict. */
                 keyPoint: z.string().max(1_000).optional()
             })
         )
         .max(20),
-    topFixes: z.array(z.string().max(1_000)).max(10),
-    dissent: z.string().max(SHORT_TEXT_MAX).optional(),
+    /** Ranked, most important first. */
+    topFixes: z.array(panelTopFixSchema).max(10),
+    dissent: z.array(panelDissentSchema).max(10).default([]),
     /** Members that failed and are therefore missing from the synthesis. */
     missingMembers: z.array(z.string().max(200)).default([])
 })

@@ -1384,7 +1384,7 @@ function anthropicPanelBody(): string {
         kind: 'aggregate-panel',
         recommendation: 'needs-work',
         memberVerdicts: [{ editorName: 'Member one', verdict: 'needs-work' }],
-        topFixes: ['Tighten the opening'],
+        topFixes: [{ action: 'Tighten the opening' }],
         missingMembers: []
     }
     const frames = [

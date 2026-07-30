@@ -104,7 +104,7 @@ export class PanelModal extends Modal {
 
         renderPromptTextArea(contentEl, {
             name: 'Charter',
-            desc: 'Aggregation instructions: how member findings become a scorecard (verdicts, top fixes, dissent).',
+            desc: 'The panel’s shared brief: what it is for and how it weighs things. Appended to every member’s prompt, and used as the prompt of the call that writes the scorecard. What the scorecard must contain (verdicts, top fixes, dissent) is already fixed — say what the panel cares about instead.',
             placeholder: 'Weigh the Hater’s objections double…',
             get: () => this.draft.charter.text,
             set: (value) => {

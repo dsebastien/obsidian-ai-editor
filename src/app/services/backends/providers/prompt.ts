@@ -90,8 +90,10 @@ function kindRules(operation: OperationRequest): string[] {
         case 'aggregate-panel':
             return [
                 'Synthesize the member reviews into one recommendation; never invent findings the members did not report.',
-                'Record real disagreement between members in "dissent"; list members marked failed in "missingMembers" and do not speak for them.',
-                '"topFixes" are the highest-impact concrete actions, most important first.'
+                'Give every member listed in the input a "memberVerdicts" entry, with its verdict and a one-line "keyPoint" saying why. Members marked "failed": true produced nothing — list them in "missingMembers", give them no verdict, and do not speak for them.',
+                '"topFixes" are the highest-impact concrete actions, most important first. When a fix comes from a specific member finding, set "editorName" to that member and copy that finding\'s "quote" character-for-character into "quote" so the fix can be linked back to the text; omit both fields for structural fixes that anchor to no single span.',
+                'Record every real disagreement in "dissent": one entry per subject, with each disagreeing member\'s position under "positions". Do not average opposing readings into one balanced sentence, and do not report a disagreement that is only a difference of emphasis. An empty "dissent" array is a valid result when the members genuinely agreed.',
+                'A member with "omittedFindings" greater than 0 reported more findings than fit here — its list is a prefix, so do not conclude it found nothing else.'
             ]
     }
 }

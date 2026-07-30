@@ -3,6 +3,7 @@ import {
     CONTRACT_VERSION,
     operationRequestSchema,
     operationResultSchema,
+    panelResultSchema,
     rawFindingSchema
 } from './contract'
 
@@ -149,14 +150,62 @@ describe('operationResultSchema', () => {
                 { editorName: 'Editor', verdict: 'publish' },
                 { editorName: 'Hater', verdict: 'kill', keyPoint: 'Weak thesis.' }
             ],
-            topFixes: ['Tighten the intro.', 'Cite the outage claim.'],
-            dissent: 'Hater disagrees with publishing at all.'
+            topFixes: [
+                { action: 'Tighten the intro.', editorName: 'Editor', quote: 'In this article' },
+                { action: 'Cite the outage claim.' }
+            ],
+            dissent: [
+                {
+                    subject: 'Whether to publish at all',
+                    positions: [
+                        { editorName: 'Hater', stance: 'The thesis does not hold.' },
+                        { editorName: 'Editor', stance: 'It reads fine.' }
+                    ]
+                }
+            ]
         })
         expect(parsed.kind).toEqual('aggregate-panel')
         if (parsed.kind === 'aggregate-panel') {
             expect(parsed.missingMembers).toEqual([])
             expect(parsed.topFixes.length).toEqual(2)
+            // The pointer back to a member finding is optional: a structural
+            // fix that anchors to no span must stay expressible.
+            expect(parsed.topFixes[1]?.quote).toBeUndefined()
+            expect(parsed.dissent[0]?.positions.length).toEqual(2)
         }
+    })
+
+    it('defaults a panel result with no dissent to an empty list', () => {
+        const parsed = panelResultSchema.parse({
+            kind: 'aggregate-panel',
+            recommendation: 'publish',
+            memberVerdicts: [],
+            topFixes: []
+        })
+        expect(parsed.dissent).toEqual([])
+    })
+
+    it('rejects a top fix with no action', () => {
+        expect(() =>
+            panelResultSchema.parse({
+                kind: 'aggregate-panel',
+                recommendation: 'publish',
+                memberVerdicts: [],
+                topFixes: [{ editorName: 'Hater', quote: 'something' }]
+            })
+        ).toThrow()
+    })
+
+    it('rejects a dissent entry with no positions', () => {
+        expect(() =>
+            panelResultSchema.parse({
+                kind: 'aggregate-panel',
+                recommendation: 'publish',
+                memberVerdicts: [],
+                topFixes: [],
+                dissent: [{ subject: 'The opening', positions: [] }]
+            })
+        ).toThrow()
     })
 
     it('rejects a panel result without a recommendation', () => {

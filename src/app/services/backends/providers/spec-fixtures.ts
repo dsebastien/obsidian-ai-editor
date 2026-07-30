@@ -54,9 +54,10 @@ export function aggregatePanelOperation(): AggregatePanelRequest {
                     }
                 ],
                 verdict: 'needs-work',
-                failed: false
+                failed: false,
+                omittedFindings: 0
             },
-            { editorName: 'Beginner', findings: [], failed: true }
+            { editorName: 'Beginner', findings: [], failed: true, omittedFindings: 0 }
         ]
     }
 }
@@ -89,8 +90,18 @@ export function validPanelResult(): Record<string, unknown> {
         memberVerdicts: [
             { editorName: 'Hater', verdict: 'needs-work', keyPoint: 'Opening is weak' }
         ],
-        topFixes: ['Rewrite the opening sentence'],
-        dissent: 'Beginner found it accessible',
+        topFixes: [
+            { action: 'Rewrite the opening sentence', editorName: 'Hater', quote: 'It was a' }
+        ],
+        dissent: [
+            {
+                subject: 'Whether the opening works',
+                positions: [
+                    { editorName: 'Hater', stance: 'It buries the point' },
+                    { editorName: 'Beginner', stance: 'Found it accessible' }
+                ]
+            }
+        ],
         missingMembers: ['Beginner']
     }
 }

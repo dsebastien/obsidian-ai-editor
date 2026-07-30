@@ -227,7 +227,9 @@ describe('openAiAdapter.parseBufferedResponse', () => {
         const result = openAiAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
         expect(result.kind).toBe('aggregate-panel')
         if (result.kind === 'aggregate-panel') {
-            expect(result.topFixes).toEqual(['Rewrite the opening sentence'])
+            expect(result.topFixes.map((fix) => fix.action)).toEqual([
+                'Rewrite the opening sentence'
+            ])
         }
     })
 

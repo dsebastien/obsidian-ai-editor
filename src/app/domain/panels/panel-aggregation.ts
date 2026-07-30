@@ -89,7 +89,8 @@ export function planPanelAggregation(members: readonly PanelMemberReview[]): Pan
                   })),
             ...(!failed && member.summary ? { summary: member.summary } : {}),
             ...(!failed && member.verdict ? { verdict: member.verdict } : {}),
-            failed
+            failed,
+            omittedFindings: 0
         }
     })
     return { kind: 'aggregate', members: payload, missingMembers }
