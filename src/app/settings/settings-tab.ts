@@ -44,10 +44,15 @@ function tabDomId(tabId: string): string {
     return `ai-editor-settings-tab-${tabId}`
 }
 
-/** DOM id of the panel a tab controls (`aria-controls`). */
-function panelDomId(tabId: string): string {
-    return `ai-editor-settings-panel-${tabId}`
-}
+/**
+ * DOM id of the ONE tab panel. Constant on purpose: `renderAll` creates a
+ * single panel element and re-renders its contents on every tab change, so a
+ * per-tab id would make six of the seven `aria-controls` point at ids that are
+ * not in the document — a dangling reference on every inactive tab, which is
+ * worse than none. The panel says which tab it belongs to through
+ * `aria-labelledby`, re-pointed at the active tab button each render.
+ */
+const SETTINGS_PANEL_DOM_ID = 'ai-editor-settings-panel'
 
 /**
  * Tabbed settings tab (Backends / Editors / Panels / Actions / Voice & style
@@ -108,7 +113,7 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
                 // Programmatically focusable so activating a tab can put focus
                 // on the section it just revealed — see `selectTab`.
                 'tabindex': '-1',
-                'id': panelDomId(this.activeTabId),
+                'id': SETTINGS_PANEL_DOM_ID,
                 'aria-labelledby': tabDomId(this.activeTabId)
             }
         })
@@ -124,7 +129,7 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
                     'type': 'button',
                     'id': tabDomId(tab.id),
                     'aria-selected': String(isActive),
-                    'aria-controls': panelDomId(tab.id),
+                    'aria-controls': SETTINGS_PANEL_DOM_ID,
                     // Roving tabindex: ONE stop for the whole bar. Tab moves
                     // past the tablist to the settings themselves, arrows move
                     // within it — the ARIA tabs pattern, and the reason the
