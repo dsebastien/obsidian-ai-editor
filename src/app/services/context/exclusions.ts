@@ -1,3 +1,4 @@
+import { anyTagMatches, folderContainsPath, normalizeTagName } from '../../domain/rules/matchers'
 import type { BehaviorSettings } from '../../domain/settings/settings-schema'
 import type { NoteMetadata } from './vault-reader.intf'
 
@@ -7,23 +8,11 @@ import type { NoteMetadata } from './vault-reader.intf'
  * not as linked context, not via an explicit wikilink reference. This
  * predicate is the single decision point; every context source must consult
  * it BEFORE reading note content.
+ *
+ * Folder and tag matching come from `domain/rules/matchers` — the same
+ * primitives the note-type binding rules use, so "this note is in that folder"
+ * means exactly one thing across the plugin.
  */
-
-/**
- * Strips leading/trailing slashes and lowercases: `Private/` and `Private`
- * match alike, and matching is case-insensitive because vaults commonly live
- * on case-insensitive filesystems (Windows, macOS default) where `private`
- * and `Private` are the same folder — a false-positive exclusion is
- * acceptable, a case-mismatch leak is not (Business Rules #7).
- */
-function normalizeFolder(folder: string): string {
-    return folder.replace(/^\/+|\/+$/g, '').toLowerCase()
-}
-
-/** Strips a leading `#` and lowercases; Obsidian tag matching is case-insensitive. */
-function normalizeTag(tag: string): string {
-    return (tag.startsWith('#') ? tag.slice(1) : tag).toLowerCase()
-}
 
 /**
  * Whether `path` is excluded from all backend traffic.
@@ -51,29 +40,23 @@ export function isExcluded(
     metadata: NoteMetadata | null,
     behavior: BehaviorSettings
 ): boolean {
-    const loweredPath = path.toLowerCase()
     for (const folder of behavior.excludedFolders) {
-        const normalized = normalizeFolder(folder)
-        if (normalized.length === 0) {
-            continue
-        }
-        if (loweredPath === normalized || loweredPath.startsWith(`${normalized}/`)) {
+        // A blank excluded folder is a data-entry accident, not "the whole
+        // vault": `folderContainsPath` matches nothing for it.
+        if (folderContainsPath(folder, path)) {
             return true
         }
     }
 
     if (!metadata) {
-        const hasTagExclusions = behavior.excludedTags.some((tag) => normalizeTag(tag).length > 0)
+        const hasTagExclusions = behavior.excludedTags.some(
+            (tag) => normalizeTagName(tag).length > 0
+        )
         return hasTagExclusions || behavior.respectFrontmatterOptOut
     }
 
-    const noteTags = metadata.tags.map(normalizeTag)
     for (const excluded of behavior.excludedTags) {
-        const normalized = normalizeTag(excluded)
-        if (normalized.length === 0) {
-            continue
-        }
-        if (noteTags.some((tag) => tag === normalized || tag.startsWith(`${normalized}/`))) {
+        if (anyTagMatches(excluded, metadata.tags)) {
             return true
         }
     }

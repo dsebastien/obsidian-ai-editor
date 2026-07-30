@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'bun:test'
+import {
+    noteTypeIdsFromRegistry,
+    noteTypeIdsFromTags,
+    normalizeNoteTypeId,
+    resolveNoteTypeIds
+} from './note-type'
+import type { OskNoteType } from './note-type'
+
+describe('normalizeNoteTypeId', () => {
+    it('collapses separators and lowercases', () => {
+        expect(normalizeNoteTypeId('Personal Notes')).toBe('personal-notes')
+        expect(normalizeNoteTypeId('permanent_note')).toBe('permanent-note')
+        expect(normalizeNoteTypeId('daily-notes')).toBe('daily-notes')
+    })
+
+    it('trims separator runs at both ends', () => {
+        expect(normalizeNoteTypeId('  --Book (note)-- ')).toBe('book-note')
+    })
+
+    it('returns an empty string when nothing comparable is left', () => {
+        expect(normalizeNoteTypeId('   ')).toBe('')
+        expect(normalizeNoteTypeId('---')).toBe('')
+    })
+})
+
+describe('noteTypeIdsFromTags', () => {
+    it('derives one id per type tag, in tag order', () => {
+        expect(noteTypeIdsFromTags(['zone/meta', 'type/permanent_note', 'type/task'])).toEqual([
+            'permanent-note',
+            'task'
+        ])
+    })
+
+    it('tolerates a leading hash and mixed case', () => {
+        expect(noteTypeIdsFromTags(['#Type/Personal'])).toEqual(['personal'])
+    })
+
+    it('flattens nested type tags and deduplicates', () => {
+        expect(noteTypeIdsFromTags(['type/task/recurring', 'type/task_recurring'])).toEqual([
+            'task-recurring'
+        ])
+    })
+
+    it('ignores non-type tags and empty segments', () => {
+        expect(noteTypeIdsFromTags(['topic/writing', 'type/', 'type'])).toEqual([])
+    })
+})
+
+describe('noteTypeIdsFromRegistry', () => {
+    const registry: readonly OskNoteType[] = [
+        {
+            name: 'Personal Notes',
+            mappings: [
+                { type: 'tag', value: 'type/personal', enabled: true },
+                { type: 'regex', value: '.* \\(Personal\\)$', enabled: true }
+            ]
+        },
+        {
+            name: 'Daily Notes',
+            mappings: [{ type: 'folder', value: '30 Timestamped/Daily', enabled: true }]
+        },
+        {
+            name: 'Disabled Type',
+            mappings: [{ type: 'tag', value: 'type/personal', enabled: false }]
+        },
+        {
+            name: 'Formula Type',
+            mappings: [{ type: 'formula', value: 'anything', enabled: true }]
+        }
+    ]
+
+    it('recognizes by tag mapping', () => {
+        expect(
+            noteTypeIdsFromRegistry({ path: 'a.md', tags: ['type/personal'] }, registry)
+        ).toEqual(['personal-notes'])
+    })
+
+    it('recognizes by folder mapping', () => {
+        expect(
+            noteTypeIdsFromRegistry(
+                { path: '30 Timestamped/Daily/2026-07-30.md', tags: [] },
+                registry
+            )
+        ).toEqual(['daily-notes'])
+    })
+
+    it('recognizes by filename regex against the basename without extension', () => {
+        expect(
+            noteTypeIdsFromRegistry({ path: 'Notes/About me (Personal).md', tags: [] }, registry)
+        ).toEqual(['personal-notes'])
+    })
+
+    it('ignores disabled mappings and mapping kinds it cannot evaluate', () => {
+        const ids = noteTypeIdsFromRegistry({ path: 'a.md', tags: ['type/personal'] }, registry)
+        expect(ids).not.toContain('disabled-type')
+        expect(ids).not.toContain('formula-type')
+    })
+
+    it('survives an invalid regex mapping', () => {
+        const broken: readonly OskNoteType[] = [
+            { name: 'Broken', mappings: [{ type: 'regex', value: '([', enabled: true }] }
+        ]
+        expect(noteTypeIdsFromRegistry({ path: 'a.md', tags: [] }, broken)).toEqual([])
+    })
+
+    it('yields nothing for an empty registry', () => {
+        expect(noteTypeIdsFromRegistry({ path: 'a.md', tags: ['type/personal'] }, [])).toEqual([])
+    })
+})
+
+describe('resolveNoteTypeIds', () => {
+    const registry: readonly OskNoteType[] = [
+        {
+            name: 'Personal Notes',
+            mappings: [{ type: 'tag', value: 'type/personal', enabled: true }]
+        }
+    ]
+
+    it('reports the registry name AND the tag convention, registry first', () => {
+        expect(resolveNoteTypeIds({ path: 'a.md', tags: ['type/personal'] }, registry)).toEqual([
+            'personal-notes',
+            'personal'
+        ])
+    })
+
+    it('falls back to the tag convention without a registry', () => {
+        expect(resolveNoteTypeIds({ path: 'a.md', tags: ['type/permanent_note'] })).toEqual([
+            'permanent-note'
+        ])
+    })
+
+    it('deduplicates when both sources agree', () => {
+        const same: readonly OskNoteType[] = [
+            { name: 'personal', mappings: [{ type: 'tag', value: 'type/personal', enabled: true }] }
+        ]
+        expect(resolveNoteTypeIds({ path: 'a.md', tags: ['type/personal'] }, same)).toEqual([
+            'personal'
+        ])
+    })
+})
