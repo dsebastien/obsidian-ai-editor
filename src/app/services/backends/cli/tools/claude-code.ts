@@ -1,3 +1,4 @@
+import { hasToolsConsent } from '../../../../domain/settings/cli-consent'
 import { parseJsonDocument } from '../protocol'
 import { buildCliStdin } from './prompt'
 import { safeStatusToken } from './types'
@@ -49,7 +50,7 @@ import type {
  *   requiring one is refused. The dangerous values (`bypassPermissions`,
  *   `--dangerously-skip-permissions`) are not emitted by any code path here.
  * - `--tools ''` — the help states `Use "" to disable all tools`. Emitted
- *   whenever the backend's `allowTools` consent is off, which is the default.
+ *   whenever the backend's tool consent is not granted, which is the default.
  *   It goes **last**: `--tools` is variadic, so it swallows following
  *   non-option arguments, and keeping it at the end means no future flag can
  *   be eaten by it. There is no positional prompt argument for it to consume
@@ -88,7 +89,7 @@ function buildInvocation(input: BuildCliInvocationInput): CliInvocation {
     if (input.model.length > 0) {
         args.push('--model', input.model)
     }
-    if (!input.config.allowTools) {
+    if (!hasToolsConsent(input.config)) {
         // Last, and only here: `--tools` is variadic (see the module note).
         args.push('--tools', '')
     }

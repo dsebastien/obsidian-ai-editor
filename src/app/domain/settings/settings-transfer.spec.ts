@@ -226,8 +226,38 @@ describe('planImport', () => {
         const backend = plan.additions.backends[0]
         expect(backend).toMatchObject({ apiKey: '' })
         expect(plan.adjustments).toEqual([
-            { kind: 'api-key-cleared', label: 'Backend b1' },
-            { kind: 'backend-disabled', label: 'Backend b1' }
+            { kind: 'backend-disabled', label: 'Backend b1' },
+            { kind: 'api-key-cleared', label: 'Backend b1' }
+        ])
+    })
+
+    it('imports a CLI backend inert: switched off and unconsented', () => {
+        // Consent to launch a program is a decision about THIS machine, made
+        // in a dialog that explained it. A file cannot carry it.
+        const plan = planOf({
+            backends: [
+                {
+                    id: 'b3',
+                    family: 'cli',
+                    kind: 'claude-code',
+                    label: 'Claude Code',
+                    executablePath: '/usr/local/bin/claude',
+                    enabled: true,
+                    consent: {
+                        launchPath: '/usr/local/bin/claude',
+                        toolsPath: '/usr/local/bin/claude'
+                    }
+                }
+            ]
+        })
+        const backend = plan.additions.backends[0]
+        expect(backend).toMatchObject({
+            enabled: false,
+            consent: { launchPath: '', toolsPath: '' }
+        })
+        expect(plan.adjustments).toEqual([
+            { kind: 'backend-disabled', label: 'Claude Code' },
+            { kind: 'cli-consent-cleared', label: 'Claude Code' }
         ])
     })
 

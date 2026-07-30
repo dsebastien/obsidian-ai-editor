@@ -49,11 +49,11 @@ import type {
  *   behalf is not something a note-taking plugin gets to do.
  * - `-` — the documented spelling of "read the prompt from stdin".
  *
- * **Consent, honestly (`allowTools`).** Codex has no equivalent of Claude
+ * **Consent, honestly.** Codex has no equivalent of Claude
  * Code's `--tools ''`: running shell commands is not a feature of Codex that
  * can be switched off, it is how Codex answers at all. So this adapter
  * reports `canGrantTools: false` and its argv does not vary with the
- * backend's `allowTools` flag — there is nothing here that consent could
+ * backend's tool consent — there is nothing here that consent could
  * safely unlock, and a toggle that silently did nothing would be worse than
  * no toggle. What the plugin can state truthfully is the containment: a
  * read-only sandbox, in an empty directory that exists only for this run,

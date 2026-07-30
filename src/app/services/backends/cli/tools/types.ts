@@ -66,7 +66,7 @@ export interface CliToolCapabilities {
     readonly jsonSchema: boolean
     /**
      * Whether tool/research mode can be GRANTED to this tool at all — i.e.
-     * whether the backend's `allowTools` consent (plan M7, Business Rules #9)
+     * whether the backend's tool consent (plan M7, Business Rules #9)
      * has anything to switch on. False means the plugin found no way to hand
      * this tool extra reach that it could also bound, so it never tries.
      */

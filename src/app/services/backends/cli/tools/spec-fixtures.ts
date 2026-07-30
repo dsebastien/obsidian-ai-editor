@@ -7,14 +7,33 @@ import { cliBackendSchema, type CliBackend } from '../../../../domain/settings/s
  * code.
  */
 
+export const CLI_EXECUTABLE_PATH = '/usr/local/bin/claude'
+
 export function makeCliConfig(overrides: Partial<CliBackend> = {}): CliBackend {
     return cliBackendSchema.parse({
         id: 'cli-1',
         family: 'cli',
         kind: 'claude-code',
         label: 'Test CLI backend',
-        executablePath: '/usr/local/bin/claude',
+        executablePath: CLI_EXECUTABLE_PATH,
         ...overrides
+    })
+}
+
+/**
+ * A backend whose launch consent is in place, with tool consent on or off.
+ * Consent is recorded as the executable path it was granted for, so fixtures
+ * cannot express "tools on" without also expressing which binary that is.
+ */
+export function makeConsentedCliConfig(
+    options: { readonly tools: boolean } & Partial<CliBackend> = { tools: false }
+): CliBackend {
+    const { tools, ...overrides } = options
+    const executablePath = overrides.executablePath ?? CLI_EXECUTABLE_PATH
+    return makeCliConfig({
+        ...overrides,
+        executablePath,
+        consent: { launchPath: executablePath, toolsPath: tools ? executablePath : '' }
     })
 }
 

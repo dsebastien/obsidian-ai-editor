@@ -286,11 +286,19 @@ export type ImportAdjustment =
     /** An API key was dropped; the backend needs one re-entered to run. */
     | { readonly kind: 'api-key-cleared'; readonly label: string }
     /**
-     * An API backend arrived switched off. An imported backend names a HOST,
-     * and nothing should be able to dispatch to a host the user has not looked
-     * at — enabling it means opening the Backends tab, where its URL is.
+     * A backend arrived switched off. An imported backend names a HOST (API)
+     * or a PROGRAM ON THIS COMPUTER (CLI), and nothing should be able to
+     * dispatch to either without the user having looked at it — enabling it
+     * means opening the Backends tab, where the URL or the path is.
      */
     | { readonly kind: 'backend-disabled'; readonly label: string }
+    /**
+     * An imported CLI backend's consent record was dropped. Consent to launch
+     * a local program is a decision about THIS machine, made by THIS user, in
+     * a dialog that explained what it means — it cannot arrive in a file
+     * (Business Rules #9).
+     */
+    | { readonly kind: 'cli-consent-cleared'; readonly label: string }
     /** A backend reference pointed outside the import: inherit the default. */
     | { readonly kind: 'backend-cleared'; readonly label: string }
     /** An action/rule target pointed outside the import: left unbound. */
@@ -428,16 +436,22 @@ export function planImport(
     const newBackends = keptBackends.map((backend) => {
         const id = freshId()
         backendIds.set(backend.id, id)
+        if (backend.enabled) {
+            adjustments.push({ kind: 'backend-disabled', label: backend.label })
+        }
         if (backend.family === 'api') {
             if (backend.apiKey.length > 0) {
                 adjustments.push({ kind: 'api-key-cleared', label: backend.label })
             }
-            if (backend.enabled) {
-                adjustments.push({ kind: 'backend-disabled', label: backend.label })
-            }
             return { ...backend, id, apiKey: '', enabled: false }
         }
-        return { ...backend, id }
+        // A CLI backend arrives inert: switched off AND unconsented. Consent
+        // names an executable path on the importing machine, and a file cannot
+        // establish that the user was ever shown what launching it means.
+        if (backend.consent.launchPath.length > 0 || backend.consent.toolsPath.length > 0) {
+            adjustments.push({ kind: 'cli-consent-cleared', label: backend.label })
+        }
+        return { ...backend, id, enabled: false, consent: { launchPath: '', toolsPath: '' } }
     })
     const newEditors = keptEditors.map((editor) => {
         const id = freshId()

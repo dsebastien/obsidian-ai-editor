@@ -20,7 +20,8 @@ import {
     cliReviewOperation,
     codexAgentMessage,
     codexStream,
-    makeCliConfig
+    makeCliConfig,
+    makeConsentedCliConfig
 } from './tools/spec-fixtures'
 
 /**
@@ -81,11 +82,11 @@ async function run(
         return typeof outcome === 'function' ? await outcome(input) : outcome
     }
     const execute = createCliEditorExecutor({
-        backendConfig: makeCliConfig({
+        backendConfig: makeConsentedCliConfig({
             kind: options.kind ?? 'claude-code',
             executablePath: '/usr/local/bin/claude',
             timeoutSeconds: 120,
-            ...(options.allowTools === undefined ? {} : { allowTools: options.allowTools })
+            tools: options.allowTools ?? false
         }),
         model: options.model ?? '',
         systemPrompt: 'You are the Concision Editor.',

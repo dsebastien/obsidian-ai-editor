@@ -7,7 +7,8 @@ import {
     claudeErrorEnvelope,
     claudeSuccessEnvelope,
     cliReviewOperation,
-    makeCliConfig
+    makeCliConfig,
+    makeConsentedCliConfig
 } from './spec-fixtures'
 
 function invoke(overrides: { model?: string; allowTools?: boolean; systemPrompt?: string } = {}) {
@@ -15,9 +16,9 @@ function invoke(overrides: { model?: string; allowTools?: boolean; systemPrompt?
         operation: cliReviewOperation(),
         systemPrompt: overrides.systemPrompt ?? 'You are the Concision Editor.',
         model: overrides.model ?? '',
-        config: makeCliConfig({
+        config: makeConsentedCliConfig({
             kind: 'claude-code',
-            ...(overrides.allowTools === undefined ? {} : { allowTools: overrides.allowTools })
+            tools: overrides.allowTools ?? false
         })
     })
 }
@@ -55,6 +56,35 @@ describe('claudeCodeAdapter.buildInvocation', () => {
 
     it('omits --tools only when the backend consented to tools', () => {
         expect(invoke({ allowTools: true }).args).not.toContain('--tools')
+    })
+
+    it('disables tools when the tool-consent record names a different binary', () => {
+        // The stale-consent case: the user consented for one executable and
+        // the path was changed afterwards. Tools must go back off, not stay on.
+        const stale = claudeCodeAdapter.buildInvocation({
+            operation: cliReviewOperation(),
+            systemPrompt: 'You are the Concision Editor.',
+            model: '',
+            config: makeCliConfig({
+                kind: 'claude-code',
+                executablePath: '/opt/new/claude',
+                consent: { launchPath: '/usr/local/bin/claude', toolsPath: '/usr/local/bin/claude' }
+            })
+        })
+        expect(stale.args).toContain('--tools')
+    })
+
+    it('disables tools when tool consent exists without launch consent', () => {
+        const orphaned = claudeCodeAdapter.buildInvocation({
+            operation: cliReviewOperation(),
+            systemPrompt: 'You are the Concision Editor.',
+            model: '',
+            config: makeCliConfig({
+                kind: 'claude-code',
+                consent: { launchPath: '', toolsPath: '/usr/local/bin/claude' }
+            })
+        })
+        expect(orphaned.args).toContain('--tools')
     })
 
     it('never widens permissions, whatever the consent', () => {

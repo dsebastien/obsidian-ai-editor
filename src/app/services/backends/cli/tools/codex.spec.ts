@@ -10,7 +10,7 @@ import {
     cliReviewOperation,
     codexAgentMessage,
     codexStream,
-    makeCliConfig
+    makeConsentedCliConfig
 } from './spec-fixtures'
 
 function invoke(overrides: { model?: string; allowTools?: boolean; systemPrompt?: string } = {}) {
@@ -18,9 +18,9 @@ function invoke(overrides: { model?: string; allowTools?: boolean; systemPrompt?
         operation: cliReviewOperation(),
         systemPrompt: overrides.systemPrompt ?? 'You are the Concision Editor.',
         model: overrides.model ?? '',
-        config: makeCliConfig({
+        config: makeConsentedCliConfig({
             kind: 'codex',
-            ...(overrides.allowTools === undefined ? {} : { allowTools: overrides.allowTools })
+            tools: overrides.allowTools ?? false
         })
     })
 }

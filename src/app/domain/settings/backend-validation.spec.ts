@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { isJsonObject, validateApiBackend } from './backend-validation'
-import { apiBackendSchema } from './settings-schema'
-import type { ApiBackend, ApiProviderKind } from './settings-schema'
+import type { ExecutableProbe } from '../../services/backends/cli/executable'
+import { isJsonObject, validateApiBackend, validateCliBackend } from './backend-validation'
+import { apiBackendSchema, cliBackendSchema } from './settings-schema'
+import type { ApiBackend, ApiProviderKind, CliBackend } from './settings-schema'
 
 function makeBackend(overrides: Record<string, unknown> = {}): ApiBackend {
     return apiBackendSchema.parse({
@@ -115,6 +116,113 @@ describe('validateApiBackend', () => {
                 expect(result.message.length).toBeGreaterThan(0)
                 expect(result.message.endsWith('.')).toBe(true)
             }
+        }
+    })
+})
+
+describe('validateCliBackend', () => {
+    const CLAUDE = '/usr/local/bin/claude'
+    const goodProbe: ExecutableProbe = {
+        statFile: () => ({ isFile: true }),
+        isExecutable: () => true
+    }
+
+    function makeCliDraft(overrides: Record<string, unknown> = {}): CliBackend {
+        return cliBackendSchema.parse({
+            id: 'cli-1',
+            family: 'cli',
+            kind: 'claude-code',
+            label: 'Claude Code',
+            executablePath: CLAUDE,
+            ...overrides
+        })
+    }
+
+    it('accepts a well-formed draft and trims it', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({ label: '  Claude Code  ', defaultModel: ' opus ' }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(result.backend.label).toBe('Claude Code')
+            expect(result.backend.defaultModel).toBe('opus')
+        }
+    })
+
+    it('requires a label', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({ label: '   ' }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+            expect(result.code).toBe('label-required')
+        }
+    })
+
+    it('requires an executable path', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({ executablePath: '' }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+            expect(result.code).toBe('executable-required')
+        }
+    })
+
+    it('refuses a path the security boundary would refuse', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({ executablePath: 'claude' }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+            expect(result.code).toBe('executable-invalid')
+            expect(result.message).toContain('absolute')
+        }
+    })
+
+    it('reports a file that is not executable, at save time', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft(),
+            platform: 'posix',
+            probe: { statFile: () => ({ isFile: true }), isExecutable: () => false }
+        })
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+            expect(result.code).toBe('executable-invalid')
+        }
+    })
+
+    it('drops consent recorded for a different executable', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({
+                consent: { launchPath: '/opt/old/claude', toolsPath: '/opt/old/claude' }
+            }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(result.backend.consent).toEqual({ launchPath: '', toolsPath: '' })
+        }
+    })
+
+    it('keeps consent that names the saved executable', () => {
+        const result = validateCliBackend({
+            draft: makeCliDraft({ consent: { launchPath: CLAUDE, toolsPath: CLAUDE } }),
+            platform: 'posix',
+            probe: goodProbe
+        })
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(result.backend.consent).toEqual({ launchPath: CLAUDE, toolsPath: CLAUDE })
         }
     })
 })

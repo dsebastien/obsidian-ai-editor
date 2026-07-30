@@ -210,6 +210,8 @@ export function adjustmentLine(adjustment: ImportAdjustment): string {
             return `${adjustment.label} — its API key was not imported; enter yours.`
         case 'backend-disabled':
             return `${adjustment.label} — imported switched off; enable it in the Backends tab once you have checked where it points.`
+        case 'cli-consent-cleared':
+            return `${adjustment.label} — consent to launch a program cannot be imported; you will be asked on this machine.`
         case 'backend-cleared':
             return `${adjustment.label} — its backend is not in this file; it will use your default backend.`
         case 'target-cleared':

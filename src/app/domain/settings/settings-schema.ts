@@ -103,6 +103,32 @@ export const apiBackendSchema = z.object({
 })
 export type ApiBackend = z.infer<typeof apiBackendSchema>
 
+/**
+ * The two consents a CLI backend needs, recorded as WHAT was consented to
+ * rather than as a bare "yes" (Business Rules #9, plan M7).
+ *
+ * Each field holds the executable path the user agreed to at the moment they
+ * agreed, so consent is bound to one exact binary. A path that changes — the
+ * user edits it, an import brings a different one, a synced `data.json`
+ * merges someone else's — no longer matches, and the backend falls back to
+ * "not consented" instead of silently carrying a decision the user made about
+ * a different program. That is the whole reason this is a string and not a
+ * boolean: `data.json` syncs (Business Rules #12), and a boolean would travel
+ * as permission to launch whatever the path happens to say now.
+ *
+ * `''` means not granted. Never write these directly — `cli-consent.ts` owns
+ * every transition, and `hasToolsConsent` additionally requires launch
+ * consent, so tool mode can never outlive the permission to start the process
+ * at all.
+ */
+export const cliConsentSchema = z.object({
+    /** Path launch consent (step 1) was granted for; '' when not granted. */
+    launchPath: z.string().max(1_000).default(''),
+    /** Path tool/research consent (step 2) was granted for; '' when not granted. */
+    toolsPath: z.string().max(1_000).default('')
+})
+export type CliConsent = z.infer<typeof cliConsentSchema>
+
 export const cliBackendSchema = z.object({
     id: z.string().min(1),
     family: z.literal('cli'),
@@ -111,8 +137,13 @@ export const cliBackendSchema = z.object({
     /** Explicit executable path — never resolved from PATH implicitly. */
     executablePath: z.string().max(1_000).default(''),
     defaultModel: z.string().max(200).default(''),
-    /** Tool/research mode requires separate explicit consent (security boundary). */
-    allowTools: z.boolean().default(false),
+    /**
+     * Two-step consent record. There is deliberately no `allowTools` boolean
+     * beside it: one persisted fact per decision means "tools are on" and "the
+     * user consented to tools for this binary" cannot drift apart. Read it
+     * through `hasLaunchConsent` / `hasToolsConsent`.
+     */
+    consent: cliConsentSchema.default({ launchPath: '', toolsPath: '' }),
     timeoutSeconds: z.number().int().min(10).max(3_600).default(300),
     enabled: z.boolean().default(false)
 })

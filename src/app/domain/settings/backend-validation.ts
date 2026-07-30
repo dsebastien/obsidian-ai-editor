@@ -1,9 +1,13 @@
-import { apiBackendSchema } from './settings-schema'
-import type { ApiBackend } from './settings-schema'
+import { validateExecutablePath } from '../../services/backends/cli/executable'
+import type { ExecutableProbe } from '../../services/backends/cli/executable'
+import type { CliPlatform } from '../../services/backends/cli/platform'
+import { consentForPath } from './cli-consent'
+import { apiBackendSchema, cliBackendSchema } from './settings-schema'
+import type { ApiBackend, CliBackend } from './settings-schema'
 
 /**
- * What makes an API backend configuration usable — the one rule, shared by
- * every surface that authors one (the Backends tab's dialog and the setup
+ * What makes a backend configuration usable — one rule per family, shared by
+ * every surface that authors one (the Backends tab's dialogs and the setup
  * wizard).
  *
  * The messages live here with the rule rather than in a separate copy module:
@@ -11,8 +15,11 @@ import type { ApiBackend } from './settings-schema'
  * base URL"), and splitting them would let two surfaces enforce the same
  * requirement while explaining it differently.
  *
- * Pure: no Obsidian, no I/O. Whether the endpoint actually answers is a
- * different question, asked by `checkBackendHealth`.
+ * No Obsidian. The API rule is pure; the CLI rule asks the filesystem exactly
+ * one question — is this an executable file? — through the same injected probe
+ * the security boundary uses, so the dialog and the spawn can never disagree
+ * about a path. Whether the backend actually ANSWERS is a different question
+ * again, asked by `checkBackendHealth`.
  */
 
 export type BackendValidationCode =
@@ -21,10 +28,16 @@ export type BackendValidationCode =
     | 'api-key-required'
     | 'deployment-required'
     | 'extra-body-not-object'
+    | 'executable-required'
+    | 'executable-invalid'
     | 'schema-invalid'
 
 export type BackendValidation =
     | { readonly ok: true; readonly backend: ApiBackend }
+    | { readonly ok: false; readonly code: BackendValidationCode; readonly message: string }
+
+export type CliBackendValidation =
+    | { readonly ok: true; readonly backend: CliBackend }
     | { readonly ok: false; readonly code: BackendValidationCode; readonly message: string }
 
 /** True when the string parses as a plain JSON object (not array/scalar). */
@@ -93,6 +106,68 @@ export function validateApiBackend(draft: ApiBackend): BackendValidation {
             code: 'schema-invalid',
             message: 'Invalid backend configuration.'
         }
+    }
+    return { ok: true, backend: parsed.data }
+}
+
+export interface ValidateCliBackendInput {
+    readonly draft: CliBackend
+    readonly platform: CliPlatform
+    /**
+     * The same filesystem probe the security boundary uses. Passing the real
+     * one is the point: the executable check the spawn performs is the check
+     * the dialog performs, so a backend cannot be saved as valid and then fail
+     * at the boundary for a reason the dialog could have named.
+     */
+    readonly probe: ExecutableProbe
+}
+
+/**
+ * Validates a CLI backend draft, returning the normalized backend or the first
+ * problem with it.
+ *
+ * The executable is not optional the way an API key sometimes is: without a
+ * path there is nothing to run, and with a bad one the boundary refuses at
+ * spawn time anyway. Checking it here — through `validateExecutablePath`, the
+ * boundary's own gate — means the user is told at save time, in the dialog
+ * where the field is, rather than at the end of their first review.
+ *
+ * Consent is re-derived rather than trusted: `consentForPath` drops any
+ * recorded consent that does not name the path being saved, so an edited path
+ * cannot carry a previous decision forward, and neither can an imported or
+ * sync-merged settings file (Business Rules #9, #12).
+ */
+export function validateCliBackend(input: ValidateCliBackendInput): CliBackendValidation {
+    const draft = input.draft
+    const executablePath = draft.executablePath.trim()
+    const normalized: CliBackend = {
+        ...draft,
+        label: draft.label.trim(),
+        executablePath,
+        defaultModel: draft.defaultModel.trim(),
+        consent: consentForPath(draft.consent, executablePath)
+    }
+    if (normalized.label.length === 0) {
+        return { ok: false, code: 'label-required', message: 'A label is required.' }
+    }
+    if (executablePath.length === 0) {
+        return {
+            ok: false,
+            code: 'executable-required',
+            message: 'CLI backends need the full path to the tool’s executable.'
+        }
+    }
+    const executable = validateExecutablePath({
+        platform: input.platform,
+        path: executablePath,
+        probe: input.probe
+    })
+    if (!executable.ok) {
+        return { ok: false, code: 'executable-invalid', message: executable.message }
+    }
+    const parsed = cliBackendSchema.safeParse(normalized)
+    if (!parsed.success) {
+        return { ok: false, code: 'schema-invalid', message: 'Invalid backend configuration.' }
     }
     return { ok: true, backend: parsed.data }
 }
