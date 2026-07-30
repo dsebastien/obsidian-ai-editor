@@ -19,8 +19,17 @@ const STORAGE_KEY_SUFFIX = ':whats-new-last-seen-version'
  * The tab opens at most once per version per device (tracked via vault-scoped
  * localStorage), only when the version increased, and never on a fresh install
  * or a plain restart. Each plugin owns its own view type, so several plugins
- * updated at once each open their own tab. Tabs are detached when the plugin
- * unloads.
+ * updated at once each open their own tab.
+ *
+ * The teardown deliberately does NOT detach the view's leaves. "Don't detach
+ * leaves in onunload" is an explicit plugin guideline: updating a plugin
+ * reinitialises open leaves at their original position, and detaching on the
+ * unload half of that cycle loses the user's tab placement on every update.
+ * `obsidianmd/detach-leaves` only inspects a literal `onunload` body, so a
+ * `plugin.register` teardown is invisible to it — which is a reason to be
+ * careful here, not a licence. The `unloaded` flag is what actually matters:
+ * it guards the async open path so a plugin unloaded mid-`onLayoutReady` never
+ * opens a tab.
  */
 export function registerWhatsNewView(plugin: Plugin): void {
     // Captured before the plugin's own settings handling may persist defaults.
@@ -40,7 +49,6 @@ export function registerWhatsNewView(plugin: Plugin): void {
     plugin.registerView(viewType, createWhatsNewViewCreator(viewType, buildEntry))
     plugin.register(() => {
         unloaded = true
-        plugin.app.workspace.detachLeavesOfType(viewType)
     })
 
     plugin.app.workspace.onLayoutReady(() => {
