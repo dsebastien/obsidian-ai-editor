@@ -18,6 +18,7 @@ import { DaemonController } from './ui/daemon-controller'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
 import { findingCountLabel } from './ui/status-bar'
+import { registerActionCommands } from './commands/action-commands'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerReviewCli } from './cli/register-review-cli'
 import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
@@ -124,6 +125,15 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.register(this.subscribe(() => daemonController.settingsChanged()))
 
         registerReviewCommands(this, reviewController)
+        // Dynamic `action-<bindingId>` commands (design §3): registration
+        // follows the settings via the mutation observer — add/removeCommand
+        // diffing keeps the palette in sync without a reload.
+        registerActionCommands(
+            this,
+            reviewController,
+            () => this.settings,
+            (listener) => this.subscribe(listener)
+        )
         registerEditorMenu(this, reviewController, () => this.settings)
         registerFileMenu(this, reviewController)
 

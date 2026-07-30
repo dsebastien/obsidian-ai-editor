@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { canCancelRun, canReviewSelection } from './command-gates'
+import { canCancelRun, canReviewSelection, canRunBoundAction } from './command-gates'
 
 describe('canReviewSelection', () => {
     it('allows only an actual selection in an editable, reviewable view', () => {
@@ -24,6 +24,35 @@ describe('canReviewSelection', () => {
         expect(canReviewSelection({ editable: true, hasSelection: true, reviewable: false })).toBe(
             false
         )
+    })
+})
+
+describe('canRunBoundAction', () => {
+    it('transform verbs need an editable view AND a selection', () => {
+        expect(
+            canRunBoundAction({ verbClass: 'transform', editable: true, hasSelection: true })
+        ).toBe(true)
+        expect(
+            canRunBoundAction({ verbClass: 'transform', editable: true, hasSelection: false })
+        ).toBe(false)
+        expect(
+            canRunBoundAction({ verbClass: 'transform', editable: false, hasSelection: true })
+        ).toBe(false)
+    })
+
+    it('generate verbs need an editable view only (caret insertion)', () => {
+        expect(
+            canRunBoundAction({ verbClass: 'generate', editable: true, hasSelection: false })
+        ).toBe(true)
+        expect(
+            canRunBoundAction({ verbClass: 'generate', editable: false, hasSelection: true })
+        ).toBe(false)
+    })
+
+    it('review-class verbs run in any mode, with or without a selection', () => {
+        expect(
+            canRunBoundAction({ verbClass: 'review', editable: false, hasSelection: false })
+        ).toBe(true)
     })
 })
 
