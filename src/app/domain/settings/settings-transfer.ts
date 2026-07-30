@@ -29,8 +29,11 @@ import type {
  *
  * Four rules this module exists to enforce:
  *
- * 1. **API keys never leave the vault.** Exported API backends carry an empty
- *    `apiKey`, and an import clears it too — even when the file being imported
+ * 1. **Credentials and consent never leave the vault.** Exported API backends
+ *    carry an empty `apiKey` and exported CLI backends an empty consent record
+ *    (permission to launch a program is a decision about one machine and one
+ *    user, and does not belong in a file people share). An import clears both
+ *    too — even when the file being imported
  *    has one (a hand-written file, or a copied `data.json`). Both directions
  *    matter: a shared export must not leak a key, and importing someone else's
  *    file must not silently start billing their account. The other two fields
@@ -159,7 +162,7 @@ export function exportSettings(
     return {
         format: EXPORT_FORMAT,
         schemaVersion: SETTINGS_SCHEMA_VERSION,
-        ...(selection.backends ? { backends: settings.backends.map(withoutApiKey) } : {}),
+        ...(selection.backends ? { backends: settings.backends.map(withoutSecrets) } : {}),
         ...(selection.editors ? { editors: settings.editors } : {}),
         ...(selection.panels ? { panels: settings.panels } : {}),
         ...(selection.actions ? { actions: settings.actions } : {}),
@@ -176,8 +179,22 @@ export function exportSettingsJson(
     return `${JSON.stringify(exportSettings(settings, selection), null, 2)}\n`
 }
 
-function withoutApiKey(backend: BackendInstance): BackendInstance {
-    return backend.family === 'api' ? { ...backend, apiKey: '' } : backend
+/**
+ * Strips what must not travel in a shared file: an API key, and a CLI
+ * backend's consent record.
+ *
+ * The import side already refuses both, so this is belt and braces — but an
+ * export that says "allowed to run /Users/alice/.local/bin/claude" is a
+ * decision about a machine and a user, written into a file people paste into
+ * issues and share in packs. The executable path itself stays, the same way
+ * `baseUrl` stays: it is functional configuration, and it is DECLARED rather
+ * than blanked.
+ */
+function withoutSecrets(backend: BackendInstance): BackendInstance {
+    if (backend.family === 'api') {
+        return { ...backend, apiKey: '' }
+    }
+    return { ...backend, consent: { launchPath: '', toolsPath: '' } }
 }
 
 // ---------------------------------------------------------------------------

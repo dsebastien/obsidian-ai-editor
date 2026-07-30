@@ -220,6 +220,39 @@ describe('planImport refusals', () => {
 // Import: keys, ids, references
 // ---------------------------------------------------------------------------
 
+describe('exportSettings — CLI consent', () => {
+    it('never writes a consent record into a shared file', () => {
+        const settings = populated()
+        const exported = exportSettings(
+            {
+                ...settings,
+                backends: [
+                    ...settings.backends,
+                    {
+                        id: 'cli-1',
+                        family: 'cli',
+                        kind: 'claude-code',
+                        label: 'Claude Code',
+                        executablePath: '/home/alice/.local/bin/claude',
+                        defaultModel: '',
+                        consent: {
+                            launchPath: '/home/alice/.local/bin/claude',
+                            toolsPath: '/home/alice/.local/bin/claude'
+                        },
+                        timeoutSeconds: 300,
+                        enabled: true
+                    }
+                ]
+            },
+            ALL_SECTIONS
+        )
+        const cli = exported.backends?.find((backend) => backend.id === 'cli-1')
+        expect(cli).toMatchObject({ consent: { launchPath: '', toolsPath: '' } })
+        // The path itself is functional configuration and stays, like baseUrl.
+        expect(cli).toMatchObject({ executablePath: '/home/alice/.local/bin/claude' })
+    })
+})
+
 describe('planImport', () => {
     it('clears an API key the imported file carries, and says it did', () => {
         const plan = planOf({ backends: [apiBackend('b1', 'sk-someone-elses')] })
