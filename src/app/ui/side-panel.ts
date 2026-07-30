@@ -108,8 +108,18 @@ export interface SidePanelCommentJobs {
     readonly retry: (commentId: string) => void
     /** Aborts an in-flight job. */
     readonly cancel: (commentId: string) => void
-    /** Closes a comment without acting on it. */
-    readonly dismiss: (commentId: string) => void
+    /** Closes the comment, keeping the record so it is not re-asked. */
+    readonly resolve: (commentId: string) => void
+    /** Removes the comment for good, after asking. */
+    readonly remove: (commentId: string) => void
+    /**
+     * Opens the "Ask for comments" dialog for the active note's selection.
+     * Deliberately not gated by the panel: enablement would be derived at
+     * render time from a selection the user changes constantly, and a button
+     * that greys out while they are selecting text is worse than one that
+     * says what it needs. It refuses on its own terms.
+     */
+    readonly ask: () => void
 }
 
 /** Everything the panel renders: the bound note's header + its run, if any. */
@@ -312,6 +322,22 @@ export class ReviewSidePanelView extends ItemView {
         button.addEventListener('click', () => {
             state.review.startReview()
         })
+        const jobs = state.commentJobs
+        if (jobs) {
+            // Next to Review because it is the same kind of thing — an ask
+            // about the note in front of you — and the only difference is
+            // that its answer arrives later, in the margin.
+            const ask = header.createEl('button', {
+                cls: 'ai-editor-panel-comment-ask',
+                text: 'Ask for comments',
+                attr: { type: 'button' }
+            })
+            ask.setAttribute('aria-label', 'Ask for comments on the selected text')
+            ask.title = 'Park a question on the selected text; the answer appears in the margin'
+            ask.addEventListener('click', () => {
+                jobs.ask()
+            })
+        }
     }
 
     /**
@@ -371,10 +397,17 @@ export class ReviewSidePanelView extends ItemView {
             })
         }
         if (row.view.canDismiss) {
-            this.commentActionButton(actions, 'Dismiss', row.editorName, () => {
-                jobs.dismiss(row.commentId)
+            // "Resolve", not "Dismiss": the comment is closed and KEPT (the
+            // store remembers it so nothing re-asks it). Deleting is the
+            // separate, irreversible action right next to it. One vocabulary
+            // across the panel and the margin column.
+            this.commentActionButton(actions, 'Resolve', row.editorName, () => {
+                jobs.resolve(row.commentId)
             })
         }
+        this.commentActionButton(actions, 'Delete', row.editorName, () => {
+            jobs.remove(row.commentId)
+        })
     }
 
     private commentActionButton(

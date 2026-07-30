@@ -77,6 +77,20 @@ export type CommentJobStart =
      */
     | { readonly status: 'orphaned' }
 
+/**
+ * What PARKING a new comment can produce: every `CommentJobStart` case except
+ * the three retry-only refusals, which `retryCommentJob` decides before the
+ * shared dispatch chain is entered.
+ *
+ * Narrow on purpose: the surfaces that turn these into copy would otherwise
+ * have to word statuses they can never receive, and a wording nobody can
+ * reach is a wording nobody maintains.
+ */
+export type CommentJobStarted = Exclude<
+    CommentJobStart,
+    { status: 'unknown-comment' | 'not-retryable' | 'orphaned' }
+>
+
 interface CommonInput {
     readonly settings: PluginSettingsV1
     readonly vault: VaultReader
@@ -109,7 +123,7 @@ export interface RetryCommentJobInput extends CommonInput {
 }
 
 /** Parks a new question on a span and dispatches it in the background. */
-export async function startCommentJob(input: StartCommentJobInput): Promise<CommentJobStart> {
+export async function startCommentJob(input: StartCommentJobInput): Promise<CommentJobStarted> {
     const hints = spanHints(input.noteText, input.selection.from, input.selection.to)
     const instruction = input.instruction.trim()
     if (!hints || instruction.length === 0) {
@@ -178,7 +192,7 @@ async function dispatch(
     input: CommonInput,
     comment: MarginComment,
     selection: { from: number; to: number }
-): Promise<CommentJobStart> {
+): Promise<CommentJobStarted> {
     const { settings, vault, notePath } = input
     const behavior = settings.behavior
     const fetchImpl = input.fetchImpl ?? globalThis.fetch
@@ -205,7 +219,7 @@ async function dispatch(
     // exactly like a push-back names the editor that produced the finding.
     const editor = settings.editors.find((candidate) => candidate.id === comment.editorId)
     const editorName = editor?.name ?? (comment.editorName || null)
-    const skipOf = (reason: EditorSkip['reason']): CommentJobStart => ({
+    const skipOf = (reason: EditorSkip['reason']): CommentJobStarted => ({
         status: 'no-editor',
         skip:
             editorName === null ? null : { editorId: comment.editorId, editorName, reason: reason }

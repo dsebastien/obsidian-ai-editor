@@ -29,6 +29,7 @@ function editorState(overrides: Partial<EditorMenuState> = {}): EditorMenuState 
         reviewable: true,
         blocked: false,
         actions: [],
+        comments: false,
         ...overrides
     }
 }
@@ -50,6 +51,22 @@ function entryIds(state: EditorMenuState): string[] {
 describe('editorMenuEntries', () => {
     it('offers review selection and ask editor for a reviewable selection in an editable view', () => {
         expect(entryIds(editorState())).toEqual(['review-selection', 'ask-editor'])
+    })
+
+    it('offers the comment item last, and only with a comment store', () => {
+        expect(entryIds(editorState({ comments: true }))).toEqual([
+            'review-selection',
+            'ask-editor',
+            'comment-selection'
+        ])
+        expect(entryIds(editorState({ comments: false }))).not.toContain('comment-selection')
+    })
+
+    it('never offers the comment item on a note that cannot be reviewed', () => {
+        // A margin comment IS a scoped review; the same gate must hold.
+        expect(entryIds(editorState({ comments: true, reviewable: false }))).toEqual([])
+        expect(entryIds(editorState({ comments: true, blocked: true }))).toEqual([])
+        expect(entryIds(editorState({ comments: true, hasSelection: false }))).toEqual([])
     })
 
     it('lists bound actions first, alphabetical by label, before the review items', () => {

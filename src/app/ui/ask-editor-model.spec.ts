@@ -42,4 +42,14 @@ describe('defaultAskEditor', () => {
     it('returns null for an empty choice list', () => {
         expect(defaultAskEditor([])).toBeNull()
     })
+
+    it('honours a preferred editor (behavior.defaultCommentEditorId)', () => {
+        expect(defaultAskEditor(choices, 'editor-2')).toEqual({ id: 'editor-2', name: 'Mentor' })
+    })
+
+    it('falls back to the first choice when the preferred one is not on offer', () => {
+        // Deleted, disabled or review-incapable: never leave the picker empty.
+        expect(defaultAskEditor(choices, 'gone')).toEqual({ id: 'editor-1', name: 'Hater' })
+        expect(defaultAskEditor(choices, '')).toEqual({ id: 'editor-1', name: 'Hater' })
+    })
 })

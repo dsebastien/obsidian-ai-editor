@@ -28,11 +28,29 @@ export function canSubmitAsk(text: string): boolean {
 }
 
 /**
- * The picker's initial selection: the first offered editor (settings order,
- * mirroring the participant order of a whole-panel review). `null` only for
- * an empty choice list — callers gate on ≥1 review-capable editor, so a
- * `null` means the modal should not have been opened at all.
+ * The picker's initial selection: the caller's preferred editor when it is
+ * actually on offer, otherwise the first one (settings order, mirroring the
+ * participant order of a whole-panel review).
+ *
+ * The preference is what makes `behavior.defaultCommentEditorId` real (plan
+ * §4 "Comment routing"): margin comments open the picker on the configured
+ * default and the user reroutes from there. A preferred id that no longer
+ * resolves — deleted, disabled, review-incapable, so absent from `choices` —
+ * falls back silently rather than selecting nothing: a picker whose initial
+ * value is empty makes the dialog's primary button look broken.
+ *
+ * `null` only for an empty choice list — callers gate on ≥1 review-capable
+ * editor, so a `null` means the modal should not have been opened at all.
  */
-export function defaultAskEditor(choices: readonly AskEditorChoice[]): AskEditorChoice | null {
+export function defaultAskEditor(
+    choices: readonly AskEditorChoice[],
+    preferredId?: string
+): AskEditorChoice | null {
+    if (preferredId !== undefined && preferredId.length > 0) {
+        const preferred = choices.find((choice) => choice.id === preferredId)
+        if (preferred) {
+            return preferred
+        }
+    }
     return choices[0] ?? null
 }

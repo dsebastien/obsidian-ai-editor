@@ -1782,3 +1782,17 @@
 .ai-editor-margin-reserved .cm-scroller {
     padding-right: var(--ai-editor-margin-reserve, 0);
 }
+
+/* "Ask for comments" next to the panel's Review button (plan §5.5 / M8). */
+.ai-editor-panel-comment-ask {
+    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-panel-comment-ask:hover {
+    background-color: var(--interactive-hover);
+    color: var(--text-normal);
+}

@@ -38,6 +38,9 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  * - `filter-severity` — cycle the active file's severity lens (all →
  *   warnings and suggestions → warnings only); the Notice says what is shown
  *   and how much is hidden.
+ * - `Ask for comments` — same gate as `Review selection`, plus a comment
+ *   store: parks a background question on the selection whose answer lands in
+ *   the margin (plan §5.5 / M8).
  * - `toggle-margin-comments` — show/hide the margin comment column (plan
  *   §5.5 / M8). A global view preference, so it is always available and
  *   persists; the Notice says where the comments went either way.
@@ -110,6 +113,31 @@ export function registerReviewCommands(
                 return true
             }
             controller.openAskEditorModal(ctx, editor)
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'comment-on-selection',
+        name: 'Ask for comments',
+        editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
+            // A margin comment IS a review scoped to the span, so it takes the
+            // same gate — plus a comment store to park it in.
+            if (!(ctx instanceof MarkdownView) || !controller.canCommentOnNote()) {
+                return false
+            }
+            const allowed = canReviewSelection({
+                editable: ctx.getMode() !== 'preview',
+                hasSelection: editor.somethingSelected(),
+                reviewable: controller.canReview(ctx)
+            })
+            if (!allowed) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.openCommentModal(ctx, editor)
             return true
         }
     })

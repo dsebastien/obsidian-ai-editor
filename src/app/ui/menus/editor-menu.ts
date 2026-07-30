@@ -36,7 +36,8 @@ export function registerEditorMenu(
                 hasSelection: editor.somethingSelected(),
                 reviewable: controller.canReview(info),
                 blocked: file === null || !controller.isPluginEnabledFor(file.path),
-                actions: resolveActions(getSettings())
+                actions: resolveActions(getSettings()),
+                comments: controller.canCommentOnNote()
             })
             for (const entry of entries) {
                 switch (entry.kind) {
@@ -67,6 +68,20 @@ export function registerEditorMenu(
                                     // the range is read synchronously in this
                                     // callback by `startSelectionReview`.
                                     controller.startSelectionReview(info, editor)
+                                })
+                        })
+                        break
+                    case 'comment-selection':
+                        menu.addItem((menuItem) => {
+                            menuItem
+                                .setTitle('Ask for comments…')
+                                .setIcon('message-square-plus')
+                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .onClick(() => {
+                                    // Selection-capture contract (design §1):
+                                    // the range is read synchronously in this
+                                    // callback by `openCommentModal`.
+                                    controller.openCommentModal(info, editor)
                                 })
                         })
                         break

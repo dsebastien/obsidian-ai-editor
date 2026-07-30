@@ -134,6 +134,52 @@ export function commentRetryNotice(
     }
 }
 
+/**
+ * Notice copy for parking a NEW comment.
+ *
+ * `null` = say nothing on success: the margin card appears immediately with
+ * its queued state, and a Notice on top of visible feedback is noise. The
+ * caller adds its own confirmation only where the column may not be on screen.
+ *
+ * Deliberately a separate function from {@link commentRetryNotice} even though
+ * several branches read the same: the two flows can refuse for different
+ * reasons (a retry can be orphaned, a new comment cannot be `not-retryable`),
+ * and one function covering both would have to accept statuses it can never
+ * receive.
+ */
+export function commentStartNotice(
+    status:
+        | 'started'
+        | 'excluded'
+        | 'rule-disabled'
+        | 'no-editor'
+        | 'needs-confirmation'
+        | 'invalid-span'
+        | 'note-full'
+        | 'already-running'
+): string | null {
+    switch (status) {
+        case 'started':
+            return null
+        case 'excluded':
+            return 'This note is excluded, so nothing is sent for it.'
+        case 'rule-disabled':
+            return 'A rule switches AI Editor off for this note.'
+        case 'no-editor':
+            return 'That editor cannot run right now — check the Editors settings tab.'
+        case 'needs-confirmation':
+            // Only reachable when the caller skipped the confirmation round
+            // trip; the dialog is the normal path.
+            return 'This note is large — confirm the size warning to ask about it.'
+        case 'invalid-span':
+            return 'Select the text to comment on first.'
+        case 'note-full':
+            return 'This note is at the comment limit. Resolve or delete a comment first.'
+        case 'already-running':
+            return 'That comment is already being answered.'
+    }
+}
+
 function needsAttention(row: CommentJobRow): boolean {
     return row.view.canCancel || row.view.canRetry
 }

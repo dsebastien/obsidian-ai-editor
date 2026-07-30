@@ -64,12 +64,19 @@ export interface EditorMenuState {
     readonly blocked: boolean
     /** Dispatchable bound actions (`resolveActions`), settings order. */
     readonly actions: readonly BoundActionView[]
+    /**
+     * Durable margin comments are available: the plugin has a comment store
+     * (plan §5.5 / M8). Without one the item would open a dialog whose
+     * submission had nowhere to go.
+     */
+    readonly comments: boolean
 }
 
 export type EditorMenuEntry =
     | { readonly kind: 'action'; readonly action: BoundActionView }
     | { readonly kind: 'review-selection' }
     | { readonly kind: 'ask-editor' }
+    | { readonly kind: 'comment-selection' }
 
 /** At most this many bound actions appear; beyond it the palette is the surface. */
 export const ACTION_MENU_CAP = 10
@@ -89,11 +96,17 @@ export function actionMenuIcon(verbClass: VerbClass): string {
 /**
  * Entries for the editor context menu, in presentation order (design §1):
  * bound actions first — alphabetical by label, capped at `ACTION_MENU_CAP` —
- * then "Review selection" and "Ask an editor…". Everything requires a
- * non-empty selection in an editable view on a note the plugin operates on;
- * the review items additionally need the note to be reviewable, the bound
- * actions do not (each action's own dispatchability was already resolved
- * upstream — undispatchable actions never reach `state.actions`).
+ * then "Review selection", "Ask an editor…" and "Ask for comments…".
+ * Everything requires a non-empty selection in an editable view on a note the
+ * plugin operates on; the review items additionally need the note to be
+ * reviewable, the bound actions do not (each action's own dispatchability was
+ * already resolved upstream — undispatchable actions never reach
+ * `state.actions`).
+ *
+ * "Ask for comments…" comes last on purpose: it is the only item that does
+ * NOT produce something to watch. It parks a background job whose answer
+ * lands in the margin later, so it belongs after the two synchronous asks
+ * rather than competing with them.
  */
 export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEntry[] {
     if (!state.editable || !state.hasSelection) {
@@ -112,6 +125,9 @@ export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEn
     }
     if (state.reviewable) {
         entries.push({ kind: 'review-selection' }, { kind: 'ask-editor' })
+        if (state.comments) {
+            entries.push({ kind: 'comment-selection' })
+        }
     }
     return entries
 }

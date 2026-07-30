@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { commentJobView } from '../domain/comments/comment-job'
 import { marginCommentSchema } from '../domain/comments/margin-comment'
 import type { MarginComment, MarginCommentStatus } from '../domain/comments/margin-comment'
-import { commentJobsSection, commentRetryNotice } from './comment-jobs-model'
+import { commentJobsSection, commentRetryNotice, commentStartNotice } from './comment-jobs-model'
 
 function comment(overrides: Partial<MarginComment> = {}): MarginComment {
     return marginCommentSchema.parse({
@@ -148,5 +148,37 @@ describe('retry notices', () => {
         const message = commentRetryNotice('orphaned') ?? ''
         expect(message).toContain('no longer in the note')
         expect(message).not.toContain('deleted')
+    })
+})
+
+describe('commentStartNotice', () => {
+    it('stays silent on success — the margin card is the feedback', () => {
+        expect(commentStartNotice('started')).toBeNull()
+    })
+
+    it('says something for every refusal a new comment can hit', () => {
+        const refusals = [
+            'excluded',
+            'rule-disabled',
+            'no-editor',
+            'needs-confirmation',
+            'invalid-span',
+            'note-full',
+            'already-running'
+        ] as const
+        for (const status of refusals) {
+            const message = commentStartNotice(status)
+            expect(message).not.toBeNull()
+            expect((message ?? '').length).toBeGreaterThan(0)
+        }
+    })
+
+    it('tells the user what to do when the note is at the comment limit', () => {
+        const message = commentStartNotice('note-full') ?? ''
+        expect(message).toContain('Resolve or delete')
+    })
+
+    it('asks for a selection rather than reporting an internal state', () => {
+        expect(commentStartNotice('invalid-span')).toBe('Select the text to comment on first.')
     })
 })

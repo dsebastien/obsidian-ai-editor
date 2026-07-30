@@ -4,6 +4,32 @@ import { canSubmitAsk, defaultAskEditor, normalizeInstruction } from './ask-edit
 import type { AskEditorChoice } from './ask-editor-model'
 
 /**
+ * Wording and defaults that differ between the two things this dialog is.
+ *
+ * ONE modal serves both because the interaction is identical — pick an
+ * editor, type a question, send — and the difference is entirely in what
+ * happens next: an ask runs a review you watch, a comment parks a background
+ * job whose answer lands in the margin. Two dialogs would have drifted apart
+ * on keyboard handling, enablement and the single-editor case.
+ */
+export interface AskEditorCopy {
+    readonly title: string
+    /** Primary button text. */
+    readonly cta: string
+    readonly placeholder: string
+    /** Sub-title explaining what the dialog will do; omitted when obvious. */
+    readonly description?: string
+    /** Editor pre-selected in the picker when it is on offer. */
+    readonly preferredEditorId?: string
+}
+
+const ASK_EDITOR_COPY: AskEditorCopy = {
+    title: 'Ask an editor',
+    cta: 'Ask',
+    placeholder: 'Is this argument convincing?'
+}
+
+/**
  * Freeform "Ask an editor" modal (design §6 decision 1, note-level entry
  * point): pick one review-capable editor, type an instruction, and run a
  * regular review scoped to the captured selection with that editor's prompt
@@ -11,6 +37,9 @@ import type { AskEditorChoice } from './ask-editor-model'
  * decisions live in `ask-editor-model.ts`; the dispatch (selection contract,
  * prompt augmentation, run start) is entirely the `onSubmit` callback's
  * business (`ReviewController.openAskEditorModal`).
+ *
+ * Also serves "Ask for comments" (plan §5.5 / M8), with different copy and a
+ * different default editor — see {@link AskEditorCopy}.
  *
  * Keyboard: Enter in the textarea inserts a newline (native behavior,
  * deliberately not intercepted); Ctrl/Cmd+Enter submits; Esc closes (Modal
@@ -20,6 +49,7 @@ import type { AskEditorChoice } from './ask-editor-model'
 export class AskEditorModal extends Modal {
     private readonly choices: readonly AskEditorChoice[]
     private readonly onSubmit: (editorId: string, instruction: string) => void
+    private readonly copy: AskEditorCopy
     private selectedEditorId: string
     private textareaEl: HTMLTextAreaElement | null = null
     private askButton: ButtonComponent | null = null
@@ -28,17 +58,25 @@ export class AskEditorModal extends Modal {
     constructor(
         app: App,
         choices: readonly AskEditorChoice[],
-        onSubmit: (editorId: string, instruction: string) => void
+        onSubmit: (editorId: string, instruction: string) => void,
+        copy: AskEditorCopy = ASK_EDITOR_COPY
     ) {
         super(app)
         this.choices = choices
         this.onSubmit = onSubmit
-        this.selectedEditorId = defaultAskEditor(choices)?.id ?? ''
+        this.copy = copy
+        this.selectedEditorId = defaultAskEditor(choices, copy.preferredEditorId)?.id ?? ''
     }
 
     override onOpen(): void {
-        this.setTitle('Ask an editor')
+        this.setTitle(this.copy.title)
         this.modalEl.addClass('ai-editor-modal')
+        if (this.copy.description !== undefined) {
+            this.contentEl.createEl('p', {
+                cls: 'ai-editor-tab-intro',
+                text: this.copy.description
+            })
+        }
 
         const editorSetting = new Setting(this.contentEl).setName('Editor')
         const single = this.choices.length === 1 ? this.choices[0] : undefined
@@ -62,7 +100,7 @@ export class AskEditorModal extends Modal {
         const textarea = this.contentEl.createEl('textarea', {
             cls: 'ai-editor-ask-textarea',
             attr: {
-                'placeholder': 'Is this argument convincing?',
+                'placeholder': this.copy.placeholder,
                 'rows': '5',
                 'aria-label': 'Instruction for the editor'
             }
@@ -85,7 +123,7 @@ export class AskEditorModal extends Modal {
             .addButton((button) => {
                 this.askButton = button
                 button
-                    .setButtonText('Ask')
+                    .setButtonText(this.copy.cta)
                     .setCta()
                     .setDisabled(true)
                     .onClick(() => this.submit())

@@ -111,9 +111,9 @@ import { scorecardStatusKind } from './panel-scorecard'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
 import { verdictLabel } from './verdict-label'
 import type { SidePanelBinding, SidePanelCommentJobs, SidePanelState } from './side-panel'
-import { commentJobsSection, commentRetryNotice } from './comment-jobs-model'
+import { commentJobsSection, commentRetryNotice, commentStartNotice } from './comment-jobs-model'
 import type { CommentJobRegistry } from '../services/comments/comment-job-registry'
-import { retryCommentJob } from '../services/comments/comment-job-service'
+import { retryCommentJob, startCommentJob } from '../services/comments/comment-job-service'
 
 /**
  * Per-view glue between the review pipeline and the Obsidian editor UI:
@@ -165,6 +165,17 @@ const ACTION_SIZE_LABELS: SizeConfirmLabels = {
     title: 'Run the action on a large note?',
     action: 'Running it',
     cta: 'Run anyway'
+}
+
+/**
+ * A margin comment sends the whole note as context (unlike a push-back, which
+ * sends only a quote and a critique), so it passes the same guard — with copy
+ * that says what the confirmation buys, since the answer arrives later.
+ */
+const COMMENT_SIZE_LABELS: SizeConfirmLabels = {
+    title: 'Ask about a large note?',
+    action: 'Asking about it',
+    cta: 'Ask anyway'
 }
 
 class SizeConfirmModal extends Modal {
@@ -1000,6 +1011,136 @@ export class ReviewController {
                 new Notice('The text changed — run the action again.')
                 return
         }
+    }
+
+    /**
+     * Whether durable margin comments exist at all for this vault (plan §5.5
+     * / M8): the plugin was built with a comment store. Headless and test
+     * callers run without one, and every comment surface degrades to "not
+     * offered" rather than to a dialog with nowhere to submit.
+     */
+    canCommentOnNote(): boolean {
+        return this.deps.commentJobs !== undefined && !this.disposed
+    }
+
+    /**
+     * "Ask for comments" entry point (plan §5.5 / M8): park a question on the
+     * selected span and let an editor answer it in the background.
+     *
+     * A selection is REQUIRED, and the refusal says so. A margin comment is
+     * anchored to a span — that is the whole feature — and a whole-note
+     * comment would have no line to sit next to and no quote to re-anchor
+     * against after an edit (Business Rules #13). "Review current note" is the
+     * whole-note surface and already exists.
+     *
+     * The picker opens on `behavior.defaultCommentEditorId` when that editor
+     * can run (plan §4 "Comment routing": a configurable default, rerouted per
+     * comment), and the selection is captured synchronously HERE — the
+     * dispatch awaits vault reads before anything is recorded.
+     */
+    openCommentModal(view: MarkdownView, editor: Editor): void {
+        const file = view.file
+        const settings = this.deps.getSettings()
+        if (!file || this.disposed || !this.deps.commentJobs) {
+            return
+        }
+        const from = editor.posToOffset(editor.getCursor('from'))
+        const to = editor.posToOffset(editor.getCursor('to'))
+        if (from === to) {
+            new Notice('Select the text to comment on first.')
+            return
+        }
+        const choices = reviewCapableEditors(settings).map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name
+        }))
+        if (choices.length === 0) {
+            // Unreachable behind the reviewability gates; fail closed.
+            return
+        }
+        const capturedPath = file.path
+        const selection = { from, to }
+        new AskEditorModal(
+            this.deps.app,
+            choices,
+            (editorId, instruction) => {
+                void this.startComment(capturedPath, selection, editorId, instruction, false)
+            },
+            {
+                title: 'Ask for comments',
+                cta: 'Ask',
+                placeholder: 'Is this claim supported?',
+                description:
+                    'The editor answers in the background. The comment stays on this text — across note switches and restarts — until you resolve it.',
+                preferredEditorId: settings.behavior.defaultCommentEditorId
+            }
+        ).open()
+    }
+
+    /**
+     * Dispatches a parked comment, round-tripping through the size warning
+     * exactly like a review does.
+     *
+     * The note text is read at dispatch time (live buffer when open), not
+     * captured when the dialog opened: the user may have kept typing while
+     * writing their question, and the span hints must describe the text the
+     * request is actually about.
+     */
+    private async startComment(
+        notePath: string,
+        selection: { from: number; to: number },
+        editorId: string,
+        instruction: string,
+        confirmedLargeNote: boolean
+    ): Promise<void> {
+        const registry = this.deps.commentJobs
+        if (!registry || this.disposed) {
+            return
+        }
+        const noteText = await this.readNoteText(notePath)
+        if (noteText === null) {
+            new Notice('That note is no longer in the vault.')
+            return
+        }
+        const result = await startCommentJob({
+            settings: this.deps.getSettings(),
+            vault: this.vaultReader,
+            registry,
+            notePath,
+            noteText,
+            selection,
+            instruction,
+            editorId,
+            ...(confirmedLargeNote ? { confirmedLargeNote: true } : {})
+        })
+        if (result.status === 'needs-confirmation') {
+            new SizeConfirmModal(
+                this.deps.app,
+                result.wordCount,
+                result.limit,
+                () => {
+                    void this.startComment(notePath, selection, editorId, instruction, true)
+                },
+                COMMENT_SIZE_LABELS
+            ).open()
+            return
+        }
+        if (result.status === 'started') {
+            // Said out loud on purpose: the margin column may be hidden (a
+            // narrow pane, the toggle off), and a background job with no
+            // acknowledgement looks like a click that did nothing.
+            const name =
+                this.deps.getSettings().editors.find((candidate) => candidate.id === editorId)
+                    ?.name ?? 'the editor'
+            new Notice(`Asked ${name}. The answer appears in the margin when it arrives.`)
+        } else {
+            const message = commentStartNotice(result.status)
+            if (message !== null) {
+                new Notice(message)
+            }
+        }
+        this.scheduleRefresh()
+        this.updatePanels()
     }
 
     /**
@@ -2053,11 +2194,42 @@ export class ReviewController {
                 registry.cancel(commentId)
                 this.updatePanels()
             },
-            dismiss: (commentId: string): void => {
+            resolve: (commentId: string): void => {
                 registry.dismiss(notePath, commentId)
+                this.scheduleRefresh()
                 this.updatePanels()
+            },
+            remove: (commentId: string): void => {
+                // Same confirmation as the margin card's Delete — one
+                // irreversible action, one dialog, wherever it is pressed.
+                new DeleteCommentModal(this.deps.app, () => {
+                    registry.delete(notePath, commentId)
+                    this.scheduleRefresh()
+                    this.updatePanels()
+                }).open()
+            },
+            ask: (): void => {
+                this.openCommentModalForActiveNote()
             }
         }
+    }
+
+    /**
+     * Panel entry point for "Ask for comments": resolves the active markdown
+     * view and its selection at click time.
+     *
+     * The panel has no editor of its own, and the note it displays is the
+     * sticky last-active one — so the dialog is opened against the LIVE active
+     * view. When there is none (or nothing selected) it says what is missing
+     * instead of opening a dialog that could not dispatch.
+     */
+    private openCommentModalForActiveNote(): void {
+        const view = this.deps.app.workspace.getActiveViewOfType(MarkdownView)
+        if (!view || view.getMode() === 'preview') {
+            new Notice('Open a note in edit mode and select the text to comment on.')
+            return
+        }
+        this.openCommentModal(view, view.editor)
     }
 
     /**
