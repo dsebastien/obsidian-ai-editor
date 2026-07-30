@@ -1,7 +1,12 @@
 import { Setting } from 'obsidian'
 import { builtInActionIdSchema } from '../../domain/settings/settings-schema'
 import type { ActionBinding, BuiltInActionId } from '../../domain/settings/settings-schema'
+import { getBuiltInVerb } from '../../domain/actions/verb-registry'
 import { generateId } from '../../domain/ids'
+import {
+    actionInvalidReasonLabel,
+    resolveActionBinding
+} from '../../services/actions/action-resolution'
 import { ConfirmModal, populateTargetDropdown, renderPromptTextArea } from '../components'
 import {
     builtInActionLabel,
@@ -35,27 +40,38 @@ export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): voi
 
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',
-        text: 'Every action verb in the selection menu routes to an editor or a panel (◎ marks panels). Unbound actions stay hidden from the menu.'
+        text: 'Every action verb in the selection menu routes to an editor. Review-class verbs (critique, find evidence, identify assumptions) can route to a panel instead (◎ marks panels) — each member editor runs the action. Unbound actions stay hidden from the menu and the command palette.'
     })
 
     new Setting(containerEl).setName('Built-in actions').setHeading()
     for (const verb of builtInActionIdSchema.options) {
         const existing = settings.actions.find((action) => action.actionId === verb)
-        new Setting(containerEl)
+        // Only review-class verbs may bind to a panel (a transform/generate
+        // verb produces exactly one replacement/insertion) — the dropdown
+        // simply never offers one, mirroring the resolution rule.
+        const reviewClass = getBuiltInVerb(verb)?.verbClass === 'review'
+        const row = new Setting(containerEl)
             .setName(builtInActionLabel(verb))
             .setDesc(BUILT_IN_ACTION_DESCRIPTIONS[verb])
             .addDropdown((dropdown) => {
                 populateTargetDropdown(dropdown, settings, {
                     noneLabel: 'Not bound',
-                    includePanels: true
+                    includePanels: reviewClass
                 })
                 dropdown.setValue(encodeActionTarget(existing?.binding ?? null))
                 dropdown.onChange((value) => {
-                    commit(ctx, (draft) => {
-                        setBuiltInActionBinding(draft, verb, decodeActionTarget(value))
-                    })
+                    commit(
+                        ctx,
+                        (draft) => {
+                            setBuiltInActionBinding(draft, verb, decodeActionTarget(value))
+                        },
+                        { refresh: true }
+                    )
                 })
             })
+        if (existing) {
+            renderBindingWarning(row, existing, ctx)
+        }
     }
 
     new Setting(containerEl).setName('Custom actions').setHeading()
@@ -133,12 +149,17 @@ function renderCustomActionRows(
         })
     })
     row.addDropdown((dropdown) => {
-        populateTargetDropdown(dropdown, settings, { noneLabel: 'Not bound', includePanels: true })
+        // Custom actions are transform-class (they rewrite the selection),
+        // so a panel target is never valid for them.
+        populateTargetDropdown(dropdown, settings, { noneLabel: 'Not bound', includePanels: false })
         dropdown.setValue(encodeActionTarget(action.binding))
         dropdown.onChange((value) => {
-            mutate((target) => {
-                target.binding = decodeActionTarget(value)
-            })
+            mutate(
+                (target) => {
+                    target.binding = decodeActionTarget(value)
+                },
+                { refresh: true }
+            )
         })
     })
     row.addExtraButton((button) => {
@@ -166,9 +187,11 @@ function renderCustomActionRows(
             })
     })
 
+    renderBindingWarning(row, action, ctx)
+
     renderPromptTextArea(containerEl, {
         name: 'Instruction',
-        desc: 'What this action asks the bound editor or panel to do.',
+        desc: 'What this action asks the bound editor to do.',
         placeholder: 'Turn the selection into a numbered checklist…',
         get: () => action.customInstruction.text,
         set: (value) => {
@@ -176,5 +199,26 @@ function renderCustomActionRows(
                 target.customInstruction.text = value
             })
         }
+    })
+}
+
+/**
+ * Appends the undispatchable-binding note to a row: a BOUND action that
+ * cannot dispatch (panel binding on a non-review verb, disabled target,
+ * unusable backend, blank custom action…) silently disappears from the
+ * menu and the palette — say why instead. Unbound is a deliberate state
+ * and stays quiet.
+ */
+function renderBindingWarning(row: Setting, action: ActionBinding, ctx: TabContext): void {
+    if (!action.binding) {
+        return
+    }
+    const resolution = resolveActionBinding(ctx.facade.getSettings(), action)
+    if (resolution.ok) {
+        return
+    }
+    row.descEl.createDiv({
+        cls: 'ai-editor-binding-warning',
+        text: `Hidden from menus and the command palette: ${actionInvalidReasonLabel(resolution.reason)}.`
     })
 }

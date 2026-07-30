@@ -149,6 +149,12 @@
     color: var(--text-muted);
 }
 
+/* Undispatchable action binding note (actions tab) */
+.ai-editor-binding-warning {
+    @apply mt-1 text-xs;
+    color: var(--color-yellow, orange);
+}
+
 /* Identity dots: solid = editor, ringed = panel (Business Rule #11) */
 .ai-editor-color-dot {
     @apply mr-1.5 inline-block shrink-0 rounded-full align-middle;
