@@ -46,6 +46,10 @@ export type SkipReason =
     | 'backend-disabled'
     | 'cli-backend-unsupported'
     | 'no-model-configured'
+    /** Instruction runs only: a named editor is disabled. */
+    | 'editor-disabled'
+    /** Instruction runs only: a named editor id no longer exists. */
+    | 'editor-missing'
 
 /** One editor that could not participate in the run, and why. */
 export interface EditorSkip {
@@ -71,6 +75,10 @@ export function skipReasonLabel(reason: SkipReason): string {
             return 'CLI backends are not supported yet'
         case 'no-model-configured':
             return 'no model configured'
+        case 'editor-disabled':
+            return 'the editor is disabled'
+        case 'editor-missing':
+            return 'the editor no longer exists'
     }
 }
 
@@ -404,9 +412,15 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // disabled) will narrow this selection per note. Until then every enabled
     // review-capable editor participates — unless a per-run instruction
     // narrows the run to the editor(s) the user asked (the others are not
-    // candidates at all, so they never appear in the skip report). An
-    // instruction whose editors no longer exist, are disabled, or cannot
-    // dispatch yields `no-editors` like any other empty selection.
+    // candidates at all, so they never appear in the skip report). Editors
+    // the instruction NAMES are candidates by definition, so every one that
+    // cannot run is reported as a skip — deleted ids and disabled editors
+    // included — instead of silently shrinking the panel/ask (the resolution
+    // contract in `action-resolution.ts`). Outside an instruction, disabled
+    // editors stay silent: the user turned them off on purpose, and the
+    // daemon/retry re-dispatch (`input.editorIds`) must not nag about them.
+    // An instruction none of whose editors can run yields `no-editors` with
+    // the full skip report, like any other empty selection.
     const instruction = input.instruction
     const editorIds = input.editorIds
     const editorPool = instruction
@@ -415,9 +429,24 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
           ? settings.editors.filter((editor) => editorIds.includes(editor.id))
           : settings.editors
     const skips: EditorSkip[] = []
+    if (instruction) {
+        const known = new Set(settings.editors.map((editor) => editor.id))
+        for (const id of instruction.editorIds) {
+            if (!known.has(id)) {
+                skips.push({ editorId: id, editorName: 'Unknown editor', reason: 'editor-missing' })
+            }
+        }
+    }
     const participants: { editor: EditorConfig; backend: ApiBackend; model: string }[] = []
     for (const editor of editorPool) {
         if (!editor.enabled) {
+            if (instruction) {
+                skips.push({
+                    editorId: editor.id,
+                    editorName: editor.name,
+                    reason: 'editor-disabled'
+                })
+            }
             continue
         }
         if (!editor.capabilities.review) {

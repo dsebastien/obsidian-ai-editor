@@ -148,7 +148,9 @@ describe('skipReasonLabel', () => {
             'backend-not-found',
             'backend-disabled',
             'cli-backend-unsupported',
-            'no-model-configured'
+            'no-model-configured',
+            'editor-disabled',
+            'editor-missing'
         ] as const
         for (const reason of reasons) {
             expect(skipReasonLabel(reason).length).toBeGreaterThan(0)
@@ -626,7 +628,17 @@ describe('startReview', () => {
         const settings = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Off', enabled: false })]
         })
-        for (const editorId of ['ghost', 'editor-2']) {
+        const cases = [
+            {
+                editorId: 'ghost',
+                skip: { editorId: 'ghost', editorName: 'Unknown editor', reason: 'editor-missing' }
+            },
+            {
+                editorId: 'editor-2',
+                skip: { editorId: 'editor-2', editorName: 'Off', reason: 'editor-disabled' }
+            }
+        ] as const
+        for (const { editorId, skip } of cases) {
             const result = await startReview({
                 settings,
                 snapshot: makeSnapshot(),
@@ -635,8 +647,43 @@ describe('startReview', () => {
                 fetchImpl: fetchReturning(anthropicReviewBody()),
                 instruction: { editorIds: [editorId], text: 'focus' }
             })
-            expect(result.status).toBe('no-editors')
+            if (result.status !== 'no-editors') {
+                throw new Error(`Expected no-editors, got ${result.status}`)
+            }
+            // Editors the instruction NAMES are candidates by definition:
+            // the refusal says why each one could not run ("say why").
+            expect(result.skips).toEqual([skip])
         }
+    })
+
+    it('reports disabled and deleted instruction members as skips while running the rest (panel dispatch)', async () => {
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', name: 'Runner' }),
+                makeEditor({ id: 'e-2', name: 'Benched', enabled: false })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            // A panel binding passes every member id — including one that
+            // was disabled and one that was deleted after binding.
+            instruction: { editorIds: ['e-1', 'e-2', 'e-gone'], text: 'Check it.' }
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        // The panel never silently shrinks: each undispatchable member is a
+        // typed skip (the `ResolvedAction.editorIds` contract).
+        expect(result.skips).toEqual([
+            { editorId: 'e-gone', editorName: 'Unknown editor', reason: 'editor-missing' },
+            { editorId: 'e-2', editorName: 'Benched', reason: 'editor-disabled' }
+        ])
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-1'])
+        await result.run.settled
     })
 
     it('restricts the pool to the requested editorIds (daemon editor-set redispatch)', async () => {
