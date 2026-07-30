@@ -1,7 +1,10 @@
 import { generateId } from '../ids'
 import {
+    actionBindingSchema,
     editorConfigSchema,
     panelConfigSchema,
+    type ActionBinding,
+    type BuiltInActionId,
     type EditorConfig,
     type PanelConfig,
     type PluginSettingsV1
@@ -173,6 +176,28 @@ export const STARTER_EDITOR_SPECS: readonly StarterEditorSpec[] = [
     }
 ]
 
+/**
+ * Default bindings for the built-in action verbs, by persona name (wired to
+ * UUIDs at seed time), so bound actions are discoverable out of the box:
+ * the editor context menu and the command palette carry them from the first
+ * session instead of starting empty. Persona ↔ verb pairing follows the
+ * persona's mandate. The generate verbs (`continue`, `say-more`) stay
+ * unbound — no starter persona is an authorial voice, so any default would
+ * be a bad one; users bind them to an editor of their own.
+ */
+export const STARTER_ACTION_BINDINGS: readonly {
+    readonly actionId: BuiltInActionId
+    readonly editorName: string
+}[] = [
+    { actionId: 'rephrase', editorName: 'Concision Editor' },
+    { actionId: 'summarize', editorName: 'Concision Editor' },
+    { actionId: 'simplify', editorName: 'Concision Editor' },
+    { actionId: 'humanize', editorName: 'Humanizer' },
+    { actionId: 'critique', editorName: "Devil's Advocate" },
+    { actionId: 'find-evidence', editorName: 'Fact Checker' },
+    { actionId: 'identify-assumptions', editorName: "Devil's Advocate" }
+]
+
 export const STARTER_PANEL_NAME = 'Pre-publish Review'
 
 /** Panel membership, by persona name (plan §5.8; wired to UUIDs at seed time). */
@@ -189,8 +214,9 @@ export const STARTER_PANEL_MEMBER_NAMES: readonly string[] = [
  * Pure and idempotent: when `starterPackSeeded` is already true the input is
  * returned unchanged; otherwise a NEW settings value is returned with the six
  * starter editors and the starter panel appended (existing user entities are
- * preserved), fresh UUIDs generated, panel membership wired to those UUIDs,
- * and the seeded flag set.
+ * preserved), fresh UUIDs generated, panel membership and default action
+ * bindings wired to those UUIDs (verbs the user already bound are left
+ * alone), and the seeded flag set.
  */
 export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
     if (settings.starterPackSeeded) {
@@ -217,10 +243,28 @@ export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
         memberEditorIds,
         charter: { text: PRE_PUBLISH_CHARTER, notePaths: [] }
     })
+    // Built-in verb bindings use the verb itself as the stable entity id
+    // (the `setBuiltInActionBinding` convention), so `action-<verb>` command
+    // ids and hotkeys stay stable across installs.
+    const boundVerbs = new Set(settings.actions.map((action) => action.actionId))
+    const actions: ActionBinding[] = STARTER_ACTION_BINDINGS.flatMap(({ actionId, editorName }) => {
+        const editorId = idByName.get(editorName)
+        if (editorId === undefined || boundVerbs.has(actionId)) {
+            return []
+        }
+        return [
+            actionBindingSchema.parse({
+                id: actionId,
+                actionId,
+                binding: { targetType: 'editor', targetId: editorId }
+            })
+        ]
+    })
     return {
         ...settings,
         editors: [...settings.editors, ...editors],
         panels: [...settings.panels, panel],
+        actions: [...settings.actions, ...actions],
         starterPackSeeded: true
     }
 }

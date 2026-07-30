@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import {
+    STARTER_ACTION_BINDINGS,
     STARTER_EDITOR_SPECS,
     STARTER_PANEL_MEMBER_NAMES,
     STARTER_PANEL_NAME,
     seedStarterPack
 } from './starter-pack'
+import { getBuiltInVerb } from '../actions/verb-registry'
 import {
     checkReferentialIntegrity,
     pluginSettingsSchema,
@@ -154,6 +156,73 @@ describe('seedStarterPack', () => {
         expect(charter).toMatch(/[Dd]issent/)
     })
 
+    it('binds the default action verbs to the matching personas', () => {
+        const seeded = seedStarterPack(freshSettings())
+        const nameById = new Map(seeded.editors.map((editor) => [editor.id, editor.name]))
+        expect(seeded.actions).toHaveLength(STARTER_ACTION_BINDINGS.length)
+        for (const [index, expected] of STARTER_ACTION_BINDINGS.entries()) {
+            const action = seeded.actions[index]
+            expect(action).toBeDefined()
+            if (!action) {
+                continue
+            }
+            // Verb id doubles as the binding entity id (stable command ids).
+            expect(action.id).toEqual(expected.actionId)
+            expect(action.actionId).toEqual(expected.actionId)
+            expect(action.binding?.targetType).toEqual('editor')
+            expect(nameById.get(action.binding?.targetId ?? '')).toEqual(expected.editorName)
+        }
+    })
+
+    it('only binds verbs to personas holding the class-appropriate capability', () => {
+        // Transform verbs need rewrite, review-class verbs need review —
+        // every starter persona ships both, but pin the invariant so a
+        // starter-pack edit cannot silently seed an undispatchable binding.
+        const seeded = seedStarterPack(freshSettings())
+        const editorById = new Map(seeded.editors.map((editor) => [editor.id, editor]))
+        for (const action of seeded.actions) {
+            const verb = getBuiltInVerb(action.actionId)
+            expect(verb).not.toBeNull()
+            const editor = editorById.get(action.binding?.targetId ?? '')
+            expect(editor).toBeDefined()
+            if (!verb || !editor) {
+                continue
+            }
+            const capability =
+                verb.verbClass === 'review'
+                    ? editor.capabilities.review
+                    : editor.capabilities.rewrite
+            expect(capability).toEqual(true)
+        }
+    })
+
+    it('leaves the generate verbs unbound (no authorial starter persona)', () => {
+        const seeded = seedStarterPack(freshSettings())
+        const boundVerbs = seeded.actions.map((action) => action.actionId)
+        expect(boundVerbs).not.toContain('continue')
+        expect(boundVerbs).not.toContain('say-more')
+    })
+
+    it('never overrides a verb the user already bound', () => {
+        const base = freshSettings()
+        const withUser = pluginSettingsSchema.parse({
+            ...base,
+            editors: [{ id: 'user-editor', name: 'Mine' }],
+            actions: [
+                {
+                    id: 'humanize',
+                    actionId: 'humanize',
+                    binding: { targetType: 'editor', targetId: 'user-editor' }
+                }
+            ]
+        })
+        const seeded = seedStarterPack(withUser)
+        const humanize = seeded.actions.filter((action) => action.actionId === 'humanize')
+        expect(humanize).toHaveLength(1)
+        expect(humanize[0]?.binding?.targetId).toEqual('user-editor')
+        expect(seeded.actions).toHaveLength(STARTER_ACTION_BINDINGS.length)
+    })
+
     it('passes referential integrity after seeding', () => {
         const seeded = seedStarterPack(freshSettings())
         expect(checkReferentialIntegrity(seeded)).toEqual([])
@@ -165,6 +234,23 @@ describe('STARTER_EDITOR_SPECS', () => {
         const editorNames = new Set(STARTER_EDITOR_SPECS.map((spec) => spec.name))
         for (const memberName of STARTER_PANEL_MEMBER_NAMES) {
             expect(editorNames.has(memberName)).toEqual(true)
+        }
+    })
+
+    it('covers every default action binding persona name', () => {
+        const editorNames = new Set(STARTER_EDITOR_SPECS.map((spec) => spec.name))
+        for (const binding of STARTER_ACTION_BINDINGS) {
+            expect(editorNames.has(binding.editorName)).toEqual(true)
+        }
+    })
+})
+
+describe('STARTER_ACTION_BINDINGS', () => {
+    it('binds each verb at most once and only to real built-in verbs', () => {
+        const verbs = STARTER_ACTION_BINDINGS.map((binding) => binding.actionId)
+        expect(new Set(verbs).size).toEqual(verbs.length)
+        for (const verb of verbs) {
+            expect(getBuiltInVerb(verb)).not.toBeNull()
         }
     })
 })
