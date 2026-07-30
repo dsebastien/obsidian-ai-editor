@@ -1393,6 +1393,19 @@ export class ReviewController {
     }
 
     /**
+     * Run scope for an operation: an EXPLICIT file when the caller knows which
+     * one it acted on (the side panel's buttons carry the file they were
+     * rendered for), otherwise the active file (command palette).
+     */
+    private runContextFor(filePath: string | null): { path: string; run: RunHandle } | null {
+        if (filePath === null) {
+            return this.activeRunContext()
+        }
+        const run = this.deps.runController.getRun(filePath)
+        return run ? { path: filePath, run } : null
+    }
+
+    /**
      * The findings a bulk operation may touch: the file's VISIBLE findings
      * (severity filter applied — never accept or dismiss what the user cannot
      * see) narrowed to one editor (`null` = every editor of the run).
@@ -1495,6 +1508,13 @@ export class ReviewController {
      * — so a single Ctrl+Z restores the whole batch and neighbouring typing
      * is never swallowed (`finding-accept.spec.ts`).
      *
+     * `filePath` scopes the operation explicitly — the side panel passes the
+     * file its buttons were RENDERED for, so a bulk mutation can never land on
+     * a different note than the one whose counts the user clicked (the sticky
+     * active-file pointer moves synchronously, the panel re-renders on a
+     * coalesced refresh). The command palette passes null and keeps the active
+     * file, matching the gate it was checked against.
+     *
      * Overlaps keep the EARLIER anchor and the later suggestion is skipped
      * (applying both would compose two rewrites of the same span into
      * nonsense); skipped counts — overlapping and no-longer-matching — are
@@ -1504,8 +1524,8 @@ export class ReviewController {
      * canonical-view forwarding like any user edit, so every finding left in
      * the run remaps (intersecting ones go stale).
      */
-    acceptAllFindings(editorId: string | null): void {
-        const context = this.activeRunContext()
+    acceptAllFindings(editorId: string | null, filePath: string | null = null): void {
+        const context = this.runContextFor(filePath)
         if (!context || this.disposed) {
             return
         }
@@ -1542,10 +1562,11 @@ export class ReviewController {
      * the same store path as the card button (stale and unanchored ones
      * included — dismissing is always allowed) and their marks are dropped in
      * one dispatch. No document change, so nothing to undo; an open card is
-     * closed because its findings may no longer exist.
+     * closed because its findings may no longer exist. `filePath` scopes the
+     * operation like `acceptAllFindings`.
      */
-    dismissAllFindings(editorId: string | null): void {
-        const context = this.activeRunContext()
+    dismissAllFindings(editorId: string | null, filePath: string | null = null): void {
+        const context = this.runContextFor(filePath)
         if (!context || this.disposed) {
             return
         }
@@ -1633,11 +1654,14 @@ export class ReviewController {
             retryEditor: (editorId: string): void => {
                 this.retryEditor(path, editorId)
             },
+            // Scoped to the file this binding was built for, like the reveal
+            // and retry closures above: the panel must never mutate a run
+            // other than the one it is displaying.
             acceptAll: (editorId: string): void => {
-                this.acceptAllFindings(editorId)
+                this.acceptAllFindings(editorId, path)
             },
             dismissAll: (editorId: string): void => {
-                this.dismissAllFindings(editorId)
+                this.dismissAllFindings(editorId, path)
             }
         }
     }
