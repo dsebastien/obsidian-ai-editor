@@ -4,7 +4,11 @@ import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import { rawFindingSchema } from '../../domain/operations/contract'
 import { createSnapshot } from '../../domain/snapshot'
 import { FindingStore } from '../orchestration/finding-store'
-import type { EditorRunState, RunHandle } from '../orchestration/run-controller'
+import type {
+    EditorRunState,
+    RunHandle,
+    StartThreadTurnResult
+} from '../orchestration/run-controller'
 
 /**
  * Test-only fixture builders shared by the CLI subcommand specs (review,
@@ -99,5 +103,10 @@ export class FakeRunHandle implements RunHandle {
     retryEditor(): { ok: false; reason: 'not-retryable' } {
         // CLI surfaces never retry (UI-only affordance); fixture refuses.
         return { ok: false, reason: 'not-retryable' }
+    }
+
+    startThreadTurn(): StartThreadTurnResult {
+        // CLI surfaces never push back (card-only affordance); fixture refuses.
+        return { ok: false, reason: 'not-found' }
     }
 }

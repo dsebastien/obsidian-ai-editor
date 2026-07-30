@@ -6,14 +6,18 @@ import type { FindingId, RunId } from '../../domain/ids'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type {
     OperationEvent,
+    OperationResult,
     RawFinding,
     ReviewRequest,
+    ThreadTurnRequest,
     Verdict
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import { resolveThreadOutcome } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { hashText } from '../../domain/snapshot'
 import { FindingStore } from './finding-store'
+import type { ThreadBeginFailure } from './finding-store'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
 
@@ -58,6 +62,47 @@ export interface StartRunInput {
     readonly snapshot: DocumentSnapshot
     readonly editors: readonly RunEditorSpec[]
 }
+
+// ---------------------------------------------------------------------------
+// Push-back threads (plan M4)
+// ---------------------------------------------------------------------------
+
+/** Backend executor for one thread turn (same event protocol as reviews). */
+export type ThreadExecutor = (
+    request: ThreadTurnRequest,
+    signal: AbortSignal
+) => AsyncIterable<OperationEvent>
+
+export interface StartThreadTurnInput {
+    readonly findingId: FindingId
+    /** The user's push-back; validated and stored by the `FindingStore`. */
+    readonly message: string
+    /**
+     * Text the turn is about — the CURRENT text of the finding's span,
+     * resolved by the caller through `currentSpanText` against the live
+     * document (never re-derived here: the run handle has no live buffer).
+     */
+    readonly quote: string
+    /** Secret redaction for error messages (Business Rules #12). */
+    readonly redactError?: (message: string) => string
+    readonly execute: ThreadExecutor
+}
+
+/**
+ * How a thread turn ended. `discarded` means the store no longer accepted the
+ * outcome (the finding was removed by a retry, or its pending turn was already
+ * resolved) — nothing was written, so callers must stay silent about it.
+ */
+export type ThreadTurnResolution =
+    | { readonly status: 'conceded'; readonly reply: string }
+    | { readonly status: 'held'; readonly reply: string; readonly revised: boolean }
+    | { readonly status: 'failed'; readonly reason: string }
+    | { readonly status: 'cancelled' }
+    | { readonly status: 'discarded' }
+
+export type StartThreadTurnResult =
+    | { readonly ok: true; readonly settled: Promise<ThreadTurnResolution> }
+    | { readonly ok: false; readonly reason: ThreadBeginFailure }
 
 /** Immutable view of one editor's progress within a run. */
 export interface EditorRunState {
@@ -124,6 +169,22 @@ export interface RunHandle {
      * attempt; a later `cancelRun` aborts active retries too.
      */
     retryEditor(editorId: string, freshText: string): RetryEditorResult
+    /**
+     * Sends one push-back turn on a finding of this run (plan M4 threads).
+     * Lives on the run handle because the run owns the findings the thread
+     * hangs off: a replaced or discarded run kills its in-flight turns for
+     * free, and `cancelRun` aborts them — while CLOSING THE CARD does not
+     * (the reply lands in the store and shows when the card is reopened).
+     *
+     * The turn does NOT participate in `settled`/`isSettled()`: the review is
+     * over, a thread is a side conversation. It DOES take a permit from the
+     * plugin-wide concurrency gate like any other backend request, and its
+     * error messages go through `redactError` (Business Rules #12).
+     *
+     * Refusals come from the `FindingStore` (terminal finding, turn already in
+     * flight, cap reached, blank message) — the UI must not offer those.
+     */
+    startThreadTurn(input: StartThreadTurnInput): StartThreadTurnResult
 }
 
 /**
@@ -195,6 +256,13 @@ class ReviewRunHandle implements RunHandle {
     private readonly states = new Map<string, InternalEditorState>()
     /** Editor specs retained so `retryEditor` can re-run an executor. */
     private readonly specs = new Map<string, RunEditorSpec>()
+    /**
+     * Abort controllers of the in-flight push-back turns, so `cancelRun`
+     * reaches them. Deliberately NOT composed with the run-level signal:
+     * cancelling a run keeps its findings inspectable, so a LATER push-back on
+     * one of them must still be able to run.
+     */
+    private readonly threadAborts = new Set<AbortController>()
 
     constructor(
         input: StartRunInput,
@@ -269,6 +337,19 @@ class ReviewRunHandle implements RunHandle {
         // runs on its own controller — cancelling again must reach it.
         if (!this.abort.signal.aborted) {
             this.abort.abort()
+        }
+        // In-flight push-back turns die with the run (their own controllers —
+        // see `threadAborts`). Their findings are marked NOW rather than when
+        // the aborted stream winds down (same rationale as the editor permits
+        // above): an executor that ignores its signal must not leave a card
+        // spinning forever.
+        for (const abort of [...this.threadAborts]) {
+            abort.abort()
+        }
+        for (const finding of this.findings.list()) {
+            if (finding.threadTurn?.status === 'pending') {
+                this.findings.failThreadTurn(finding.id, 'Cancelled')
+            }
         }
         let changed = false
         for (const state of this.states.values()) {
@@ -351,6 +432,142 @@ class ReviewRunHandle implements RunHandle {
         void this.consume(spec, state, attempt.signal)
         this.notify()
         return { ok: true }
+    }
+
+    startThreadTurn(input: StartThreadTurnInput): StartThreadTurnResult {
+        const finding = this.findings.get(input.findingId)
+        const begun = this.findings.beginThreadTurn(input.findingId, input.message)
+        if (!begun.ok) {
+            return { ok: false, reason: begun.reason }
+        }
+        // `beginThreadTurn` succeeded, so the finding exists; the pre-read is
+        // what gives us the history WITHOUT the message just recorded (which
+        // travels as `message`, not as a history turn).
+        const history = (finding?.thread ?? []).map((turn) => ({
+            role: turn.role,
+            content: turn.content
+        }))
+        const request: ThreadTurnRequest = {
+            kind: 'thread-turn',
+            contractVersion: CONTRACT_VERSION,
+            runId: asRunId(generateId()),
+            // The run's snapshot identifies the review this finding came from;
+            // `quote` carries the live span text (which may have drifted since).
+            snapshotHash: this.snapshot.hash,
+            findingId: input.findingId,
+            quote: input.quote,
+            // The CURRENT critique: an earlier turn may already have sharpened
+            // it, and the editor must argue from where the thread stands.
+            critique: begun.finding.raw.critique,
+            history,
+            message: begun.finding.threadTurn?.message ?? input.message.trim()
+        }
+        return { ok: true, settled: this.consumeThreadTurn(input, request) }
+    }
+
+    /**
+     * Runs one thread turn to completion and writes the outcome into the
+     * store. Same event protocol as reviews (runId match, exactly-once
+     * terminal, post-terminal discard, stream end without terminal =
+     * invalid-output) and the same concurrency permit; findings emitted by a
+     * thread turn are off-contract and discarded.
+     */
+    private async consumeThreadTurn(
+        input: StartThreadTurnInput,
+        request: ThreadTurnRequest
+    ): Promise<ThreadTurnResolution> {
+        const abort = new AbortController()
+        this.threadAborts.add(abort)
+        const signal = abort.signal
+        const fail = (reason: string): ThreadTurnResolution => {
+            const redacted = input.redactError ? input.redactError(reason) : reason
+            return this.findings.failThreadTurn(input.findingId, redacted) === null
+                ? { status: 'discarded' }
+                : { status: 'failed', reason: redacted }
+        }
+        const cancelled = (): ThreadTurnResolution => {
+            this.findings.failThreadTurn(input.findingId, 'Cancelled')
+            return { status: 'cancelled' }
+        }
+        try {
+            let release: ReleasePermit
+            try {
+                release = await this.requestGate.acquire(signal)
+            } catch {
+                return cancelled() // ejected from the queue by the abort
+            }
+            if (signal.aborted) {
+                // Cancelled while queued but the permit resolved first: never
+                // open a stream on a dead signal (an executor that only
+                // listens for the abort EVENT would hang forever).
+                release()
+                return cancelled()
+            }
+            try {
+                let resolution: ThreadTurnResolution | null = null
+                try {
+                    for await (const event of input.execute(request, signal)) {
+                        if (resolution === null && signal.aborted) {
+                            // Cancelled mid-stream: settle now and discard
+                            // whatever the winding-down stream still yields.
+                            resolution = cancelled()
+                        }
+                        if (resolution !== null || event.runId !== request.runId) {
+                            continue // post-terminal or foreign run: discard
+                        }
+                        if (event.type === 'progress' || event.type === 'finding') {
+                            continue // no progress surface for a turn; findings are off-contract
+                        }
+                        if (event.type === 'error') {
+                            resolution =
+                                event.error.code === 'cancelled'
+                                    ? cancelled()
+                                    : fail(event.error.message)
+                            continue
+                        }
+                        if (event.result.kind !== 'thread-turn') {
+                            resolution = fail(
+                                `Expected a 'thread-turn' result, got '${event.result.kind}'`
+                            )
+                            continue
+                        }
+                        resolution = this.landThreadOutcome(input.findingId, event.result)
+                    }
+                } catch (cause) {
+                    if (resolution === null) {
+                        resolution = signal.aborted
+                            ? cancelled()
+                            : fail(cause instanceof Error ? cause.message : String(cause))
+                    }
+                }
+                return (
+                    resolution ??
+                    (signal.aborted ? cancelled() : fail('Stream ended without a terminal event'))
+                )
+            } finally {
+                release()
+            }
+        } finally {
+            this.threadAborts.delete(abort)
+        }
+    }
+
+    private landThreadOutcome(
+        findingId: FindingId,
+        result: Extract<OperationResult, { kind: 'thread-turn' }>
+    ): ThreadTurnResolution {
+        const outcome = resolveThreadOutcome(result)
+        if (this.findings.completeThreadTurn(findingId, outcome) === null) {
+            return { status: 'discarded' }
+        }
+        if (outcome.kind === 'concede') {
+            return { status: 'conceded', reply: outcome.reply }
+        }
+        return {
+            status: 'held',
+            reply: outcome.reply,
+            revised: outcome.revisedSuggestion !== null || outcome.revisedCritique !== null
+        }
     }
 
     private async consume(
