@@ -1,5 +1,6 @@
 import { Modal, Notice, Setting } from 'obsidian'
 import type { App } from 'obsidian'
+import { validateApiBackend } from '../../domain/settings/backend-validation'
 import { apiBackendSchema } from '../../domain/settings/settings-schema'
 import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings-schema'
 import { generateId } from '../../domain/ids'
@@ -14,16 +15,6 @@ const BASE_URL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
     'openai-compatible': 'https://api.groq.com/openai/v1',
     'azure-openai': 'https://<resource>.openai.azure.com',
     'ollama': 'http://localhost:11434'
-}
-
-/** True when the string parses as a plain JSON object (not array/scalar). */
-function isJsonObject(value: string): boolean {
-    try {
-        const parsed = JSON.parse(value) as unknown
-        return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-    } catch {
-        return false
-    }
 }
 
 const MODEL_PLACEHOLDERS: Record<ApiProviderKind, string> = {
@@ -267,42 +258,20 @@ export class BackendModal extends Modal {
     }
 
     private save(): void {
-        this.draft.label = this.draft.label.trim()
-        this.draft.baseUrl = this.draft.baseUrl.trim()
-        if (this.draft.label.length === 0) {
-            new Notice('A label is required.')
+        const validation = validateApiBackend(this.draft)
+        if (!validation.ok) {
+            new Notice(validation.message)
             return
         }
-        if (this.draft.kind === 'openai-compatible' && this.draft.baseUrl.length === 0) {
-            new Notice('OpenAI-compatible backends need a base URL.')
-            return
-        }
-        if (this.draft.kind === 'openrouter' && this.draft.apiKey.trim().length === 0) {
-            new Notice('OpenRouter backends need an API key.')
-            return
-        }
-        if (this.draft.kind === 'azure-openai' && this.draft.azureDeployment.trim().length === 0) {
-            new Notice('Azure OpenAI backends need a deployment name.')
-            return
-        }
-        this.draft.extraBodyJson = this.draft.extraBodyJson.trim()
-        if (this.draft.extraBodyJson.length > 0 && !isJsonObject(this.draft.extraBodyJson)) {
-            new Notice('Extra request body must be a JSON object, e.g. {"think": true}.')
-            return
-        }
-        const parsed = apiBackendSchema.safeParse(this.draft)
-        if (!parsed.success) {
-            new Notice('Invalid backend configuration.')
-            return
-        }
+        const backend = validation.backend
         commit(
             this.ctx,
             (draft) => {
-                const index = draft.backends.findIndex((backend) => backend.id === parsed.data.id)
+                const index = draft.backends.findIndex((candidate) => candidate.id === backend.id)
                 if (index >= 0) {
-                    draft.backends[index] = parsed.data
+                    draft.backends[index] = backend
                 } else {
-                    draft.backends.push(parsed.data)
+                    draft.backends.push(backend)
                 }
             },
             { refresh: true }
