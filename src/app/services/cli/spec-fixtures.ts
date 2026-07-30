@@ -29,6 +29,8 @@ export function makeState(overrides: Partial<EditorRunState> = {}): EditorRunSta
         verdict: null,
         lastProgress: null,
         error: null,
+        continuing: false,
+        continuationError: null,
         ...overrides
     }
 }
@@ -109,6 +111,11 @@ export class FakeRunHandle implements RunHandle {
     retryEditor(): { ok: false; reason: 'not-retryable' } {
         // CLI surfaces never retry (UI-only affordance); fixture refuses.
         return { ok: false, reason: 'not-retryable' }
+    }
+
+    continueEditor(): { ok: false; reason: 'not-continuable' } {
+        // "Generate more" is a UI affordance too; fixture refuses.
+        return { ok: false, reason: 'not-continuable' }
     }
 
     startThreadTurn(): StartThreadTurnResult {

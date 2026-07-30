@@ -1621,3 +1621,218 @@ describe('RunController panel runs', () => {
         expect(run.getPanelState()).toBeNull()
     })
 })
+
+// ---------------------------------------------------------------------------
+// "Generate more" — continuation passes (plan M6)
+// ---------------------------------------------------------------------------
+
+describe('RunHandle.continueEditor', () => {
+    /** Editor whose Nth attempt yields the Nth script entry. */
+    function perAttempt(editorId: string, scripts: ((runId: string) => OperationEvent[])[]) {
+        const requests: ReviewRequest[] = []
+        let attempt = 0
+        const spec: RunEditorSpec = {
+            editorId,
+            editorName: `Editor ${editorId}`,
+            execute: async function* (request) {
+                requests.push(request)
+                await Promise.resolve()
+                const script = scripts[attempt++] ?? ((): OperationEvent[] => [])
+                yield* script(request.runId)
+            }
+        }
+        return { spec, requests }
+    }
+
+    it('APPENDS to the findings already produced instead of replacing them', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()], 'First pass')],
+            (runId) => [result(runId, [raw({ quote: 'lazy dog', critique: 'Cliché' })])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        expect(run.getEditorState('alpha')?.findingIds).toHaveLength(1)
+
+        expect(run.continueEditor('alpha', DOC)).toEqual({ ok: true })
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        const state = run.getEditorState('alpha')
+        expect(state?.status).toBe('done')
+        expect(state?.findingIds).toHaveLength(2)
+        expect(run.findings.list().map((item) => item.raw.quote)).toEqual([
+            'quick brown',
+            'lazy dog'
+        ])
+    })
+
+    it('sends what was already reported, so the editor is asked not to repeat it', async () => {
+        const { spec, requests } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()])],
+            (runId) => [result(runId, [])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        // Absent, not empty, on a first pass — a backend can tell "nothing
+        // yet" from "found nothing".
+        expect(requests[0]?.alreadyReported).toBeUndefined()
+
+        run.continueEditor('alpha', DOC)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        expect(requests[1]?.alreadyReported).toEqual([
+            { quote: 'quick brown', critique: 'Too generic' }
+        ])
+    })
+
+    it('drops a literal repeat on arrival — the dedupe keys survive the pass', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()])],
+            // Same finding in every field: the editor ignored the instruction.
+            (runId) => [result(runId, [raw()])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        run.continueEditor('alpha', DOC)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        expect(run.getEditorState('alpha')?.findingIds).toHaveLength(1)
+    })
+
+    it('keeps the first pass’s summary when the continuation reports none', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()], 'The opening is weak')],
+            (runId) => [result(runId, [])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        run.continueEditor('alpha', DOC)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        expect(run.getEditorState('alpha')?.summary).toBe('The opening is weak')
+    })
+
+    it('a FAILED continuation leaves the editor done, so Retry cannot destroy the findings', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()])],
+            (runId) => [{ type: 'error', runId, error: { code: 'timeout', message: 'Timed out' } }]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        run.continueEditor('alpha', DOC)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        const state = run.getEditorState('alpha')
+        expect(state?.status).toBe('done')
+        expect(state?.error).toBeNull()
+        expect(state?.continuationError).toBe('Timed out')
+        expect(state?.findingIds).toHaveLength(1)
+        // 'done' is not retryable — which is the point: Retry replaces an
+        // editor's findings, and the ones on screen are still good.
+        expect(run.retryEditor('alpha', DOC)).toEqual({
+            ok: false,
+            reason: 'not-retryable'
+        })
+    })
+
+    it('cancelling mid-continuation restores done, keeping every finding', async () => {
+        const gate = deferred()
+        const spec: RunEditorSpec = {
+            editorId: 'alpha',
+            editorName: 'Alpha',
+            execute: async function* (request) {
+                if (request.alreadyReported === undefined) {
+                    yield result(request.runId, [raw()])
+                    return
+                }
+                await gate.promise
+                yield result(request.runId, [])
+            }
+        }
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        run.continueEditor('alpha', DOC)
+        expect(run.isSettled()).toBeFalse()
+        run.cancelRun()
+        const state = run.getEditorState('alpha')
+        expect(state?.status).toBe('done')
+        expect(state?.continuationError).toBe('Cancelled')
+        expect(state?.findingIds).toHaveLength(1)
+        gate.resolve()
+    })
+
+    it('refuses an editor that is not done — nothing to build on, or already working', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [{ type: 'error', runId, error: { code: 'network', message: 'Offline' } }]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        expect(run.continueEditor('alpha', DOC)).toEqual({
+            ok: false,
+            reason: 'not-continuable'
+        })
+        expect(run.continueEditor('nobody', DOC)).toEqual({
+            ok: false,
+            reason: 'unknown-editor'
+        })
+    })
+
+    it('anchors the new findings against the CURRENT text, not the run snapshot', async () => {
+        const edited = `PREFIX ${DOC}`
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [])],
+            (runId) => [result(runId, [raw({ quote: 'quick brown', suggestion: undefined })])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
+        await run.settled
+        run.continueEditor('alpha', edited)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        const anchored = run.findings.list()[0]
+        expect(anchored?.anchor).not.toBeNull()
+        expect(edited.slice(anchored?.anchor?.from ?? 0, anchored?.anchor?.to ?? 0)).toBe(
+            'quick brown'
+        )
+    })
+
+    it('re-opens a panel’s scorecard: it named what the members found', async () => {
+        const { spec } = perAttempt('alpha', [
+            (runId) => [result(runId, [raw()])],
+            (runId) => [result(runId, [])]
+        ])
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [spec],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Pre-publish Review',
+                aggregate: async function* (request) {
+                    await Promise.resolve()
+                    yield {
+                        type: 'result',
+                        runId: request.runId,
+                        result: {
+                            kind: 'aggregate-panel',
+                            memberVerdicts: [],
+                            missingMembers: [],
+                            topFixes: [],
+                            dissent: [],
+                            recommendation: 'needs-work',
+                            rationale: 'Some work'
+                        }
+                    }
+                }
+            }
+        })
+        await run.panelSettled
+        expect(run.getPanelState()?.status).toBe('done')
+
+        run.continueEditor('alpha', DOC)
+        expect(run.getPanelState()?.status).toBe('waiting')
+        expect(run.getPanelState()?.result).toBeNull()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(run.getPanelState()?.status).toBe('done')
+    })
+})

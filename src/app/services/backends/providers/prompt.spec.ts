@@ -34,6 +34,27 @@ describe('buildUserMessage', () => {
         expect(message).toContain('<selection>\nHello world\n</selection>')
     })
 
+    it('reframes a continuation pass around what was already reported', () => {
+        const operation: OperationRequest = {
+            ...reviewOperation(),
+            alreadyReported: [{ quote: 'Hello world', critique: 'Too generic an opening' }]
+        }
+        const message = buildUserMessage(operation, 'json-object')
+        expect(message).toContain('report what you did NOT report the first time')
+        expect(message).toContain('<already-reported>')
+        expect(message).toContain('<quote>\nHello world\n</quote>')
+        expect(message).toContain('<critique>\nToo generic an opening\n</critique>')
+        expect(message).toContain('report only findings you have NOT already made')
+        // Padding is the failure mode a second pass invites; say so explicitly.
+        expect(message).toContain('Reporting nothing further is a valid and honest result')
+    })
+
+    it('says nothing about additional passes on a first review', () => {
+        const message = buildUserMessage(reviewOperation(), 'json-object')
+        expect(message).not.toContain('already-reported')
+        expect(message).not.toContain('ADDITIONAL pass')
+    })
+
     it('slices the selection for transform-selection and carries the instruction', () => {
         const operation: OperationRequest = {
             ...base,

@@ -99,12 +99,36 @@ const baseRequest = z.object({
     snapshotHash: z.string().min(1)
 })
 
+/**
+ * What one editor has ALREADY reported on this text, sent back to it when the
+ * user asks for more ("Generate more" — plan M6). Deliberately only the quote
+ * and the critique: enough for the editor to recognize the ground it covered,
+ * without re-sending suggestions, evidence and anchoring aids it does not need
+ * to avoid repeating itself. Both are clipped — an over-long echo of the
+ * previous round would crowd out the document the second pass is supposed to
+ * read more carefully.
+ */
+export const reportedFindingSchema = z.object({
+    quote: z.string().min(1).max(QUOTE_MAX),
+    critique: z.string().min(1).max(1_000)
+})
+export type ReportedFinding = z.infer<typeof reportedFindingSchema>
+
 /** Whole-note (or selection-scoped) review by one editor persona. */
 export const reviewRequestSchema = baseRequest.extend({
     kind: z.literal('review'),
     text: z.string().max(LONG_TEXT_MAX),
     /** Selection range within `text` when the review is selection-scoped. */
-    selection: z.object({ from: z.number().int().min(0), to: z.number().int().min(0) }).optional()
+    selection: z.object({ from: z.number().int().min(0), to: z.number().int().min(0) }).optional(),
+    /**
+     * Present ONLY on a continuation pass: the findings this editor already
+     * produced for this run. The prompt then asks for ADDITIONAL findings and
+     * forbids repeating these — the previous round is kept, not replaced, so a
+     * continuation must never re-report what the user is already triaging.
+     * Absent (not empty) on a first pass, so a backend can tell "nothing yet"
+     * from "found nothing".
+     */
+    alreadyReported: z.array(reportedFindingSchema).max(200).optional()
 })
 
 /** An action verb applied to a selection (rephrase, critique, simplify…). */

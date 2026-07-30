@@ -10,6 +10,7 @@ import type {
     OperationResult,
     PanelResult,
     RawFinding,
+    ReportedFinding,
     ReviewRequest,
     ThreadTurnRequest,
     Verdict
@@ -44,12 +45,25 @@ import { Semaphore } from './semaphore'
 
 export type EditorRunStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 
+/**
+ * Caps on the "already reported" echo of a continuation request, matching
+ * `reportedFindingSchema`. They exist so a long first round cannot crowd the
+ * document out of the second one's context window.
+ */
+const REPORTED_CRITIQUE_MAX = 1_000
+const REPORTED_FINDINGS_MAX = 200
+
 export type OperationErrorInfo = Extract<OperationEvent, { type: 'error' }>['error']
 
 /** Outcome of `RunHandle.retryEditor`. */
 export type RetryEditorResult =
     | { readonly ok: true }
     | { readonly ok: false; readonly reason: 'unknown-editor' | 'not-retryable' }
+
+/** Outcome of `RunHandle.continueEditor` ("Generate more"). */
+export type ContinueEditorResult =
+    | { readonly ok: true }
+    | { readonly ok: false; readonly reason: 'unknown-editor' | 'not-continuable' }
 
 /** One editor persona participating in a run, with its backend injected. */
 export interface RunEditorSpec {
@@ -196,6 +210,23 @@ export interface EditorRunState {
     readonly verdict: Verdict | null
     readonly lastProgress: string | null
     readonly error: OperationErrorInfo | null
+    /**
+     * True while a "Generate more" pass is in flight for this editor. The
+     * status is `pending`/`running` meanwhile, exactly like a first attempt —
+     * this only tells surfaces that the findings already on screen are being
+     * ADDED TO, not replaced.
+     */
+    readonly continuing: boolean
+    /**
+     * Why the last continuation pass produced nothing (redacted), or null.
+     *
+     * A failed continuation deliberately does NOT put the editor into `error`:
+     * it stays `done` with the findings of the successful pass intact. Marking
+     * it failed would offer Retry, and Retry REPLACES an editor's findings —
+     * one click would then destroy work the user was mid-triage on because a
+     * second, optional pass timed out.
+     */
+    readonly continuationError: string | null
 }
 
 /** Handle over one review run (one snapshot, N editors). */
@@ -264,6 +295,28 @@ export interface RunHandle {
      * attempt; a later `cancelRun` aborts active retries too.
      */
     retryEditor(editorId: string, freshText: string): RetryEditorResult
+    /**
+     * Asks ONE editor for MORE findings without discarding the ones it already
+     * produced ("Generate more", plan M6). The opposite of `retryEditor` in
+     * every respect that matters:
+     *
+     * - findings are KEPT, and the new ones are appended to the same run;
+     * - the editor's dedupe keys are kept too, so a literal repeat of an
+     *   earlier finding is dropped on arrival rather than shown twice — and
+     *   the request additionally carries what was already reported, so the
+     *   backend is asked not to repeat itself in the first place;
+     * - only a `done` editor is continuable. A failed one needs `retryEditor`
+     *   (there is nothing to build on), and a running one is already working.
+     *
+     * `freshText` MUST be the CURRENT document text at call time: the new
+     * findings anchor against it as a fresh per-editor anchor base, exactly
+     * like a retry (Business Rules #3/#4). The pass therefore reads the note
+     * as it is NOW, which is also what the user is looking at.
+     *
+     * One call is one round. There is no automatic re-ask: every pass is a
+     * backend request the user pays for, so it stays an explicit action.
+     */
+    continueEditor(editorId: string, freshText: string): ContinueEditorResult
     /**
      * Sends one push-back turn on a finding of this run (plan M4 threads).
      * Lives on the run handle because the run owns the findings the thread
@@ -339,6 +392,15 @@ interface InternalEditorState {
      * composed with it would die instantly. `cancelRun` aborts this too.
      */
     attemptAbort: AbortController | null
+    /**
+     * True while the CURRENT attempt is a "Generate more" pass. Drives three
+     * things: the request carries `alreadyReported`, a missing summary/verdict
+     * does not erase the first pass's, and a non-`done` outcome restores the
+     * editor to `done` with `continuationError` instead of marking it failed
+     * (see `EditorRunState.continuationError` for why).
+     */
+    continuing: boolean
+    continuationError: string | null
 }
 
 /** Mutable twin of `PanelRunState` (the public view is a copy). */
@@ -428,7 +490,9 @@ class ReviewRunHandle implements RunHandle {
                 // batch lists are per editor because retries reset them
                 // independently.
                 anchorBase: { text: input.snapshot.text, batches: [] },
-                attemptAbort: null
+                attemptAbort: null,
+                continuing: false,
+                continuationError: null
             })
         }
 
@@ -523,7 +587,17 @@ class ReviewRunHandle implements RunHandle {
                 // permit-queued retry waiter immediately.
                 state.attemptAbort?.abort()
                 state.terminal = true
-                state.status = 'cancelled'
+                if (state.continuing) {
+                    // Same rule as `terminate`: a cancelled EXTRA pass leaves
+                    // the completed one alone (its findings are still on
+                    // screen), so the editor goes back to `done` rather than
+                    // becoming a retryable — and destroyable — `cancelled`.
+                    state.continuing = false
+                    state.status = 'done'
+                    state.continuationError = 'Cancelled'
+                } else {
+                    state.status = 'cancelled'
+                }
                 state.anchorBase = null
                 // Reclaim the permit NOW: the aborted stream may keep
                 // draining (or, for an abort-ignoring executor, never end),
@@ -588,19 +662,9 @@ class ReviewRunHandle implements RunHandle {
         // Retried findings anchor against the CURRENT document text passed by
         // the caller, then remap through edits applied after this point.
         state.anchorBase = { text: freshText, batches: [] }
-        // Retrying a member re-opens the panel: the scorecard that named this
-        // member missing (or that was cancelled with the run) is about to be
-        // wrong, so it is discarded and re-derived when the run settles again.
-        const panel = this.panel
-        if (panel) {
-            this.panelEpoch += 1
-            this.panelAbort?.abort()
-            this.panelAbort = null
-            panel.status = 'waiting'
-            panel.missingMembers = []
-            panel.result = null
-            panel.error = null
-        }
+        state.continuing = false
+        state.continuationError = null
+        this.reopenPanel()
         const attempt = new AbortController()
         state.attemptAbort = attempt
         // Not tracked by `settled` (already resolved after the initial
@@ -609,6 +673,61 @@ class ReviewRunHandle implements RunHandle {
         void this.consume(spec, state, attempt.signal)
         this.notify()
         return { ok: true }
+    }
+
+    continueEditor(editorId: string, freshText: string): ContinueEditorResult {
+        const state = this.states.get(editorId)
+        const spec = this.specs.get(editorId)
+        if (!state || !spec) {
+            return { ok: false, reason: 'unknown-editor' }
+        }
+        // Only a completed pass can be continued: a failed or cancelled editor
+        // has nothing to build on (that is `retryEditor`), and a pending or
+        // running one is already producing findings.
+        if (!state.terminal || state.status !== 'done') {
+            return { ok: false, reason: 'not-continuable' }
+        }
+        // Everything the retry resets is deliberately KEPT here: `findingIds`
+        // (the previous round stays), `seenFindingKeys` (a literal repeat is
+        // dropped on arrival), `summary` and `verdict` (a continuation that
+        // reports neither must not erase the first pass's).
+        state.runId = asRunId(generateId())
+        state.status = 'pending'
+        state.terminal = false
+        state.lastProgress = null
+        state.error = null
+        state.continuing = true
+        state.continuationError = null
+        // New findings anchor against the text as it reads NOW — which is also
+        // the text the continuation pass is about to be sent.
+        state.anchorBase = { text: freshText, batches: [] }
+        this.reopenPanel()
+        const attempt = new AbortController()
+        state.attemptAbort = attempt
+        void this.consume(spec, state, attempt.signal)
+        this.notify()
+        return { ok: true }
+    }
+
+    /**
+     * A member going back to work invalidates the scorecard: it named which
+     * members it weighed and what they found, and both are about to change.
+     * The pending/in-flight aggregation is dropped (epoch-guarded, so a late
+     * settle from it cannot write) and re-derived when the run settles again.
+     * No-op for a solo run.
+     */
+    private reopenPanel(): void {
+        const panel = this.panel
+        if (!panel) {
+            return
+        }
+        this.panelEpoch += 1
+        this.panelAbort?.abort()
+        this.panelAbort = null
+        panel.status = 'waiting'
+        panel.missingMembers = []
+        panel.result = null
+        panel.error = null
     }
 
     startThreadTurn(input: StartThreadTurnInput): StartThreadTurnResult {
@@ -802,7 +921,11 @@ class ReviewRunHandle implements RunHandle {
                 text: attemptText,
                 ...(this.snapshot.selection && attemptText === this.snapshot.text
                     ? { selection: { ...this.snapshot.selection } }
-                    : {})
+                    : {}),
+                // "Generate more": the previous round travels with the request
+                // so the editor is asked not to repeat it. Absent — not empty —
+                // on a first pass, so a backend can tell the two apart.
+                ...(state.continuing ? { alreadyReported: this.reportedBy(state) } : {})
             }
             state.status = 'running'
             this.notify()
@@ -852,6 +975,27 @@ class ReviewRunHandle implements RunHandle {
         }
     }
 
+    /**
+     * What this editor has already told the user, for a continuation request.
+     * Read from the STORE rather than from the raw stream, so a finding the
+     * user has since dismissed or accepted is still listed: the editor covered
+     * that ground, and re-reporting it would be a duplicate either way.
+     * Critiques are clipped to the contract's continuation cap.
+     */
+    private reportedBy(state: InternalEditorState): ReportedFinding[] {
+        const reported: ReportedFinding[] = []
+        for (const id of state.findingIds) {
+            const finding = this.findings.get(id)
+            if (finding) {
+                reported.push({
+                    quote: finding.raw.quote,
+                    critique: finding.raw.critique.slice(0, REPORTED_CRITIQUE_MAX)
+                })
+            }
+        }
+        return reported.slice(0, REPORTED_FINDINGS_MAX)
+    }
+
     private handleEvent(
         spec: RunEditorSpec,
         state: InternalEditorState,
@@ -876,8 +1020,16 @@ class ReviewRunHandle implements RunHandle {
                 for (const raw of event.result.findings) {
                     this.ingestFinding(spec, state, raw)
                 }
-                state.summary = event.result.summary ?? null
-                state.verdict = event.result.verdict ?? null
+                // A continuation that reports no summary/verdict leaves the
+                // first pass's standing: it was an ADDITIONAL pass, so silence
+                // about the note as a whole means "nothing to add", never
+                // "withdraw what I said".
+                if (!state.continuing || event.result.summary !== undefined) {
+                    state.summary = event.result.summary ?? null
+                }
+                if (!state.continuing || event.result.verdict !== undefined) {
+                    state.verdict = event.result.verdict ?? null
+                }
                 this.terminate(state, 'done', null)
                 return
             case 'error':
@@ -966,8 +1118,20 @@ class ReviewRunHandle implements RunHandle {
         error: OperationErrorInfo | null
     ): void {
         state.terminal = true
-        state.status = status
-        state.error = error
+        if (state.continuing) {
+            // A continuation only ever starts from `done`, and the findings of
+            // that successful pass are still here. So it restores `done` and
+            // records the failure separately rather than marking the editor
+            // failed — which would offer Retry, and Retry replaces an editor's
+            // findings (see `EditorRunState.continuationError`).
+            state.continuing = false
+            state.status = 'done'
+            state.error = null
+            state.continuationError = status === 'done' ? null : (error?.message ?? 'Cancelled')
+        } else {
+            state.status = status
+            state.error = error
+        }
         // No further finding can arrive for this attempt: drop the anchor
         // base so edit batches stop accumulating for this editor (and the
         // retry text, when any, is released).
@@ -1182,7 +1346,9 @@ function toPublicState(state: InternalEditorState): EditorRunState {
         summary: state.summary,
         verdict: state.verdict,
         lastProgress: state.lastProgress,
-        error: state.error
+        error: state.error,
+        continuing: state.continuing,
+        continuationError: state.continuationError
     }
 }
 

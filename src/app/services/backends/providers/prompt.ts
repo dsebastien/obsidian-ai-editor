@@ -58,14 +58,25 @@ function tag(name: string, content: string): string {
 /** Kind-specific behavioral rules, beyond what a JSON schema can express. */
 function kindRules(operation: OperationRequest): string[] {
     switch (operation.kind) {
-        case 'review':
-            return [
+        case 'review': {
+            const rules = [
                 'Each finding\'s "quote" MUST be copied character-for-character verbatim from the document text (raw markdown, including any markup). Never paraphrase, trim punctuation, or normalize whitespace inside a quote.',
                 'Keep quotes short and span-like (a phrase, sentence or line — not whole paragraphs).',
                 'When the quoted text occurs more than once, provide "prefix" and/or "suffix" (the exact adjacent text, up to 200 characters) and the 0-based "occurrence" index to disambiguate.',
                 'Provide "suggestion" only when proposing a concrete replacement for the quoted span; the suggestion replaces the quote exactly.',
                 'Use "summary" for note-level remarks that do not anchor to a specific span. Do not invent findings to fill space — an empty findings array is a valid result.'
             ]
+            if (operation.alreadyReported !== undefined) {
+                // Continuation pass: the earlier findings are KEPT, so a repeat
+                // is a duplicate the user has to dismiss twice. Returning
+                // nothing is explicitly allowed — the alternative is padding.
+                rules.push(
+                    'This is an ADDITIONAL pass: report only findings you have NOT already made. Do not repeat, rephrase or split any finding listed as already reported, and do not restate them in "summary".',
+                    'Look for what a first read misses — subtler problems, passages you skimmed, cumulative issues across the document. Reporting nothing further is a valid and honest result; never pad the list to look productive.'
+                )
+            }
+            return rules
+        }
         case 'transform-selection':
             return [
                 '"replacement" must be a drop-in replacement for the selected text only — never restate the surrounding document.',
@@ -102,9 +113,29 @@ function payload(operation: OperationRequest): string {
     switch (operation.kind) {
         case 'review': {
             const parts = [
-                'Review the document below and report your findings.',
+                operation.alreadyReported === undefined
+                    ? 'Review the document below and report your findings.'
+                    : 'You already reviewed the document below and reported the findings listed after it. Read it again and report what you did NOT report the first time.',
                 tag('document', operation.text)
             ]
+            if (operation.alreadyReported !== undefined) {
+                parts.push(
+                    'You have already reported these findings on this document. They still stand — do not repeat them:',
+                    tag(
+                        'already-reported',
+                        operation.alreadyReported.length === 0
+                            ? '(none)'
+                            : operation.alreadyReported
+                                  .map((finding) =>
+                                      [
+                                          tag('quote', finding.quote),
+                                          tag('critique', finding.critique)
+                                      ].join('\n')
+                                  )
+                                  .join('\n')
+                    )
+                )
+            }
             if (operation.selection) {
                 parts.push(
                     'Restrict your review to this selected excerpt of the document (findings must quote from it):',
