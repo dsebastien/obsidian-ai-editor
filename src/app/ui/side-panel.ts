@@ -8,10 +8,11 @@ import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import type { CommentJobRow, CommentJobsSection } from './comment-jobs-model'
-import { entityName } from './entity-label'
+import { SEVERITY_WORDS } from './editor/finding-identity'
+import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
-import { buildScorecardView } from './panel-scorecard'
+import { buildScorecardView, scorecardMemberName } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
 import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
@@ -517,6 +518,11 @@ export class ReviewSidePanelView extends ItemView {
         const list = box.createDiv({ cls: 'ai-editor-scorecard-members' })
         for (const member of view.members) {
             const row = list.createDiv({ cls: 'ai-editor-scorecard-member' })
+            // A row is a stack of unrelated spans; read as one run they blur
+            // into the next member's name. `role=group` gives the sentence
+            // its boundaries and can carry a name (a plain div cannot).
+            row.setAttribute('role', 'group')
+            row.setAttribute('aria-label', scorecardMemberName(member))
             row.createSpan({ cls: 'ai-editor-scorecard-member-name', text: member.editorName })
             if (member.missing) {
                 row.createSpan({
@@ -663,17 +669,13 @@ export class ReviewSidePanelView extends ItemView {
             cls: `ai-editor-panel-section${panelName === null ? '' : ' is-panel-member'}`,
             attr: { 'data-editor-id': state.editorId }
         })
-        if (panelName !== null) {
-            // The indent that groups members under the scorecard is decoration.
-            // Naming the section is what tells assistive tech these findings
-            // came from one member of a panel and not from a lone editor
-            // (Business Rules #11), and it keeps the editor's own identity —
-            // a panel weighs its members, it does not absorb them.
-            section.setAttribute(
-                'aria-label',
-                `${state.editorName} — member of ${entityName('panel', panelName)}`
-            )
-        }
+        // Every section is named, not only a panel member's. The indent that
+        // groups members under the scorecard is decoration; the name is what
+        // tells assistive tech whose findings these are — and a lone editor's
+        // section, the commonest case by far, used to have none at all, so a
+        // screen-reader user landing on a finding heard the critique with no
+        // way to ask who wrote it (Business Rules #11, plan M9).
+        section.setAttribute('aria-label', memberSectionName(state.editorName, panelName))
 
         const header = section.createDiv({ cls: 'ai-editor-panel-section-header' })
         const dot = header.createSpan({ cls: 'ai-editor-panel-dot' })
@@ -860,6 +862,12 @@ export class ReviewSidePanelView extends ItemView {
             cls: `ai-editor-panel-severity ai-editor-panel-severity-${finding.raw.severity}`
         })
         setIcon(iconEl, SEVERITY_ICONS[finding.raw.severity])
+        // The severity was a coloured glyph and nothing else: the shape keeps
+        // it off colour alone (WCAG 1.4.1), but an SVG from `setIcon` carries
+        // no text, so assistive tech got no severity at all. `role=img` is
+        // what makes a span nameable here.
+        iconEl.setAttribute('role', 'img')
+        iconEl.setAttribute('aria-label', SEVERITY_WORDS[finding.raw.severity])
         const body = item.createDiv({ cls: 'ai-editor-panel-finding-body' })
         body.createDiv({
             cls: 'ai-editor-panel-critique',

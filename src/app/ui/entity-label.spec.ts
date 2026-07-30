@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 import {
     actionDisplayLabel,
     ENTITY_GLYPHS,
     entityName,
+    memberSectionName,
     entityOptionText,
     PANEL_MARKER
 } from './entity-label'
@@ -42,5 +43,18 @@ describe('actionDisplayLabel', () => {
 
     it('leaves an editor-bound action alone — naming one editor restates the verb', () => {
         expect(actionDisplayLabel('Critique', null)).toBe('Critique')
+    })
+})
+
+describe('memberSectionName', () => {
+    test('names a solo editor — the commonest case, previously unnamed', () => {
+        expect(memberSectionName('Concision Editor', null)).toBe('Concision Editor')
+        expect(memberSectionName('Concision Editor', '')).toBe('Concision Editor')
+    })
+
+    test('keeps the editor identity inside its panel', () => {
+        expect(memberSectionName('Hater', 'Pre-publish Review')).toBe(
+            'Hater — member of Pre-publish Review (panel)'
+        )
     })
 })

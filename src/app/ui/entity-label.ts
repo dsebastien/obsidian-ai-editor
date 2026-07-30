@@ -64,3 +64,21 @@ export function entityOptionText(kind: EntityKind, name: string): string {
 export function actionDisplayLabel(label: string, panelName: string | null): string {
     return panelName === null ? label : `${label} (panel: ${panelName})`
 }
+
+/**
+ * How ONE editor's block of results is named wherever it can stand alone or
+ * as part of a panel — the side panel's per-editor `<section>`.
+ *
+ * A member section was named and a solo editor's was not, which read as a
+ * deliberate distinction and was not one: it left the commonest case — a
+ * plain run of two or three editors — as unnamed regions, so a screen-reader
+ * user landing on a finding heard the critique with no way to ask whose it
+ * was. The editor is ALWAYS named; the panel is added when there is one, and
+ * the editor keeps its own identity inside it (a panel weighs its members, it
+ * does not absorb them).
+ */
+export function memberSectionName(editorName: string, panelName: string | null): string {
+    return panelName === null || panelName.length === 0
+        ? editorName
+        : `${editorName} — member of ${entityName('panel', panelName)}`
+}

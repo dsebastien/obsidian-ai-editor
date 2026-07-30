@@ -3,7 +3,12 @@ import { asFindingId } from '../domain/ids'
 import type { PanelResult } from '../domain/operations/contract'
 import { panelResultSchema } from '../domain/operations/contract'
 import type { PanelRunState } from '../services/orchestration/run-controller'
-import { buildScorecardView, resolveTopFix, type TopFixCandidate } from './panel-scorecard'
+import {
+    buildScorecardView,
+    resolveTopFix,
+    scorecardMemberName,
+    type TopFixCandidate
+} from './panel-scorecard'
 
 function result(overrides: Partial<PanelResult> = {}): PanelResult {
     return panelResultSchema.parse({
@@ -344,5 +349,38 @@ describe('buildScorecardView staleness', () => {
             []
         )
         expect(view.stale).toBeFalse()
+    })
+})
+
+describe('scorecardMemberName', () => {
+    const base = {
+        editorName: 'Hater',
+        verdict: null,
+        verdictLabel: null,
+        keyPoint: null,
+        missing: false,
+        unnamed: false
+    }
+
+    it('leads with the member — the row exists to say what THIS member concluded', () => {
+        expect(
+            scorecardMemberName({ ...base, verdictLabel: 'Needs work', keyPoint: 'Thin evidence' })
+        ).toBe('Hater — Needs work — Thin evidence')
+    })
+
+    it('spells out a member the panel could not weigh', () => {
+        expect(scorecardMemberName({ ...base, missing: true })).toBe(
+            'Hater — no review — not weighed by the panel'
+        )
+    })
+
+    it('distinguishes "ran but unmentioned" from "did not run"', () => {
+        expect(scorecardMemberName({ ...base, unnamed: true })).toBe(
+            'Hater — reviewed, but not named in the scorecard'
+        )
+    })
+
+    it('is just the name when the panel said nothing about the member', () => {
+        expect(scorecardMemberName(base)).toBe('Hater')
     })
 })

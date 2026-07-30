@@ -190,3 +190,30 @@ export function buildScorecardView(
         missingMembers: panel.missingMembers
     }
 }
+
+/**
+ * The accessible name of ONE scorecard row (plan M9). The row is a stack of
+ * unrelated spans — a name, a pill, a key point — and a screen reader reads
+ * them as one unpunctuated run in which the member's verdict is impossible to
+ * separate from the next member's name. Naming the row as a `group` gives
+ * that sentence its boundaries, and puts the member first: the row exists to
+ * say what THIS member concluded.
+ *
+ * The negative states are spelled out rather than left to the pill's colour,
+ * for the same reason the pill itself avoids `--text-faint`: "was not weighed"
+ * is the whole point of the row it appears on.
+ */
+export function scorecardMemberName(member: ScorecardMember): string {
+    const parts = [member.editorName]
+    if (member.missing) {
+        parts.push('no review — not weighed by the panel')
+    } else if (member.unnamed) {
+        parts.push('reviewed, but not named in the scorecard')
+    } else if (member.verdictLabel !== null) {
+        parts.push(member.verdictLabel)
+    }
+    if (member.keyPoint !== null && member.keyPoint.length > 0) {
+        parts.push(member.keyPoint)
+    }
+    return parts.join(' — ')
+}
