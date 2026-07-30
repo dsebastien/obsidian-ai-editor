@@ -37,7 +37,8 @@ import type {
     EditorRunStatus,
     RetryEditorResult,
     RunController,
-    RunHandle
+    RunHandle,
+    ThreadTurnResolution
 } from '../services/orchestration/run-controller'
 import type {
     TransformController,
@@ -46,11 +47,16 @@ import type {
 } from '../services/orchestration/transform-run'
 import { countWords, skipReasonLabel, startReview } from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
+import { startThreadTurn } from '../services/thread-service'
 import { startAction } from '../services/transform-service'
 import { AskEditorModal } from './ask-editor-modal'
 import type { DaemonController } from './daemon-controller'
 import { changesFromTransaction } from './editor/changes-adapter'
-import { showFindingCardEffect } from './editor/finding-card'
+import {
+    refreshFindingCardEffect,
+    showFindingCardEffect,
+    threadRefusalNotice
+} from './editor/finding-card'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
 import {
     clearFindingsEffect,
@@ -1616,6 +1622,9 @@ export class ReviewController {
                 this.acceptFinding(findingId, currentText),
             dismissFinding: (findingId): void => {
                 this.dismissFinding(findingId)
+            },
+            pushBack: (findingId, message): void => {
+                this.pushBackOnFinding(findingId, message)
             }
         }
     }
@@ -1643,7 +1652,110 @@ export class ReviewController {
             critique: finding.raw.critique,
             quote: finding.anchoredText ?? finding.raw.quote,
             suggestion: finding.raw.suggestion ?? null,
-            acceptable: run.findings.isActionable(id)
+            acceptable: run.findings.isActionable(id),
+            thread: finding.thread,
+            threadTurn: finding.threadTurn
+        }
+    }
+
+    /**
+     * Push-back (plan M4 threads): sends the user's message to the editor that
+     * produced the finding. The live document text is read SYNCHRONOUSLY here
+     * so the turn discusses the span as it currently reads (`currentSpanText`),
+     * then `startThreadTurn` resolves the persona/backend and dispatches.
+     *
+     * Fire and forget on purpose: the reply lands on the finding in the store
+     * and reaches an open card through the refresh cycle — closing the card
+     * (or navigating away) never cancels the turn, only cancelling the run
+     * does. Every refusal and every completed turn is reported as a Notice,
+     * because the card may well be closed by the time the answer arrives.
+     */
+    private pushBackOnFinding(rawId: string, message: string): void {
+        const id = asFindingId(rawId)
+        const run = this.deps.runController.findRunWithFinding(id)
+        if (!run) {
+            new Notice('That finding is no longer available.')
+            return
+        }
+        const finding = run.findings.get(id)
+        const editorName =
+            finding === null
+                ? 'The editor'
+                : (run.getEditorState(finding.editorId)?.editorName ??
+                  this.deps.getSettings().editors.find((e) => e.id === finding.editorId)?.name ??
+                  'The editor')
+        // The card lives in a view of this file; read the live buffer through
+        // the canonical glue so the quote matches what the user sees, falling
+        // back to the run snapshot when no view is mounted (popout closed).
+        const glue = this.canonicalGlueFor(run.snapshot.filePath)
+        const editorView = glue ? editorViewOf(glue.view) : null
+        const currentText = editorView?.state.doc.toString() ?? run.snapshot.text
+
+        void startThreadTurn({
+            settings: this.deps.getSettings(),
+            vault: this.vaultReader,
+            runController: this.deps.runController,
+            findingId: id,
+            message,
+            currentText,
+            fetchImpl: window.fetch.bind(window)
+        }).then((start) => {
+            if (this.disposed) {
+                return
+            }
+            switch (start.status) {
+                case 'started':
+                    this.scheduleRefresh()
+                    void start.settled.then((resolution) => {
+                        this.reportThreadResolution(editorName, resolution)
+                    })
+                    return
+                case 'no-run':
+                    new Notice('That finding is no longer available.')
+                    return
+                case 'excluded':
+                    new Notice(`${start.notePath} is excluded from AI review.`)
+                    return
+                case 'no-editor':
+                    new Notice(
+                        start.skip === null
+                            ? 'That finding’s editor is no longer available.'
+                            : `${start.skip.editorName} cannot answer: ${skipReasonLabel(start.skip.reason)}.`
+                    )
+                    return
+                case 'refused':
+                    new Notice(threadRefusalNotice(start.reason, editorName))
+                    this.scheduleRefresh()
+                    return
+            }
+        })
+    }
+
+    /** One Notice per completed turn — the card may be closed by then. */
+    private reportThreadResolution(editorName: string, resolution: ThreadTurnResolution): void {
+        if (this.disposed) {
+            return
+        }
+        this.scheduleRefresh()
+        switch (resolution.status) {
+            case 'conceded':
+                new Notice(`${editorName} withdrew the finding: ${resolution.reply}`)
+                return
+            case 'held':
+                new Notice(
+                    resolution.revised
+                        ? `${editorName} revised the finding: ${resolution.reply}`
+                        : `${editorName} replied: ${resolution.reply}`
+                )
+                return
+            case 'failed':
+                new Notice(`Push-back failed: ${resolution.reason}`)
+                return
+            case 'cancelled':
+            case 'discarded':
+                // Cancelling the run is a user action with its own feedback,
+                // and a discarded turn means the finding is gone — silence.
+                return
         }
     }
 
@@ -1974,6 +2086,7 @@ export class ReviewController {
             daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false)
         })
         this.dispatchDecorations(glue, run)
+        this.dispatchCardRefresh(glue, run)
         // File/doc coherence: right after this glue rebound to a different
         // file (note switch, fresh mount), Obsidian has assigned `view.file`
         // but the async content load may not have replaced the CM document
@@ -1981,6 +2094,26 @@ export class ReviewController {
         // defends against. The preview dispatch must not treat that stale
         // document as evidence the file's text changed.
         this.dispatchTransformPreview(glue, transformRun, previousPath !== filePath)
+    }
+
+    /**
+     * Keeps an open finding card in sync with the store while a push-back
+     * thread is live (plan M4): the reply arrives long after the click that
+     * opened the card, so nothing else would re-render it. Dispatched only
+     * when some finding of the run actually has thread activity — the common
+     * (thread-free) refresh path stays a no-op, and the card's own handler
+     * ignores the effect when no card is open.
+     */
+    private dispatchCardRefresh(glue: ViewGlue, run: RunHandle | null): void {
+        if (
+            run === null ||
+            !run.findings
+                .list()
+                .some((finding) => finding.thread.length > 0 || finding.threadTurn !== null)
+        ) {
+            return
+        }
+        editorViewOf(glue.view)?.dispatch({ effects: refreshFindingCardEffect.of(null) })
     }
 
     private buildRailEditors(

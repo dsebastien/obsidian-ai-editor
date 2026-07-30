@@ -42,6 +42,16 @@ Reviewing is meant to feel like resolving merge conflicts: step, judge, move on.
 - **Escape** closes an open card while keeping your place in the loop; pressing it again leaves triage (the ring disappears).
 - Clicking an editor's dot in the rail cycles through that editor's findings and briefly flashes its highlights.
 
+## Pushing back on a finding
+
+Every finding card has a reply box: type your objection ("I disagree — this repetition is intentional") and press Enter or select **Send**. The message goes to the same editor that raised the finding, and it answers one of two ways:
+
+- **It withdraws the finding** — the finding is dismissed for you and the notice says why.
+- **It holds its position** — the reply appears in the card's thread, and if the exchange sharpened its point, the critique and the suggested replacement are updated in place. A revised suggestion is re-checked against your text, so it is only applicable while the span is unchanged.
+
+- The reply is a normal AI request: it takes a turn in the concurrency queue and obeys your request timeout. Closing the card does **not** cancel it — the answer lands on the finding and shows up when you reopen the card, and a notice tells you it arrived. **Cancel review** does cancel it.
+- Threads are capped at six exchanges per finding and last for the session only — nothing is written to your note or to disk. A failed reply keeps your message so you can send it again.
+
 ## Bulk operations
 
 - **Accept all (n)** in a side-panel section applies every non-conflicting suggestion of that editor at once, as **one** undoable edit. Two suggestions covering the same span cannot both apply: the first one wins and the other is reported as skipped, so you can re-review that span. Suggestions whose text you changed in the meantime are skipped too. A notice always says what was applied and what was skipped.

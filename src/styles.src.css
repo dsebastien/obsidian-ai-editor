@@ -390,18 +390,64 @@
     @apply flex items-center justify-end gap-2;
 }
 
-/* Push-back placeholder (disabled until thread wiring lands) */
+/* Push-back thread: compact message list, scrollable, newest at the bottom
+   (the card scrolls it into view after every render). */
+.ai-editor-finding-card-thread {
+    @apply flex flex-col gap-1.5 overflow-y-auto rounded p-2 text-xs;
+    max-height: 160px;
+    background-color: var(--background-secondary);
+}
+
+.ai-editor-finding-card-thread-message {
+    @apply flex flex-col gap-0.5;
+}
+
+.ai-editor-finding-card-thread-who {
+    @apply text-xs font-medium;
+    color: var(--text-muted);
+}
+
+.ai-editor-finding-card-thread-body {
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-finding-card-thread-user .ai-editor-finding-card-thread-body {
+    color: var(--text-muted);
+}
+
+/* Message in flight: dimmed, with the pulse the rail uses for live requests */
+.ai-editor-finding-card-thread-pending {
+    @apply opacity-70;
+    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+}
+
+.ai-editor-finding-card-thread-failed .ai-editor-finding-card-thread-body {
+    color: var(--text-error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-editor-finding-card-thread-pending {
+        animation: none;
+    }
+}
+
+.ai-editor-finding-card-thread-failure {
+    @apply m-0 text-xs;
+    color: var(--text-error);
+}
+
 .ai-editor-finding-card-pushback {
     @apply flex items-center gap-2;
 }
 
-.ai-editor-finding-card-pushback input {
+.ai-editor-finding-card-pushback-input {
     @apply w-full;
 }
 
-.ai-editor-finding-card-coming-soon {
-    @apply shrink-0 text-xs italic;
-    color: var(--text-faint);
+.ai-editor-finding-card-pushback-send {
+    @apply shrink-0;
 }
 
 /* Modals (backend / editor / panel / confirm) */

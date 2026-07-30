@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { CARD_GAP, computeCardPosition, selectFindingsAtPos } from './finding-card'
+import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
+import type { ThreadMessage } from '../../domain/operations/thread'
+import {
+    CARD_GAP,
+    computeCardPosition,
+    selectFindingsAtPos,
+    threadRefusalNotice,
+    threadView
+} from './finding-card'
 import type { CardAnchorRect, CardSize, CardViewport, FindingSpanCandidate } from './finding-card'
 
 const viewport: CardViewport = { left: 8, top: 8, right: 1008, bottom: 708 }
@@ -96,5 +104,89 @@ describe('selectFindingsAtPos', () => {
 
     it('ignores empty spans', () => {
         expect(selectFindingsAtPos([candidate('empty', 5, 5)], 5)).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Push-back thread block
+// ---------------------------------------------------------------------------
+
+function exchanges(count: number): ThreadMessage[] {
+    const thread: ThreadMessage[] = []
+    for (let index = 0; index < count; index++) {
+        thread.push({ role: 'user', content: `push ${index}` })
+        thread.push({ role: 'editor', content: `reply ${index}` })
+    }
+    return thread
+}
+
+describe('threadView', () => {
+    it('offers an empty input on a finding with no thread', () => {
+        expect(threadView({ editorName: 'Hater', thread: [], threadTurn: null })).toEqual({
+            rows: [],
+            failure: null,
+            inputEnabled: true,
+            placeholder: 'Push back, ask for evidence…',
+            restoreDraft: null
+        })
+    })
+
+    it('renders completed exchanges in order', () => {
+        const view = threadView({ editorName: 'Hater', thread: exchanges(2), threadTurn: null })
+        expect(view.rows).toEqual([
+            { role: 'user', content: 'push 0', state: 'settled' },
+            { role: 'editor', content: 'reply 0', state: 'settled' },
+            { role: 'user', content: 'push 1', state: 'settled' },
+            { role: 'editor', content: 'reply 1', state: 'settled' }
+        ])
+        expect(view.inputEnabled).toBeTrue()
+    })
+
+    it('shows the in-flight message and locks the input', () => {
+        const view = threadView({
+            editorName: 'Hater',
+            thread: exchanges(1),
+            threadTurn: { status: 'pending', message: 'still wrong' }
+        })
+        expect(view.rows[2]).toEqual({ role: 'user', content: 'still wrong', state: 'pending' })
+        expect(view.inputEnabled).toBeFalse()
+        expect(view.placeholder).toEqual('Waiting for Hater…')
+        expect(view.failure).toBeNull()
+        expect(view.restoreDraft).toBeNull()
+    })
+
+    it('shows a failed turn with its reason and restores the message', () => {
+        const view = threadView({
+            editorName: 'Hater',
+            thread: [],
+            threadTurn: { status: 'failed', message: 'why?', reason: 'Request timed out' }
+        })
+        expect(view.rows).toEqual([{ role: 'user', content: 'why?', state: 'failed' }])
+        expect(view.failure).toEqual('Request timed out')
+        expect(view.inputEnabled).toBeTrue()
+        expect(view.restoreDraft).toEqual('why?')
+    })
+
+    it('locks the input at the turn cap', () => {
+        const view = threadView({
+            editorName: 'Hater',
+            thread: exchanges(THREAD_MAX_TURNS),
+            threadTurn: null
+        })
+        expect(view.inputEnabled).toBeFalse()
+        expect(view.placeholder).toEqual('Push-back limit reached for this finding')
+        expect(view.rows).toHaveLength(THREAD_MAX_TURNS * 2)
+    })
+})
+
+describe('threadRefusalNotice', () => {
+    it('words every refusal reason', () => {
+        expect(threadRefusalNotice('not-found', 'Hater')).toContain('no longer available')
+        expect(threadRefusalNotice('invalid-status', 'Hater')).toContain('already resolved')
+        expect(threadRefusalNotice('in-flight', 'Hater')).toEqual(
+            'Hater is still answering your previous message.'
+        )
+        expect(threadRefusalNotice('cap-reached', 'Hater')).toContain(String(THREAD_MAX_TURNS))
+        expect(threadRefusalNotice('blank-message', 'Hater')).toContain('before sending')
     })
 })

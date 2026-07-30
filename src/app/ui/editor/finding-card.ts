@@ -5,8 +5,8 @@
  * positioned near the clicked span (viewport-clamped), showing every finding
  * that covers the click position as stacked sections: editor identity
  * (color + name), severity, critique, the quoted text, a plain old/new
- * suggestion preview, Accept / Dismiss, and a disabled push-back placeholder
- * (thread wiring is a later milestone).
+ * suggestion preview, Accept / Dismiss, and the per-finding push-back thread
+ * (message list + reply input, plan M4).
  *
  * Constraints honored:
  * - Pure DOM + CM6 only — no Obsidian imports. Finding data comes through an
@@ -30,6 +30,9 @@ import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
 import type { Severity } from '../../domain/operations/contract'
+import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
+import type { ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
+import type { ThreadBeginFailure } from '../../services/orchestration/finding-store'
 import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
 
 // ---------------------------------------------------------------------------
@@ -54,6 +57,10 @@ export interface FindingCardData {
      * terminal). The accept call re-verifies before anything is applied.
      */
     readonly acceptable: boolean
+    /** Completed push-back exchanges, oldest first (see the thread domain). */
+    readonly thread: readonly ThreadMessage[]
+    /** In-flight or failed push-back turn; `null` when the thread is idle. */
+    readonly threadTurn: ThreadTurn | null
 }
 
 /** Outcome of an accept attempt, resolved by the review controller. */
@@ -75,6 +82,14 @@ export interface FindingLookup {
     getCardData(findingId: string): FindingCardData | null
     acceptFinding(findingId: string, currentText: string): CardAcceptOutcome
     dismissFinding(findingId: string): void
+    /**
+     * Sends a push-back on the finding to the editor that produced it. Fire
+     * and forget: the reply lands in the FindingStore and reaches the card
+     * through `refreshFindingCardEffect` (or the next time it is opened —
+     * closing the card does NOT cancel the turn). Refusals are surfaced by
+     * the controller as Notices, so the card does not need a return value.
+     */
+    pushBack(findingId: string, message: string): void
 }
 
 /**
@@ -85,6 +100,15 @@ export interface FindingLookup {
  * triage step revealed (scrolled to) the target, so the span is measurable.
  */
 export const showFindingCardEffect = StateEffect.define<string | null>()
+
+/**
+ * Re-resolves an open card's sections from the lookup (plan M4 threads): a
+ * push-back reply arrives asynchronously, long after the click that opened the
+ * card, so the review controller dispatches this on every refresh cycle. A
+ * no-op when no card is open, and the in-progress reply draft plus keyboard
+ * focus survive the re-render.
+ */
+export const refreshFindingCardEffect = StateEffect.define<null>()
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in finding-card.spec.ts)
@@ -190,6 +214,94 @@ export function selectFindingsAtPos(
     return ids
 }
 
+/** One rendered line of a finding's push-back thread. */
+export interface ThreadRow {
+    readonly role: 'user' | 'editor'
+    readonly content: string
+    /**
+     * `settled` = a completed exchange, `pending` = the message currently in
+     * flight (spinner), `failed` = the message whose turn failed.
+     */
+    readonly state: 'settled' | 'pending' | 'failed'
+}
+
+/** Everything the card needs to render the thread block of one section. */
+export interface ThreadView {
+    readonly rows: readonly ThreadRow[]
+    /** Reason of the last failed turn, shown under its message. */
+    readonly failure: string | null
+    readonly inputEnabled: boolean
+    readonly placeholder: string
+    /**
+     * Message to put back into the input so a failed turn can be re-sent
+     * without retyping (`null` leaves whatever the user has typed).
+     */
+    readonly restoreDraft: string | null
+}
+
+/**
+ * Projects a finding's thread state into the card's thread block. Pure so the
+ * states that matter (idle / pending / failed / capped) are spec-pinned
+ * instead of only reachable through a live Obsidian view.
+ *
+ * The in-flight (or failed) message is rendered as a row of its own rather
+ * than living in `thread` — that keeps the stored thread strictly alternating
+ * while still showing the user what they just sent.
+ */
+export function threadView(data: {
+    readonly editorName: string
+    readonly thread: readonly ThreadMessage[]
+    readonly threadTurn: ThreadTurn | null
+}): ThreadView {
+    const rows: ThreadRow[] = data.thread.map((message) => ({
+        role: message.role,
+        content: message.content,
+        state: 'settled' as const
+    }))
+    const turn = data.threadTurn
+    if (turn) {
+        rows.push({
+            role: 'user',
+            content: turn.message,
+            state: turn.status === 'pending' ? 'pending' : 'failed'
+        })
+    }
+    const full = isThreadFull(data.thread)
+    const pending = turn?.status === 'pending'
+    return {
+        rows,
+        failure: turn?.status === 'failed' ? turn.reason : null,
+        inputEnabled: !pending && !full,
+        placeholder: pending
+            ? `Waiting for ${data.editorName}…`
+            : full
+              ? 'Push-back limit reached for this finding'
+              : 'Push back, ask for evidence…',
+        restoreDraft: turn?.status === 'failed' ? turn.message : null
+    }
+}
+
+/**
+ * Notice copy for a push-back the store refused. The card disables its input
+ * for the cases it can see (turn in flight, cap reached), so these mostly
+ * cover races — the finding was accepted or dismissed in another pane while
+ * the reply was being typed.
+ */
+export function threadRefusalNotice(reason: ThreadBeginFailure, editorName: string): string {
+    switch (reason) {
+        case 'not-found':
+            return 'That finding is no longer available.'
+        case 'invalid-status':
+            return 'That finding was already resolved — nothing left to discuss.'
+        case 'in-flight':
+            return `${editorName} is still answering your previous message.`
+        case 'cap-reached':
+            return `Push-back limit reached for this finding (${THREAD_MAX_TURNS} exchanges).`
+        case 'blank-message':
+            return 'Type a message before sending.'
+    }
+}
+
 // ---------------------------------------------------------------------------
 // View plugin
 // ---------------------------------------------------------------------------
@@ -222,6 +334,14 @@ class FindingCardPlugin implements PluginValue {
     private cardEl: HTMLElement | null = null
     private sectionIds: readonly string[] = []
     private anchor: CardAnchorRect = { left: 0, top: 0, bottom: 0 }
+    /**
+     * Reply text typed per finding, so an async re-render (a thread reply
+     * landing while the user is typing the next one) never eats the draft.
+     * Dropped when the card closes — the card is the draft's whole lifetime.
+     */
+    private readonly drafts = new Map<string, string>()
+    /** Finding whose reply input had focus, restored after a re-render. */
+    private focusedInput: { findingId: string; selectionStart: number } | null = null
 
     private readonly onDocPointerDown = (event: MouseEvent): void => {
         const target = event.target
@@ -289,6 +409,10 @@ class FindingCardPlugin implements PluginValue {
         // transaction still wins.
         for (const transaction of update.transactions) {
             for (const effect of transaction.effects) {
+                if (effect.is(refreshFindingCardEffect)) {
+                    this.refreshCard()
+                    continue
+                }
                 if (!effect.is(showFindingCardEffect)) {
                     continue
                 }
@@ -384,6 +508,8 @@ class FindingCardPlugin implements PluginValue {
         card.remove()
         this.cardEl = null
         this.sectionIds = []
+        this.drafts.clear()
+        this.focusedInput = null
     }
 
     /** Re-resolves the shown sections after a mutation (dismiss, failed accept). */
@@ -405,11 +531,76 @@ class FindingCardPlugin implements PluginValue {
         if (!card) {
             return
         }
+        // A refresh (thread reply landing) rebuilds the whole card, so the
+        // reply input's text and focus must be carried across by hand.
+        this.captureInputState()
         card.replaceChildren()
         for (const data of sections) {
             card.appendChild(this.renderSection(data))
         }
         this.sectionIds = sections.map((section) => section.findingId)
+        this.scrollThreadsToLatest()
+        this.restoreInputFocus()
+    }
+
+    /** Remembers the reply drafts and which input had focus, before a rebuild. */
+    private captureInputState(): void {
+        const card = this.cardEl
+        if (!card) {
+            return
+        }
+        this.focusedInput = null
+        for (const input of Array.from(
+            card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
+        )) {
+            if (!(input instanceof HTMLInputElement)) {
+                continue
+            }
+            const findingId = input.dataset['findingId']
+            if (findingId === undefined) {
+                continue
+            }
+            this.drafts.set(findingId, input.value)
+            if (input.ownerDocument.activeElement === input) {
+                this.focusedInput = {
+                    findingId,
+                    selectionStart: input.selectionStart ?? input.value.length
+                }
+            }
+        }
+    }
+
+    /** Newest turn visible: the thread list is scrollable, so pin it to the end. */
+    private scrollThreadsToLatest(): void {
+        const card = this.cardEl
+        if (!card) {
+            return
+        }
+        for (const list of Array.from(card.querySelectorAll('.ai-editor-finding-card-thread'))) {
+            list.scrollTop = list.scrollHeight
+        }
+    }
+
+    private restoreInputFocus(): void {
+        const focused = this.focusedInput
+        const card = this.cardEl
+        if (!focused || !card) {
+            return
+        }
+        for (const input of Array.from(
+            card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
+        )) {
+            if (
+                input instanceof HTMLInputElement &&
+                input.dataset['findingId'] === focused.findingId &&
+                !input.disabled
+            ) {
+                input.focus()
+                const caret = Math.min(focused.selectionStart, input.value.length)
+                input.setSelectionRange(caret, caret)
+                return
+            }
+        }
     }
 
     /** Positions the (already attached) card near the anchor, clamped. */
@@ -478,7 +669,9 @@ class FindingCardPlugin implements PluginValue {
         }
 
         section.appendChild(this.renderActions(data))
-        section.appendChild(this.renderPushBackPlaceholder())
+        for (const element of this.renderThread(data)) {
+            section.appendChild(element)
+        }
         return section
     }
 
@@ -530,22 +723,101 @@ class FindingCardPlugin implements PluginValue {
         return actions
     }
 
-    /** Disabled push-back input — thread wiring lands in a later milestone. */
-    private renderPushBackPlaceholder(): HTMLElement {
+    /**
+     * The push-back thread: the exchanges so far (scrollable, newest visible)
+     * followed by the reply row. Submitting sends the message through the
+     * lookup and clears the input immediately — the pending row echoes what
+     * was sent, and the reply lands asynchronously via
+     * `refreshFindingCardEffect`.
+     */
+    private renderThread(data: FindingCardData): HTMLElement[] {
         const doc = this.view.dom.ownerDocument
+        const view = threadView({
+            editorName: data.editorName,
+            thread: data.thread,
+            threadTurn: data.threadTurn
+        })
+        const elements: HTMLElement[] = []
+
+        if (view.rows.length > 0) {
+            const list = doc.createElement('div')
+            list.classList.add('ai-editor-finding-card-thread')
+            for (const row of view.rows) {
+                const message = doc.createElement('div')
+                message.classList.add(
+                    'ai-editor-finding-card-thread-message',
+                    `ai-editor-finding-card-thread-${row.role}`
+                )
+                if (row.state !== 'settled') {
+                    message.classList.add(`ai-editor-finding-card-thread-${row.state}`)
+                }
+                const who = doc.createElement('span')
+                who.classList.add('ai-editor-finding-card-thread-who')
+                who.textContent = row.role === 'user' ? 'You' : data.editorName
+                message.appendChild(who)
+                const body = doc.createElement('span')
+                body.classList.add('ai-editor-finding-card-thread-body')
+                body.textContent = row.content
+                message.appendChild(body)
+                list.appendChild(message)
+            }
+            elements.push(list)
+        }
+
+        if (view.failure !== null) {
+            const failure = doc.createElement('p')
+            failure.classList.add('ai-editor-finding-card-thread-failure')
+            failure.setAttribute('role', 'alert')
+            failure.textContent = `Push-back failed: ${view.failure}`
+            elements.push(failure)
+        }
+
         const row = doc.createElement('div')
         row.classList.add('ai-editor-finding-card-pushback')
         const input = doc.createElement('input')
+        input.classList.add('ai-editor-finding-card-pushback-input')
         input.type = 'text'
-        input.disabled = true
-        input.placeholder = 'Push back, ask for evidence…'
-        input.setAttribute('aria-label', 'Push back (coming soon)')
+        input.dataset['findingId'] = data.findingId
+        input.disabled = !view.inputEnabled
+        input.placeholder = view.placeholder
+        input.setAttribute('aria-label', `Push back to ${data.editorName}`)
+        input.value = this.drafts.get(data.findingId) ?? view.restoreDraft ?? ''
+        const send = doc.createElement('button')
+        send.classList.add('ai-editor-finding-card-pushback-send')
+        send.textContent = 'Send'
+        send.disabled = !view.inputEnabled
+        const submit = (): void => {
+            const message = input.value.trim()
+            if (message.length === 0 || !view.inputEnabled) {
+                return
+            }
+            this.drafts.delete(data.findingId)
+            input.value = ''
+            this.lookup.pushBack(data.findingId, message)
+            // The store now holds a pending turn; re-render so the message
+            // shows with its spinner and the input locks.
+            this.refreshCard()
+        }
+        input.addEventListener('input', () => {
+            this.drafts.set(data.findingId, input.value)
+        })
+        input.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') {
+                return
+            }
+            // Enter sends; the card's Escape handling is untouched (it closes
+            // the card, which never cancels an in-flight turn).
+            event.preventDefault()
+            event.stopPropagation()
+            submit()
+        })
+        send.addEventListener('click', () => {
+            submit()
+        })
         row.appendChild(input)
-        const label = doc.createElement('span')
-        label.classList.add('ai-editor-finding-card-coming-soon')
-        label.textContent = 'Coming soon'
-        row.appendChild(label)
-        return row
+        row.appendChild(send)
+        elements.push(row)
+        return elements
     }
 
     /**
