@@ -376,6 +376,10 @@ class FindingCardPlugin implements PluginValue {
     private readonly sending = new Map<string, string>()
     /** Finding whose reply input had focus, restored after a re-render. */
     private focusedInput: { findingId: string; selectionStart: number } | null = null
+    /** Whether a scroll event may close the card yet (see `onScroll`). */
+    private scrollArmed = false
+    /** Pending animation-frame handle of the scroll-close arming. */
+    private scrollArmHandle: number | null = null
 
     private readonly onDocPointerDown = (event: MouseEvent): void => {
         const target = event.target
@@ -394,7 +398,20 @@ class FindingCardPlugin implements PluginValue {
         this.closeCard()
     }
 
+    /**
+     * Scrolling (or resizing) closes the card: it is position-fixed at
+     * coordinates computed once from a cached anchor rect.
+     *
+     * Armed one frame AFTER the card opens. A triage jump opens the card right
+     * after requesting a reveal scroll, and the browser fires that scroll
+     * event in a later frame's scroll steps — which run before animation-frame
+     * callbacks, so the pending reveal can never reach an armed listener while
+     * the card it just opened would be the victim.
+     */
     private readonly onScroll = (): void => {
+        if (!this.scrollArmed) {
+            return
+        }
         this.closeCard()
     }
 
@@ -530,6 +547,29 @@ class FindingCardPlugin implements PluginValue {
         // the card, which can strand it outside the viewport. Same remedy as
         // scrolling — close it.
         doc.defaultView?.addEventListener('resize', this.onScroll)
+        this.armScrollClose(doc.defaultView)
+    }
+
+    /**
+     * Arms `onScroll` on the next animation frame — see its doc: a card opened
+     * by a triage jump must survive the reveal scroll that put its span on
+     * screen. Without a window (detached document) there is nothing to wait
+     * for, so it arms immediately.
+     */
+    private armScrollClose(win: Window | null): void {
+        this.scrollArmed = false
+        if (this.scrollArmHandle !== null) {
+            win?.cancelAnimationFrame(this.scrollArmHandle)
+            this.scrollArmHandle = null
+        }
+        if (win === null) {
+            this.scrollArmed = true
+            return
+        }
+        this.scrollArmHandle = win.requestAnimationFrame(() => {
+            this.scrollArmHandle = null
+            this.scrollArmed = true
+        })
     }
 
     private closeCard(): void {
@@ -542,6 +582,11 @@ class FindingCardPlugin implements PluginValue {
         doc.removeEventListener('keydown', this.onDocKeyDown, true)
         this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
         doc.defaultView?.removeEventListener('resize', this.onScroll)
+        if (this.scrollArmHandle !== null) {
+            doc.defaultView?.cancelAnimationFrame(this.scrollArmHandle)
+            this.scrollArmHandle = null
+        }
+        this.scrollArmed = false
         card.remove()
         this.cardEl = null
         this.sectionIds = []
