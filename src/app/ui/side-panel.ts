@@ -6,6 +6,8 @@ import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type { EditorRunState, RunHandle } from '../services/orchestration/run-controller'
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
+import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
+import type { SeverityFilterMode } from './severity-filter'
 
 /**
  * Side panel (`ItemView` workspace leaf): the list view over the active
@@ -34,6 +36,10 @@ export interface SidePanelBinding {
     readonly run: RunHandle
     readonly editors: readonly SidePanelEditorInfo[]
     readonly skips: readonly EditorSkip[]
+    /** Active severity lens for this file (view state, never a mutation). */
+    readonly severityFilter: SeverityFilterMode
+    /** Advances the lens: all → warnings and suggestions → warnings only. */
+    readonly cycleSeverityFilter: () => void
     readonly revealFinding: (findingId: FindingId) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly retryEditor: (editorId: string) => void
@@ -176,11 +182,43 @@ export class ReviewSidePanelView extends ItemView {
 
         root.createDiv({ cls: 'ai-editor-panel-file', text: binding.fileName })
 
+        this.renderSeverityFilter(root, binding)
         this.renderSkips(root, binding.skips)
 
         const colorById = new Map(binding.editors.map((editor) => [editor.id, editor.color]))
         for (const state of binding.run.getEditorStates()) {
             this.renderEditorSection(root, binding, state, colorById.get(state.editorId) ?? '')
+        }
+    }
+
+    /**
+     * Severity filter control (plan M4): one button cycling the file's lens,
+     * with the number of findings it currently hides — the filter must never
+     * make findings look absent. Hidden while the run has nothing to filter.
+     */
+    private renderSeverityFilter(root: HTMLElement, binding: SidePanelBinding): void {
+        const live = binding.run.findings
+            .list()
+            .filter((finding) => finding.status === 'open' || finding.status === 'preview')
+        if (live.length === 0) {
+            return
+        }
+        const hidden = live.filter(
+            (finding) => !passesSeverityFilter(binding.severityFilter, finding.raw.severity)
+        ).length
+        const row = root.createDiv({ cls: 'ai-editor-panel-filter' })
+        row.createSpan({ cls: 'ai-editor-panel-filter-label', text: 'Show' })
+        const button = row.createEl('button', {
+            cls: 'ai-editor-panel-filter-button',
+            text: severityFilterLabel(binding.severityFilter)
+        })
+        button.setAttribute('aria-label', 'Cycle the severity filter')
+        button.addEventListener('click', () => binding.cycleSeverityFilter())
+        if (hidden > 0) {
+            row.createSpan({
+                cls: 'ai-editor-panel-filter-hidden',
+                text: hidden === 1 ? '1 hidden' : `${hidden} hidden`
+            })
         }
     }
 
@@ -248,15 +286,29 @@ export class ReviewSidePanelView extends ItemView {
             section.createDiv({ cls: 'ai-editor-panel-summary', text: state.summary })
         }
 
-        const findings = state.findingIds
+        const live = state.findingIds
             .map((id) => binding.run.findings.get(id))
             .filter((finding): finding is TrackedFinding => finding !== null)
             .filter((finding) => finding.status === 'open' || finding.status === 'preview')
+        // The severity lens governs the LIST (and the bulk buttons below it);
+        // the section's status line above keeps reporting what the editor found.
+        const findings = live.filter((finding) =>
+            passesSeverityFilter(binding.severityFilter, finding.raw.severity)
+        )
+        const hidden = live.length - findings.length
         const anchored = findings.filter((finding) => finding.anchor !== null)
         const unanchored = findings.filter((finding) => finding.anchor === null)
 
-        if (findings.length === 0 && state.status === 'done') {
+        if (live.length === 0 && state.status === 'done') {
             section.createDiv({ cls: 'ai-editor-panel-none', text: 'Nothing to report.' })
+        } else if (findings.length === 0 && hidden > 0) {
+            section.createDiv({
+                cls: 'ai-editor-panel-none',
+                text:
+                    hidden === 1
+                        ? '1 finding hidden by the severity filter.'
+                        : `${hidden} findings hidden by the severity filter.`
+            })
         }
 
         this.renderBulkActions(section, binding, state, findings)

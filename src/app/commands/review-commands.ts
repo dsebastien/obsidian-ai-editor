@@ -27,11 +27,13 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  *   exactly like the card button) and auto-advance to the next remaining
  *   one. Hidden unless a current finding exists (and, for accept, is
  *   actionable with its note open in an editor).
- *
  * - `accept-all` — accept every non-conflicting finding of the active run
  *   (all editors) as ONE undoable transaction; overlapping and no-longer-
  *   matching suggestions are skipped and reported. The per-editor variants
  *   are dynamic commands (`bulk-commands.ts`).
+ * - `filter-severity` — cycle the active file's severity lens (all →
+ *   warnings and suggestions → warnings only); the Notice says what is shown
+ *   and how much is hidden.
  */
 export function registerReviewCommands(plugin: Plugin, controller: ReviewController): void {
     plugin.addCommand({
@@ -166,6 +168,21 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
                 return true
             }
             controller.acceptCurrentFinding()
+            return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'filter-severity',
+        name: 'Cycle severity filter',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canCycleSeverityFilter()) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.cycleSeverityFilter()
             return true
         }
     })

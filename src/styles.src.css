@@ -874,6 +874,30 @@
     color: var(--text-faint);
 }
 
+/* Severity filter control (one button cycling the lens + hidden count). */
+.ai-editor-panel-filter {
+    @apply flex flex-wrap items-center gap-1.5 text-xs;
+    color: var(--text-muted);
+}
+
+.ai-editor-panel-filter-button {
+    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: transparent;
+    color: var(--text-normal);
+    box-shadow: none;
+}
+
+.ai-editor-panel-filter-button:hover,
+.ai-editor-panel-filter-button:focus-visible {
+    background-color: var(--background-modifier-hover);
+}
+
+.ai-editor-panel-filter-hidden {
+    @apply italic;
+    color: var(--text-faint);
+}
+
 /* Per-editor bulk triage row (accept all / dismiss all). */
 .ai-editor-panel-bulk {
     @apply flex flex-wrap items-center gap-1.5;

@@ -67,6 +67,8 @@ import { PersonaRail } from './editor/rail'
 import { chipClickAction, railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
+import { SeverityFilterStore, passesSeverityFilter, severityFilterNotice } from './severity-filter'
+import type { SeverityFilterMode } from './severity-filter'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
 import type { SidePanelBinding } from './side-panel'
 
@@ -259,6 +261,15 @@ export class ReviewController {
      * survives note switches and falls back position-based on eviction.
      */
     private readonly triageCursors = new TriageCursorStore()
+    /**
+     * Severity filter (plan M4): a per-file VIEW lens. Respected by the
+     * decorations, the panel list, triage stepping, chip cycling and the bulk
+     * operations — accepting or stepping onto a finding the user cannot see
+     * would be a surprise. Run-report surfaces (rail chip counts, panel
+     * section status) keep reporting what the editors actually found; the
+     * panel's filter control says how much it is hiding.
+     */
+    private readonly severityFilters = new SeverityFilterStore()
     /** Sticky: survives focus moving to the side panel itself. */
     private lastActiveMarkdownFile: string | null = null
     private refreshTimer: number | null = null
@@ -311,6 +322,7 @@ export class ReviewController {
                 this.deps.transformController.discardRun(oldPath)
                 this.skipsByFile.delete(oldPath)
                 this.triageCursors.clear(oldPath)
+                this.severityFilters.clear(oldPath)
                 this.daemon?.fileClosed(oldPath)
                 if (this.lastActiveMarkdownFile === oldPath) {
                     this.lastActiveMarkdownFile = file.path
@@ -324,6 +336,7 @@ export class ReviewController {
                 this.deps.transformController.discardRun(file.path)
                 this.skipsByFile.delete(file.path)
                 this.triageCursors.clear(file.path)
+                this.severityFilters.clear(file.path)
                 this.daemon?.fileClosed(file.path)
                 if (this.lastActiveMarkdownFile === file.path) {
                     this.lastActiveMarkdownFile = null
@@ -406,6 +419,7 @@ export class ReviewController {
         }
         this.glues.clear()
         this.triageCursors.clearAll()
+        this.severityFilters.clearAll()
     }
 
     /**
@@ -1067,7 +1081,9 @@ export class ReviewController {
             : state
               ? railStatusOf(state.status)
               : 'idle'
-        const revealable = run ? navigableEditorFindings(run.findings.list(), editorId) : []
+        const revealable = run
+            ? navigableEditorFindings(this.visibleFindings(path, run), editorId)
+            : []
         const hasSummaryOrError =
             state !== null &&
             ((state.summary !== null && state.summary.length > 0) ||
@@ -1142,7 +1158,10 @@ export class ReviewController {
     /** `Next/previous finding` gate: the active run has revealable findings. */
     canNavigateFindings(): boolean {
         const context = this.activeRunContext()
-        return context !== null && navigableFindings(context.run.findings.list()).length > 0
+        return (
+            context !== null &&
+            navigableFindings(this.visibleFindings(context.path, context.run)).length > 0
+        )
     }
 
     /**
@@ -1163,7 +1182,7 @@ export class ReviewController {
             return
         }
         const { path, run } = context
-        const ordered = navigableFindings(run.findings.list())
+        const ordered = navigableFindings(this.visibleFindings(path, run))
         const memory = this.triageCursors.get(path, run)
         let target: NavigationTarget | null
         if (memory) {
@@ -1216,7 +1235,7 @@ export class ReviewController {
             return null
         }
         const { path, run } = context
-        const ordered = navigableFindings(run.findings.list())
+        const ordered = navigableFindings(this.visibleFindings(path, run))
         const current = triageCurrent(ordered, this.triageCursors.get(path, run))
         return current ? { path, run, current } : null
     }
@@ -1305,7 +1324,7 @@ export class ReviewController {
      * clear the cursor, close the card, say so once.
      */
     private advanceTriage(path: string, run: RunHandle, judged: NavigationTarget): void {
-        const ordered = navigableFindings(run.findings.list())
+        const ordered = navigableFindings(this.visibleFindings(path, run))
         const target = triageStep(ordered, { id: judged.id, from: judged.from }, 'next')
         if (!target) {
             this.triageCursors.clear(path)
@@ -1333,14 +1352,70 @@ export class ReviewController {
     }
 
     /**
-     * The findings a bulk operation may touch: the file's findings narrowed to
-     * one editor (`null` = every editor of the run).
+     * The findings a bulk operation may touch: the file's VISIBLE findings
+     * (severity filter applied — never accept or dismiss what the user cannot
+     * see) narrowed to one editor (`null` = every editor of the run).
      */
-    private bulkCandidates(run: RunHandle, editorId: string | null): readonly TrackedFinding[] {
-        const findings = run.findings.list()
+    private bulkCandidates(
+        path: string,
+        run: RunHandle,
+        editorId: string | null
+    ): readonly TrackedFinding[] {
+        const findings = this.visibleFindings(path, run)
         return editorId === null
             ? findings
             : findings.filter((finding) => finding.editorId === editorId)
+    }
+
+    // -- Severity filter (plan M4 "Bulk triage") ------------------------------
+
+    /**
+     * The findings the file's severity filter lets the interaction surfaces
+     * see. Everything stays in the store — this is a lens, not a mutation.
+     */
+    private visibleFindings(filePath: string, run: RunHandle): readonly TrackedFinding[] {
+        const mode = this.severityFilters.get(filePath)
+        if (mode === 'all') {
+            return run.findings.list()
+        }
+        return run.findings
+            .list()
+            .filter((finding) => passesSeverityFilter(mode, finding.raw.severity))
+    }
+
+    /** How many of the run's live findings the given mode hides. */
+    private hiddenFindingCount(run: RunHandle, mode: SeverityFilterMode): number {
+        return run.findings
+            .list()
+            .filter((finding) => finding.status === 'open' || finding.status === 'preview')
+            .filter((finding) => !passesSeverityFilter(mode, finding.raw.severity)).length
+    }
+
+    /** `Cycle severity filter` gate: the active run has findings to filter. */
+    canCycleSeverityFilter(): boolean {
+        const context = this.activeRunContext()
+        if (!context) {
+            return false
+        }
+        return context.run.findings
+            .list()
+            .some((finding) => finding.status === 'open' || finding.status === 'preview')
+    }
+
+    /**
+     * Advances the active file's severity filter one step (all → warnings and
+     * suggestions → warnings only → all) and says what is shown now: the
+     * command palette gives no other feedback, and the number of hidden
+     * findings is what makes the lens trustworthy.
+     */
+    cycleSeverityFilter(): void {
+        const context = this.activeRunContext()
+        if (!context || this.disposed) {
+            return
+        }
+        const mode = this.severityFilters.cycle(context.path)
+        new Notice(severityFilterNotice(mode, this.hiddenFindingCount(context.run, mode)))
+        this.scheduleRefresh()
     }
 
     /**
@@ -1354,7 +1429,7 @@ export class ReviewController {
         if (!context || this.editorViewFor(context.path) === null) {
             return false
         }
-        return this.bulkCandidates(context.run, editorId).some((finding) =>
+        return this.bulkCandidates(context.path, context.run, editorId).some((finding) =>
             context.run.findings.isActionable(asFindingId(finding.id))
         )
     }
@@ -1365,7 +1440,10 @@ export class ReviewController {
         if (!context) {
             return false
         }
-        return dismissableFindingIds(this.bulkCandidates(context.run, editorId)).length > 0
+        return (
+            dismissableFindingIds(this.bulkCandidates(context.path, context.run, editorId)).length >
+            0
+        )
     }
 
     /**
@@ -1396,7 +1474,10 @@ export class ReviewController {
             return
         }
         const currentText = editorView.state.doc.toString()
-        const plan = planBulkAccept(this.bulkCandidates(context.run, editorId), currentText)
+        const plan = planBulkAccept(
+            this.bulkCandidates(context.path, context.run, editorId),
+            currentText
+        )
         const applied = plan.edits.filter(
             (edit) => context.run.findings.accept(asFindingId(edit.findingId), currentText).ok
         )
@@ -1427,7 +1508,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
-        const ids = dismissableFindingIds(this.bulkCandidates(context.run, editorId))
+        const ids = dismissableFindingIds(this.bulkCandidates(context.path, context.run, editorId))
         for (const id of ids) {
             context.run.findings.dismiss(asFindingId(id))
         }
@@ -1501,6 +1582,10 @@ export class ReviewController {
                 color: colors.get(state.editorId) ?? 'var(--text-accent)'
             })),
             skips: this.skipsByFile.get(path) ?? [],
+            severityFilter: this.severityFilters.get(path),
+            cycleSeverityFilter: (): void => {
+                this.cycleSeverityFilter()
+            },
             revealFinding: (findingId: FindingId): void => {
                 void this.revealFinding(path, findingId)
             },
@@ -1959,7 +2044,9 @@ export class ReviewController {
         // right here, on the first rebuild that could have shown it.
         const cursor = this.triageCursors.get(run.snapshot.filePath, run)
         const specs: FindingDecorationSpec[] = []
-        for (const finding of run.findings.list()) {
+        // Severity filter: hidden findings render nothing at all (they stay in
+        // the store, and the panel's filter control says how many are hidden).
+        for (const finding of this.visibleFindings(run.snapshot.filePath, run)) {
             if (finding.anchor === null) {
                 continue
             }
