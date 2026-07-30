@@ -53,6 +53,17 @@ describe('launchConsentCopy', () => {
         )
     })
 
+    it('claims only what the session flag actually delivers', () => {
+        // `--no-session-persistence` covers the transcript. Auto-memory,
+        // history and logs are separate subsystems this plugin does not
+        // disable, so 'no copy of your note anywhere on disk' promised more
+        // than the flag gives — in the sentence that addresses the exact worry
+        // the user has.
+        const lines = launchConsentCopy(backend()).lines.join('\n')
+        expect(lines).toContain('does not save this conversation to disk')
+        expect(lines).not.toContain('anywhere on disk')
+    })
+
     it('asks again, differently, when the executable changed', () => {
         const stale = backend({
             executablePath: '/opt/new/claude',
@@ -71,6 +82,16 @@ describe('toolsConsentCopy', () => {
         expect(copy.message).toContain('read and write files')
         expect(copy.message).toContain('network')
         expect(copy.message).toContain('bigger permission')
+    })
+
+    it('does not promise that approval-requiring tools are always refused', () => {
+        // `--permission-mode manual` sets the interactive default. It does not
+        // overrule `permissions.allow` rules in the user's own settings, which
+        // are still loaded — so the unqualified version of this sentence was
+        // the strongest claim in the dialog and also the one that was not true.
+        const lines = toolsConsentCopy(backend()).lines.join('\n')
+        expect(lines).toContain('unless your own')
+        expect(lines).toContain('pre-approve')
     })
 
     it('says the plugin cannot bound what the tool does with the network', () => {

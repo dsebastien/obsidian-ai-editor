@@ -103,7 +103,14 @@ export interface CheckBackendHealthInput {
  */
 export function classifyHealthEvent(
     event: OperationEvent | null,
-    family: BackendInstance['family']
+    family: BackendInstance['family'],
+    /**
+     * The bound that was actually applied, in ms. Passed in rather than read
+     * off the constant: a CLI backend's probe is clamped down to its own
+     * `Timeout` setting, so quoting the ceiling at a user who configured 60 s
+     * would report their setting working as if it were the plugin hanging.
+     */
+    timeoutMs: number
 ): BackendHealthResult {
     if (event === null) {
         return {
@@ -139,14 +146,15 @@ export function classifyHealthEvent(
         // Name the setting that applies to THIS family: a CLI backend carries
         // its own timeout and the Behavior tab's request timeout does nothing
         // for it, so pointing there would send the user to the wrong control.
+        const seconds = Math.round(timeoutMs / 1_000)
         return {
             status: 'failed',
             code,
             message:
                 family === 'cli'
-                    ? `No answer within ${CLI_HEALTH_CHECK_TIMEOUT_MS / 1_000} s. An agent that ` +
+                    ? `No answer within ${String(seconds)} s. An agent that ` +
                       'goes exploring can be slower — raise ‘Timeout’ for this backend and try a review.'
-                    : `No answer within ${HEALTH_CHECK_TIMEOUT_MS / 1_000} s. A slow local model may ` +
+                    : `No answer within ${String(seconds)} s. A slow local model may ` +
                       'still work for real runs — raise ‘Request timeout’ in the Behavior tab and try a review.'
         }
     }
@@ -161,6 +169,7 @@ export function classifyHealthEvent(
 export async function checkBackendHealth(
     input: CheckBackendHealthInput
 ): Promise<BackendHealthResult> {
+    const timeoutMs = input.timeoutMs ?? healthCheckTimeoutMs(input.backend)
     const { execute } = createBackendExecutor({
         backend: input.backend,
         model: input.model,
@@ -169,7 +178,7 @@ export async function checkBackendHealth(
         // settings, so the only thing it borrows from them is nothing: it
         // supplies its own bounded timeout and defaults for the rest.
         behavior: DEFAULT_PLUGIN_SETTINGS.behavior,
-        timeoutMsOverride: input.timeoutMs ?? healthCheckTimeoutMs(input.backend),
+        timeoutMsOverride: timeoutMs,
         fetchImpl: input.fetchImpl ?? globalThis.fetch
     })
     const controller = new AbortController()
@@ -188,5 +197,5 @@ export async function checkBackendHealth(
             terminal = event
         }
     }
-    return classifyHealthEvent(terminal, input.backend.family)
+    return classifyHealthEvent(terminal, input.backend.family, timeoutMs)
 }

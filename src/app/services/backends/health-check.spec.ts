@@ -68,7 +68,8 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 result: { kind: 'review', findings: [] }
             },
-            'api'
+            'api',
+            HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.status).toBe('ok')
         expect(result.code).toBe('')
@@ -81,7 +82,8 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 error: { code: 'invalid-output', message: 'not a tool call' }
             },
-            'api'
+            'api',
+            HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.status).toBe('unusable')
         expect(result.code).toBe('invalid-output')
@@ -95,7 +97,8 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 error: { code: 'auth', message: 'Provider rejected the credentials (HTTP 401)' }
             },
-            'api'
+            'api',
+            HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.status).toBe('failed')
         expect(result.code).toBe('auth')
@@ -109,7 +112,8 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 error: { code: 'timeout', message: 'whatever the executor said' }
             },
-            'api'
+            'api',
+            HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.status).toBe('failed')
         expect(result.message).toContain(String(HEALTH_CHECK_TIMEOUT_MS / 1_000))
@@ -125,10 +129,28 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 error: { code: 'timeout', message: 'whatever the executor said' }
             },
-            'cli'
+            'cli',
+            CLI_HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.message).toContain(String(CLI_HEALTH_CHECK_TIMEOUT_MS / 1_000))
         expect(result.message).not.toContain('Request timeout')
+    })
+
+    it('quotes the bound that was actually applied, not the ceiling', () => {
+        // A CLI backend whose Timeout is 60 s is probed for 60 s. Telling that
+        // user 'no answer within 120 s' after one minute reads as the plugin
+        // hanging rather than as their own setting doing its job.
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'timeout', message: 'whatever the executor said' }
+            },
+            'cli',
+            60_000
+        )
+        expect(result.message).toContain('60 s')
+        expect(result.message).not.toContain('120 s')
     })
 
     it('explains an unusable CLI answer as an agent wrapping its result in prose', () => {
@@ -138,15 +160,19 @@ describe('classifyHealthEvent', () => {
                 runId: 'r',
                 error: { code: 'invalid-output', message: 'not JSON' }
             },
-            'cli'
+            'cli',
+            CLI_HEALTH_CHECK_TIMEOUT_MS
         )
         expect(result.status).toBe('unusable')
         expect(result.message).toContain('prose')
     })
 
     it('fails on a missing terminal event instead of assuming success', () => {
-        expect(classifyHealthEvent(null, 'api').status).toBe('failed')
-        expect(classifyHealthEvent({ type: 'progress', runId: 'r' }, 'api').status).toBe('failed')
+        expect(classifyHealthEvent(null, 'api', HEALTH_CHECK_TIMEOUT_MS).status).toBe('failed')
+        expect(
+            classifyHealthEvent({ type: 'progress', runId: 'r' }, 'api', HEALTH_CHECK_TIMEOUT_MS)
+                .status
+        ).toBe('failed')
     })
 })
 
@@ -294,5 +320,26 @@ describe('checkBackendHealth (CLI)', () => {
         })
         expect(result.status).toBe('failed')
         expect(result.message).toContain('absolute')
+    })
+
+    it('never launches a backend the user has not consented to — not even to test it', async () => {
+        // The executable is REAL and would run: `process.execPath` exists and
+        // is executable on any machine that can run this suite. The only thing
+        // stopping the probe is the missing consent, and the check for it lives
+        // in `createBackendExecutor` rather than in the dialog that happens to
+        // call this today.
+        const started = Date.now()
+        const result = await checkBackendHealth({
+            backend: makeCliConfig({
+                executablePath: process.execPath,
+                consent: { launchPath: '', toolsPath: '' }
+            }),
+            model: '',
+            timeoutMs: 5_000
+        })
+        expect(result.status).toBe('failed')
+        expect(result.message).toContain('has not been allowed to run')
+        // No runtime was started, so this cannot have taken a process launch.
+        expect(Date.now() - started).toBeLessThan(1_000)
     })
 })

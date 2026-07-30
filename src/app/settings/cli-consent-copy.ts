@@ -60,7 +60,7 @@ export function launchConsentCopy(backend: CliBackend): ConsentDialogCopy {
             `It runs exactly this file: ${backend.executablePath}`,
             'It runs in a temporary folder that is deleted when the run ends — never in your vault, and never in the plugin’s own folder.',
             'It gets a minimal environment: no API keys or tokens belonging to other applications, and no shell.',
-            `Session persistence is off, so ${tool} does not leave a copy of your note anywhere on disk.`,
+            `Session persistence is off, so ${tool} does not save this conversation to disk or make it resumable. That is the flag’s guarantee; it is not a promise that the tool writes nothing at all.`,
             'Nothing runs until you ask for a review or an action, and cancelling stops the whole process tree.',
             'You can withdraw this at any time in the Backends tab.'
         ],
@@ -82,7 +82,7 @@ export function toolsConsentCopy(backend: CliBackend): ConsentDialogCopy {
         message: `With tool and research mode on, ${tool} may read and write files and reach the network on your behalf while it works on your note. This is a bigger permission than allowing it to run, and it is off by default.`,
         lines: [
             'It still runs in a temporary folder that is deleted when the run ends, with a minimal environment.',
-            `${tool} still cannot be asked for permission mid-run, so anything needing approval is refused rather than granted.`,
+            `Nothing can answer a prompt in a headless run, so anything ${tool} would normally ask about is refused — unless your own ${tool} settings already pre-approve it. The plugin does not read or override those.`,
             'The plugin cannot see or limit what the tool does with the network.',
             'Turning this off later leaves the backend working, just without tools.'
         ],

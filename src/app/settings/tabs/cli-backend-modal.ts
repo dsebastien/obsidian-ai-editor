@@ -366,11 +366,7 @@ export class CliBackendModal extends Modal {
                 'Runs one trivial review through the real path: the same executable, the same temporary folder, the same environment and timeout.'
             )
         const resultEl = contentEl.createDiv()
-        const paint = (): void => {
-            resultEl.empty()
-            if (this.health === null) {
-                return
-            }
+        if (this.health !== null) {
             resultEl.className = healthResultClass(this.health)
             resultEl.setText(healthResultLine(this.health))
         }
@@ -396,28 +392,27 @@ export class CliBackendModal extends Modal {
                 const testedPath = validation.backend.executablePath
                 this.healthRunning = true
                 this.health = null
-                button.setDisabled(true)
-                button.setButtonText('Testing…')
-                paint()
+                this.renderContent()
                 void checkBackendHealth({
                     backend: validation.backend,
                     model: validation.backend.defaultModel
                 }).then((result) => {
+                    // Nothing captured from the render that started the probe
+                    // is touched here. A CLI check runs for up to two minutes,
+                    // and editing the path, selecting Detect or changing tool
+                    // consent all re-render the dialog in the meantime — the
+                    // button and the result element from back then are
+                    // detached, so painting them would leave the LIVE button
+                    // disabled and saying ‘Testing…’ forever.
                     this.healthRunning = false
                     // A verdict is about the executable that was tested. If the
                     // field moved on while the tool ran, it is about something
                     // else and is discarded rather than shown.
-                    if (this.draft.executablePath.trim() !== testedPath) {
-                        return
-                    }
-                    this.health = result
-                    button.setDisabled(false)
-                    button.setButtonText('Test connection')
-                    paint()
+                    this.health = this.draft.executablePath.trim() === testedPath ? result : null
+                    this.renderContent()
                 })
             })
         })
-        paint()
     }
 
     private save(): void {

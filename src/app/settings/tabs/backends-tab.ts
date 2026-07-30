@@ -1,7 +1,9 @@
 import { Notice, Setting } from 'obsidian'
+import { validateCliBackend } from '../../domain/settings/backend-validation'
 import { grantLaunchConsent, hasLaunchConsent } from '../../domain/settings/cli-consent'
 import { apiProviderKindSchema } from '../../domain/settings/settings-schema'
 import type { BackendInstance, CliBackend } from '../../domain/settings/settings-schema'
+import { currentCliPlatform, nodeExecutableProbe } from '../../services/backends/cli'
 import { launchConsentCopy, launchConsentLine } from '../cli-consent-copy'
 import { ConfirmModal, populateBackendDropdown } from '../components'
 import {
@@ -236,11 +238,21 @@ function renderBackendRow(
  * have to fix by hand.
  */
 function askLaunchConsent(ctx: TabContext, backend: CliBackend): void {
-    if (backend.executablePath.trim().length === 0) {
-        new Notice('Set the executable path first: select Edit on this backend.')
+    const validation = validateCliBackend({
+        draft: backend,
+        platform: currentCliPlatform(),
+        probe: nodeExecutableProbe
+    })
+    if (!validation.ok) {
+        // Same check the dialog runs, for the same reason: a consent dialog
+        // that says “It runs exactly this file” about a binary that was since
+        // moved, uninstalled or made non-executable records agreement to
+        // something that cannot happen, and the user only finds out at the end
+        // of their next review.
+        new Notice(validation.message)
         return
     }
-    const copy = launchConsentCopy(backend)
+    const copy = launchConsentCopy(validation.backend)
     new ConfirmModal(ctx.app, {
         title: copy.title,
         message: copy.message,
