@@ -328,7 +328,10 @@ function createStreamAccumulator(
         case 'anthropic':
             return createAnthropicAccumulator(adapter)
         case 'openai':
+        case 'openrouter':
         case 'openai-compatible':
+            // OpenRouter speaks Chat Completions SSE like the other two — it
+            // rides the same adapter, so it must ride the same decoder.
             return createOpenAiAccumulator(adapter)
         default:
             return null

@@ -395,6 +395,26 @@ describe('createApiEditorExecutor — streaming', () => {
         expect(JSON.stringify(terminal.result)).not.toContain('Let me think')
     })
 
+    it('streams the openrouter kind like any other Chat Completions endpoint', async () => {
+        const body = openAiSse(JSON.stringify(validReviewResult()))
+        const { calls, fetchImpl } = makeStreamingFetch(body, 11)
+        const executor = makeExecutor(fetchImpl, { kind: 'openrouter' })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        // Streaming, not the buffered fallback: `stream: true` went out and
+        // progress was reported while the payload arrived.
+        const sentBody = sentJsonBody(calls[0])
+        expect(sentBody['stream']).toBe(true)
+        expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions')
+        expect(events.filter((event) => event.type === 'progress').length).toBeGreaterThan(0)
+        const terminal = expectProtocol(events)
+        if (terminal.type !== 'result' || terminal.result.kind !== 'review') {
+            throw new Error('expected review result')
+        }
+        expect(terminal.result.findings[0]?.quote).toBe('Hello world')
+    })
+
     it('maps a truncated stream whose payload fails validation to invalid-output', async () => {
         // Stream ends after half of the JSON — no more frames, no [DONE].
         const half = JSON.stringify(validReviewResult()).slice(0, 20)
