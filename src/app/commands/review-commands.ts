@@ -222,6 +222,23 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
     })
 
     plugin.addCommand({
+        id: 'generate-more',
+        name: 'Generate more findings',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canGenerateMore()) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            // One round per editor that finished — never a loop. The findings
+            // already on the note are kept; the new ones are appended.
+            controller.generateMore()
+            return true
+        }
+    })
+
+    plugin.addCommand({
         id: 'dismiss-finding',
         name: 'Dismiss current finding',
         checkCallback: (checking: boolean): boolean => {

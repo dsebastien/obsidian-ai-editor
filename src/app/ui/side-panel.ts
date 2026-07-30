@@ -8,6 +8,7 @@ import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import { entityName } from './entity-label'
+import { generateMoreView } from './generate-more'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
 import { buildScorecardView } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
@@ -54,6 +55,8 @@ export interface SidePanelBinding {
     readonly revealFinding: (findingId: FindingId) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly retryEditor: (editorId: string) => void
+    /** Ask one completed editor for MORE findings, keeping the ones it made. */
+    readonly continueEditor: (editorId: string) => void
     /** Accept every non-conflicting finding of one editor (one undo step). */
     readonly acceptAll: (editorId: string) => void
     /** Dismiss every open finding of one editor. */
@@ -576,6 +579,7 @@ export class ReviewSidePanelView extends ItemView {
         }
 
         this.renderBulkActions(section, binding, state, findings)
+        this.renderGenerateMore(section, binding, state, live.length)
 
         const list = section.createDiv({ cls: 'ai-editor-panel-findings' })
         for (const finding of anchored) {
@@ -625,6 +629,45 @@ export class ReviewSidePanelView extends ItemView {
                 `Dismiss all ${findings.length} findings from ${state.editorName}`,
                 () => binding.dismissAll(state.editorId)
             )
+        }
+    }
+
+    /**
+     * "Generate more" (plan M6): one more pass by this editor, appended to
+     * what it already reported. Sits under the bulk row because it is the
+     * opposite move — bulk triage clears the list, this one extends it — and
+     * the count in its label is the same list both act on.
+     *
+     * Deliberately NOT filtered by the severity lens: the lens hides findings
+     * from view, it does not un-report them, and telling the editor it made
+     * fewer findings than it did would invite it to repeat them.
+     */
+    private renderGenerateMore(
+        section: HTMLElement,
+        binding: SidePanelBinding,
+        state: EditorRunState,
+        findingCount: number
+    ): void {
+        const view = generateMoreView(state, findingCount)
+        if (!view.visible) {
+            return
+        }
+        const row = section.createDiv({ cls: 'ai-editor-panel-more' })
+        const button = row.createEl('button', {
+            cls: 'ai-editor-panel-more-button',
+            text: view.text
+        })
+        button.setAttribute('aria-label', view.ariaLabel)
+        button.disabled = view.disabled
+        button.toggleClass('is-busy', view.busy)
+        button.addEventListener('click', () => binding.continueEditor(state.editorId))
+        if (view.error !== null) {
+            // The completed pass is untouched, so this is a note beside the
+            // button, never the section's error state.
+            row.createSpan({
+                cls: 'ai-editor-panel-more-error',
+                text: `Could not generate more: ${view.error}`
+            })
         }
     }
 

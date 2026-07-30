@@ -51,6 +51,7 @@ import {
 import type { ReviewGate } from '../services/reviewability'
 import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type {
+    ContinueEditorResult,
     EditorRunStatus,
     RetryEditorResult,
     RunController,
@@ -1232,6 +1233,87 @@ export class ReviewController {
         }
     }
 
+    /**
+     * "Generate more" (plan M6): asks ONE editor for additional findings on
+     * top of the ones it already reported. Same live-text resolution as
+     * `retryEditor` — the new findings anchor against the buffer the user is
+     * looking at — and the same one-shot contract: one invocation is one
+     * round, never a loop, because every round is a backend request.
+     */
+    continueEditor(filePath: string, editorId: string): void {
+        if (this.disposed) {
+            return
+        }
+        const run = this.deps.runController.getRun(filePath)
+        if (!run) {
+            return
+        }
+        const view = this.findMarkdownView(filePath)
+        if (view && view.file?.path === filePath) {
+            this.reportContinue(run.continueEditor(editorId, view.editor.getValue()))
+            return
+        }
+        void this.vaultReader.readNote(filePath).then((text) => {
+            if (this.disposed || text === null) {
+                return
+            }
+            if (this.deps.runController.getRun(filePath) !== run) {
+                return
+            }
+            this.reportContinue(run.continueEditor(editorId, text))
+        })
+    }
+
+    private reportContinue(result: ContinueEditorResult): void {
+        if (!result.ok) {
+            new Notice('This editor has no completed review to add to right now.')
+        }
+    }
+
+    /**
+     * Ids of the active note's editors that can produce more findings — a
+     * completed pass with no continuation already in flight. Shared by the
+     * command's availability check and its dispatch, so the palette can never
+     * offer a round the run would refuse.
+     */
+    private continuableEditorIds(): readonly string[] {
+        const context = this.activeRunContext()
+        if (!context) {
+            return []
+        }
+        return context.run
+            .getEditorStates()
+            .filter((state) => state.status === 'done' && !state.continuing)
+            .map((state) => state.editorId)
+    }
+
+    /** `Generate more findings` gate: at least one editor has a pass to extend. */
+    canGenerateMore(): boolean {
+        return this.continuableEditorIds().length > 0
+    }
+
+    /**
+     * One extra round for EVERY editor of the active note's run that finished.
+     * The keyboard path to the per-editor buttons in the side panel; it fans
+     * out because a palette entry per editor already exists for bulk triage
+     * and the useful whole-note gesture is "everyone, once more". Still one
+     * round each — pressing it twice is the only way to get two.
+     */
+    generateMore(): void {
+        const context = this.activeRunContext()
+        if (!context || this.disposed) {
+            return
+        }
+        const ids = this.continuableEditorIds()
+        if (ids.length === 0) {
+            new Notice('No completed review to add to on this note.')
+            return
+        }
+        for (const editorId of ids) {
+            this.continueEditor(context.path, editorId)
+        }
+    }
+
     // -- Rail chip click (plan §0 "Live-testing feedback #3") -----------------
 
     /**
@@ -1920,6 +2002,9 @@ export class ReviewController {
             },
             retryEditor: (editorId: string): void => {
                 this.retryEditor(path, editorId)
+            },
+            continueEditor: (editorId: string): void => {
+                this.continueEditor(path, editorId)
             },
             // Scoped to the file this binding was built for, like the reveal
             // and retry closures above: the panel must never mutate a run

@@ -1393,6 +1393,35 @@
     background-color: var(--background-modifier-hover);
 }
 
+/* "Generate more" (plan M6) — one more pass by this editor, appended. */
+.ai-editor-panel-more {
+    @apply flex flex-wrap items-center gap-1.5;
+}
+
+.ai-editor-panel-more-button {
+    @apply cursor-pointer rounded px-2 py-0.5 text-xs;
+    border: 1px dashed var(--background-modifier-border);
+    background-color: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-panel-more-button:hover:not(:disabled),
+.ai-editor-panel-more-button:focus-visible {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.ai-editor-panel-more-button:disabled {
+    @apply cursor-default;
+    opacity: 0.6;
+}
+
+.ai-editor-panel-more-error {
+    @apply text-xs;
+    color: var(--text-warning);
+}
+
 .ai-editor-panel-subheader {
     @apply mt-1 text-xs font-medium uppercase;
     letter-spacing: 0.04em;
