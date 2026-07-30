@@ -23,3 +23,20 @@ export { parseJsonDocument, parseJsonLines } from './protocol'
 export type { CliProtocolProblem, CliProtocolResult } from './protocol'
 export { MAX_ARGUMENT_LENGTH, spawnCliProcess, validateCliArguments } from './spawn'
 export type { CliProcessFailureCode, CliProcessOutcome, SpawnCliProcessInput } from './spawn'
+export {
+    buildCliStdin,
+    claudeCodeAdapter,
+    codexAdapter,
+    getCliToolAdapter,
+    safeStatusToken
+} from './tools'
+export type {
+    BuildCliInvocationInput,
+    CliEnvelope,
+    CliEnvelopeErrorCode,
+    CliInvocation,
+    CliOutputProtocol,
+    CliToolAdapter,
+    CliToolCapabilities,
+    CliToolKind
+} from './tools'
