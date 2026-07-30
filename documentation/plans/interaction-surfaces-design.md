@@ -33,18 +33,18 @@ Structure (flat — no submenus; `setSection` for grouping):
 
 No default hotkeys anywhere (community review guideline — plugins must not ship hotkey defaults). Recommended bindings documented in README only.
 
-| Command id (stable)                                | Name (sentence case)             | Gating                                                             | Dynamic?    |
-| -------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ | ----------- |
-| `review-current-note`                              | Review current note              | `checkCallback`: active md view + not excluded + ≥1 enabled editor | no (exists) |
-| `review-selection`                                 | Review selection                 | `editorCheckCallback`: selection non-empty + reviewable            | no          |
-| `ask-editor`                                       | Ask an editor                    | `editorCheckCallback`: selection non-empty + reviewable            | no          |
-| `open-review-panel`                                | Open review panel                | plain `callback`                                                   | no (exists) |
-| `cancel-run`                                       | Cancel review                    | `checkCallback`: a run for the active file is unsettled            | no          |
-| `action-<actionId>`                                | <Action label>                   | `editorCheckCallback`: selection/doc per verb + target enabled     | yes         |
-| `next-finding` / `prev-finding`                    | Next/previous finding            | `checkCallback`: active run has anchored findings                  | no          |
-| `accept-finding` / `dismiss-finding`               | Accept/dismiss current finding   | `checkCallback`: a current finding is selected (triage state)      | no          |
-| `accept-all-<editorId>` / `dismiss-all-<editorId>` | Accept/dismiss all from <Editor> | `checkCallback`: run has open findings from that editor            | yes         |
-| `filter-severity`                                  | Cycle severity filter            | `checkCallback`: findings present                                  | no          |
+| Command id (stable)                                | Name (sentence case)             | Gating                                                                                                                                                                        | Dynamic?    |
+| -------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `review-current-note`                              | Review current note              | `checkCallback`: active md view + not excluded + ≥1 enabled editor                                                                                                            | no (exists) |
+| `review-selection`                                 | Review selection                 | `editorCheckCallback`: selection non-empty + reviewable                                                                                                                       | no          |
+| `ask-editor`                                       | Ask an editor                    | `editorCheckCallback`: selection non-empty + reviewable                                                                                                                       | no          |
+| `open-review-panel`                                | Open review panel                | plain `callback`                                                                                                                                                              | no (exists) |
+| `cancel-run`                                       | Cancel review                    | `checkCallback`: a run for the active file is unsettled                                                                                                                       | no          |
+| `action-<actionId>`                                | <Action label>                   | `editorCheckCallback`: selection/doc per verb + target enabled                                                                                                                | yes         |
+| `next-finding` / `prev-finding`                    | Next/previous finding            | `checkCallback`: active run has anchored findings (since 2026-07-30 these are triage steps: move the per-file cursor, ring the current finding, open its card)                | no (exists) |
+| `accept-finding` / `dismiss-finding`               | Accept/dismiss current finding   | `checkCallback`: a current triage finding exists (shipped 2026-07-30: accept additionally needs the finding store-actionable + the note open in an editor; both auto-advance) | no (exists) |
+| `accept-all-<editorId>` / `dismiss-all-<editorId>` | Accept/dismiss all from <Editor> | `checkCallback`: run has open findings from that editor                                                                                                                       | yes         |
+| `filter-severity`                                  | Cycle severity filter            | `checkCallback`: findings present                                                                                                                                             | no          |
 
 Dynamic registration: on every settings mutation, diff desired vs registered command sets; `removeCommand` the stale, `addCommand` the new (debounced). Never register a command whose target cannot dispatch (plan debt #7 rule: no non-functional commands). Command ids embed entity UUIDs so hotkeys survive renames; removing an entity orphans its hotkey binding (Obsidian behavior — document in settings UI).
 
