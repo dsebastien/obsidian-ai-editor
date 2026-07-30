@@ -2934,10 +2934,12 @@ export class ReviewController {
         glue.layout = layout
         // The margin column's width, placement and card heights are all
         // functions of the pane width, so ANY resize matters to it — not only
-        // a layout-mode flip. Re-render only, never synchronous DOM work
-        // inside the observer callback (that is how ResizeObserver loops
-        // start); the refresh is coalesced to one per frame.
-        if (!layoutChanged && glue.marginColumn === null) {
+        // a layout-mode flip. Only panes whose note actually has comments pay
+        // for that, so dragging a split in an ordinary vault costs what it
+        // always cost. Re-render only, never synchronous DOM work inside the
+        // observer callback (that is how ResizeObserver loops start); the
+        // refresh is coalesced to one per frame.
+        if (!layoutChanged && !this.hasMarginComments(glue)) {
             return
         }
         this.scheduleRefresh()
@@ -3107,9 +3109,15 @@ export class ReviewController {
         // Reading view is out of scope for v1 interactions (Business Rules
         // #6 is about Live Preview vs Source), and a note the plugin does not
         // operate on gets no chrome at all (plan §4b).
+        //
+        // The file/doc coherence check is the same one `handleEditorUpdate`
+        // makes: a scroll landing between Obsidian assigning `view.file` and
+        // the refresh cycle rebinding this glue would otherwise anchor the
+        // PREVIOUS note's comments against the new note's text.
         if (
             filePath === null ||
             editorView === null ||
+            glue.view.file?.path !== filePath ||
             glue.view.getMode() === 'preview' ||
             glue.pluginDisabled
         ) {
@@ -3214,6 +3222,15 @@ export class ReviewController {
             return
         }
         this.refreshMargin(glue)
+    }
+
+    /** Whether this glue's note has anything the margin column would show. */
+    private hasMarginComments(glue: ViewGlue): boolean {
+        const filePath = glue.view.file?.path ?? null
+        if (glue.marginColumn === null || filePath === null) {
+            return false
+        }
+        return (this.deps.commentJobs?.commentsFor(filePath) ?? []).some(isMarginVisible)
     }
 
     private hideMargin(glue: ViewGlue): void {
