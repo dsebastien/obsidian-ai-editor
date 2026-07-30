@@ -42,6 +42,7 @@ import {
 } from '../services/actions/action-resolution'
 import type { ResolvedAction } from '../services/actions/action-resolution'
 import {
+    isPluginDisabledByRule,
     isPluginEnabledForNote,
     isReviewable,
     reviewCapableEditors,
@@ -928,11 +929,17 @@ export class ReviewController {
     // -- "What will be sent" preview ------------------------------------------
 
     /**
-     * Whether the preview command is offered: an open markdown note the plugin
-     * operates on at all, and at least one enabled editor to preview. The
-     * refusal statuses still exist in the service (a rule can land while the
-     * modal is open), but a command that can only report "switched off here"
-     * has no reason to be in the palette.
+     * Whether the preview command is offered: an open markdown note, no
+     * kill-switch rule, and at least one enabled editor to preview.
+     *
+     * Gated on the RULE only, deliberately not on the privacy exclusion. Plan
+     * §4b says a matching `disabled` rule removes the plugin's commands from a
+     * note, so the kill switch hides this one like every other. An exclusion is
+     * a different statement: plan §4d says the preview "refuses with its own
+     * message on a privacy exclusion", because "nothing would be sent" is the
+     * most important thing this surface can say — and hiding the command made
+     * the `excluded` status in `previewEditorContext` unreachable from the
+     * palette, so the reassurance a user goes looking for was never offered.
      */
     canPreviewContext(view: MarkdownView): boolean {
         const file = view.file
@@ -940,7 +947,7 @@ export class ReviewController {
             return false
         }
         return (
-            this.isPluginEnabledFor(file.path) &&
+            !isPluginDisabledByRule(file.path, this.vaultReader, this.deps.getSettings()) &&
             previewEditorChoices(this.deps.getSettings()).length > 0
         )
     }
