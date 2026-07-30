@@ -653,6 +653,20 @@
     }
 }
 
+/* Current: the keyboard-triage cursor's finding — a static persona-colored
+   ring distinct from the transient emphasis tint (the two can coexist).
+   No animation, so no reduced-motion variant is needed. */
+.ai-editor-finding-current {
+    background-color: color-mix(
+        in srgb,
+        var(--ai-editor-finding-color, var(--text-accent)) 30%,
+        transparent
+    );
+    box-shadow: 0 0 0 1.5px
+        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 70%, transparent);
+    border-radius: 2px;
+}
+
 /* Stale: the underlying text changed — dimmed, dashed, non-actionable */
 .ai-editor-finding-stale {
     @apply opacity-55;

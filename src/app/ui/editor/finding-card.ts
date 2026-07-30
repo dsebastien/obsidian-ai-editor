@@ -24,11 +24,12 @@
  *   in the view plugin's `destroy` (CM6 lifecycle).
  */
 
+import { StateEffect } from '@codemirror/state'
 import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
 import type { Severity } from '../../domain/operations/contract'
-import { findingSpansAt, removeFindingsEffect } from './finding-decorations'
+import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
 
 // ---------------------------------------------------------------------------
 // Data contract with the review controller (injected, never imported)
@@ -74,6 +75,15 @@ export interface FindingLookup {
     acceptFinding(findingId: string, currentText: string): CardAcceptOutcome
     dismissFinding(findingId: string): void
 }
+
+/**
+ * Programmatic card control (keyboard triage card-on-jump, plan §0 stage D
+ * slice 1): a finding id opens the card on that finding's highlight — the
+ * same card a click would open, anchored at the span's coordinates — and
+ * `null` closes any open card. Dispatched by the review controller after a
+ * triage step revealed (scrolled to) the target, so the span is measurable.
+ */
+export const showFindingCardEffect = StateEffect.define<string | null>()
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in finding-card.spec.ts)
@@ -273,10 +283,55 @@ class FindingCardPlugin implements PluginValue {
         if (update.docChanged) {
             this.closeCard()
         }
+        // Programmatic open/close (keyboard triage card-on-jump). Processed
+        // after the doc-change close so an effect riding a doc-changing
+        // transaction still wins.
+        for (const transaction of update.transactions) {
+            for (const effect of transaction.effects) {
+                if (!effect.is(showFindingCardEffect)) {
+                    continue
+                }
+                if (effect.value === null) {
+                    this.closeCard()
+                } else {
+                    this.showFindingCard(effect.value)
+                }
+            }
+        }
     }
 
     destroy(): void {
         this.closeCard()
+    }
+
+    /**
+     * Opens the card on one finding's highlight without a click. DOM work is
+     * deferred to a CM6 measure cycle: the triage reveal's scroll request may
+     * still be pending, and `coordsAtPos` only answers for laid-out content —
+     * one retry covers the scroll landing a cycle later. A finding that lost
+     * its mark or its card data in the meantime aborts silently (the next
+     * triage step re-resolves everything).
+     */
+    private showFindingCard(findingId: string, retry = true): void {
+        this.view.requestMeasure({
+            read: () => {
+                const span = findingSpanById(this.view.state, findingId)
+                return span ? this.view.coordsAtPos(span.from) : null
+            },
+            write: (rect) => {
+                if (!rect) {
+                    if (retry) {
+                        this.showFindingCard(findingId, false)
+                    }
+                    return
+                }
+                const sections = this.resolveSections([findingId])
+                if (sections.length === 0) {
+                    return
+                }
+                this.openCard(sections, rect)
+            }
+        })
     }
 
     private resolveSections(ids: readonly string[]): FindingCardData[] {

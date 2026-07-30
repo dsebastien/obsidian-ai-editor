@@ -1629,7 +1629,9 @@ export class ReviewController {
                 from: finding.anchor.from,
                 to: finding.anchor.to,
                 color: colors.get(finding.editorId) ?? 'var(--text-accent)',
-                stale: finding.anchor.state === 'stale'
+                stale: finding.anchor.state === 'stale',
+                // Wired to the keyboard-triage cursor in the triage slice.
+                current: false
             })
         }
         return specs

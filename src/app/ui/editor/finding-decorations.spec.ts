@@ -6,6 +6,7 @@ import {
     clearFindingsEffect,
     emphasizeEditorEffect,
     findingDecorationsField,
+    findingSpanById,
     findingSpansAt,
     markStaleEffect,
     removeFindingsEffect,
@@ -50,6 +51,7 @@ function findingSpec(overrides: Partial<FindingDecorationSpec> = {}): FindingDec
         to: 5,
         color: '#ff0000',
         stale: false,
+        current: false,
         ...overrides
     }
 }
@@ -294,6 +296,83 @@ describe('findingDecorationsField', () => {
         })
     })
 
+    describe('current finding (keyboard-triage cursor ring)', () => {
+        it('renders the current class on exactly the spec-marked finding', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'cursor', from: 0, to: 5, current: true }),
+                    findingSpec({ findingId: 'other', from: 6, to: 10 })
+                ])
+            )
+            const marks = marksOf(state)
+            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-current')
+            expect(marks[1]?.classes).toBe('ai-editor-finding')
+        })
+
+        it('survives a full rebuild carrying the flag (unlike the emphasis flash)', () => {
+            const specs = [findingSpec({ findingId: 'cursor', from: 0, to: 5, current: true })]
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(specs))
+            state = apply(state, { effects: setFindingsEffect.of(specs) })
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-current')
+        })
+
+        it('drops from a rebuild whose specs no longer carry it (cursor cleared)', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'cursor', from: 0, to: 5, current: true })
+                ])
+            )
+            state = apply(state, {
+                effects: setFindingsEffect.of([
+                    findingSpec({ findingId: 'cursor', from: 0, to: 5 })
+                ])
+            })
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding')
+        })
+
+        it('never renders a stale spec as current', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'both', from: 0, to: 5, current: true, stale: true })
+                ])
+            )
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+        })
+
+        it('drops the current ring when the mark goes stale in place', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'cursor', from: 0, to: 5, current: true })
+                ])
+            )
+            state = apply(state, { effects: markStaleEffect.of(['cursor']) })
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+        })
+
+        it('coexists with the chip-click emphasis on the same mark', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({
+                        findingId: 'cursor',
+                        editorId: 'e-1',
+                        from: 0,
+                        to: 5,
+                        current: true
+                    })
+                ])
+            )
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            expect(marksOf(state)[0]?.classes).toBe(
+                'ai-editor-finding ai-editor-finding-emphasized ai-editor-finding-current'
+            )
+        })
+    })
+
     describe('clearFindings', () => {
         it('removes every mark', () => {
             let state = stateWith(
@@ -385,6 +464,49 @@ describe('findingDecorationsField', () => {
         it('returns nothing when the field is not installed', () => {
             const state = EditorState.create({ doc: 'alpha' })
             expect(findingSpansAt(state, 0)).toEqual([])
+        })
+    })
+
+    describe('findingSpanById', () => {
+        it('returns the span of the named finding in current-doc coordinates', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'f-1', from: 0, to: 5 }),
+                    findingSpec({ findingId: 'f-2', from: 6, to: 10 })
+                ])
+            )
+            expect(findingSpanById(state, 'f-2')).toEqual({
+                findingId: 'f-2',
+                editorId: 'e-1',
+                from: 6,
+                to: 10,
+                stale: false
+            })
+        })
+
+        it('tracks document edits (mapped mark positions)', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([findingSpec({ findingId: 'f-1', from: 6, to: 10 })])
+            )
+            state = apply(state, { changes: { from: 0, to: 0, insert: '# ' } })
+            expect(findingSpanById(state, 'f-1')).toEqual({
+                findingId: 'f-1',
+                editorId: 'e-1',
+                from: 8,
+                to: 12,
+                stale: false
+            })
+        })
+
+        it('returns null for an unknown finding or a missing field', () => {
+            const state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([findingSpec({ findingId: 'f-1', from: 0, to: 5 })])
+            )
+            expect(findingSpanById(state, 'nope')).toBeNull()
+            expect(findingSpanById(EditorState.create({ doc: 'alpha' }), 'f-1')).toBeNull()
         })
     })
 

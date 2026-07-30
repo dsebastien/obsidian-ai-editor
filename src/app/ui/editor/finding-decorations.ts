@@ -20,10 +20,19 @@
  *
  * Rendering: each finding is a `Decoration.mark` with class
  * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale, plus
- * `ai-editor-finding-emphasized` during the rail-chip click flash) and the
- * per-editor persona color exposed as the `--ai-editor-finding-color` CSS
- * custom property via an inline style attribute, so the stylesheet controls
- * how the tint is applied.
+ * `ai-editor-finding-emphasized` during the rail-chip click flash, plus
+ * `ai-editor-finding-current` on the keyboard-triage cursor's finding) and
+ * the per-editor persona color exposed as the `--ai-editor-finding-color`
+ * CSS custom property via an inline style attribute, so the stylesheet
+ * controls how the tint is applied.
+ *
+ * Two transient visual states, two mechanisms on purpose:
+ * - `current` (triage cursor) RIDES THE SPECS — it must survive the refresh
+ *   cycle's full `setFindingsEffect` rebuilds for as long as the cursor
+ *   stands, so the controller bakes it into every spec it dispatches.
+ * - `emphasized` (~2 s chip-click flash) is EFFECT-ONLY — specs never carry
+ *   it, so any rebuild clears the flash structurally.
+ * Both can apply to the same mark; going stale drops both.
  */
 
 import { StateEffect, StateField } from '@codemirror/state'
@@ -43,6 +52,11 @@ export interface FindingDecorationSpec {
     readonly color: string
     /** Stale findings render dimmed and are no longer actionable. */
     readonly stale: boolean
+    /**
+     * The keyboard-triage cursor's finding (at most one per dispatch):
+     * rendered with the distinct `ai-editor-finding-current` ring.
+     */
+    readonly current: boolean
 }
 
 /**
@@ -89,6 +103,7 @@ interface FindingMarkSpec {
     readonly color: string
     readonly stale: boolean
     readonly emphasized: boolean
+    readonly current: boolean
 }
 
 /**
@@ -110,6 +125,9 @@ function buildMark(spec: FindingMarkSpec): Decoration {
     if (spec.emphasized) {
         classes.push('ai-editor-finding-emphasized')
     }
+    if (spec.current) {
+        classes.push('ai-editor-finding-current')
+    }
     return Decoration.mark({
         class: classes.join(' '),
         attributes: {
@@ -121,7 +139,8 @@ function buildMark(spec: FindingMarkSpec): Decoration {
         editorId: spec.editorId,
         color: spec.color,
         stale: spec.stale,
-        emphasized: spec.emphasized
+        emphasized: spec.emphasized,
+        current: spec.current
     })
 }
 
@@ -132,7 +151,8 @@ function markSpecOf(decoration: Decoration): FindingMarkSpec {
         editorId: spec.editorId ?? '',
         color: spec.color ?? '',
         stale: spec.stale ?? false,
-        emphasized: spec.emphasized ?? false
+        emphasized: spec.emphasized ?? false,
+        current: spec.current ?? false
     }
 }
 
@@ -147,7 +167,15 @@ function buildSet(specs: readonly FindingDecorationSpec[], docLength: number): D
         if (spec.from < 0 || spec.to > docLength || spec.from >= spec.to) {
             continue
         }
-        ranges.push(buildMark({ ...spec, emphasized: false }).range(spec.from, spec.to))
+        // Emphasis is effect-only (never spec-carried); a stale mark never
+        // renders as current (mirrors `applyStale`).
+        ranges.push(
+            buildMark({
+                ...spec,
+                emphasized: false,
+                current: spec.current && !spec.stale
+            }).range(spec.from, spec.to)
+        )
     }
     return Decoration.set(ranges, true)
 }
@@ -169,9 +197,11 @@ function applyStale(decorations: DecorationSet, findingIds: readonly string[]): 
         const spec = markSpecOf(cursor.value)
         const mark =
             staleIds.has(spec.findingId) && !spec.stale
-                ? // Going stale also drops any live emphasis flash — a stale
-                  // mark must render dimmed, never pulsing.
-                  buildMark({ ...spec, stale: true, emphasized: false })
+                ? // Going stale also drops any live emphasis flash and the
+                  // triage-current ring — a stale mark must render dimmed,
+                  // never pulsing, never "current" (it left the navigable
+                  // set; the cursor invalidates on the next step).
+                  buildMark({ ...spec, stale: true, emphasized: false, current: false })
                 : cursor.value
         ranges.push(mark.range(cursor.from, cursor.to))
         cursor.next()
@@ -257,4 +287,32 @@ export function findingSpansAt(state: EditorState, pos: number): FindingSpanInfo
         })
     })
     return spans
+}
+
+/**
+ * The current span of one finding's mark, or `null` when it has none (field
+ * not installed, finding not decorated). Used by the programmatic card open
+ * (keyboard triage card-on-jump) to anchor the card without a click.
+ */
+export function findingSpanById(state: EditorState, findingId: string): FindingSpanInfo | null {
+    const decorations = state.field(findingDecorationsField, false)
+    if (!decorations) {
+        return null
+    }
+    let found: FindingSpanInfo | null = null
+    decorations.between(0, state.doc.length, (from, to, decoration) => {
+        const spec = markSpecOf(decoration)
+        if (spec.findingId === findingId) {
+            found = {
+                findingId: spec.findingId,
+                editorId: spec.editorId,
+                from,
+                to,
+                stale: spec.stale
+            }
+            return false // stop iterating
+        }
+        return undefined
+    })
+    return found
 }
