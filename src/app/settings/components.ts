@@ -116,23 +116,49 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
         .setDesc('Pick a theme preset or a custom color.')
     const row = setting.controlEl.createDiv({ cls: 'ai-editor-swatch-row' })
 
+    // `render()` rebuilds the row, destroying the button that was clicked —
+    // so the swatch that ends up selected takes the focus back. Without it a
+    // keyboard user is dropped to the document after picking a colour.
+    let takeFocus = false
     const render = (): void => {
         row.empty()
         const current = options.get()
+        let selectedEl: HTMLElement | null = null
         for (const preset of COLOR_PRESETS) {
+            const isSelected = preset.value === current
             const swatch = row.createEl('button', {
                 cls: 'ai-editor-swatch',
-                attr: { 'aria-label': `Use ${preset.label}`, 'type': 'button' }
+                attr: {
+                    'aria-label': `Use ${preset.label}`,
+                    'type': 'button',
+                    // Which colour is chosen was said by a border tint and
+                    // nothing else: invisible to assistive tech, and one more
+                    // hue on a control that is already nothing but hue.
+                    // `aria-pressed` states it; the check glyph shows it.
+                    'aria-pressed': String(isSelected)
+                }
             })
             swatch.style.backgroundColor = preset.value
-            if (preset.value === current) {
+            if (isSelected) {
                 swatch.addClass('is-selected')
+                // Deliberately a glyph and not another colour: this button's
+                // background is a user-chosen hue, not a theme surface, so no
+                // theme variable can be relied on to contrast with it. The
+                // stylesheet gives the mark a halo that works over any of them.
+                const check = swatch.createSpan({ cls: 'ai-editor-swatch-check', text: '✓' })
+                check.setAttribute('aria-hidden', 'true')
+                selectedEl = swatch
             }
             swatch.addEventListener('click', (event) => {
                 event.preventDefault()
+                takeFocus = true
                 options.set(preset.value)
                 render()
             })
+        }
+        if (takeFocus) {
+            takeFocus = false
+            selectedEl?.focus()
         }
         const custom = row.createEl('input', {
             cls: 'ai-editor-swatch-custom',

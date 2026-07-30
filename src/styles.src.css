@@ -248,6 +248,19 @@
     border-color: var(--text-normal);
 }
 
+/* The check that says WHICH colour is chosen. The swatch's background is a
+   user-picked hue rather than a theme surface, so no theme token is
+   guaranteed to contrast with it: a white glyph inside a dark halo is legible
+   over every preset and every custom value, which is the whole point of
+   having a non-colour indicator here at all. */
+.ai-editor-swatch-check {
+    @apply block text-xs leading-none;
+    color: #fff;
+    text-shadow:
+        0 0 2px rgb(0 0 0 / 90%),
+        0 0 4px rgb(0 0 0 / 60%);
+}
+
 .ai-editor-swatch-custom {
     @apply cursor-pointer;
     width: 30px;
