@@ -9,7 +9,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and
 - **Async margin comments**: select text, leave an instruction, and a background agent works on it while you keep writing.
 - **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
 - **Portable configuration**: export the editors, panels, actions, rules, and voice profile you built to a JSON file (API keys never included) and import them into another vault, after confirming exactly what will be added.
-- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI and compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
+- **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI, OpenRouter and other compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex). Desktop-only.
+- **Guided setup**: a first-run wizard walks you through a backend, your editors, your voice profile, and when editors run — with a **Test connection** check that sends one real request through the same path a review takes, so a green light means reviews will actually work. Nothing is saved until the last step, and it is re-runnable any time.
 
 Nothing ever runs automatically: every AI action is user-initiated, and every change goes through a visible diff. The one opt-in exception is **daemon mode** — a settings toggle (off by default) that lets your editors watch your edits and refresh their recommendations after you pause; every refresh calls your configured backends, so the toggle states the cost implication plainly.
 

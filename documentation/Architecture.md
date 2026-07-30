@@ -34,12 +34,14 @@ Dependency direction: `ui`/`commands` → `services` → `domain` → `types`. T
 
 Two families behind one adapter contract (per-instance capability negotiation: streaming?, JSON schema?, usage?):
 
-- **API providers** (v1 core): Anthropic, OpenAI, OpenAI-compatible (custom base URL), Azure OpenAI (deployment-based), Ollama. Buffered structured output is the baseline; per-provider streaming decoders only where verified. Transport constraint: Obsidian's `requestUrl` does not stream; renderer `fetch` is used where CORS permits, `requestUrl` as buffered fallback.
+- **API providers** (v1 core): Anthropic, OpenAI, OpenRouter, OpenAI-compatible (custom base URL), Azure OpenAI (deployment-based), Ollama. A backend's "Test connection" (`services/backends/health-check.ts`) runs one probe operation through the SAME executor a review uses, so a pass means reviews will work rather than "the endpoint answers"; a reachable endpoint whose model ignores the required structure is reported as its own outcome. Buffered structured output is the baseline; per-provider streaming decoders only where verified. Transport constraint: Obsidian's `requestUrl` does not stream; renderer `fetch` is used where CORS permits, `requestUrl` as buffered fallback.
 - **CLI agents** (opt-in, late milestone): Claude Code, Codex — headless spawns behind the security boundary defined in Business Rules #9.
 
 ## UI integration points
 
-- CM6 `StateField` for finding decorations (mapped through transactions), single active tooltip per view for cards, view-owned panel element for the persona rail, `ItemView` workspace leaf for the side panel (findings list, scorecards, comments), status-bar item (finding count / gate verdict).
+- CM6 `StateField` for finding decorations (mapped through transactions), single active tooltip per view for cards, view-owned panel element for the persona rail, `ItemView` workspace leaf for the side panel (a header bound to the note — name + Review button — over the findings list, scorecards and comments), status-bar item (finding count / gate verdict).
+- Every surface that gates on "can a review start here" asks ONE function, `reviewGate` (`services/reviewability.ts`), which returns the reason (`excluded` / `rule-disabled` with the rule label / `no-editor` / `ok`); `isReviewable` and `isPluginEnabledForNote` are projections of it. Surfaces that must SAY WHY (the panel's Review button) read the gate itself, so an explanation cannot drift from the decision it explains.
+- The panel's Review button dispatches the shared whole-note review path and REFUSES while a run or retry is in flight (same `canCancelRun` predicate the Cancel command uses) — `RunController.startRun` cancel-replaces an existing run, and destroying findings from the surface displaying them is never what a click meant. Cancelling stays on the rail and the palette.
 - Multiple leaves/popouts: a file-level run controller with per-view projections; all DOM created via the owning view's document.
 
 ## Persistence

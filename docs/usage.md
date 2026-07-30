@@ -9,10 +9,24 @@ nav_order: 2
 
 ## Getting started
 
-1. Open **Settings → AI Editor → Backends** and configure at least one API backend (Anthropic, OpenAI or compatible, Azure OpenAI, or Ollama) with a default model.
+The **setup wizard** opens by itself the first time the plugin loads and walks you through all of it: a backend (with a **Test connection** button that sends one small real request), which editors are on, an optional voice profile, and whether editors wait to be summoned or refresh automatically. Nothing is saved until the last step, so you can leave at any point without changing anything, and you can re-run it any time from **Settings → AI Editor → Behavior → Setup** or the **Run setup wizard** command.
+
+Prefer to do it by hand:
+
+1. Open **Settings → AI Editor → Backends** and configure at least one API backend (Anthropic, OpenAI, OpenRouter or another OpenAI-compatible endpoint, Azure OpenAI, or Ollama) with a default model.
 2. Set it as the default backend, or assign it to individual editors.
 3. Make sure at least one editor is enabled (a starter pack is seeded on first load).
 4. Open a note and run **Review current note**.
+
+### Test connection
+
+The Backends step of the wizard can check a backend before you rely on it. It sends one small request through the exact same path a real review takes, so a pass means reviews will work — not just that the endpoint answers. Three answers are possible:
+
+- **Connection works** — you are done.
+- **Reached, but not usable** — the key and the endpoint are fine, but the model did not answer in the structure the plugin needs. Try a stronger model.
+- **Failed** — credentials, network, timeout, or configuration. The message says which.
+
+A local model that is still loading can time out here and work fine for real reviews; the message tells you when that is what happened.
 
 ## Commands
 
@@ -20,6 +34,7 @@ nav_order: 2
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Review current note | Sends the current note to every enabled editor and streams their findings in as highlights. Unavailable for excluded notes. |
 | Open review panel   | Opens the review side panel listing each editor's status, findings, summary, and verdict for the active note.               |
+| Run setup wizard    | Re-opens the guided setup (backend, editors, voice profile, run mode). Nothing is saved until the last step.                |
 
 More commands (review selection, ask an editor, cancel, triage, bulk operations, severity filter) are listed under the sections below. None of them ship a default hotkey — assign your own in **Settings → Hotkeys**.
 
@@ -28,7 +43,7 @@ More commands (review selection, ask an editor, cancel, triage, bulk operations,
 - A **persona rail** sits in the top-right corner of every markdown editor: a Review/Cancel button plus one colored dot per enabled editor. Dots pulse while reviewing and show a live finding-count badge. Hover any dot for the editor's name and live status — for example "Concision Editor — 3 findings", "Devil's Advocate — waiting", or "Fact Checker — failed (timeout)".
 - **Findings highlight the exact text span** they quote, tinted with the editor's color. Keep typing — highlights follow your edits. If you edit inside a highlighted span, the finding turns stale (dashed underline, dimmed): its suggestion no longer matches your text.
 - **Click a highlight** to open a floating review card: the editor's critique, the quoted text, and (when the editor proposed a replacement) an old/new preview with **Accept** and **Dismiss**. Overlapping findings stack in one card, innermost first. Accept applies the replacement as a single undoable edit — and only if the text still matches exactly what the suggestion was computed against; otherwise the finding is stale and must be re-reviewed. Escape, clicking away, scrolling, or editing closes the card. The push-back input is a placeholder for an upcoming milestone.
-- The **side panel** lists findings per editor. Click one to jump to and briefly select the span in the editor. Findings whose quote could not be located are listed under "Not anchored".
+- The **side panel** has a header with the note it is bound to and a **Review** button, so you can start a review without going back to the editor — it works on the note you are on, or the last one you were on if your focus is in the panel. While a review is running the button shows a spinner and reads "Reviewing…" instead of starting a second one; cancel from the rail or the **Cancel review or action** command. When the button is unavailable, hover it: the tooltip says why (no note open, note excluded by your privacy settings, a rule turned the plugin off for it, or no editor can review). The panel lists findings per editor. Click one to jump to and briefly select the span in the editor. Findings whose quote could not be located are listed under "Not anchored".
 - The **status bar** shows the number of open findings for the active note.
 - Notes above the configured word threshold ask for confirmation before anything is sent.
 - Editors that cannot run (no backend, disabled backend, no model…) are reported, never silently skipped.
