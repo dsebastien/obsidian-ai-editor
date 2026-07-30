@@ -1,4 +1,5 @@
 import { currentSpanText } from '../domain/operations/thread'
+import type { ThreadBeginFailure } from '../domain/operations/thread'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createApiEditorExecutor } from './backends/api-editor-backend'
 import { redactSecret } from './backends/providers'
@@ -7,7 +8,6 @@ import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import type { FindingId } from '../domain/ids'
 import type { RunController, ThreadTurnResolution } from './orchestration/run-controller'
-import type { ThreadBeginFailure } from './orchestration/finding-store'
 import type { EditorSkip } from './review-service'
 import { composeSystemPrompt, resolveApiBackend, reviewTimeoutMs } from './review-service'
 

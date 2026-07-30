@@ -64,6 +64,22 @@ export function threadTurnsLeft(thread: readonly ThreadMessage[]): number {
 }
 
 /**
+ * Why a push-back could not be sent. Lives in the domain so every layer can
+ * name a refusal without depending on the store: the `FindingStore` decides,
+ * the run handle and the dispatch service pass it through, and the card turns
+ * it into copy.
+ */
+export type ThreadBeginFailure =
+    | 'not-found'
+    /** The finding is terminal (accepted / rejected / dismissed / superseded). */
+    | 'invalid-status'
+    /** A turn is already in flight for this finding. */
+    | 'in-flight'
+    /** {@link THREAD_MAX_TURNS} completed exchanges reached. */
+    | 'cap-reached'
+    | 'blank-message'
+
+/**
  * What a validated `thread-turn` result means for the finding. Concede wins
  * over any revision: a withdrawn finding has no suggestion left to apply, so
  * a model that both concedes and revises is read as withdrawing (the contract

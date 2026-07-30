@@ -14,10 +14,10 @@ import type {
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import { resolveThreadOutcome } from '../../domain/operations/thread'
+import type { ThreadBeginFailure } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { hashText } from '../../domain/snapshot'
 import { FindingStore } from './finding-store'
-import type { ThreadBeginFailure } from './finding-store'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
 

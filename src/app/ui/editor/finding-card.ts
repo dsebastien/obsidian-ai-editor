@@ -31,8 +31,7 @@ import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
 import type { Severity } from '../../domain/operations/contract'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
-import type { ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
-import type { ThreadBeginFailure } from '../../services/orchestration/finding-store'
+import type { ThreadBeginFailure, ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
 import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
 
 // ---------------------------------------------------------------------------

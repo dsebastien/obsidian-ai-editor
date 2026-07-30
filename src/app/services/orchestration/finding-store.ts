@@ -4,7 +4,12 @@ import type { MatchStrategy } from '../../domain/anchoring/match'
 import type { FindingId, RunId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
 import { isThreadFull } from '../../domain/operations/thread'
-import type { ThreadMessage, ThreadOutcome, ThreadTurn } from '../../domain/operations/thread'
+import type {
+    ThreadBeginFailure,
+    ThreadMessage,
+    ThreadOutcome,
+    ThreadTurn
+} from '../../domain/operations/thread'
 
 /**
  * Finding lifecycle state machine (review minor #34).
@@ -86,17 +91,6 @@ export type AcceptFailureReason =
 export type AcceptResult =
     | { readonly ok: true; readonly finding: TrackedFinding }
     | { readonly ok: false; readonly reason: AcceptFailureReason }
-
-/** Why a push-back could not be sent. */
-export type ThreadBeginFailure =
-    | 'not-found'
-    /** The finding is terminal (accepted / rejected / dismissed / superseded). */
-    | 'invalid-status'
-    /** A turn is already in flight for this finding. */
-    | 'in-flight'
-    /** `THREAD_MAX_TURNS` completed exchanges reached. */
-    | 'cap-reached'
-    | 'blank-message'
 
 export type ThreadBeginResult =
     | { readonly ok: true; readonly finding: TrackedFinding }
