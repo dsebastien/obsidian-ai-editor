@@ -140,6 +140,22 @@ export class ReviewSidePanelView extends ItemView {
         this.render()
     }
 
+    /**
+     * Scrolls the panel to one editor's section — the rail-chip click-through
+     * for chips with nothing revealable inline but a summary/error to show
+     * (plan §0 "Live-testing feedback #3"). Instant scroll on purpose: no
+     * smooth animation to be reduced-motion safe without a media query. A
+     * no-op when the editor has no section (no run state yet).
+     */
+    revealEditorSection(editorId: string): void {
+        const section = this.contentEl.querySelector(
+            `.ai-editor-panel-section[data-editor-id="${CSS.escape(editorId)}"]`
+        )
+        if (section instanceof HTMLElement) {
+            section.scrollIntoView({ block: 'start' })
+        }
+    }
+
     private render(): void {
         const { contentEl } = this
         contentEl.empty()
@@ -183,7 +199,10 @@ export class ReviewSidePanelView extends ItemView {
         state: EditorRunState,
         color: string
     ): void {
-        const section = root.createEl('section', { cls: 'ai-editor-panel-section' })
+        const section = root.createEl('section', {
+            cls: 'ai-editor-panel-section',
+            attr: { 'data-editor-id': state.editorId }
+        })
 
         const header = section.createDiv({ cls: 'ai-editor-panel-section-header' })
         const dot = header.createSpan({ cls: 'ai-editor-panel-dot' })

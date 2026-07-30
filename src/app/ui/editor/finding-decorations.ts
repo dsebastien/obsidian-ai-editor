@@ -19,7 +19,8 @@
  *   — the eventual-consistency backstop.
  *
  * Rendering: each finding is a `Decoration.mark` with class
- * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale) and the
+ * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale, plus
+ * `ai-editor-finding-emphasized` during the rail-chip click flash) and the
  * per-editor persona color exposed as the `--ai-editor-finding-color` CSS
  * custom property via an inline style attribute, so the stylesheet controls
  * how the tint is applied.
@@ -71,12 +72,23 @@ export const removeFindingsEffect = StateEffect.define<readonly string[]>()
 /** Marks the given findings stale (dimmed, non-actionable) in place. */
 export const markStaleEffect = StateEffect.define<readonly string[]>()
 
+/**
+ * Emphasizes ONE editor's marks in place (the ~2 s rail-chip click flash —
+ * plan §0 "Live-testing feedback #3"): the given editor's marks gain the
+ * `ai-editor-finding-emphasized` class, every other mark loses it. `null`
+ * clears the emphasis everywhere. A full `setFindingsEffect` rebuild also
+ * resets emphasis (specs never carry it), so a note switch or run change
+ * clears the flash without anyone remembering to.
+ */
+export const emphasizeEditorEffect = StateEffect.define<string | null>()
+
 /** Shape of the private fields carried on each mark's decoration spec. */
 interface FindingMarkSpec {
     readonly findingId: string
     readonly editorId: string
     readonly color: string
     readonly stale: boolean
+    readonly emphasized: boolean
 }
 
 /**
@@ -91,8 +103,15 @@ function sanitizeColor(color: string): string {
 }
 
 function buildMark(spec: FindingMarkSpec): Decoration {
+    const classes = ['ai-editor-finding']
+    if (spec.stale) {
+        classes.push('ai-editor-finding-stale')
+    }
+    if (spec.emphasized) {
+        classes.push('ai-editor-finding-emphasized')
+    }
     return Decoration.mark({
-        class: spec.stale ? 'ai-editor-finding ai-editor-finding-stale' : 'ai-editor-finding',
+        class: classes.join(' '),
         attributes: {
             'style': `--ai-editor-finding-color: ${sanitizeColor(spec.color)}`,
             'data-finding-id': spec.findingId,
@@ -101,7 +120,8 @@ function buildMark(spec: FindingMarkSpec): Decoration {
         findingId: spec.findingId,
         editorId: spec.editorId,
         color: spec.color,
-        stale: spec.stale
+        stale: spec.stale,
+        emphasized: spec.emphasized
     })
 }
 
@@ -111,7 +131,8 @@ function markSpecOf(decoration: Decoration): FindingMarkSpec {
         findingId: spec.findingId ?? '',
         editorId: spec.editorId ?? '',
         color: spec.color ?? '',
-        stale: spec.stale ?? false
+        stale: spec.stale ?? false,
+        emphasized: spec.emphasized ?? false
     }
 }
 
@@ -126,7 +147,7 @@ function buildSet(specs: readonly FindingDecorationSpec[], docLength: number): D
         if (spec.from < 0 || spec.to > docLength || spec.from >= spec.to) {
             continue
         }
-        ranges.push(buildMark(spec).range(spec.from, spec.to))
+        ranges.push(buildMark({ ...spec, emphasized: false }).range(spec.from, spec.to))
     }
     return Decoration.set(ranges, true)
 }
@@ -148,8 +169,31 @@ function applyStale(decorations: DecorationSet, findingIds: readonly string[]): 
         const spec = markSpecOf(cursor.value)
         const mark =
             staleIds.has(spec.findingId) && !spec.stale
-                ? buildMark({ ...spec, stale: true })
+                ? // Going stale also drops any live emphasis flash — a stale
+                  // mark must render dimmed, never pulsing.
+                  buildMark({ ...spec, stale: true, emphasized: false })
                 : cursor.value
+        ranges.push(mark.range(cursor.from, cursor.to))
+        cursor.next()
+    }
+    return Decoration.set(ranges, true)
+}
+
+/**
+ * Rebuilds the set with exactly the given editor's live marks emphasized
+ * (`null` de-emphasizes everything). Stale marks are never emphasized: they
+ * are dimmed and non-revealable, and flashing them would contradict their
+ * "no longer actionable" look. Marks whose emphasis already matches are
+ * reused.
+ */
+function applyEmphasis(decorations: DecorationSet, editorId: string | null): DecorationSet {
+    const ranges: Range<Decoration>[] = []
+    const cursor = decorations.iter()
+    while (cursor.value) {
+        const spec = markSpecOf(cursor.value)
+        const emphasized = editorId !== null && spec.editorId === editorId && !spec.stale
+        const mark =
+            emphasized === spec.emphasized ? cursor.value : buildMark({ ...spec, emphasized })
         ranges.push(mark.range(cursor.from, cursor.to))
         cursor.next()
     }
@@ -173,6 +217,8 @@ export const findingDecorationsField = StateField.define<DecorationSet>({
                 next = applyStale(next, effect.value)
             } else if (effect.is(removeFindingsEffect)) {
                 next = applyRemove(next, effect.value)
+            } else if (effect.is(emphasizeEditorEffect)) {
+                next = applyEmphasis(next, effect.value)
             }
         }
         return next

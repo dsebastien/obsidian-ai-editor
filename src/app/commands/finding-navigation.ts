@@ -59,6 +59,50 @@ export function navigableFindings(
     )
 }
 
+/** Structural subset with the owning editor — rail-chip scoped navigation. */
+export interface EditorScopedSourceFinding extends NavigationSourceFinding {
+    readonly editorId: string
+}
+
+/**
+ * The revealable findings of ONE editor, ordered by document position — the
+ * chip-click cycle set (plan §0 "Live-testing feedback #3"). Same
+ * revealability rules as `navigableFindings`, narrowed to the chip's editor.
+ */
+export function navigableEditorFindings(
+    findings: readonly EditorScopedSourceFinding[],
+    editorId: string
+): readonly NavigationTarget[] {
+    return navigableFindings(findings.filter((finding) => finding.editorId === editorId))
+}
+
+/**
+ * The target a chip click lands on. Memory-based rather than cursor-based on
+ * purpose: the contract says the FIRST click reveals the FIRST finding
+ * regardless of where the cursor happens to sit, and subsequent clicks cycle
+ * in anchor order with wrap-around. `lastRevealedId` is the finding the
+ * previous chip click revealed; when it is null or no longer in the cycle
+ * set (accepted, dismissed, went stale, new run) the cycle restarts at the
+ * first target.
+ */
+export function cycleFinding(
+    ordered: readonly NavigationTarget[],
+    lastRevealedId: string | null
+): NavigationTarget | null {
+    const first = ordered[0]
+    if (!first) {
+        return null
+    }
+    if (lastRevealedId === null) {
+        return first
+    }
+    const index = ordered.findIndex((target) => target.id === lastRevealedId)
+    if (index === -1) {
+        return first
+    }
+    return ordered[(index + 1) % ordered.length] ?? first
+}
+
 /**
  * The target a step lands on. `next` picks the first finding starting
  * strictly after the cursor, `prev` the last one starting strictly before

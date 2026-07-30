@@ -4,6 +4,7 @@ import type { StateEffect, TransactionSpec } from '@codemirror/state'
 import type { DecorationSet } from '@codemirror/view'
 import {
     clearFindingsEffect,
+    emphasizeEditorEffect,
     findingDecorationsField,
     findingSpansAt,
     markStaleEffect,
@@ -210,6 +211,86 @@ describe('findingDecorationsField', () => {
             expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
             expect(marks[0]?.from).toBe(7)
             expect(marks[0]?.to).toBe(11)
+        })
+    })
+
+    describe('emphasizeEditor (rail-chip click flash)', () => {
+        const twoEditors = [
+            findingSpec({ findingId: 'mine', editorId: 'e-1', from: 0, to: 5 }),
+            findingSpec({ findingId: 'theirs', editorId: 'e-2', from: 6, to: 10 })
+        ]
+
+        it('adds the emphasized class to exactly the given editor marks', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            const marks = marksOf(state)
+            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
+            expect(marks[1]?.classes).toBe('ai-editor-finding')
+        })
+
+        it('never emphasizes stale marks (dimmed, non-revealable)', () => {
+            let state = stateWith(
+                'alpha beta gamma',
+                setFindingsEffect.of([
+                    findingSpec({ findingId: 'live', editorId: 'e-1', from: 0, to: 5 }),
+                    findingSpec({
+                        findingId: 'stale',
+                        editorId: 'e-1',
+                        from: 6,
+                        to: 10,
+                        stale: true
+                    })
+                ])
+            )
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            const marks = marksOf(state)
+            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
+            expect(marks[1]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+        })
+
+        it('moves the emphasis when another editor chip is clicked', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-2') })
+            const marks = marksOf(state)
+            expect(marks[0]?.classes).toBe('ai-editor-finding')
+            expect(marks[1]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
+        })
+
+        it('clears the emphasis with null (auto-clear timer)', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            state = apply(state, { effects: emphasizeEditorEffect.of(null) })
+            expect(marksOf(state).map((mark) => mark.classes)).toEqual([
+                'ai-editor-finding',
+                'ai-editor-finding'
+            ])
+        })
+
+        it('drops the emphasis when the emphasized mark goes stale', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            state = apply(state, { effects: markStaleEffect.of(['mine']) })
+            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+        })
+
+        it('resets on a full setFindings rebuild (note switch, run change)', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            state = apply(state, { effects: setFindingsEffect.of(twoEditors) })
+            expect(marksOf(state).map((mark) => mark.classes)).toEqual([
+                'ai-editor-finding',
+                'ai-editor-finding'
+            ])
+        })
+
+        it('survives unrelated document edits (marks keep the flash while mapping)', () => {
+            let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
+            state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
+            state = apply(state, { changes: { from: 15, to: 15, insert: '!' } })
+            expect(marksOf(state)[0]?.classes).toBe(
+                'ai-editor-finding ai-editor-finding-emphasized'
+            )
         })
     })
 

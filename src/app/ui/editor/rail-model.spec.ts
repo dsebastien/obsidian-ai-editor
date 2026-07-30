@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { DAEMON_ARMED_TITLE, buildRailViewModel, railErrorReason } from './rail-model'
-import type { RailEditorState, RailState } from './rail-model'
+import {
+    DAEMON_ARMED_TITLE,
+    buildRailViewModel,
+    chipClickAction,
+    railErrorReason
+} from './rail-model'
+import type { RailEditorState, RailEditorStatus, RailState } from './rail-model'
 
 function editor(overrides: Partial<RailEditorState> = {}): RailEditorState {
     return {
@@ -169,5 +174,35 @@ describe('buildRailViewModel', () => {
             const vm = buildRailViewModel(state({ daemonArmed: true }))
             expect(vm.daemon).toEqual({ title: DAEMON_ARMED_TITLE })
         })
+    })
+})
+
+describe('chipClickAction', () => {
+    const inFlight: RailEditorStatus[] = ['pending', 'running', 'transforming']
+
+    it('is a no-op while the chip is in flight, even with revealable findings', () => {
+        for (const status of inFlight) {
+            expect(chipClickAction(status, 0, false)).toBe('none')
+            expect(chipClickAction(status, 3, true)).toBe('none')
+        }
+    })
+
+    it('cycles findings when the editor has revealable findings', () => {
+        expect(chipClickAction('done', 1, false)).toBe('cycle-findings')
+        expect(chipClickAction('done', 5, true)).toBe('cycle-findings')
+        // Partial results before a failure/cancellation stay revealable.
+        expect(chipClickAction('error', 2, true)).toBe('cycle-findings')
+        expect(chipClickAction('cancelled', 2, false)).toBe('cycle-findings')
+    })
+
+    it('opens the panel with zero revealable findings but a summary or error', () => {
+        expect(chipClickAction('done', 0, true)).toBe('open-panel')
+        expect(chipClickAction('error', 0, true)).toBe('open-panel')
+        expect(chipClickAction('cancelled', 0, true)).toBe('open-panel')
+    })
+
+    it('does nothing when there is nothing to show', () => {
+        expect(chipClickAction('idle', 0, false)).toBe('none')
+        expect(chipClickAction('done', 0, false)).toBe('none')
     })
 })

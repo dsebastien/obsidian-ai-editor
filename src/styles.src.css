@@ -614,6 +614,45 @@
         color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
 }
 
+/* Chip-click emphasis (~2 s, auto-cleared by the controller): a stronger
+   tint plus a gentle pulse on ONE editor's highlights so a rail-chip click
+   visibly answers "which spans are yours?". The class is applied per-editor
+   by the emphasizeEditorEffect (finding-decorations.ts); marks also carry
+   data-editor-id for scoping/debugging. Motion-sensitive users keep the
+   static stronger tint without the pulse (see the reduced-motion block). */
+.ai-editor-finding-emphasized {
+    background-color: color-mix(
+        in srgb,
+        var(--ai-editor-finding-color, var(--text-accent)) 38%,
+        transparent
+    );
+    animation: ai-editor-emphasis 1s ease-in-out 2;
+}
+
+@keyframes ai-editor-emphasis {
+    0%,
+    100% {
+        background-color: color-mix(
+            in srgb,
+            var(--ai-editor-finding-color, var(--text-accent)) 38%,
+            transparent
+        );
+    }
+    50% {
+        background-color: color-mix(
+            in srgb,
+            var(--ai-editor-finding-color, var(--text-accent)) 22%,
+            transparent
+        );
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-editor-finding-emphasized {
+        animation: none;
+    }
+}
+
 /* Stale: the underlying text changed — dimmed, dashed, non-actionable */
 .ai-editor-finding-stale {
     @apply opacity-55;

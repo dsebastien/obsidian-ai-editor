@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 import type { FindingStatus } from '../services/orchestration/finding-store'
-import { navigableFindings, stepFinding } from './finding-navigation'
-import type { NavigationSourceFinding, NavigationTarget } from './finding-navigation'
+import {
+    cycleFinding,
+    navigableEditorFindings,
+    navigableFindings,
+    stepFinding
+} from './finding-navigation'
+import type {
+    EditorScopedSourceFinding,
+    NavigationSourceFinding,
+    NavigationTarget
+} from './finding-navigation'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -89,6 +98,106 @@ describe('navigableFindings', () => {
     it('carries the anchor range into the target', () => {
         const result = navigableFindings([makeFinding({ id: 'a', from: 7, to: 12 })])
         expect(result).toEqual([{ id: 'a', from: 7, to: 12 }])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// navigableEditorFindings — chip-scoped filtering
+// ---------------------------------------------------------------------------
+
+function makeEditorFinding(overrides: {
+    id: string
+    editorId: string
+    from?: number
+    status?: FindingStatus
+    anchored?: boolean
+    stale?: boolean
+}): EditorScopedSourceFinding {
+    return { ...makeFinding(overrides), editorId: overrides.editorId }
+}
+
+describe('navigableEditorFindings', () => {
+    it('returns an empty list when the editor has no findings', () => {
+        expect(navigableEditorFindings([], 'e-1')).toEqual([])
+        expect(
+            navigableEditorFindings([makeEditorFinding({ id: 'a', editorId: 'other' })], 'e-1')
+        ).toEqual([])
+    })
+
+    it('keeps only the given editor, ordered by anchor position', () => {
+        const result = navigableEditorFindings(
+            [
+                makeEditorFinding({ id: 'theirs', editorId: 'other', from: 5 }),
+                makeEditorFinding({ id: 'late', editorId: 'e-1', from: 40 }),
+                makeEditorFinding({ id: 'early', editorId: 'e-1', from: 10 })
+            ],
+            'e-1'
+        )
+        expect(result.map((entry) => entry.id)).toEqual(['early', 'late'])
+    })
+
+    it('applies the revealability rules within the editor scope', () => {
+        const result = navigableEditorFindings(
+            [
+                makeEditorFinding({ id: 'dismissed', editorId: 'e-1', status: 'dismissed' }),
+                makeEditorFinding({ id: 'unanchored', editorId: 'e-1', anchored: false }),
+                makeEditorFinding({ id: 'stale', editorId: 'e-1', from: 5, stale: true }),
+                makeEditorFinding({ id: 'live', editorId: 'e-1', from: 30 })
+            ],
+            'e-1'
+        )
+        expect(result.map((entry) => entry.id)).toEqual(['live'])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// cycleFinding — chip-click cycling with wrap-around
+// ---------------------------------------------------------------------------
+
+describe('cycleFinding', () => {
+    const ordered = [target('a', 10), target('b', 20), target('c', 30)]
+
+    it('returns null with nothing to cycle', () => {
+        expect(cycleFinding([], null)).toBeNull()
+        expect(cycleFinding([], 'a')).toBeNull()
+    })
+
+    it('starts at the FIRST finding without memory', () => {
+        expect(cycleFinding(ordered, null)?.id).toBe('a')
+    })
+
+    it('steps to the finding after the remembered one', () => {
+        expect(cycleFinding(ordered, 'a')?.id).toBe('b')
+        expect(cycleFinding(ordered, 'b')?.id).toBe('c')
+    })
+
+    it('wraps from the last finding back to the first', () => {
+        expect(cycleFinding(ordered, 'c')?.id).toBe('a')
+    })
+
+    it('restarts at the first when the remembered finding left the cycle set', () => {
+        // Accepted/dismissed/stale findings drop out of the navigable list.
+        expect(cycleFinding(ordered, 'gone')?.id).toBe('a')
+    })
+
+    it('cycles a single finding onto itself', () => {
+        const single = [target('only', 10)]
+        expect(cycleFinding(single, null)?.id).toBe('only')
+        expect(cycleFinding(single, 'only')?.id).toBe('only')
+    })
+
+    it('visits every finding in anchor order over repeated clicks', () => {
+        const visited: string[] = []
+        let last: string | null = null
+        for (let i = 0; i < 4; i += 1) {
+            const next = cycleFinding(ordered, last)
+            if (!next) {
+                break
+            }
+            visited.push(next.id)
+            last = next.id
+        }
+        expect(visited).toEqual(['a', 'b', 'c', 'a'])
     })
 })
 

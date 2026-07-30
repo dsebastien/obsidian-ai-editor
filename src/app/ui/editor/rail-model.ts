@@ -77,6 +77,40 @@ export interface RailViewModel {
     readonly daemon: { readonly title: string } | null
 }
 
+/**
+ * What clicking an editor chip does (plan §0 "Live-testing feedback #3"):
+ * - `cycle-findings` — reveal the first / next revealable finding of that
+ *   editor (with the ~2 s highlight emphasis);
+ * - `open-panel` — nothing to reveal inline, but the editor has a summary or
+ *   a failure to show: open the side panel scrolled to its section;
+ * - `none` — chip in flight (tooltip already says so) or nothing to show.
+ */
+export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'none'
+
+/**
+ * Pure chip-click decision. In-flight statuses (pending/running/
+ * transforming) win over everything — findings may already be streaming in,
+ * but the locked contract says a running chip is a no-op. After that,
+ * revealable findings beat the panel fallback.
+ *
+ * `hasSummaryOrError`: the editor's run state carries a non-empty summary,
+ * or ended in error/cancelled — i.e. its side-panel section has something
+ * beyond "Nothing to report".
+ */
+export function chipClickAction(
+    status: RailEditorStatus,
+    revealableCount: number,
+    hasSummaryOrError: boolean
+): ChipClickAction {
+    if (status === 'pending' || status === 'running' || status === 'transforming') {
+        return 'none'
+    }
+    if (revealableCount > 0) {
+        return 'cycle-findings'
+    }
+    return hasSummaryOrError ? 'open-panel' : 'none'
+}
+
 /** Tooltip/aria text of the daemon armed indicator. */
 export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after you pause editing'
 

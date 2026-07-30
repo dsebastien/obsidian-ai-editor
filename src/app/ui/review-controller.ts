@@ -4,7 +4,12 @@ import { isolateHistory } from '@codemirror/commands'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
-import { navigableFindings, stepFinding } from '../commands/finding-navigation'
+import {
+    cycleFinding,
+    navigableEditorFindings,
+    navigableFindings,
+    stepFinding
+} from '../commands/finding-navigation'
 import type { NavigationDirection } from '../commands/finding-navigation'
 import { getBuiltInVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
@@ -37,6 +42,7 @@ import { changesFromTransaction } from './editor/changes-adapter'
 import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
 import {
     clearFindingsEffect,
+    emphasizeEditorEffect,
     markStaleEffect,
     setFindingsEffect
 } from './editor/finding-decorations'
@@ -45,7 +51,7 @@ import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
 import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
-import { railErrorReason } from './editor/rail-model'
+import { chipClickAction, railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
@@ -183,9 +189,22 @@ interface ViewGlue {
     transformUnsubscribe: (() => void) | null
     /** RunId of the currently presented preview ('' = none presented). */
     transformPreviewKey: string
+    /**
+     * Chip-click cycle memory (plan §0 "Live-testing feedback #3"): the
+     * finding the last chip click on `editorId` revealed, so the next click
+     * steps to the one after it (wrap-around). Cleared on note switch and on
+     * run change; a remembered finding that left the cycle set restarts the
+     * cycle at the first target (`cycleFinding`).
+     */
+    chipCycle: { editorId: string; findingId: string } | null
+    /** Auto-clear timer of the ~2 s chip-click highlight emphasis. */
+    emphasisTimer: number | null
 }
 
 const REVEAL_SELECTION_MS = 1_500
+
+/** How long a chip click emphasizes its editor's highlights. */
+const CHIP_EMPHASIS_MS = 2_000
 
 /**
  * How `snapshotView` treats a live selection: `auto` embeds it when non-empty
@@ -956,6 +975,103 @@ export class ReviewController {
         }
     }
 
+    // -- Rail chip click (plan §0 "Live-testing feedback #3") -----------------
+
+    /**
+     * Chip-click dispatch: the pure decision lives in `chipClickAction`, the
+     * pure cycle stepping in `cycleFinding` — this method only assembles
+     * their inputs from live state and executes the verdict.
+     *
+     * - `cycle-findings`: reveal the first / next revealable finding of that
+     *   editor (the exact side-panel reveal path) and emphasize the editor's
+     *   highlights for ~2 s.
+     * - `open-panel`: nothing revealable inline, but the editor has a
+     *   summary or failure — open the side panel scrolled to its section.
+     * - `none`: chip in flight (the tooltip already says so) or nothing to
+     *   show.
+     *
+     * The chip status is derived exactly like `buildRailEditors` derives it
+     * (including the in-flight transform overlay), so the decision always
+     * matches what the user sees on the chip.
+     */
+    private handleChipClick(view: MarkdownView, editorId: string): void {
+        const glue = this.glues.get(view)
+        const path = view.file?.path
+        if (!glue || !path || this.disposed) {
+            return
+        }
+        const run = this.deps.runController.getRun(path)
+        const transformRun = this.deps.transformController.getRun(path)
+        const transformActive =
+            transformRun !== null && !transformRun.isSettled() && transformRun.editorId === editorId
+        const state = run?.getEditorState(editorId) ?? null
+        const status = transformActive
+            ? 'transforming'
+            : state
+              ? railStatusOf(state.status)
+              : 'idle'
+        const revealable = run ? navigableEditorFindings(run.findings.list(), editorId) : []
+        const hasSummaryOrError =
+            state !== null &&
+            ((state.summary !== null && state.summary.length > 0) ||
+                state.status === 'error' ||
+                state.status === 'cancelled')
+        switch (chipClickAction(status, revealable.length, hasSummaryOrError)) {
+            case 'cycle-findings': {
+                const last = glue.chipCycle?.editorId === editorId ? glue.chipCycle.findingId : null
+                const target = cycleFinding(revealable, last)
+                if (!target) {
+                    return
+                }
+                glue.chipCycle = { editorId, findingId: target.id }
+                this.emphasizeEditor(glue, editorId)
+                void this.revealFinding(path, asFindingId(target.id))
+                return
+            }
+            case 'open-panel':
+                void this.activateSidePanelAtEditor(editorId)
+                return
+            case 'none':
+                return
+        }
+    }
+
+    /**
+     * Flashes one editor's highlights for ~2 s (`emphasizeEditorEffect` adds
+     * the `ai-editor-finding-emphasized` class to exactly that editor's
+     * marks; the stylesheet keeps the pulse reduced-motion aware). Re-clicks
+     * restart the window; the timer is cleared on note switch, glue teardown
+     * and dispose (`pendingTimers`). The clear dispatch is safe on a
+     * destroyed `EditorView` (CM6 no-op) and after a note switch (the
+     * decoration set was rebuilt without emphasis, so clearing is a no-op).
+     */
+    private emphasizeEditor(glue: ViewGlue, editorId: string): void {
+        const editorView = editorViewOf(glue.view)
+        if (!editorView) {
+            return
+        }
+        this.clearEmphasisTimer(glue)
+        editorView.dispatch({ effects: emphasizeEditorEffect.of(editorId) })
+        const timer = window.setTimeout(() => {
+            this.pendingTimers.delete(timer)
+            glue.emphasisTimer = null
+            if (this.disposed) {
+                return
+            }
+            editorView.dispatch({ effects: emphasizeEditorEffect.of(null) })
+        }, CHIP_EMPHASIS_MS)
+        glue.emphasisTimer = timer
+        this.pendingTimers.add(timer)
+    }
+
+    private clearEmphasisTimer(glue: ViewGlue): void {
+        if (glue.emphasisTimer !== null) {
+            window.clearTimeout(glue.emphasisTimer)
+            this.pendingTimers.delete(glue.emphasisTimer)
+            glue.emphasisTimer = null
+        }
+    }
+
     /**
      * The run bound to the (last) active markdown file, if any — the run the
      * ambient surfaces follow. Command gates (`Cancel review`) read run state
@@ -1012,6 +1128,24 @@ export class ReviewController {
         }
         await workspace.revealLeaf(leaf)
         this.updatePanels()
+    }
+
+    /**
+     * Opens the side panel scrolled to one editor's section — the chip
+     * click-through when there is nothing to reveal inline. The scroll runs
+     * after `activateSidePanel` pushed the binding, so the section exists.
+     */
+    private async activateSidePanelAtEditor(editorId: string): Promise<void> {
+        await this.activateSidePanel()
+        if (this.disposed) {
+            return
+        }
+        for (const leaf of this.deps.app.workspace.getLeavesOfType(REVIEW_PANEL_VIEW_TYPE)) {
+            const view = leaf.view
+            if (view instanceof ReviewSidePanelView) {
+                view.revealEditorSection(editorId)
+            }
+        }
     }
 
     /** Current side-panel binding for the (last) active markdown file. */
@@ -1307,8 +1441,8 @@ export class ReviewController {
                 onCancel: (): void => {
                     this.cancelReview(view)
                 },
-                onEditorClick: (): void => {
-                    void this.activateSidePanel()
+                onEditorClick: (editorId): void => {
+                    this.handleChipClick(view, editorId)
                 },
                 onRetry: (editorId): void => {
                     // Resolve the path at click time: the view may have
@@ -1334,11 +1468,14 @@ export class ReviewController {
             lastSpecsKey: '',
             transformRun: null,
             transformUnsubscribe: null,
-            transformPreviewKey: ''
+            transformPreviewKey: '',
+            chipCycle: null,
+            emphasisTimer: null
         }
     }
 
     private destroyGlue(glue: ViewGlue): void {
+        this.clearEmphasisTimer(glue)
         glue.unsubscribe?.()
         glue.unsubscribe = null
         glue.transformUnsubscribe?.()
@@ -1356,6 +1493,9 @@ export class ReviewController {
             glue.unsubscribe = run ? run.subscribe(() => this.scheduleRefresh()) : null
             glue.run = run
             glue.lastSpecsKey = ''
+            // A new (or cleared) run means new finding ids: the chip-click
+            // cycle restarts at the first finding.
+            glue.chipCycle = null
         }
         // Terminal transform failures/cancellations are reconciled (Notice +
         // discard) BEFORE binding, so the rail and preview only ever see a
@@ -1370,6 +1510,14 @@ export class ReviewController {
         }
         const previousPath = glue.filePath
         glue.filePath = filePath
+        // Note switch: the chip-click cycle and the emphasis flash belong to
+        // the previous note — drop both. The decorations themselves are
+        // rebuilt (or cleared) by `dispatchDecorations` below, which resets
+        // emphasis too (`setFindingsEffect` specs never carry it).
+        if (previousPath !== filePath) {
+            glue.chipCycle = null
+            this.clearEmphasisTimer(glue)
+        }
         // Same-pane navigation (view rebound from note A to note B): clear
         // A's daemon schedule when this was the LAST view showing A — the
         // same last-view rule the removed-view sweep in `syncGlues` applies.
