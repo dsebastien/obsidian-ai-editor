@@ -23,7 +23,9 @@ Entities and their relationships. Authoritative shapes live in code: `src/app/do
 
 ## Persisted runtime entities (sidecar repository)
 
-- **MarginComment** — file path + quote/prefix/suffix anchor, user instruction, executing editor, status (submitted / running / interrupted / done / dismissed), timestamps, result findings. Fuzzily re-anchored on file open; jobs interrupted by restart offer Retry.
+- **MarginComment** — a question the user parked on a span, answered in the background, that OUTLIVES the session. Note path (the store's key) + the locating hints `quote`/`prefix`/`suffix`/`occurrence` and **no offsets** — a stored position would look authoritative after an edit made while Obsidian was closed — plus the user instruction, the executing editor (id + the name as it was, so a deleted editor still reads sensibly), status (submitted / running / interrupted / done / dismissed), timestamps, and the result (findings, optional reply, redacted error).
+    - Re-anchored on load against the live text through the same `matchQuote` engine findings use: **exact** (verbatim, unique or hint-disambiguated), **fuzzy** (normalized match — anchored, and its `anchoredText` is sliced from the source so preconditions still compare real text), **orphaned** (not found or ambiguous: kept and shown with its quote, never guessed into a position, never deleted).
+    - `submitted`/`running` describe the current session only; read back from disk they mean the session died mid-job, so they load as **interrupted** — which offers Retry and never resumes anything (a resumed request would be a backend call this session never authorized, Business Rule #1).
 
 ## Key relationships
 
