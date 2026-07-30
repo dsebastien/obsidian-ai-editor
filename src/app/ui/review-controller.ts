@@ -9,11 +9,16 @@ import {
     cycleFinding,
     navigableEditorFindings,
     navigableFindings,
+    rebaseTriageMemory,
     stepFinding,
     triageCurrent,
     triageStep
 } from '../commands/finding-navigation'
-import type { NavigationDirection, NavigationTarget } from '../commands/finding-navigation'
+import type {
+    NavigationDirection,
+    NavigationTarget,
+    TriageMemory
+} from '../commands/finding-navigation'
 import { TriageCursorStore } from '../commands/triage-cursor'
 import {
     bulkAcceptNotice,
@@ -1200,7 +1205,7 @@ export class ReviewController {
         }
         const { path, run } = context
         const ordered = navigableFindings(this.visibleFindings(path, run))
-        const memory = this.triageCursors.get(path, run)
+        const memory = this.liveTriageMemory(path, run)
         let target: NavigationTarget | null
         if (memory) {
             target = triageStep(ordered, memory, direction)
@@ -1216,6 +1221,25 @@ export class ReviewController {
             return
         }
         this.moveTriageCursor(path, run, target)
+    }
+
+    /**
+     * The file's triage cursor with its position re-read from the remembered
+     * finding's LIVE anchor. The cursor store holds a raw offset that nothing
+     * remaps (only anchors travel through `applyTextChanges`), and that offset
+     * is the eviction fallback every step compares live anchors against — so
+     * an edit before the cursor would otherwise send `next`/`prev` to the
+     * wrong finding once the remembered one leaves the navigable set.
+     */
+    private liveTriageMemory(path: string, run: RunHandle): TriageMemory | null {
+        const memory = this.triageCursors.get(path, run)
+        if (memory === null) {
+            return null
+        }
+        return rebaseTriageMemory(
+            memory,
+            run.findings.get(asFindingId(memory.id))?.anchor?.from ?? null
+        )
     }
 
     /**

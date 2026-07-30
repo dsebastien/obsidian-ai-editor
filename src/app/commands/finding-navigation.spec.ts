@@ -4,6 +4,7 @@ import {
     cycleFinding,
     navigableEditorFindings,
     navigableFindings,
+    rebaseTriageMemory,
     stepFinding,
     triageCurrent,
     triageStep
@@ -200,6 +201,35 @@ describe('cycleFinding', () => {
             last = next.id
         }
         expect(visited).toEqual(['a', 'b', 'c', 'a'])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// rebaseTriageMemory — the cursor position follows the document
+// ---------------------------------------------------------------------------
+
+describe('rebaseTriageMemory', () => {
+    it('keeps null memory null', () => {
+        expect(rebaseTriageMemory(null, 42)).toBeNull()
+    })
+
+    it('replaces the recorded offset with the live anchor position', () => {
+        expect(rebaseTriageMemory({ id: 'b', from: 500 }, 460)).toEqual({ id: 'b', from: 460 })
+    })
+
+    it('keeps the recorded offset when the finding left the run', () => {
+        expect(rebaseTriageMemory({ id: 'b', from: 500 }, null)).toEqual({ id: 'b', from: 500 })
+    })
+
+    it('makes the eviction fallback land on the next remaining finding after an edit', () => {
+        // Findings a@50, b@500, c@520; the cursor stopped on b, then 40
+        // characters were deleted before all three (a@10, b@460, c@480) and b
+        // was dismissed. Stepping must resume at c, not restart at a.
+        const ordered = [target('a', 10), target('c', 480)]
+        const stale = { id: 'b', from: 500 }
+        expect(triageStep(ordered, stale, 'next')?.id).toBe('a') // the bug
+        expect(triageStep(ordered, rebaseTriageMemory(stale, 460), 'next')?.id).toBe('c')
+        expect(triageStep(ordered, rebaseTriageMemory(stale, 460), 'prev')?.id).toBe('a')
     })
 })
 

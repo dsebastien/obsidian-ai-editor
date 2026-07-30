@@ -90,6 +90,30 @@ export interface TriageMemory {
 }
 
 /**
+ * Re-bases a remembered cursor onto the finding's CURRENT anchor position.
+ *
+ * The cursor store keeps a raw document offset and NOTHING remaps it (the
+ * editor-update forwarding remaps anchors only), so the recorded offset goes
+ * stale on the first edit anywhere before it. Since the offset is exactly the
+ * eviction fallback `triageStep` compares live anchors against, it must be
+ * refreshed from the finding's own anchor before every step — that anchor IS
+ * remapped, and it survives the finding going accepted, dismissed or stale,
+ * which is precisely when the fallback matters.
+ *
+ * `anchorFrom` is null only when the finding left the run entirely (retry
+ * removal, run replacement); the recorded offset is then all there is.
+ */
+export function rebaseTriageMemory(
+    memory: TriageMemory | null,
+    anchorFrom: number | null
+): TriageMemory | null {
+    if (memory === null) {
+        return null
+    }
+    return anchorFrom === null ? memory : { id: memory.id, from: anchorFrom }
+}
+
+/**
  * THE memory-based stepping engine (plan §0 stage D slice 1) shared by chip
  * cycling (`cycleFinding`), the `next-finding`/`prev-finding` triage
  * commands, and the accept/dismiss auto-advance:
