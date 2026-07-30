@@ -211,6 +211,11 @@ export function planPanelAggregation(
         return {
             editorName: member.editorName,
             failed,
+            // How many findings the member ACTUALLY holds, captured before the
+            // contract cap: `omittedFindings` promises the payload is a prefix
+            // of the member's list, and computing it against the already-capped
+            // array would report 0 for a member whose tail the cap removed.
+            sourceCount: failed ? 0 : member.findings.length,
             summary:
                 !failed && member.summary ? clip(member.summary, AGGREGATION_SUMMARY_MAX) : null,
             verdict: !failed && member.verdict ? member.verdict : null,
@@ -235,7 +240,7 @@ export function planPanelAggregation(
             ...(member.summary === null ? {} : { summary: member.summary }),
             ...(member.verdict === null ? {} : { verdict: member.verdict }),
             failed: member.failed,
-            omittedFindings: member.findings.length - take
+            omittedFindings: member.sourceCount - take
         }
     })
     return { kind: 'aggregate', members: payload, missingMembers }

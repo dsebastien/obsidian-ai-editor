@@ -111,6 +111,10 @@ describe('planPanelAggregation', () => {
         }
         if (clamped.kind === 'aggregate') {
             expect(clamped.members[0]?.findings).toHaveLength(AGGREGATION_FINDINGS_PER_MEMBER)
+            // The cap is a truncation like any other: the chairperson is told
+            // the list is a prefix, or it will conclude the member found
+            // nothing else (`omittedFindings` on the operation contract).
+            expect(clamped.members[0]?.omittedFindings).toBe(5)
         }
     })
 
