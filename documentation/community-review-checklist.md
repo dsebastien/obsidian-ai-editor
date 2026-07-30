@@ -363,7 +363,7 @@ Green at the time of this sweep:
 
 ```bash
 bun run format
-bun run validate     # tsc + eslint --max-warnings 0 + bun test  → 2257 pass, 0 fail
+bun run validate     # tsc + eslint --max-warnings 0 + bun test  → 2258 pass, 0 fail
 bun run build
 
 # No global selectors in the artefact a reviewer downloads. Must print
