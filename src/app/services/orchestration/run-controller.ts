@@ -1,7 +1,7 @@
 import type { Anchor, TextChange } from '../../domain/anchoring/anchor'
 import { createAnchor, mapAnchorThroughChanges } from '../../domain/anchoring/anchor'
 import type { MatchStrategy } from '../../domain/anchoring/match'
-import { matchQuote } from '../../domain/anchoring/match'
+import { createQuoteMatcher, type QuoteMatcher } from '../../domain/anchoring/match'
 import type { FindingId, RunId } from '../../domain/ids'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type {
@@ -379,8 +379,24 @@ export interface RunHandle {
  * keystroke for the lifetime of the run.
  */
 interface AnchorBase {
-    readonly text: string
+    /**
+     * Bound to `text`. ONE per attempt, not one per finding: a review ingests
+     * up to 200 findings against the same text, and a quote that misses the
+     * exact rung costs a full normalization pass over the note (measured:
+     * 2.8 s for 200 such quotes on a 200 000-character note, 15 ms once the
+     * pass is shared — `perf/perf.bench.spec.ts`).
+     */
+    readonly matcher: QuoteMatcher
     readonly batches: TextChange[][]
+}
+
+/** The text an anchor base resolves quotes against. */
+function anchorBaseText(base: AnchorBase | null): string | null {
+    return base?.matcher.text ?? null
+}
+
+function createAnchorBase(text: string): AnchorBase {
+    return { matcher: createQuoteMatcher(text), batches: [] }
 }
 
 interface InternalEditorState {
@@ -528,7 +544,7 @@ class ReviewRunHandle implements RunHandle {
                 // Initial attempts all anchor against the run snapshot; the
                 // batch lists are per editor because retries reset them
                 // independently.
-                anchorBase: { text: input.snapshot.text, batches: [] },
+                anchorBase: createAnchorBase(input.snapshot.text),
                 attemptAbort: null,
                 continuing: false,
                 continuationError: null
@@ -713,7 +729,7 @@ class ReviewRunHandle implements RunHandle {
         state.error = null
         // Retried findings anchor against the CURRENT document text passed by
         // the caller, then remap through edits applied after this point.
-        state.anchorBase = { text: freshText, batches: [] }
+        state.anchorBase = createAnchorBase(freshText)
         state.continuing = false
         state.continuationError = null
         // A retry DESTROYS this editor's findings, so the scorecard's top
@@ -754,7 +770,7 @@ class ReviewRunHandle implements RunHandle {
         state.continuationError = null
         // New findings anchor against the text as it reads NOW — which is also
         // the text the continuation pass is about to be sent.
-        state.anchorBase = { text: freshText, batches: [] }
+        state.anchorBase = createAnchorBase(freshText)
         // A continuation KEEPS every existing finding, so the scorecard stays
         // accurate about what it weighed — it is merely about to be rewritten.
         // Discarding it here would throw away a synthesis the user paid for
@@ -983,7 +999,7 @@ class ReviewRunHandle implements RunHandle {
             // text: against changed text the offsets are meaningless, so a
             // retry after edits reviews the whole note (never a guessed
             // range, Business Rules #4).
-            const attemptText = state.anchorBase?.text ?? this.snapshot.text
+            const attemptText = anchorBaseText(state.anchorBase) ?? this.snapshot.text
             const request: ReviewRequest = {
                 kind: 'review',
                 contractVersion: CONTRACT_VERSION,
@@ -1147,14 +1163,14 @@ class ReviewRunHandle implements RunHandle {
         let anchoredText: string | null = null
         let matchStrategy: MatchStrategy | null = null
         if (base) {
-            const match = matchQuote(base.text, raw.quote, {
+            const match = base.matcher.match(raw.quote, {
                 prefix: raw.prefix,
                 suffix: raw.suffix,
                 occurrence: raw.occurrence
             })
             if (match.status === 'matched') {
                 anchor = createAnchor(match.match.from, match.match.to)
-                anchoredText = base.text.slice(match.match.from, match.match.to)
+                anchoredText = base.matcher.text.slice(match.match.from, match.match.to)
                 matchStrategy = match.match.strategy
                 for (const batch of base.batches) {
                     anchor = mapAnchorThroughChanges(anchor, batch)

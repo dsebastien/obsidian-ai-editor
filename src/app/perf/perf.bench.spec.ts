@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state'
 import { describe, expect, test } from 'bun:test'
 
-import { matchQuote } from '../domain/anchoring/match'
+import { createQuoteMatcher, matchQuote } from '../domain/anchoring/match'
 import { commentJobView } from '../domain/comments/comment-job'
 import type { MarginComment } from '../domain/comments/margin-comment'
 import { reanchorComments } from '../domain/comments/reanchor'
@@ -68,13 +68,17 @@ const BENCH_TIMEOUT_MS = 180_000
 describe('perf: anchoring a large note with many findings', () => {
     const note = buildBenchNote(LARGE_NOTE_CHARS)
     const quotes = benchQuotes(note, 200)
+    // Case drift is the most common way a model breaks a "verbatim" quote, and
+    // it puts every finding on the expensive rung of the ladder.
+    const drifted = quotes.map((quote) => ({ ...quote, quote: quote.quote.toUpperCase() }))
 
     test(
         '200 verbatim quotes anchor against a 200k note',
         () => {
             const result = bench('anchor 200 exact quotes / 200k note', () => {
+                const matcher = createQuoteMatcher(note)
                 for (const quote of quotes) {
-                    matchQuote(note, quote.quote, { prefix: quote.prefix, suffix: quote.suffix })
+                    matcher.match(quote.quote, { prefix: quote.prefix, suffix: quote.suffix })
                 }
             })
             expect(result.medianMs).toBeLessThan(200)
@@ -85,19 +89,13 @@ describe('perf: anchoring a large note with many findings', () => {
     test(
         '200 quotes that MISS the exact pass still anchor in bounded time',
         () => {
-            // The expensive rung of the ladder: no exact hit, so the matcher
-            // has to normalize. Case drift is the most common way a model
-            // breaks a "verbatim" quote, and it puts every finding here.
-            const drifted = quotes.map((quote) => ({
-                ...quote,
-                quote: quote.quote.toUpperCase()
-            }))
             const result = bench('anchor 200 normalized-path quotes / 200k note', () => {
+                const matcher = createQuoteMatcher(note)
                 for (const quote of drifted) {
-                    matchQuote(note, quote.quote, { prefix: quote.prefix, suffix: quote.suffix })
+                    matcher.match(quote.quote, { prefix: quote.prefix, suffix: quote.suffix })
                 }
             })
-            expect(result.medianMs).toBeLessThan(6_000)
+            expect(result.medianMs).toBeLessThan(400)
         },
         BENCH_TIMEOUT_MS
     )
@@ -109,11 +107,30 @@ describe('perf: anchoring a large note with many findings', () => {
             // that quotes the RENDERED text of a note it was sent as markdown
             // produces exactly this.
             const result = bench('anchor 200 not-found quotes / 200k note', () => {
+                const matcher = createQuoteMatcher(note)
                 for (let index = 0; index < 200; index += 1) {
+                    matcher.match(`absent phrase ${index} that is nowhere in the note`)
+                }
+            })
+            expect(result.medianMs).toBeLessThan(400)
+        },
+        BENCH_TIMEOUT_MS
+    )
+
+    test(
+        'the ONE-SHOT form costs a full pass per call — which is why the seam exists',
+        () => {
+            // Kept deliberately, at a smaller n: `matchQuote` is the one-shot
+            // API and re-derives everything per call by construction. Anyone
+            // tempted to loop it against one document can read the price here
+            // instead of shipping it. 25 quotes, not 200, because the point is
+            // the SHAPE of the cost, not how long the suite takes to prove it.
+            const result = bench('matchQuote (one-shot) ×25 missing quotes / 200k note', () => {
+                for (let index = 0; index < 25; index += 1) {
                     matchQuote(note, `absent phrase ${index} that is nowhere in the note`)
                 }
             })
-            expect(result.medianMs).toBeLessThan(6_000)
+            expect(result.medianMs).toBeLessThan(3_000)
         },
         BENCH_TIMEOUT_MS
     )
@@ -166,7 +183,7 @@ describe('perf: re-anchoring durable comments', () => {
             const result = bench('reanchor 500 orphaned comments / 200k note', () => {
                 reanchorComments(note, orphaned)
             })
-            expect(result.medianMs).toBeLessThan(15_000)
+            expect(result.medianMs).toBeLessThan(300)
         },
         BENCH_TIMEOUT_MS
     )

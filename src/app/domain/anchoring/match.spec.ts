@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { matchQuote } from './match'
+import { createQuoteMatcher, matchQuote, type MatchHints } from './match'
 
 const DOC = [
     '# Docker outages',
@@ -139,5 +139,61 @@ describe('matchQuote — normalized matching', () => {
 
     it('never invents a match when normalization also fails', () => {
         expect(matchQuote(DOC, 'entirely absent words').status).toEqual('not-found')
+    })
+})
+
+describe('createQuoteMatcher — one document, many quotes', () => {
+    it('exposes the text it is bound to', () => {
+        expect(createQuoteMatcher(DOC).text).toEqual(DOC)
+    })
+
+    it('answers exactly what matchQuote answers, for every rung of the ladder', () => {
+        const cases: { quote: string; hints?: MatchHints }[] = [
+            { quote: 'rate-limited, or having a bad day' }, // exact, unique
+            { quote: 'pipeline' }, // exact, ambiguous
+            { quote: 'pipeline', hints: { prefix: 'in your' } }, // exact, hinted
+            { quote: 'pipeline', hints: { occurrence: 1 } }, // exact, indexed
+            { quote: "you don't own and can't fix" }, // normalized
+            { quote: 'DOCKER HUB.' }, // normalized, case drift
+            { quote: 'kubernetes operators' }, // not found
+            { quote: '' } // empty
+        ]
+        const matcher = createQuoteMatcher(DOC)
+        for (const testCase of cases) {
+            expect(matcher.match(testCase.quote, testCase.hints)).toEqual(
+                matchQuote(DOC, testCase.quote, testCase.hints)
+            )
+        }
+    })
+
+    it('gives the same answer however many times it is asked', () => {
+        // The shared normalization is a derived value, so reuse must not be
+        // observable: a matcher is not allowed to become stateful by caching.
+        const matcher = createQuoteMatcher(DOC)
+        const first = matcher.match('DOCKER HUB.')
+        matcher.match('pipeline')
+        matcher.match('kubernetes operators')
+        expect(matcher.match('DOCKER HUB.')).toEqual(first)
+    })
+
+    it('resolves normalized quotes correctly after an exact-rung batch (lazy normalization)', () => {
+        // The normalized projection is built on first use. A batch that starts
+        // with exact hits must still resolve a later normalized one.
+        const matcher = createQuoteMatcher(DOC)
+        expect(matcher.match('rate-limited, or having a bad day').status).toEqual('matched')
+        const late = matcher.match('DOCKER HUB.')
+        expect(late.status).toEqual('matched')
+        if (late.status === 'matched') {
+            expect(late.match.strategy).toEqual('normalized')
+        }
+    })
+
+    it('anchors an occurrence-hinted quote in a self-overlapping document', () => {
+        const matcher = createQuoteMatcher('aaaa')
+        const second = matcher.match('aa', { occurrence: 1 })
+        expect(second.status).toEqual('matched')
+        if (second.status === 'matched') {
+            expect(second.match.from).toEqual(1)
+        }
     })
 })
