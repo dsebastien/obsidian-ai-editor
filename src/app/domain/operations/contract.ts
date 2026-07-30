@@ -85,7 +85,17 @@ const baseRequest = z.object({
     contractVersion: z.literal(CONTRACT_VERSION),
     /** Unique id of this operation run; all events must echo it. */
     runId: z.string().min(1),
-    /** Snapshot hash the payload text was captured from. */
+    /**
+     * Hash of the snapshot this operation belongs to — the provenance of the
+     * run, not a guarantee about every payload field.
+     *
+     * For `review` / `transform-selection` / `insert-at` / `refine-proposal`
+     * the payload text WAS captured from that snapshot. For `thread-turn` it
+     * identifies the review the finding came from, while `quote` carries the
+     * span's LIVE text (the user may have edited it since — see
+     * `currentSpanText`), so it may postdate the hash. Consumers must not
+     * assume `quote` is a substring of the hashed snapshot.
+     */
     snapshotHash: z.string().min(1)
 })
 
@@ -127,6 +137,10 @@ export const refineProposalRequestSchema = baseRequest.extend({
 export const threadTurnRequestSchema = baseRequest.extend({
     kind: z.literal('thread-turn'),
     findingId: z.string().min(1),
+    /**
+     * The span's text as it reads NOW — resolved against the live buffer, so
+     * it may differ from the text `snapshotHash` identifies.
+     */
     quote: z.string().min(1).max(QUOTE_MAX),
     critique: z.string().max(SHORT_TEXT_MAX),
     history: z

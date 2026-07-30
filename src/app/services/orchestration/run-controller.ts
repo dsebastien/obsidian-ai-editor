@@ -453,6 +453,7 @@ class ReviewRunHandle implements RunHandle {
             runId: asRunId(generateId()),
             // The run's snapshot identifies the review this finding came from;
             // `quote` carries the live span text (which may have drifted since).
+            // Documented at the contract itself — see `baseRequest.snapshotHash`.
             snapshotHash: this.snapshot.hash,
             findingId: input.findingId,
             quote: input.quote,
