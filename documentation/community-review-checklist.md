@@ -206,7 +206,7 @@ Beyond the linted call sites, commands, tab labels and modal titles were swept b
 grep -rn "id: '\|name: '" src/app/commands/ | grep -v spec
 ```
 
-18 static commands (`Review current note`, `Review selection`, `Ask an editor`, `Ask for comments`, `Preview what will be sent`, `Open review panel`, `Cancel review or action`, `Next finding`, `Previous finding`, `Accept current finding`, `Dismiss current finding`, `Cycle severity filter`, `Accept all non-conflicting findings`, `Generate more findings from every finished editor`, `Toggle the margin comment column`, `Run setup wizard`) plus the dynamic `Accept all from <editor>` / `Dismiss all from <editor>` / action-binding commands — all sentence case. Settings tabs: `Backends`, `Editors`, `Panels`, `Actions`, `Voice & style`, `Rules`, `Behavior`.
+16 static commands (`Review current note`, `Review selection`, `Ask an editor`, `Ask for comments`, `Preview what will be sent`, `Open review panel`, `Cancel review or action`, `Next finding`, `Previous finding`, `Accept current finding`, `Dismiss current finding`, `Cycle severity filter`, `Accept all non-conflicting findings`, `Generate more findings from every finished editor`, `Toggle the margin comment column`, `Run setup wizard`) plus the dynamic `Accept all from <editor>` / `Dismiss all from <editor>` / action-binding commands — all sentence case. Settings tabs: `Backends`, `Editors`, `Panels`, `Actions`, `Voice & style`, `Rules`, `Behavior`.
 
 ---
 
@@ -243,7 +243,7 @@ grep -rn "not connected to a backend" src/    # (no matches)
 | `vault.on('rename' \| 'delete')` (comment store)                           | `comment-store.ts:115/130` via `plugin.registerEvent`                                 | Obsidian, on unload                                                                                        |
 | `workspace.on('editor-menu')`, `on('file-menu')`                           | `editor-menu.ts:26`, `file-menu.ts:18` via `registerEvent`                            | Obsidian, on unload                                                                                        |
 | Settings-mutation subscriptions (daemon, action commands, bulk commands)   | `plugin.ts:149`, `action-commands.ts:98`, `bulk-commands.ts:91` via `plugin.register` | Obsidian, on unload                                                                                        |
-| `registerView` (review panel, what's new)                                  | `plugin.ts:247`, `whats-new.ts:40`                                                    | Obsidian; `whats-new.ts:41` also registers an explicit teardown                                            |
+| `registerView` (review panel, what's new)                                  | `plugin.ts:247`, `whats-new.ts:40`                                                    | Obsidian, on unload; `whats-new.ts` registers a flag-only teardown that detaches nothing (see § below)     |
 | CM6 editor extensions                                                      | `plugin.ts:125` via `registerEditorExtension`                                         | Obsidian, on unload                                                                                        |
 | `registerCliHandler` × 3                                                   | `plugin.ts:196-209`                                                                   | Obsidian (no public unregister; each registration is individually try/caught against the double-load race) |
 | Status bar item                                                            | `plugin.ts:94` via `addStatusBarItem`                                                 | Obsidian, on unload                                                                                        |
@@ -263,7 +263,7 @@ Timers use `window.setTimeout` / `window.setInterval` and are typed as plain `nu
 
 **Child processes** are the sharpest case, and the rule is stronger than "kill on cancel": `spawn.ts:415-437` probes and kills the whole process tree on **every** exit path including a clean `exit 0`, because a tool that starts an MCP server or a watcher and then exits successfully leaves those children holding the note text that went in on stdin. `killProcessTree` escalates POSIX signals (and uses `taskkill` on Windows). The unload chain is `onunload` → `runController.cancelAll()` → per-run `AbortController.abort()` → `spawn.ts`'s abort listener → `settle()` → tree kill.
 
-`obsidianmd/detach-leaves` is clean: `onunload` detaches nothing.
+`obsidianmd/detach-leaves` is clean, and so is the unload path the rule cannot see. The rule only inspects a literal `onunload` body, so a teardown registered through `plugin.register` is invisible to it — this plugin used to detach the "What's new" leaves there, against the guideline ("Don't detach leaves in onunload": an update reinitialises open leaves at their original position, so detaching loses the user's tab placement on every update). The call is gone; the registered teardown only flips the `unloaded` flag that guards the async open path.
 `obsidianmd/no-view-references-in-plugin` is clean: the plugin holds controllers, never a view instance.
 
 ---
@@ -320,10 +320,11 @@ Reviews are never automatic (Business Rules #1); even daemon mode only re-dispat
 
 | Item                                     | Verdict         | Evidence                                                                                                                                                                               |
 | ---------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No hardcoded styling                     | **PASS (note)** | Nine literal colour values, all justified. See below.                                                                                                                                  |
+| No hardcoded styling                     | **PASS (note)** | Nine literal colour values in `src/styles.src.css`, all justified. See below. Verified against **`dist/styles.css`** too — see the global-selector check in § 10.                      |
 | `obsidianmd/no-static-styles-assignment` | **PASS**        | Clean — no literal style assignments on DOM elements.                                                                                                                                  |
 | No `!important`                          | **PASS**        | `grep -n "!important" src/styles.src.css` → one match, inside a comment.                                                                                                               |
 | Theme tokens                             | **PASS**        | All 34 custom properties used were verified against Obsidian's own `app.css` during the M9 theming pass (history 2026-07-30). Radius and shadow come from `--radius-*` / `--shadow-*`. |
+| No global styles                         | **PASS**        | Every selector in `dist/styles.css` is `ai-editor-*`, `.support-header-margin` or the compound `.modal.ai-editor-*`. Enforced by the § 10 command, not by reading the source file.     |
 | Reduced motion                           | **PASS**        | One blanket `prefers-reduced-motion` block scoped to the plugin's class prefix, last in the file, no `!important`.                                                                     |
 
 The nine literals:
@@ -337,7 +338,8 @@ The nine literals:
 
 | Item                                              | Verdict  | Evidence                                                                                                                                                                      |
 | ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.js`, `manifest.json`, `styles.css` produced | **PASS** | `bun run build` → `dist/main.js` (664 KB), `dist/manifest.json`, `dist/styles.css` (47 KB).                                                                                   |
+| `main.js`, `manifest.json`, `styles.css` produced | **PASS** | `bun run build` → `dist/main.js` (664 KB), `dist/manifest.json`, `dist/styles.css` (42 KB).                                                                                   |
+| `dist/styles.css` ships no global selectors       | **PASS** | Command below. This is the artefact a reviewer downloads — § 9 verdicts are checked against it, not only against `src/styles.src.css`.                                        |
 | `dist/manifest.json` matches the source           | **PASS** | Copied verbatim by `scripts/build.ts`.                                                                                                                                        |
 | Build artefacts not committed                     | **PASS** | `.gitignore` covers `main.js`, `styles.css`, `dist/`, `data.json`, `*.map`.                                                                                                   |
 | Release attaches the three files only, no zip     | **PASS** | `release.yml` `files:` lists `dist/main.js`, `dist/manifest.json`, `dist/styles.css`.                                                                                         |
@@ -348,6 +350,7 @@ The nine literals:
 | Bun pinned across CI and release                  | **PASS** | `bun-version-file: package.json` in both workflows; `packageManager: bun@1.3.14`.                                                                                             |
 | Release body carries the CTAs                     | **PASS** | The changelog step appends `printf '\n---\n\n'` then `.github/release-footer.md` (which must not open with `---`; Prettier would read it as frontmatter).                     |
 | CI gate                                           | **PASS** | `ci.yml` runs tsc, lint, tests and `format:check` on every push and PR to `main`.                                                                                             |
+| Release gate matches CI                           | **PASS** | `release.yml`'s "Build (release gate)" step runs `lint`, `format:check`, `build` (which chains tsc) and `bun test` BEFORE the release commit is tagged.                       |
 | `CHANGELOG.md`                                    | **PASS** | Header only, no template leakage. `docs/release-notes.md` regenerated from this repo's own changelog.                                                                         |
 | `LICENSE`                                         | **PASS** | `obsidianmd/validate-license` clean.                                                                                                                                          |
 | No template leftovers                             | **PASS** | No `TEMPLATE_USAGE.md`, no `scripts/init-from-template.ts`, no `init` script; `obsidianmd/no-sample-code` and `sample-names` clean; zero `TODO`/`FIXME` in `src/` or `docs/`. |
@@ -360,8 +363,13 @@ Green at the time of this sweep:
 
 ```bash
 bun run format
-bun run validate     # tsc + eslint --max-warnings 0 + bun test  → 2217 pass, 0 fail
+bun run validate     # tsc + eslint --max-warnings 0 + bun test  → 2257 pass, 0 fail
 bun run build
+
+# No global selectors in the artefact a reviewer downloads. Must print
+# nothing but this plugin's own non-prefixed classes.
+grep -oE '(^|[}])\.[a-zA-Z0-9_-]+' dist/styles.css | sed 's/^}//' | sort -u | grep -v '^\.ai-editor'
+# → .modal   (only ever as the compound `.modal.ai-editor-*`)
 ```
 
 ---
@@ -373,6 +381,7 @@ bun run build
 3. Re-check `minAppVersion` against `desktop-releases.json` `latestVersion`.
 4. After the release `prepare` job, confirm `versions.json` gained its first entry before the tag is pushed.
 5. Re-run `bun run lint` with the current `eslint-plugin-obsidianmd`; a new version can add rules.
+   5b. Re-run the § 11 `dist/styles.css` selector check — the Tailwind `source(none)` constraint is one token away from being dropped.
 6. Mention the `zod` `console.warn` (§ 7) pre-emptively if the reviewer greps the bundle.
 
 ## The One Thing
