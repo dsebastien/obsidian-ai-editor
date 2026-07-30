@@ -1608,3 +1608,175 @@
     @apply text-xs italic;
     color: var(--text-faint);
 }
+
+/* ========================================
+   MARGIN COMMENT COLUMN
+   (src/app/ui/editor/margin-column.ts,
+   mounted by src/app/ui/review-controller.ts)
+   Durable margin comments rendered next to
+   the lines they were parked on. Positioned
+   overlay inside the view's contentEl — NOT
+   a CM6 gutter (gutters are left-side and
+   line-oriented; see margin-layout.ts).
+   ======================================== */
+
+/* The column occupies the right edge of the pane and never captures pointer
+   events on its empty area — the note underneath must stay clickable, since
+   in `overlay` mode the column sits over the readable-line-length margin. */
+.ai-editor-margin {
+    @apply pointer-events-none absolute overflow-hidden;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: var(--ai-editor-margin-width, 280px);
+    z-index: var(--layer-popover, 30);
+    padding: 8px 8px 8px 0;
+}
+
+.ai-editor-margin-orphans {
+    @apply pointer-events-auto relative;
+}
+
+.ai-editor-margin-groups {
+    @apply relative;
+    height: 100%;
+}
+
+/* Absolutely positioned by the stacker; `transition` on `top` deliberately
+   omitted — the position is recomputed on every scroll frame and animating it
+   would make the column lag behind the text it annotates. */
+.ai-editor-margin-group {
+    @apply pointer-events-auto absolute flex flex-col gap-1.5;
+    left: 0;
+    right: 0;
+}
+
+.ai-editor-margin-card {
+    @apply flex flex-col gap-1 rounded p-2 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+
+/* An orphan has no line to sit next to; the muted border says so without
+   relying on colour alone (the group heading states it in words). */
+.ai-editor-margin-card-orphaned {
+    border-left-style: dashed;
+    border-left-color: var(--text-faint);
+}
+
+.ai-editor-margin-head {
+    @apply flex items-baseline justify-between gap-2;
+}
+
+.ai-editor-margin-editor {
+    @apply truncate font-medium;
+    color: var(--ai-editor-editor-color, var(--text-accent));
+}
+
+.ai-editor-margin-status {
+    @apply text-[0.9em] whitespace-nowrap;
+    color: var(--text-muted);
+}
+
+.ai-editor-margin-question {
+    @apply m-0 w-full cursor-default border-none bg-transparent p-0 text-left text-xs font-medium;
+    color: var(--text-normal);
+    box-shadow: none;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-margin-reveal {
+    @apply cursor-pointer;
+}
+
+.ai-editor-margin-reveal:hover {
+    color: var(--text-accent);
+}
+
+.ai-editor-margin-quote {
+    @apply m-0 text-xs;
+    font-family: var(--font-monospace);
+    color: var(--text-muted);
+    border-left: 2px solid var(--background-modifier-border);
+    padding-left: 6px;
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-margin-drift {
+    @apply text-[0.9em] italic;
+    color: var(--text-faint);
+}
+
+/* `pre-wrap`: the answer may come back as paragraphs, and the model keeps
+   them (margin-model.ts normalizes spaces but not newlines). */
+.ai-editor-margin-body {
+    @apply text-xs whitespace-pre-wrap;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.ai-editor-margin-more {
+    @apply cursor-pointer self-start border-none bg-transparent p-0 text-[0.9em];
+    color: var(--text-accent);
+    box-shadow: none;
+}
+
+/* Wraps rather than overflowing: the column clamps down to ~220px in a
+   narrow-ish pane and the action row must stay usable there. */
+.ai-editor-margin-actions {
+    @apply flex flex-wrap gap-1.5;
+}
+
+.ai-editor-margin-action {
+    @apply cursor-pointer rounded px-1.5 py-0.5 text-[0.9em];
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-margin-action:hover {
+    background-color: var(--interactive-hover);
+    color: var(--text-normal);
+}
+
+/* One line with several comments: a chip that expands to the cards. */
+.ai-editor-margin-chip {
+    @apply cursor-pointer rounded px-2 py-1 text-xs;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-margin-chip:hover {
+    background-color: var(--interactive-hover);
+    color: var(--text-normal);
+}
+
+.ai-editor-margin-orphan-box {
+    @apply mb-2 flex flex-col gap-1.5 rounded p-1.5;
+    border: 1px dashed var(--background-modifier-border);
+    background-color: color-mix(in srgb, var(--background-secondary) 85%, transparent);
+}
+
+.ai-editor-margin-orphan-toggle {
+    @apply cursor-pointer border-none bg-transparent p-0 text-left text-xs;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.ai-editor-margin-orphan-toggle:hover {
+    color: var(--text-normal);
+}
+
+/* `reserve` placement: the note's text runs the full pane width, so the
+   column pays for itself by padding the editor scroller. Set as a custom
+   property by the review controller and cleared on every other placement —
+   nothing can leave the editor padded. */
+.ai-editor-margin-reserved .cm-scroller {
+    padding-right: var(--ai-editor-margin-reserve, 0);
+}

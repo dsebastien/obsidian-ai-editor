@@ -7,6 +7,7 @@ import {
     isMarginVisible,
     marginCardView,
     marginColumnModel,
+    marginModelKey,
     orphanHeading,
     MARGIN_BODY_MAX
 } from './margin-model'
@@ -255,6 +256,79 @@ describe('marginColumnModel', () => {
         })
         expect(model.orphans?.heading).toBe('1 comment lost its text')
         expect(model.orphans?.cards.map((card) => card.commentId)).toEqual(['o1'])
+    })
+})
+
+describe('marginModelKey', () => {
+    const modelWith = (
+        overrides: Partial<MarginComment>,
+        anchorTop: number,
+        expanded = false
+    ): ReturnType<typeof marginColumnModel> =>
+        marginColumnModel({
+            groups: [
+                {
+                    key: 'c1',
+                    anchorTop,
+                    expanded: false,
+                    comments: [entry(overrides, 'exact', { expanded })]
+                }
+            ],
+            orphans: [],
+            orphansExpanded: false
+        })
+
+    it('ignores anchor movement — scrolling must reposition, never re-render', () => {
+        expect(marginModelKey(modelWith({}, 40))).toBe(marginModelKey(modelWith({}, 900)))
+    })
+
+    it('changes when the job state changes', () => {
+        expect(marginModelKey(modelWith({ status: 'running' }, 40))).not.toBe(
+            marginModelKey(modelWith({ status: 'interrupted' }, 40))
+        )
+    })
+
+    it('changes when the answer arrives', () => {
+        expect(marginModelKey(modelWith({ reply: 'yes' }, 40))).not.toBe(
+            marginModelKey(modelWith({ reply: 'no' }, 40))
+        )
+    })
+
+    it('changes when a card is expanded', () => {
+        const long = 'x'.repeat(MARGIN_BODY_MAX + 10)
+        expect(marginModelKey(modelWith({ reply: long }, 40, false))).not.toBe(
+            marginModelKey(modelWith({ reply: long }, 40, true))
+        )
+    })
+
+    it('changes when a line group collapses or expands', () => {
+        const group = (expanded: boolean): ReturnType<typeof marginColumnModel> =>
+            marginColumnModel({
+                groups: [
+                    {
+                        key: 'c1',
+                        anchorTop: 40,
+                        expanded,
+                        comments: [entry({ id: 'c1' }), entry({ id: 'c2' })]
+                    }
+                ],
+                orphans: [],
+                orphansExpanded: false
+            })
+        expect(marginModelKey(group(false))).not.toBe(marginModelKey(group(true)))
+    })
+
+    it('changes when the orphan group appears or expands', () => {
+        const orphans = (expanded: boolean): ReturnType<typeof marginColumnModel> =>
+            marginColumnModel({
+                groups: [],
+                orphans: [entry({ id: 'o1' }, 'orphaned')],
+                orphansExpanded: expanded
+            })
+        expect(marginModelKey(orphans(false))).not.toBe(marginModelKey(orphans(true)))
+        expect(
+            marginModelKey(marginColumnModel({ groups: [], orphans: [], orphansExpanded: false }))
+        ).toBe('')
     })
 })
 

@@ -178,6 +178,59 @@ export function marginColumnModel(input: MarginColumnModelInput): MarginColumnMo
 }
 
 /**
+ * Identity of a rendered column: everything the DOM depends on, and NOTHING
+ * that only moves it.
+ *
+ * The column is rebuilt only when this changes. `anchorTop` is deliberately
+ * excluded — scrolling changes every anchor on every frame, and rebuilding
+ * there would throw away keyboard focus, re-collapse expanded answers and
+ * flicker the whole margin. Scrolling repositions; it never re-renders.
+ */
+export function marginModelKey(model: MarginColumnModel): string {
+    const parts: string[] = []
+    for (const group of model.groups) {
+        parts.push(`g:${group.key}:${group.collapsed ? '1' : '0'}`)
+        for (const card of group.cards) {
+            parts.push(cardKey(card))
+        }
+    }
+    if (model.orphans !== null) {
+        parts.push(`o:${model.orphans.heading}:${model.orphans.expanded ? '1' : '0'}`)
+        for (const card of model.orphans.cards) {
+            parts.push(cardKey(card))
+        }
+    }
+    return parts.join('|')
+}
+
+function cardKey(card: MarginCardView): string {
+    const actions = [
+        card.actions.canReveal,
+        card.actions.canRetry,
+        card.actions.canCancel,
+        card.actions.canResolve,
+        card.actions.canDelete
+    ]
+        .map((allowed) => (allowed ? '1' : '0'))
+        .join('')
+    return [
+        'c',
+        card.commentId,
+        card.editorName,
+        card.color,
+        card.question,
+        card.statusLabel,
+        card.timer ?? '',
+        card.body ?? '',
+        card.expanded ? '1' : '0',
+        card.truncated ? '1' : '0',
+        card.quote ?? '',
+        card.drifted ? '1' : '0',
+        actions
+    ].join(' ')
+}
+
+/**
  * Heading of the orphan group. Names the state AND the consequence in the one
  * place the user meets it — "orphaned" alone is plugin vocabulary.
  */
