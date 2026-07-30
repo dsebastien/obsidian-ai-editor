@@ -94,11 +94,13 @@ import { clearTransformPreviewEffect, showTransformPreviewEffect } from './edito
 import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
 import { chipClickAction, railErrorReason } from './editor/rail-model'
-import type { RailEditorState, RailEditorStatus } from './editor/rail-model'
+import type { RailEditorState, RailEditorStatus, RailPanelState } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
 import { SeverityFilterStore, passesSeverityFilter, severityFilterNotice } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
+import { scorecardStatusKind } from './panel-scorecard'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
+import { verdictLabel } from './verdict-label'
 import type { SidePanelBinding, SidePanelState } from './side-panel'
 
 /**
@@ -2321,6 +2323,12 @@ export class ReviewController {
                     if (path) {
                         this.retryEditor(path, editorId)
                     }
+                },
+                onPanelClick: (): void => {
+                    // The scorecard has no inline surface — a verdict, ranked
+                    // fixes and dissent do not fit in a tooltip, and the side
+                    // panel already renders all three at the top of the run.
+                    void this.activateSidePanel()
                 }
             },
             doc,
@@ -2475,8 +2483,10 @@ export class ReviewController {
         // pixel of text) and the rail itself renders in its compact form.
         const narrow = glue.layout === 'narrow'
         glue.railWrapperEl.toggleClass('ai-editor-rail-wrapper-compact', narrow)
+        const railPanel = pluginDisabled ? null : this.buildRailPanel(run)
         glue.rail.render({
             editors: pluginDisabled ? [] : this.buildRailEditors(run, transformRun),
+            ...(railPanel === null ? {} : { panel: railPanel }),
             running:
                 !pluginDisabled &&
                 ((run !== null && !run.isSettled()) ||
@@ -2524,6 +2534,33 @@ export class ReviewController {
             return
         }
         editorViewOf(glue.view)?.dispatch({ effects: refreshFindingCardEffect.of(null) })
+    }
+
+    /**
+     * The panel chip's state, when this note's run is a panel run (plan M6).
+     * Business Rules #11: the rail shows the panel as ONE ringed entity that
+     * owns its members, and the members keep their own dots inside it.
+     *
+     * The scorecard's lifecycle is projected through the SAME mapper the side
+     * panel uses, so the chip and the panel block can never disagree about
+     * where the aggregation stands.
+     */
+    private buildRailPanel(run: RunHandle | null): RailPanelState | null {
+        const panel = run?.getPanelState() ?? null
+        if (panel === null) {
+            return null
+        }
+        const config = this.deps.getSettings().panels.find((entry) => entry.id === panel.panelId)
+        const recommendation = panel.result?.recommendation
+        return {
+            name: panel.panelName,
+            // A panel deleted mid-run keeps its run: the identity travelled
+            // with the run, only its colour is a settings lookup.
+            color: config?.color ?? 'var(--text-accent)',
+            status: scorecardStatusKind(panel.status),
+            memberIds: run === null ? [] : run.getEditorStates().map((state) => state.editorId),
+            ...(recommendation === undefined ? {} : { verdictLabel: verdictLabel(recommendation) })
+        }
     }
 
     private buildRailEditors(

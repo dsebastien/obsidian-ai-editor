@@ -1,6 +1,9 @@
 import type { FindingId } from '../domain/ids'
 import type { PanelDissent, Verdict } from '../domain/operations/contract'
-import type { PanelRunState } from '../services/orchestration/run-controller'
+import type {
+    PanelAggregationStatus,
+    PanelRunState
+} from '../services/orchestration/run-controller'
 import { verdictLabel } from './verdict-label'
 
 /**
@@ -83,37 +86,43 @@ export interface TopFixCandidate {
     readonly quote: string
 }
 
-function statusOf(panel: PanelRunState): ScorecardStatus {
-    switch (panel.status) {
-        case 'waiting':
-            return { kind: 'waiting', label: 'Waiting for the members to finish…', detail: null }
-        case 'running':
-            return { kind: 'running', label: 'Writing the scorecard…', detail: null }
+/**
+ * Wire status → display kind. Two are renamed: `done` says the request
+ * finished where `ready` says the user has a scorecard, and `error` is the
+ * request's word where `failed` is the outcome's — and the outcome is what
+ * every surface branches on.
+ *
+ * Exported because the rail projects the same lifecycle onto its panel chip;
+ * two mappings would eventually disagree about what a cancelled aggregation
+ * looks like.
+ */
+export function scorecardStatusKind(status: PanelAggregationStatus): ScorecardStatusKind {
+    switch (status) {
         case 'done':
-            return { kind: 'ready', label: 'Panel scorecard', detail: null }
+            return 'ready'
         case 'error':
-            // Names the consequence, not just the failure: the member reviews
-            // below are intact and that is the thing the user needs told.
-            return {
-                kind: 'failed',
-                label: 'The scorecard could not be written — the member reviews below are unaffected.',
-                detail: panel.error
-            }
-        case 'cancelled':
-            return { kind: 'cancelled', label: 'The scorecard was cancelled.', detail: null }
-        case 'skipped':
-            return {
-                kind: 'skipped',
-                label: 'No member produced a review, so there is nothing to synthesize.',
-                detail: null
-            }
-        case 'unavailable':
-            return {
-                kind: 'unavailable',
-                label: 'This panel has no usable aggregation backend, so no scorecard was written. Set one in Settings → Panels.',
-                detail: null
-            }
+            return 'failed'
+        default:
+            return status
     }
+}
+
+const STATUS_LABELS: Readonly<Record<ScorecardStatusKind, string>> = {
+    waiting: 'Waiting for the members to finish…',
+    running: 'Writing the scorecard…',
+    ready: 'Panel scorecard',
+    // Names the consequence, not just the failure: the member reviews below
+    // are intact and that is the thing the user needs told.
+    failed: 'The scorecard could not be written — the member reviews below are unaffected.',
+    cancelled: 'The scorecard was cancelled.',
+    skipped: 'No member produced a review, so there is nothing to synthesize.',
+    unavailable:
+        'This panel has no usable aggregation backend, so no scorecard was written. Set one in Settings → Panels.'
+}
+
+function statusOf(panel: PanelRunState): ScorecardStatus {
+    const kind = scorecardStatusKind(panel.status)
+    return { kind, label: STATUS_LABELS[kind], detail: kind === 'failed' ? panel.error : null }
 }
 
 /**

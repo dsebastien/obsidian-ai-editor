@@ -15,7 +15,7 @@
  */
 
 import { buildRailViewModel } from './rail-model'
-import type { RailDotViewModel, RailState } from './rail-model'
+import type { RailDotViewModel, RailPanelViewModel, RailState } from './rail-model'
 
 export interface RailCallbacks {
     readonly onReview: () => void
@@ -23,6 +23,12 @@ export interface RailCallbacks {
     readonly onEditorClick: (editorId: string) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly onRetry: (editorId: string) => void
+    /**
+     * The panel chip was selected: open the side panel, where the scorecard
+     * lives. The chip has no inline surface of its own — a verdict, ranked
+     * fixes and dissent do not fit in a tooltip.
+     */
+    readonly onPanelClick: () => void
 }
 
 /**
@@ -61,9 +67,15 @@ export class PersonaRail {
      * Screen-reader label plus hover tooltip for one element. The native
      * setter and the `title` fallback are mutually exclusive so no element
      * ever shows two tooltips.
+     *
+     * `ariaLabel` defaults to the tooltip and is passed separately wherever
+     * the two differ — a control is NAMED, not instructed, so guidance that
+     * belongs in a tooltip ("narrow pane — run …") must not become the
+     * accessible name. Setting the name before calling this would not work:
+     * this is the last writer.
      */
-    private applyTooltip(el: HTMLElement, tooltip: string): void {
-        el.setAttribute('aria-label', tooltip)
+    private applyTooltip(el: HTMLElement, tooltip: string, ariaLabel: string = tooltip): void {
+        el.setAttribute('aria-label', ariaLabel)
         if (this.tooltipSetter) {
             this.tooltipSetter(el, tooltip)
         } else {
@@ -86,8 +98,7 @@ export class PersonaRail {
         button.textContent = viewModel.button.text
         // The compact form shows a glyph, so the accessible name has to come
         // from the model — the narrow-pane guidance rides the tooltip only.
-        button.setAttribute('aria-label', viewModel.button.ariaLabel)
-        this.applyTooltip(button, viewModel.button.tooltip)
+        this.applyTooltip(button, viewModel.button.tooltip, viewModel.button.ariaLabel)
         button.disabled = viewModel.button.disabled
         button.addEventListener('click', () => {
             if (viewModel.button.action === 'cancel') {
@@ -102,7 +113,24 @@ export class PersonaRail {
         dotsEl.classList.add('ai-editor-rail-dots')
         dotsEl.setAttribute('role', 'group')
         dotsEl.setAttribute('aria-label', 'Editors')
-        for (const dot of viewModel.dots) {
+        // A panel run renders as ONE entity: a ringed chip owning its members
+        // (Business Rules #11). Editors that are not members of it keep their
+        // place outside the group — they are still their own editors.
+        const panel = viewModel.panel
+        if (panel !== null) {
+            const groupEl = this.doc.createElement('div')
+            groupEl.classList.add('ai-editor-rail-panel')
+            groupEl.setAttribute('role', 'group')
+            groupEl.setAttribute('aria-label', `${panel.name} (panel)`)
+            groupEl.appendChild(this.renderPanelChip(panel))
+            for (const dot of viewModel.dots.filter((candidate) => candidate.member)) {
+                groupEl.appendChild(this.renderChip(dot))
+            }
+            dotsEl.appendChild(groupEl)
+        }
+        for (const dot of viewModel.dots.filter(
+            (candidate) => panel === null || !candidate.member
+        )) {
             dotsEl.appendChild(this.renderChip(dot))
         }
         this.rootEl.appendChild(dotsEl)
@@ -142,6 +170,30 @@ export class PersonaRail {
                 this.callbacks.onRetry(dot.editorId)
             })
             chipEl.appendChild(retryEl)
+        }
+        return chipEl
+    }
+
+    /**
+     * The panel's own chip: a RING, never a solid dot — that is the whole
+     * distinction Business Rules #11 asks for, and it carries the scorecard's
+     * verdict as its badge once there is one.
+     */
+    private renderPanelChip(panel: RailPanelViewModel): HTMLElement {
+        const chipEl = this.doc.createElement('button')
+        chipEl.classList.add('ai-editor-rail-panel-chip', `ai-editor-rail-panel-${panel.status}`)
+        chipEl.style.setProperty('--ai-editor-editor-color', panel.color)
+        this.applyTooltip(chipEl, panel.title, panel.ariaLabel)
+        chipEl.addEventListener('click', () => {
+            this.callbacks.onPanelClick()
+        })
+        if (panel.badge !== null) {
+            const badgeEl = this.doc.createElement('span')
+            badgeEl.classList.add('ai-editor-rail-panel-badge')
+            badgeEl.textContent = panel.badge
+            // The verdict is already in the chip's accessible name.
+            badgeEl.setAttribute('aria-hidden', 'true')
+            chipEl.appendChild(badgeEl)
         }
         return chipEl
     }

@@ -685,6 +685,64 @@
     @apply flex flex-col items-center gap-0.5;
 }
 
+/* --- Panel group (plan M6, Business Rules #11) ----------------------------
+   A panel run is ONE entity on the rail: a ringed chip that owns its member
+   dots. Editors are SOLID dots, panels are RINGED — the distinction has to
+   survive at 16px, so it is shape, never colour alone. The bracket around the
+   group says the members belong to it without absorbing them. */
+
+.ai-editor-rail-panel {
+    @apply flex flex-col items-center gap-1.5 rounded py-1;
+    border: 1px solid var(--background-modifier-border);
+    border-right: none;
+}
+
+.ai-editor-rail-panel-chip {
+    @apply relative cursor-pointer rounded-full p-0;
+    width: 16px;
+    height: 16px;
+    /* Hollow on purpose: the ring IS the panel signature. */
+    background-color: transparent;
+    border: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    box-shadow: none;
+}
+
+.ai-editor-rail-panel-chip:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.ai-editor-rail-panel-waiting,
+.ai-editor-rail-panel-skipped,
+.ai-editor-rail-panel-unavailable,
+.ai-editor-rail-panel-cancelled {
+    @apply opacity-60;
+}
+
+.ai-editor-rail-panel-failed {
+    border-color: var(--text-error);
+}
+
+.ai-editor-rail-panel-badge {
+    @apply absolute rounded-full px-1 leading-tight whitespace-nowrap;
+    top: -7px;
+    left: 18px;
+    font-size: 9px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.ai-editor-rail-compact .ai-editor-rail-panel-chip {
+    width: 12px;
+    height: 12px;
+    border-width: 2px;
+}
+
+/* The verdict label has no room next to a 12px chip; the tooltip carries it. */
+.ai-editor-rail-compact .ai-editor-rail-panel-badge {
+    @apply hidden;
+}
+
 .ai-editor-rail-retry {
     @apply cursor-pointer rounded-full p-0;
     width: 16px;

@@ -6,7 +6,7 @@ import {
     chipClickAction,
     railErrorReason
 } from './rail-model'
-import type { RailEditorState, RailEditorStatus, RailState } from './rail-model'
+import type { RailEditorState, RailEditorStatus, RailPanelState, RailState } from './rail-model'
 
 function editor(overrides: Partial<RailEditorState> = {}): RailEditorState {
     return {
@@ -260,5 +260,83 @@ describe('chipClickAction', () => {
     it('does nothing when there is nothing to show', () => {
         expect(chipClickAction('idle', 0, false)).toBe('none')
         expect(chipClickAction('done', 0, false)).toBe('none')
+    })
+})
+
+describe('buildRailViewModel panel entity (Business Rules #11)', () => {
+    const members = [
+        editor({ id: 'e-1', name: 'Hater' }),
+        editor({ id: 'e-2', name: 'Beginner' }),
+        editor({ id: 'e-3', name: 'Outsider' })
+    ]
+
+    function withPanel(overrides: Partial<RailPanelState> = {}): RailState {
+        return state({
+            editors: members,
+            panel: {
+                name: 'Pre-publish Review',
+                color: 'var(--color-pink)',
+                status: 'ready',
+                memberIds: ['e-1', 'e-2'],
+                verdictLabel: 'Needs work',
+                ...overrides
+            }
+        })
+    }
+
+    it('has no panel at all for a solo run', () => {
+        const vm = buildRailViewModel(state())
+        expect(vm.panel).toBeNull()
+        expect(vm.dots.every((dot) => !dot.member)).toBeTrue()
+    })
+
+    it('marks exactly the panel’s members, leaving other editors their own', () => {
+        const vm = buildRailViewModel(withPanel())
+        expect(vm.dots.map((dot) => dot.member)).toEqual([true, true, false])
+    })
+
+    it('names the panel as a panel in its accessible name, not only by shape', () => {
+        // A ring is invisible to assistive tech; #11 has to hold there too.
+        const vm = buildRailViewModel(withPanel())
+        expect(vm.panel?.ariaLabel).toContain('Pre-publish Review (panel)')
+        expect(vm.panel?.title).toContain('open the review panel')
+    })
+
+    it('carries the verdict as the chip badge once the scorecard exists', () => {
+        expect(buildRailViewModel(withPanel()).panel?.badge).toBe('Needs work')
+    })
+
+    it('has no badge while the scorecard does not exist yet', () => {
+        const vm = buildRailViewModel(
+            state({
+                editors: members,
+                panel: {
+                    name: 'Pre-publish Review',
+                    color: 'var(--color-pink)',
+                    status: 'running',
+                    memberIds: ['e-1', 'e-2']
+                }
+            })
+        )
+        expect(vm.panel?.badge).toBeNull()
+    })
+
+    it('says what happened for every aggregation outcome', () => {
+        const kinds = [
+            'waiting',
+            'running',
+            'ready',
+            'failed',
+            'cancelled',
+            'skipped',
+            'unavailable'
+        ] as const
+        for (const status of kinds) {
+            const vm = buildRailViewModel(withPanel({ status }))
+            expect(vm.panel?.status).toBe(status)
+            expect(vm.panel?.ariaLabel.length).toBeGreaterThan(
+                'Pre-publish Review (panel) — '.length
+            )
+        }
     })
 })
