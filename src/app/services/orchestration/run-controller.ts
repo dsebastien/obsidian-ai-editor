@@ -5,14 +5,18 @@ import { matchQuote } from '../../domain/anchoring/match'
 import type { FindingId, RunId } from '../../domain/ids'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type {
+    AggregatePanelRequest,
     OperationEvent,
     OperationResult,
+    PanelResult,
     RawFinding,
     ReviewRequest,
     ThreadTurnRequest,
     Verdict
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
+import type { PanelAggregationPlan, PanelMemberReview } from '../../domain/panels/panel-aggregation'
 import { resolveThreadOutcome } from '../../domain/operations/thread'
 import type { ThreadBeginFailure } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
@@ -61,6 +65,72 @@ export interface RunEditorSpec {
 export interface StartRunInput {
     readonly snapshot: DocumentSnapshot
     readonly editors: readonly RunEditorSpec[]
+    /**
+     * Present when this run IS a panel (plan M6): the editors above are its
+     * members, and the run additionally owns the aggregation step that turns
+     * their results into one scorecard. Absent for solo runs — nothing else
+     * about the run changes, which is the point: a panel member is an ordinary
+     * editor stream with the same anchoring, the same finding machinery and the
+     * same concurrency gate.
+     */
+    readonly panel?: RunPanelSpec
+}
+
+// ---------------------------------------------------------------------------
+// Panel runs (plan M6)
+// ---------------------------------------------------------------------------
+
+/** Backend executor for the aggregation step (same event protocol as reviews). */
+export type PanelAggregationExecutor = (
+    request: AggregatePanelRequest,
+    signal: AbortSignal
+) => AsyncIterable<OperationEvent>
+
+/** Panel identity + aggregation wiring for a first-class panel run. */
+export interface RunPanelSpec {
+    readonly panelId: string
+    readonly panelName: string
+    /** Redacts secrets from aggregation error messages (Business Rules #12). */
+    readonly redactError?: (message: string) => string
+    /**
+     * The aggregation backend. Absent when the panel has no usable one: the
+     * members still run as a panel and the scorecard reports `unavailable`,
+     * rather than the run pretending there was nothing to aggregate.
+     */
+    readonly aggregate?: PanelAggregationExecutor
+}
+
+/**
+ * Lifecycle of the aggregation step. `waiting` covers the whole time members
+ * are still running — the scorecard is a post-condition of the panel, so it
+ * has no meaningful state before then.
+ */
+export type PanelAggregationStatus =
+    | 'waiting'
+    | 'running'
+    | 'done'
+    | 'error'
+    /** The run (or the aggregation alone) was cancelled. */
+    | 'cancelled'
+    /** No member succeeded — nothing to synthesize (see the partial-failure policy). */
+    | 'skipped'
+    /** The panel has no usable aggregation backend configured. */
+    | 'unavailable'
+
+/** Immutable view of a panel run's aggregation step. */
+export interface PanelRunState {
+    readonly panelId: string
+    readonly panelName: string
+    readonly status: PanelAggregationStatus
+    /**
+     * Member editor names that did not produce a review, in run order. Filled
+     * as soon as the members settle — so the partial nature of a panel is
+     * visible whether or not the aggregation itself succeeds.
+     */
+    readonly missingMembers: readonly string[]
+    readonly result: PanelResult | null
+    /** Redacted failure message when `status` is `error`. */
+    readonly error: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +201,23 @@ export interface RunHandle {
      * a retry is in flight.
      */
     readonly settled: Promise<void>
+    /**
+     * Resolves when the FIRST aggregation attempt of a panel run reaches a
+     * terminal status (`done`, `error`, `cancelled`, `skipped`, `unavailable`);
+     * already resolved for a solo run. Same caveat as `settled`: a retry that
+     * re-opens the panel does not un-resolve it — live surfaces read
+     * `getPanelState()`.
+     */
+    readonly panelSettled: Promise<void>
     getEditorStates(): readonly EditorRunState[]
     getEditorState(editorId: string): EditorRunState | null
+    /**
+     * The panel this run is, and where its scorecard stands; `null` for a solo
+     * run. Findings are NOT part of it — they keep their per-member editor
+     * identity in the finding store, because a panel weighs its members, it
+     * does not merge them.
+     */
+    getPanelState(): PanelRunState | null
     /**
      * Whether every editor currently sits at a terminal status. Derived from
      * live editor state, so an in-flight retry flips it back to false and the
@@ -246,10 +331,21 @@ interface InternalEditorState {
     attemptAbort: AbortController | null
 }
 
+/** Mutable twin of `PanelRunState` (the public view is a copy). */
+interface InternalPanelState {
+    readonly panelId: string
+    readonly panelName: string
+    status: PanelAggregationStatus
+    missingMembers: string[]
+    result: PanelResult | null
+    error: string | null
+}
+
 class ReviewRunHandle implements RunHandle {
     readonly snapshot: DocumentSnapshot
     readonly findings: FindingStore
     readonly settled: Promise<void>
+    readonly panelSettled: Promise<void>
 
     private readonly abort = new AbortController()
     private readonly listeners = new Set<() => void>()
@@ -263,6 +359,19 @@ class ReviewRunHandle implements RunHandle {
      * one of them must still be able to run.
      */
     private readonly threadAborts = new Set<AbortController>()
+    /** Panel identity + aggregation backend; null for a solo run. */
+    private readonly panelSpec: RunPanelSpec | null
+    private readonly panel: InternalPanelState | null
+    /** Abort of the in-flight aggregation attempt (null when none is running). */
+    private panelAbort: AbortController | null = null
+    /**
+     * Attempt identity of the aggregation, bumped whenever a retry re-opens the
+     * panel. A late settle carrying an older epoch belongs to a scorecard the
+     * run has already discarded and is dropped — same guard as the per-editor
+     * `runId` attempt check.
+     */
+    private panelEpoch = 0
+    private resolvePanelSettled: () => void = () => undefined
 
     constructor(
         input: StartRunInput,
@@ -270,6 +379,22 @@ class ReviewRunHandle implements RunHandle {
     ) {
         this.snapshot = input.snapshot
         this.findings = new FindingStore(() => this.notify())
+        this.panelSpec = input.panel ?? null
+        this.panel = input.panel
+            ? {
+                  panelId: input.panel.panelId,
+                  panelName: input.panel.panelName,
+                  status: 'waiting',
+                  missingMembers: [],
+                  result: null,
+                  error: null
+              }
+            : null
+        this.panelSettled = this.panel
+            ? new Promise<void>((resolve) => {
+                  this.resolvePanelSettled = resolve
+              })
+            : Promise.resolve()
 
         for (const spec of input.editors) {
             if (this.states.has(spec.editorId)) {
@@ -302,6 +427,9 @@ class ReviewRunHandle implements RunHandle {
             return state ? this.consume(spec, state, this.abort.signal) : Promise.resolve()
         })
         this.settled = Promise.allSettled(loops).then(() => undefined)
+        // Covers the degenerate panel with no member stream at all: nothing
+        // will ever call `terminate`, so the scorecard would wait forever.
+        this.maybeAggregate()
     }
 
     getEditorStates(): readonly EditorRunState[] {
@@ -311,6 +439,20 @@ class ReviewRunHandle implements RunHandle {
     getEditorState(editorId: string): EditorRunState | null {
         const state = this.states.get(editorId)
         return state ? toPublicState(state) : null
+    }
+
+    getPanelState(): PanelRunState | null {
+        const panel = this.panel
+        return panel
+            ? {
+                  panelId: panel.panelId,
+                  panelName: panel.panelName,
+                  status: panel.status,
+                  missingMembers: [...panel.missingMembers],
+                  result: panel.result,
+                  error: panel.error
+              }
+            : null
     }
 
     isSettled(): boolean {
@@ -345,6 +487,18 @@ class ReviewRunHandle implements RunHandle {
         // spinning forever.
         for (const abort of [...this.threadAborts]) {
             abort.abort()
+        }
+        // Cancelling a panel run cancels its pending aggregation too: the
+        // scorecard is a statement about a run the user just stopped. An
+        // already-produced scorecard is left alone — it stays inspectable
+        // exactly like the findings of the members that did finish.
+        const panel = this.panel
+        if (panel && (panel.status === 'waiting' || panel.status === 'running')) {
+            this.panelEpoch += 1
+            this.panelAbort?.abort()
+            this.panelAbort = null
+            panel.status = 'cancelled'
+            this.resolvePanelSettled()
         }
         for (const finding of this.findings.list()) {
             if (finding.threadTurn?.status === 'pending') {
@@ -424,6 +578,19 @@ class ReviewRunHandle implements RunHandle {
         // Retried findings anchor against the CURRENT document text passed by
         // the caller, then remap through edits applied after this point.
         state.anchorBase = { text: freshText, batches: [] }
+        // Retrying a member re-opens the panel: the scorecard that named this
+        // member missing (or that was cancelled with the run) is about to be
+        // wrong, so it is discarded and re-derived when the run settles again.
+        const panel = this.panel
+        if (panel) {
+            this.panelEpoch += 1
+            this.panelAbort?.abort()
+            this.panelAbort = null
+            panel.status = 'waiting'
+            panel.missingMembers = []
+            panel.result = null
+            panel.error = null
+        }
         const attempt = new AbortController()
         state.attemptAbort = attempt
         // Not tracked by `settled` (already resolved after the initial
@@ -799,7 +966,173 @@ class ReviewRunHandle implements RunHandle {
         // of view; free the permit immediately rather than waiting for the
         // (possibly still-draining, possibly never-ending) stream to close.
         this.releasePermitOf(state)
+        // The last member to settle opens the aggregation step (no-op until
+        // then, and no-op for a solo run).
+        this.maybeAggregate()
         this.notify()
+    }
+
+    // -----------------------------------------------------------------------
+    // Panel aggregation (plan M6)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Opens the aggregation step once every member has settled. Synchronous
+     * and idempotent: it only acts while the panel sits at `waiting`, so a
+     * cancelled panel stays cancelled and a produced scorecard is never
+     * recomputed behind the user's back.
+     *
+     * The partial-failure policy itself lives in `planPanelAggregation` — this
+     * only turns its verdict into run state and, when there is something to
+     * synthesize, into one backend request.
+     */
+    private maybeAggregate(): void {
+        const panel = this.panel
+        if (!panel || panel.status !== 'waiting' || !this.isSettled()) {
+            return
+        }
+        const plan = planPanelAggregation(this.memberReviews())
+        panel.missingMembers = [...plan.missingMembers]
+        if (plan.kind === 'skip') {
+            panel.status = 'skipped'
+            this.resolvePanelSettled()
+            return
+        }
+        const aggregate = this.panelSpec?.aggregate
+        if (!aggregate) {
+            panel.status = 'unavailable'
+            this.resolvePanelSettled()
+            return
+        }
+        panel.status = 'running'
+        const attempt = new AbortController()
+        this.panelAbort = attempt
+        void this.consumeAggregation(aggregate, plan, attempt.signal, this.panelEpoch)
+    }
+
+    /** Each member's state as the aggregation policy needs to see it. */
+    private memberReviews(): PanelMemberReview[] {
+        return [...this.states.values()].map((state) => ({
+            editorName: state.editorName,
+            status: state.status,
+            findings: state.findingIds.flatMap((id) => {
+                const finding = this.findings.get(id)
+                return finding ? [finding.raw] : []
+            }),
+            summary: state.summary,
+            verdict: state.verdict
+        }))
+    }
+
+    /**
+     * Runs one aggregation attempt to completion. Same event protocol as a
+     * review (runId match, exactly-once terminal, post-terminal discard, stream
+     * end without terminal = a failure, never silent success) and the same
+     * plugin-wide concurrency permit: the scorecard is a backend request like
+     * any other and must not jump the queue in front of another note's run.
+     *
+     * Findings emitted by an aggregation are off-contract and discarded — a
+     * chairperson weighs its members, it does not add critiques of its own.
+     */
+    private async consumeAggregation(
+        aggregate: PanelAggregationExecutor,
+        plan: Extract<PanelAggregationPlan, { kind: 'aggregate' }>,
+        signal: AbortSignal,
+        epoch: number
+    ): Promise<void> {
+        const settle = (
+            status: PanelAggregationStatus,
+            result: PanelResult | null,
+            error: string | null
+        ): void => {
+            const panel = this.panel
+            // Superseded by a retry, or cancelled while in flight: the attempt
+            // no longer owns the panel and must not write to it.
+            if (!panel || epoch !== this.panelEpoch || panel.status !== 'running') {
+                return
+            }
+            panel.status = status
+            panel.result = result
+            panel.error = error
+            this.resolvePanelSettled()
+            this.notify()
+        }
+        const fail = (message: string): void => {
+            const redact = this.panelSpec?.redactError
+            settle('error', null, redact ? redact(message) : message)
+        }
+        const request: AggregatePanelRequest = {
+            kind: 'aggregate-panel',
+            contractVersion: CONTRACT_VERSION,
+            runId: asRunId(generateId()),
+            snapshotHash: this.snapshot.hash,
+            members: plan.members
+        }
+        try {
+            let release: ReleasePermit
+            try {
+                release = await this.requestGate.acquire(signal)
+            } catch {
+                settle('cancelled', null, null) // ejected from the queue by the abort
+                return
+            }
+            if (signal.aborted) {
+                // Cancelled while queued but the permit resolved first: never
+                // open a stream on a dead signal.
+                release()
+                settle('cancelled', null, null)
+                return
+            }
+            try {
+                let terminal = false
+                try {
+                    for await (const event of aggregate(request, signal)) {
+                        if (terminal || event.runId !== request.runId) {
+                            continue // post-terminal or foreign run: discard
+                        }
+                        if (event.type === 'progress' || event.type === 'finding') {
+                            continue
+                        }
+                        terminal = true
+                        if (event.type === 'error') {
+                            if (event.error.code === 'cancelled') {
+                                settle('cancelled', null, null)
+                            } else {
+                                fail(event.error.message)
+                            }
+                            continue
+                        }
+                        if (event.result.kind !== 'aggregate-panel') {
+                            fail(`Expected an 'aggregate-panel' result, got '${event.result.kind}'`)
+                            continue
+                        }
+                        settle('done', event.result, null)
+                    }
+                } catch (cause) {
+                    if (!terminal) {
+                        terminal = true
+                        if (signal.aborted) {
+                            settle('cancelled', null, null)
+                        } else {
+                            fail(cause instanceof Error ? cause.message : String(cause))
+                        }
+                    }
+                }
+                if (!terminal) {
+                    if (signal.aborted) {
+                        settle('cancelled', null, null)
+                    } else {
+                        fail('Stream ended without a terminal event')
+                    }
+                }
+            } finally {
+                release()
+            }
+        } finally {
+            if (epoch === this.panelEpoch) {
+                this.panelAbort = null
+            }
+        }
     }
 
     /** Frees the editor's concurrency permit, if held. Idempotent. */

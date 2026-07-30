@@ -46,6 +46,7 @@ export class FakeRunHandle implements RunHandle {
     readonly snapshot = createSnapshot({ filePath: 'Notes/Test.md', text: 'Hello world' })
     readonly findings = new FindingStore()
     readonly settled: Promise<void> = Promise.resolve()
+    readonly panelSettled: Promise<void> = Promise.resolve()
 
     /** Number of `cancelRun` calls — lets specs pin cancel side effects. */
     cancelCount = 0
@@ -82,6 +83,11 @@ export class FakeRunHandle implements RunHandle {
 
     getEditorState(editorId: string): EditorRunState | null {
         return this.states.find((state) => state.editorId === editorId) ?? null
+    }
+
+    /** The CLI fixture is a solo run; panel CLI shaping is not wired yet. */
+    getPanelState(): null {
+        return null
     }
 
     isSettled(): boolean {

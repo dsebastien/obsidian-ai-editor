@@ -1226,3 +1226,397 @@ describe('RunHandle.retryEditor (per-editor retry)', () => {
         expect(run.isSettled()).toBeTrue()
     })
 })
+
+// ---------------------------------------------------------------------------
+// Panel runs (plan M6): members in parallel + one aggregation step
+// ---------------------------------------------------------------------------
+
+describe('RunController panel runs', () => {
+    async function until(predicate: () => boolean): Promise<void> {
+        for (let i = 0; i < 100 && !predicate(); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        expect(predicate()).toBeTrue()
+    }
+
+    /** Member whose stream blocks until `gate` resolves, then reports one finding. */
+    function blockingMember(editorId: string, gate: Promise<void>): RunEditorSpec {
+        return {
+            editorId,
+            editorName: `Member ${editorId}`,
+            execute: async function* (request, signal) {
+                running.add(editorId)
+                await Promise.race([
+                    gate,
+                    new Promise<void>((resolve) =>
+                        signal.addEventListener('abort', () => resolve())
+                    )
+                ])
+                running.delete(editorId)
+                if (signal.aborted) {
+                    return
+                }
+                yield finding(request.runId, raw({ quote: 'quick brown', critique: editorId }))
+                yield result(request.runId, [], `${editorId} summary`)
+            }
+        }
+    }
+
+    /** Editors currently inside their `execute` body (concurrency assertions). */
+    const running = new Set<string>()
+
+    function panelResultEvent(runId: string): OperationEvent {
+        return {
+            type: 'result',
+            runId,
+            result: {
+                kind: 'aggregate-panel',
+                recommendation: 'needs-work',
+                memberVerdicts: [],
+                topFixes: ['Tighten the opening'],
+                missingMembers: []
+            }
+        }
+    }
+
+    /** Scripted member: one finding then a review result. */
+    function member(editorId: string, name = `Member ${editorId}`): RunEditorSpec {
+        return {
+            editorId,
+            editorName: name,
+            execute: async function* (request) {
+                await Promise.resolve()
+                yield finding(request.runId, raw({ quote: 'quick brown', critique: editorId }))
+                yield result(request.runId, [], `${editorId} summary`)
+            }
+        }
+    }
+
+    function failingMember(editorId: string, name = `Member ${editorId}`): RunEditorSpec {
+        return {
+            editorId,
+            editorName: name,
+            execute: async function* (request) {
+                await Promise.resolve()
+                yield {
+                    type: 'error',
+                    runId: request.runId,
+                    error: { code: 'timeout', message: 'too slow' }
+                }
+            }
+        }
+    }
+
+    it('schedules every member through the shared gate without starving another run', async () => {
+        running.clear()
+        const controller = new RunController(() => 2)
+        const gate = deferred()
+        const members = ['m1', 'm2', 'm3'].map((id) => blockingMember(id, gate.promise))
+        const soloGate = deferred()
+        const solo = blockingMember('solo', soloGate.promise)
+
+        const panelRun = controller.startRun({
+            snapshot: snapshot(),
+            editors: members,
+            panel: { panelId: 'panel-1', panelName: 'Pre-publish Review' }
+        })
+        const soloRun = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/other.md', text: DOC }),
+            editors: [solo]
+        })
+
+        // Two members in flight, the third and the other run's editor queued:
+        // members are ordinary editor streams on the ordinary permit gate.
+        await until(() => running.size === 2)
+        expect([...running].sort()).toEqual(['m1', 'm2'])
+        expect(panelRun.getEditorState('m3')?.status).toBe('pending')
+        expect(soloRun.getEditorState('solo')?.status).toBe('pending')
+
+        // Freeing the members admits the queue in FIFO order — the other run
+        // gets its permit without waiting for the whole panel to finish.
+        gate.resolve()
+        await until(() => running.has('solo'))
+        soloGate.resolve()
+        await panelRun.settled
+        await soloRun.settled
+    })
+
+    it('aggregates once the members settle, carrying their own results', async () => {
+        const controller = new RunController()
+        const requests: { members: readonly { editorName: string; failed: boolean }[] }[] = []
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a', 'Devil’s Advocate'), member('b', 'Beginner Reader')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Pre-publish Review',
+                aggregate: async function* (request) {
+                    requests.push({ members: request.members })
+                    await Promise.resolve()
+                    yield panelResultEvent(request.runId)
+                }
+            }
+        })
+
+        await run.settled
+        // The scorecard has its own settle point: members done ≠ panel done.
+        await run.panelSettled
+
+        const state = run.getPanelState()
+        expect(state?.panelName).toBe('Pre-publish Review')
+        expect(state?.status).toBe('done')
+        expect(state?.result?.topFixes).toEqual(['Tighten the opening'])
+        expect(state?.missingMembers).toEqual([])
+        expect(requests).toHaveLength(1)
+        expect(requests[0]?.members.map((entry) => entry.editorName)).toEqual([
+            'Devil’s Advocate',
+            'Beginner Reader'
+        ])
+    })
+
+    it('keeps every finding attributed to the member that reported it', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a'), member('b')],
+            panel: { panelId: 'panel-1', panelName: 'Panel' }
+        })
+        await run.settled
+
+        const byEditor = run.findings.list().map((entry) => entry.editorId)
+        expect(byEditor.sort()).toEqual(['a', 'b'])
+    })
+
+    it('completes with the survivors, naming the failed member to the chairperson', async () => {
+        const controller = new RunController()
+        let sent: readonly { editorName: string; failed: boolean }[] = []
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a', 'Alpha'), failingMember('b', 'Bravo')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                aggregate: async function* (request) {
+                    sent = request.members
+                    await Promise.resolve()
+                    yield panelResultEvent(request.runId)
+                }
+            }
+        })
+
+        await run.panelSettled
+
+        expect(run.getPanelState()?.status).toBe('done')
+        expect(run.getPanelState()?.missingMembers).toEqual(['Bravo'])
+        expect(sent.map((entry) => [entry.editorName, entry.failed])).toEqual([
+            ['Alpha', false],
+            ['Bravo', true]
+        ])
+        // The failed member is still retryable inside the run.
+        expect(run.getEditorState('b')?.status).toBe('error')
+    })
+
+    it('skips aggregation when no member succeeded, and says so', async () => {
+        const controller = new RunController()
+        let called = false
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [failingMember('a', 'Alpha'), failingMember('b', 'Bravo')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                aggregate: async function* (request) {
+                    called = true
+                    yield panelResultEvent(request.runId)
+                }
+            }
+        })
+
+        await run.panelSettled
+
+        expect(called).toBeFalse()
+        expect(run.getPanelState()?.status).toBe('skipped')
+        expect(run.getPanelState()?.missingMembers).toEqual(['Alpha', 'Bravo'])
+    })
+
+    it('reports an unavailable scorecard rather than pretending there is none', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a')],
+            panel: { panelId: 'panel-1', panelName: 'Panel' }
+        })
+
+        await run.panelSettled
+
+        expect(run.getPanelState()?.status).toBe('unavailable')
+    })
+
+    it('cancelling mid-panel cancels every member and the pending aggregation', async () => {
+        running.clear()
+        const controller = new RunController()
+        const gate = deferred()
+        let called = false
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [blockingMember('m1', gate.promise), blockingMember('m2', gate.promise)],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                aggregate: async function* (request) {
+                    called = true
+                    yield panelResultEvent(request.runId)
+                }
+            }
+        })
+
+        await until(() => running.size === 2)
+        run.cancelRun()
+
+        expect(run.getEditorStates().map((state) => state.status)).toEqual([
+            'cancelled',
+            'cancelled'
+        ])
+        expect(run.getPanelState()?.status).toBe('cancelled')
+        await run.panelSettled
+        expect(called).toBeFalse()
+        gate.resolve()
+    })
+
+    it('cancelling while the scorecard is in flight aborts the aggregation', async () => {
+        const controller = new RunController()
+        let aggregationSignal: AbortSignal | null = null
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                // eslint-disable-next-line require-yield -- reason: models an aggregation that only ever ends by being aborted
+                aggregate: async function* (_request, signal) {
+                    aggregationSignal = signal
+                    await new Promise<void>((resolve) =>
+                        signal.addEventListener('abort', () => resolve())
+                    )
+                }
+            }
+        })
+
+        await until(() => run.getPanelState()?.status === 'running')
+        run.cancelRun()
+
+        expect(aggregationSignal).not.toBeNull()
+        expect(aggregationSignal!.aborted).toBeTrue()
+        expect(run.getPanelState()?.status).toBe('cancelled')
+        await run.panelSettled
+    })
+
+    it('retrying one failed member re-opens the panel and re-derives the scorecard', async () => {
+        const controller = new RunController()
+        let attempt = 0
+        const flaky: RunEditorSpec = {
+            editorId: 'b',
+            editorName: 'Bravo',
+            execute: async function* (request) {
+                await Promise.resolve()
+                if (attempt++ === 0) {
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'timeout', message: 'too slow' }
+                    }
+                    return
+                }
+                yield finding(request.runId, raw({ quote: 'lazy dog', critique: 'retried' }))
+                yield result(request.runId, [])
+            }
+        }
+        const missingPerCall: string[][] = []
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a', 'Alpha'), flaky],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                aggregate: async function* (request) {
+                    missingPerCall.push(
+                        request.members.filter((entry) => entry.failed).map((e) => e.editorName)
+                    )
+                    await Promise.resolve()
+                    yield panelResultEvent(request.runId)
+                }
+            }
+        })
+
+        await run.panelSettled
+        expect(run.getPanelState()?.missingMembers).toEqual(['Bravo'])
+
+        // The stage-A per-editor retry works inside a panel run…
+        expect(run.retryEditor('b', DOC)).toEqual({ ok: true })
+        // …and it invalidates the scorecard that said Bravo was missing.
+        expect(run.getPanelState()?.status).toBe('waiting')
+        expect(run.getPanelState()?.missingMembers).toEqual([])
+
+        await until(() => run.getPanelState()?.status === 'done')
+        expect(run.getPanelState()?.missingMembers).toEqual([])
+        expect(missingPerCall).toEqual([['Bravo'], []])
+        // The retried member's findings replaced the failed attempt's.
+        expect(
+            run.findings.list().filter((entry) => entry.editorId === 'b').length
+        ).toBeGreaterThan(0)
+    })
+
+    it('redacts the aggregation failure and never reports silent success', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                redactError: (message) => message.replace('sk-secret', '[redacted]'),
+                aggregate: async function* (request) {
+                    await Promise.resolve()
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'auth', message: 'rejected sk-secret' }
+                    }
+                }
+            }
+        })
+
+        await run.panelSettled
+
+        expect(run.getPanelState()?.status).toBe('error')
+        expect(run.getPanelState()?.error).toBe('rejected [redacted]')
+    })
+
+    it('treats a stream that ends without a terminal event as a failure', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                // eslint-disable-next-line require-yield -- reason: models the protocol violation of a stream ending without a terminal event
+                aggregate: async function* () {
+                    await Promise.resolve()
+                }
+            }
+        })
+
+        await run.panelSettled
+
+        expect(run.getPanelState()?.status).toBe('error')
+        expect(run.getPanelState()?.error).toBe('Stream ended without a terminal event')
+    })
+
+    it('leaves a solo run without any panel state', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({ snapshot: snapshot(), editors: [member('a')] })
+        await run.panelSettled
+        expect(run.getPanelState()).toBeNull()
+    })
+})
