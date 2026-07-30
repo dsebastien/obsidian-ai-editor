@@ -463,11 +463,21 @@ export class ReviewController {
         const { plugin, app } = this.deps
         // Background comment jobs push their own updates (including the
         // once-a-second elapsed-timer tick while something is in flight), so
-        // the panel never has to poll for a live timer.
+        // no surface has to poll for a live timer.
+        //
+        // BOTH surfaces are driven from here. The panel is the obvious one;
+        // the margin column is the one the feature promises ("the answer
+        // appears in the margin when it arrives"), and nothing else schedules
+        // a refresh on a job transition — without this the card sits frozen on
+        // "Queued" until an unrelated scroll or layout change happens by.
+        // `scheduleRefresh` is coalesced to one timeout and `MarginColumn.render`
+        // is a no-op on an unchanged model, so the 1 Hz tick costs a
+        // reposition pass rather than a rebuild.
         this.commentJobsUnsubscribe =
             this.deps.commentJobs?.subscribe(() => {
                 if (!this.disposed) {
                     this.updatePanels()
+                    this.scheduleRefresh()
                 }
             }) ?? null
         plugin.registerEvent(app.workspace.on('layout-change', () => this.scheduleRefresh()))
@@ -1044,6 +1054,16 @@ export class ReviewController {
         if (!file || this.disposed || !this.deps.commentJobs) {
             return
         }
+        if (this.deps.commentJobs.isReadOnly()) {
+            // The store could not be preserved at load, so nothing written
+            // this session survives it. Refusing here is the honest answer:
+            // accepting the question would spend a backend request on an
+            // answer that dies at quit, having promised the opposite.
+            new Notice(
+                'AI Editor: margin comments cannot be saved this session, so new ones are not accepted. See the comment store warning from startup.'
+            )
+            return
+        }
         const from = editor.posToOffset(editor.getCursor('from'))
         const to = editor.posToOffset(editor.getCursor('to'))
         if (from === to) {
@@ -1060,11 +1080,26 @@ export class ReviewController {
         }
         const capturedPath = file.path
         const selection = { from, to }
+        // The offsets are captured HERE and the note text is read at dispatch,
+        // so the two can describe different documents (Sync, another pane,
+        // another plugin) while the modal is open. The span's text is captured
+        // with the offsets and re-checked at dispatch — the same precondition
+        // shape the "Ask an editor" flow uses, and the alternative (deriving a
+        // quote from whatever now sits at those offsets) would park a durable
+        // question about unrelated text.
+        const capturedSpan = editor.getValue().slice(from, to)
         new AskEditorModal(
             this.deps.app,
             choices,
             (editorId, instruction) => {
-                void this.startComment(capturedPath, selection, editorId, instruction, false)
+                void this.startComment(
+                    capturedPath,
+                    selection,
+                    editorId,
+                    instruction,
+                    false,
+                    capturedSpan
+                )
             },
             {
                 title: 'Ask for comments',
@@ -1084,14 +1119,17 @@ export class ReviewController {
      * The note text is read at dispatch time (live buffer when open), not
      * captured when the dialog opened: the user may have kept typing while
      * writing their question, and the span hints must describe the text the
-     * request is actually about.
+     * request is actually about. `capturedSpan` is what makes that safe — the
+     * offsets are from capture time, so the span they point at now has to
+     * still read the same or the whole thing is refused (Business Rules #3).
      */
     private async startComment(
         notePath: string,
         selection: { from: number; to: number },
         editorId: string,
         instruction: string,
-        confirmedLargeNote: boolean
+        confirmedLargeNote: boolean,
+        capturedSpan: string
     ): Promise<void> {
         const registry = this.deps.commentJobs
         if (!registry || this.disposed) {
@@ -1100,6 +1138,10 @@ export class ReviewController {
         const noteText = await this.readNoteText(notePath)
         if (noteText === null) {
             new Notice('That note is no longer in the vault.')
+            return
+        }
+        if (noteText.slice(selection.from, selection.to) !== capturedSpan) {
+            new Notice('The text changed while the dialog was open. Select it again and re-ask.')
             return
         }
         const result = await startCommentJob({
@@ -1119,7 +1161,14 @@ export class ReviewController {
                 result.wordCount,
                 result.limit,
                 () => {
-                    void this.startComment(notePath, selection, editorId, instruction, true)
+                    void this.startComment(
+                        notePath,
+                        selection,
+                        editorId,
+                        instruction,
+                        true,
+                        capturedSpan
+                    )
                 },
                 COMMENT_SIZE_LABELS
             ).open()
@@ -2243,6 +2292,12 @@ export class ReviewController {
         if (!registry || this.disposed) {
             return
         }
+        if (registry.isReadOnly()) {
+            new Notice(
+                'AI Editor: margin comments cannot be saved this session, so a retry would not be recorded.'
+            )
+            return
+        }
         const noteText = await this.readNoteText(notePath)
         if (noteText === null) {
             new Notice('That note is no longer in the vault.')
@@ -2261,6 +2316,9 @@ export class ReviewController {
             new Notice(message)
         }
         this.updatePanels()
+        // The margin card is the surface the retry was pressed on: it has to
+        // show the job going back to "Queued" (`startComment` does the same).
+        this.scheduleRefresh()
     }
 
     /** Live buffer text when the note is open, else its vault state. */
@@ -2637,6 +2695,15 @@ export class ReviewController {
         // never-reviewed note arms just as well); near-zero cost while the
         // daemon toggle is off.
         this.daemon?.recordEdit(glue.filePath)
+        // Margin comments are anchored to text, so an edit moves them — and
+        // may take their quote away entirely. Both paths below return early
+        // (no run at all, or a run where nothing went stale), so this is the
+        // only place a typing burst can schedule the re-anchor + reposition.
+        // Coalesced to one refresh, and gated on the note actually having
+        // comments so an ordinary note pays nothing.
+        if (this.hasMarginComments(glue)) {
+            this.scheduleRefresh()
+        }
         if (!glue.run) {
             return
         }

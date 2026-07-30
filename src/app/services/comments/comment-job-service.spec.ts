@@ -17,6 +17,7 @@ import { CommentRunController } from '../orchestration/comment-run'
 import { Semaphore } from '../orchestration/semaphore'
 import { CommentJobRegistry } from './comment-job-registry'
 import { retryCommentJob, startCommentJob } from './comment-job-service'
+import type { CommentJobStart } from './comment-job-service'
 import { MarginCommentRepository } from './comment-repository'
 import type { CommentStorageAdapter } from './comment-repository'
 
@@ -387,6 +388,76 @@ describe('retrying an interrupted comment', () => {
     it('refuses to retry a comment that is not there', async () => {
         const harness = setup()
         expect((await retryCommentJob(retryInput(harness))).status).toEqual('unknown-comment')
+    })
+
+    it('leaves the stored status untouched when a gate refuses the retry', async () => {
+        // The mirror of the start-path gate specs above: a refusal must not
+        // move the durable record. A comment stranded in `submitted` offers no
+        // Retry, cancels nothing, and has lost its failure message — a dead
+        // end until the next restart normalizes it to `interrupted`.
+        const cases: {
+            name: CommentJobStart['status']
+            overrides: Record<string, unknown>
+        }[] = [
+            {
+                name: 'excluded',
+                overrides: {
+                    settings: makeSettings({ behavior: { excludedTags: ['private'] } }),
+                    excludeNote: true
+                }
+            },
+            {
+                name: 'rule-disabled',
+                overrides: {
+                    settings: makeSettings({
+                        rules: [
+                            {
+                                id: 'rule-1',
+                                name: 'No AI here',
+                                match: { matchType: 'folder', value: 'Notes' },
+                                effect: 'disabled'
+                            }
+                        ]
+                    })
+                }
+            },
+            {
+                name: 'needs-confirmation',
+                overrides: {
+                    settings: makeSettings({ behavior: { sizeWarningWords: 100 } }),
+                    noteText: `${DOC} ${'filler '.repeat(150)}`
+                }
+            },
+            {
+                name: 'no-editor',
+                overrides: { settings: makeSettings({ editors: [makeEditor({ enabled: false })] }) }
+            }
+        ]
+        for (const testCase of cases) {
+            const harness = setup()
+            harness.repository.upsert(NOTE, interrupted({ status: 'failed', error: 'boom' }))
+            const { excludeNote, ...overrides } = testCase.overrides
+            if (excludeNote === true) {
+                harness.vault.metadata.set(NOTE, { tags: ['#private'], frontmatter: {} })
+            }
+            const result = await retryCommentJob(retryInput(harness, overrides))
+            expect(result.status).toEqual(testCase.name)
+            const stored = harness.repository.listFor(NOTE)[0]
+            expect(stored?.status).toEqual('failed')
+            expect(stored?.error).toEqual('boom')
+        }
+    })
+
+    it('re-asks with the re-anchored hints once every gate has passed', async () => {
+        const harness = setup()
+        harness.repository.upsert(NOTE, interrupted({ status: 'failed', error: 'boom' }))
+        const result = await retryCommentJob(retryInput(harness))
+        expect(result.status).toEqual('started')
+        // The restart cleared the failure and the hints came from the live note.
+        const stored = harness.repository.listFor(NOTE)[0]
+        expect(stored?.error).toBeUndefined()
+        expect(stored?.quote).toEqual('The claim under review.')
+        await settle()
     })
 
     it('still honours the exclusion gate on a retry', async () => {

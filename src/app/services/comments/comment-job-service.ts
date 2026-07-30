@@ -169,29 +169,41 @@ export async function retryCommentJob(input: RetryCommentJobInput): Promise<Comm
     if (anchored.anchor === null) {
         return { status: 'orphaned' }
     }
-    const restarted = input.registry.prepareRetry(input.notePath, input.commentId)
-    if (!restarted) {
-        return { status: 'not-retryable' }
-    }
     // Re-anchored quote and hints: the comment now asks about the live span.
     const hints = spanHints(input.noteText, anchored.anchor.from, anchored.anchor.to)
     const refreshed: MarginComment = hints
         ? {
-              ...restarted,
+              ...stored,
               quote: hints.quote,
               prefix: hints.prefix,
               suffix: hints.suffix,
               occurrence: hints.occurrence
           }
-        : restarted
-    return dispatch(input, refreshed, { from: anchored.anchor.from, to: anchored.anchor.to })
+        : stored
+    // The durable status is flipped back to `submitted` only once every gate
+    // has passed, immediately before the launch. Doing it up front (as this
+    // used to) strands the comment in `submitted` on ANY refusal — a state
+    // with no Retry button, a Cancel button that cancels nothing, and the
+    // original failure message already cleared. The oversized-note refusal is
+    // directly reachable, and its copy tells the user to re-ask: exactly the
+    // affordance the premature mutation had just removed.
+    return dispatch(input, refreshed, { from: anchored.anchor.from, to: anchored.anchor.to }, () =>
+        input.registry.prepareRetry(input.notePath, input.commentId)
+    )
 }
 
-/** The gate chain both entry points share. */
+/**
+ * The gate chain both entry points share.
+ *
+ * `prepare` (retry only) runs after every gate and before the launch: it is
+ * the one durable mutation the chain makes on its own, and it must not happen
+ * for a request that never goes out.
+ */
 async function dispatch(
     input: CommonInput,
     comment: MarginComment,
-    selection: { from: number; to: number }
+    selection: { from: number; to: number },
+    prepare?: () => MarginComment | null
 ): Promise<CommentJobStarted> {
     const { settings, vault, notePath } = input
     const behavior = settings.behavior
@@ -262,6 +274,25 @@ async function dispatch(
         throw cause
     }
 
+    // Every gate has passed and the request is about to go out: NOW the retry
+    // may touch the durable record. A `null` here is a race — another surface
+    // restarted the same comment while this one was assembling context — and
+    // `already-running` is what that is.
+    let record = comment
+    if (prepare) {
+        const restarted = prepare()
+        if (!restarted) {
+            return { status: 'already-running' }
+        }
+        record = {
+            ...restarted,
+            quote: comment.quote,
+            ...(comment.prefix === undefined ? {} : { prefix: comment.prefix }),
+            ...(comment.suffix === undefined ? {} : { suffix: comment.suffix }),
+            ...(comment.occurrence === undefined ? {} : { occurrence: comment.occurrence })
+        }
+    }
+
     const snapshot = createSnapshot({ filePath: notePath, text: input.noteText, selection })
     const request: ReviewRequest = {
         kind: 'review',
@@ -280,7 +311,7 @@ async function dispatch(
     })
     const launched = input.registry.launch({
         notePath,
-        comment,
+        comment: record,
         run: {
             request,
             editorId: editor.id,
