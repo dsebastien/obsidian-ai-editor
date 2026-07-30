@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { history, isolateHistory, undo, undoDepth } from '@codemirror/commands'
 import { EditorState, Text } from '@codemirror/state'
 import type { TransactionSpec } from '@codemirror/state'
 import type { DecorationSet } from '@codemirror/view'
@@ -163,5 +164,76 @@ describe('transformPreviewField', () => {
         // The decoration maps (possibly to position 0) — it is the review
         // controller's job to detect the failed precondition and clear.
         expect(hasTransformPreview(state)).toBe(true)
+    })
+})
+
+/**
+ * Contract pin for the controller's Accept dispatch (queued in slice 2 as a
+ * manual check until `@codemirror/commands` became a dev dependency): the
+ * accepted transform must be its OWN undo event. CM6's history joins an
+ * annotation-less transaction to the previous event when adjacent and within
+ * `newGroupDelay`, and later `input.type` transactions join symmetrically —
+ * so without `isolateHistory.of('full')`, Ctrl+Z after an accept near recent
+ * typing would revert the transform AND the user's keystrokes.
+ */
+describe('accept history isolation (isolateHistory contract)', () => {
+    function historyState(docText: string): EditorState {
+        return EditorState.create({ doc: docText, extensions: [history()] })
+    }
+
+    function undoOnce(state: EditorState): EditorState {
+        let result = state
+        undo({
+            state,
+            dispatch: (tr) => {
+                result = tr.state
+            }
+        })
+        return result
+    }
+
+    it('control: an annotation-less accept merges into adjacent typing (the hazard)', () => {
+        // Type '!' at the end, then "accept" a replacement of the adjacent
+        // span — annotation-less, both within newGroupDelay.
+        let state = historyState('alpha beta')
+        state = apply(state, {
+            changes: { from: 10, to: 10, insert: '!' },
+            userEvent: 'input.type'
+        })
+        expect(undoDepth(state)).toBe(1)
+        state = apply(state, { changes: { from: 6, to: 10, insert: 'BETA' } })
+        // Merged: one undo event holds both the typing and the replacement.
+        expect(undoDepth(state)).toBe(1)
+        expect(undoOnce(state).doc.toString()).toBe('alpha beta')
+    })
+
+    it('isolates the accept from typing that happened just before it', () => {
+        let state = historyState('alpha beta')
+        state = apply(state, {
+            changes: { from: 10, to: 10, insert: '!' },
+            userEvent: 'input.type'
+        })
+        state = apply(state, {
+            changes: { from: 6, to: 10, insert: 'BETA' },
+            annotations: isolateHistory.of('full')
+        })
+        expect(undoDepth(state)).toBe(2)
+        // One undo reverts ONLY the accepted transform; the typing survives.
+        expect(undoOnce(state).doc.toString()).toBe('alpha beta!')
+    })
+
+    it('isolates the accept from typing that continues right after it', () => {
+        let state = historyState('alpha beta')
+        state = apply(state, {
+            changes: { from: 6, to: 10, insert: 'BETA' },
+            annotations: isolateHistory.of('full')
+        })
+        state = apply(state, {
+            changes: { from: 10, to: 10, insert: '!' },
+            userEvent: 'input.type'
+        })
+        expect(undoDepth(state)).toBe(2)
+        // One undo reverts ONLY the typing; the accepted transform survives.
+        expect(undoOnce(state).doc.toString()).toBe('alpha BETA')
     })
 })

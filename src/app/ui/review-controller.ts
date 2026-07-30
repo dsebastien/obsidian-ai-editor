@@ -1,5 +1,6 @@
 import { MarkdownView, Modal, Notice, Setting, TFile, setTooltip } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
+import { isolateHistory } from '@codemirror/commands'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
@@ -1402,7 +1403,13 @@ export class ReviewController {
             daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false)
         })
         this.dispatchDecorations(glue, run)
-        this.dispatchTransformPreview(glue, transformRun)
+        // File/doc coherence: right after this glue rebound to a different
+        // file (note switch, fresh mount), Obsidian has assigned `view.file`
+        // but the async content load may not have replaced the CM document
+        // yet — the same load window `handleEditorUpdate`'s file-path guard
+        // defends against. The preview dispatch must not treat that stale
+        // document as evidence the file's text changed.
+        this.dispatchTransformPreview(glue, transformRun, previousPath !== filePath)
     }
 
     private buildRailEditors(
@@ -1525,8 +1532,22 @@ export class ReviewController {
      * are never fuzzy-relocated, the user re-runs the action (BR #3/#4).
      * Dispatch is keyed by runId so refresh cycles are no-ops while nothing
      * changed (the decoration maps itself through unrelated edits).
+     *
+     * `fileRebound` marks a refresh cycle in which the glue just rebound to
+     * this file: the CM document may still hold the PREVIOUS note's text
+     * (Obsidian assigns `view.file` before the async content load replaces
+     * the doc), so a failed precondition proves nothing about the file's
+     * actual content. On such a cycle the widget stays cleared but the done
+     * run is NOT discarded — the doc-replacing load transaction schedules
+     * the next refresh (via `handleEditorUpdate`'s settled-transform hook),
+     * which re-checks against the real document and then either presents
+     * the result or discards it for good.
      */
-    private dispatchTransformPreview(glue: ViewGlue, run: TransformRunHandle | null): void {
+    private dispatchTransformPreview(
+        glue: ViewGlue,
+        run: TransformRunHandle | null,
+        fileRebound: boolean
+    ): void {
         const editorView = editorViewOf(glue.view)
         if (!editorView) {
             return
@@ -1538,7 +1559,7 @@ export class ReviewController {
                 const precondition = run.checkPrecondition(editorView.state.doc.toString())
                 if (precondition.ok) {
                     spec = this.buildTransformPreviewSpec(glue, run, state.outcome)
-                } else if (precondition.reason === 'text-changed') {
+                } else if (precondition.reason === 'text-changed' && !fileRebound) {
                     if (!this.notifiedTransformStale.has(String(run.runId))) {
                         this.notifiedTransformStale.add(String(run.runId))
                         new Notice(
@@ -1601,7 +1622,13 @@ export class ReviewController {
      * Accept (Business Rules #2/#3): the precondition is re-verified against
      * the CURRENT document in the same synchronous block as the apply; only
      * then does the replacement/insertion go out as ONE editor transaction
-     * (single undo step) that also removes the widget. On failure the widget
+     * (single undo step) that also removes the widget. The transaction is
+     * `isolateHistory`-annotated ('full') so it never merges with adjacent
+     * user typing in either direction — without it, CM6's history joins an
+     * annotation-less transaction to the previous event (and later
+     * `input.type` events to it) when adjacent and within `newGroupDelay`,
+     * making Ctrl+Z revert the transform AND the user's own keystrokes.
+     * On failure the widget
      * stays and a Notice explains — a stale race additionally auto-dismisses
      * through the refresh cycle. The dispatched edit reaches the review
      * run's anchor store through the canonical-view forwarding like any
@@ -1626,7 +1653,8 @@ export class ReviewController {
             changes: { from, to, insert },
             effects: clearTransformPreviewEffect.of(null),
             selection: { anchor: from + insert.length },
-            scrollIntoView: true
+            scrollIntoView: true,
+            annotations: isolateHistory.of('full')
         })
         editorView.focus()
         glue.transformPreviewKey = ''
