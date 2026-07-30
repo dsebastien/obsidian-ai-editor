@@ -8,6 +8,7 @@ import {
 import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
 import { RunController } from './orchestration/run-controller'
+import { reviewGate } from './reviewability'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
     augmentSystemPrompt,
@@ -535,6 +536,76 @@ describe('startReview', () => {
                     { editorId: 'gone', editorName: 'Blog panel', reason: 'rule-target-missing' }
                 ]
             })
+        })
+
+        it('refuses a rule whose EDITOR no longer exists, naming the rule', async () => {
+            const settings = makeSettings({
+                rules: [
+                    {
+                        id: 'r1',
+                        name: 'Blog editor',
+                        match: { matchType: 'folder', value: '/' },
+                        effect: 'assign',
+                        defaultTarget: { targetType: 'editor', targetId: 'gone' }
+                    }
+                ]
+            })
+            const result = await startReview({
+                settings,
+                snapshot: makeSnapshot(),
+                vault: new FakeVault(),
+                runController: new RunController(),
+                fetchImpl: fetchReturning(anthropicReviewBody())
+            })
+            // Used to come back as an anonymous `editor-missing` against an id
+            // nobody recognizes, with no mention of the rule that caused it.
+            expect(result).toEqual({
+                status: 'no-editors',
+                skips: [
+                    { editorId: 'gone', editorName: 'Blog editor', reason: 'rule-target-missing' }
+                ]
+            })
+        })
+
+        it('never lets a surface offer a review this note would refuse', async () => {
+            // The invariant the gate exists for: whatever the rule assigns, the
+            // gate and the dispatch agree. Anything else means an enabled
+            // command, an enabled panel button, and an error Notice per click.
+            const targets = [
+                { targetType: 'editor' as const, targetId: 'gone' },
+                { targetType: 'editor' as const, targetId: 'e-off' },
+                { targetType: 'editor' as const, targetId: 'e-1' }
+            ]
+            for (const target of targets) {
+                const settings = makeSettings({
+                    editors: [
+                        makeEditor({ id: 'e-1' }),
+                        makeEditor({ id: 'e-off', name: 'Off', enabled: false })
+                    ],
+                    rules: [
+                        {
+                            id: 'r1',
+                            name: 'Blog',
+                            match: { matchType: 'folder', value: '/' },
+                            effect: 'assign',
+                            defaultTarget: target
+                        }
+                    ]
+                })
+                const vault = new FakeVault()
+                const gate = reviewGate('Notes/Test.md', vault, settings)
+                const result = await startReview({
+                    settings,
+                    snapshot: makeSnapshot(),
+                    vault,
+                    runController: new RunController(),
+                    fetchImpl: fetchReturning(anthropicReviewBody())
+                })
+                expect(gate.status === 'ok').toBe(result.status === 'started')
+                if (result.status === 'started') {
+                    await result.run.settled
+                }
+            }
         })
 
         it('lets an explicit instruction win over an assign rule', async () => {

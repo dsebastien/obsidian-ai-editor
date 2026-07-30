@@ -403,3 +403,82 @@ describe('reviewGate', () => {
         }
     })
 })
+
+// ---------------------------------------------------------------------------
+// The gate is note-scoped, not global
+// ---------------------------------------------------------------------------
+
+describe('reviewGate over a rule-assigned pool', () => {
+    const assignTo = (target: Record<string, unknown>): Record<string, unknown> => ({
+        id: 'rule-1',
+        name: 'Blog',
+        match: { matchType: 'folder', value: 'Blog' },
+        effect: 'assign',
+        defaultTarget: target
+    })
+
+    const facts = factsOf(NO_METADATA_EXCLUSIONS)
+
+    it('refuses when the rule assigns an editor that cannot run', () => {
+        // The vault has a perfectly working editor; the rule just does not use
+        // it. A global "is any editor capable" answer would say yes here, and
+        // then every dispatch would refuse with `no-editors`.
+        const settings = makeSettings({
+            editors: [makeEditor(), makeEditor({ id: 'editor-2', name: 'Off', enabled: false })],
+            rules: [assignTo({ targetType: 'editor', targetId: 'editor-2' })]
+        })
+        expect(hasReviewCapableEditor(settings)).toBe(true)
+        expect(reviewGate('Blog/Post.md', facts, settings)).toEqual({
+            status: 'rule-target-unusable',
+            ruleLabel: 'Blog'
+        })
+        expect(isReviewable('Blog/Post.md', facts, settings)).toBe(false)
+        // The plugin still OPERATES on the note — transforms dispatch, the rail
+        // shows — so the kill-switch projection stays true.
+        expect(isPluginEnabledForNote('Blog/Post.md', facts, settings)).toBe(true)
+        // A note the rule does not match keeps the default pool.
+        expect(reviewGate('Notes/Other.md', facts, settings)).toEqual({ status: 'ok' })
+    })
+
+    it('refuses when the rule assigns a deleted editor, naming the rule', () => {
+        const settings = makeSettings({
+            rules: [assignTo({ targetType: 'editor', targetId: 'gone' })]
+        })
+        expect(reviewGate('Blog/Post.md', facts, settings)).toEqual({
+            status: 'rule-target-unusable',
+            ruleLabel: 'Blog'
+        })
+    })
+
+    it('refuses when no member of the assigned panel can run', () => {
+        const settings = makeSettings({
+            editors: [
+                makeEditor(),
+                makeEditor({ id: 'editor-2', name: 'No review', capabilities: { review: false } })
+            ],
+            panels: [{ id: 'panel-1', name: 'Gate', memberEditorIds: ['editor-2'] }],
+            rules: [assignTo({ targetType: 'panel', targetId: 'panel-1' })]
+        })
+        expect(reviewGate('Blog/Post.md', facts, settings)).toEqual({
+            status: 'rule-target-unusable',
+            ruleLabel: 'Blog'
+        })
+    })
+
+    it('accepts when at least one assigned editor can run', () => {
+        const settings = makeSettings({
+            editors: [makeEditor({ id: 'editor-2', name: 'Off', enabled: false }), makeEditor()],
+            panels: [{ id: 'panel-1', name: 'Gate', memberEditorIds: ['editor-2', 'editor-1'] }],
+            rules: [assignTo({ targetType: 'panel', targetId: 'panel-1' })]
+        })
+        expect(reviewGate('Blog/Post.md', facts, settings)).toEqual({ status: 'ok' })
+    })
+
+    it('still reports the global case as no-editor when no rule matched', () => {
+        const settings = makeSettings({
+            editors: [makeEditor({ enabled: false })],
+            rules: [assignTo({ targetType: 'editor', targetId: 'editor-1' })]
+        })
+        expect(reviewGate('Notes/Other.md', facts, settings)).toEqual({ status: 'no-editor' })
+    })
+})

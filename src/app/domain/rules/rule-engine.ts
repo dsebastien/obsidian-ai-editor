@@ -306,7 +306,12 @@ export type RuleEditorPool =
      * that cannot run must be reported as a skip rather than silently dropped.
      */
     | { readonly kind: 'editors'; readonly editorIds: readonly string[] }
-    /** The rule's target no longer exists (dangling panel reference). */
+    /**
+     * The rule's target is gone: a deleted editor, a deleted panel, or a panel
+     * none of whose members still exist. All three mean the same thing — the
+     * rule names nobody — and they are reported identically, with the rule
+     * named, rather than as an anonymous "unknown editor" skip.
+     */
     | { readonly kind: 'target-missing'; readonly targetId: string }
 
 /**
@@ -314,10 +319,18 @@ export type RuleEditorPool =
  * target names that one editor; a panel target names every member (v1 panel
  * dispatch: each member runs independently — charter aggregation is M6).
  *
+ * Both target kinds are resolved against the settings, symmetrically. An editor
+ * target that no longer existed used to come back as a one-element NAMED pool,
+ * so every note the rule matched became un-reviewable with an `editor-missing`
+ * skip against an id nobody recognizes — while the Rules tab said the rule
+ * "does nothing". `target-missing` is the honest answer for both kinds, and it
+ * lets the refusal name the rule.
+ *
  * A panel's own `enabled` flag is deliberately NOT consulted: it governs the
  * panel as an aggregation entity (M6), while a rule naming a panel means "these
  * editors review this note". Each member's own enabled/capability/backend state
- * is checked downstream and reported as a skip.
+ * is checked downstream and reported as a skip — a member that is merely
+ * turned off is a skip, not a missing target.
  */
 export function resolveRuleEditorPool(
     settings: PluginSettingsV1,
@@ -327,11 +340,15 @@ export function resolveRuleEditorPool(
         return { kind: 'default' }
     }
     const target = outcome.target
+    const exists = (editorId: string): boolean =>
+        settings.editors.some((editor) => editor.id === editorId)
     if (target.targetType === 'editor') {
-        return { kind: 'editors', editorIds: [target.targetId] }
+        return exists(target.targetId)
+            ? { kind: 'editors', editorIds: [target.targetId] }
+            : { kind: 'target-missing', targetId: target.targetId }
     }
     const panel = settings.panels.find((candidate) => candidate.id === target.targetId)
-    if (!panel) {
+    if (!panel || !panel.memberEditorIds.some(exists)) {
         return { kind: 'target-missing', targetId: target.targetId }
     }
     return { kind: 'editors', editorIds: panel.memberEditorIds }

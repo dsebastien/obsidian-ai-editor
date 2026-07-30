@@ -293,6 +293,14 @@ export class ReviewController {
     private readonly glues = new Map<MarkdownView, ViewGlue>()
     private readonly skipsByFile = new Map<string, readonly EditorSkip[]>()
     private readonly pendingTimers = new Set<number>()
+    /**
+     * Files whose panel Review button has dispatched but whose run does not
+     * exist yet. `startReview` awaits the view reveal and the whole context
+     * assembly before `RunController.startRun` registers anything, and
+     * `canCancelRun` cannot see a run that has not started — so this covers the
+     * window the run-based busy check leaves open.
+     */
+    private readonly panelDispatchInFlight = new Set<string>()
     /** Transform runs whose failure Notice already fired (once per run). */
     private readonly notifiedTransformErrors = new Set<string>()
     /** Transform runs whose stale-dismiss Notice already fired. */
@@ -1801,6 +1809,9 @@ export class ReviewController {
      * destroys nothing (the shared concurrency gate just queues the request).
      */
     private hasRunInFlight(path: string | null): boolean {
+        if (path !== null && this.panelDispatchInFlight.has(path)) {
+            return true
+        }
         const run = path === null ? null : this.deps.runController.getRun(path)
         return canCancelRun({ hasRun: run !== null, settled: run?.isSettled() ?? true })
     }
@@ -1828,7 +1839,22 @@ export class ReviewController {
             new Notice('A review is already running for this note — cancel it to start over.')
             return
         }
-        void this.reviewFile(path)
+        // Latch BEFORE the first await. `reviewFile` awaits the view reveal and
+        // then the whole of `startReview` (vault reads for context assembly)
+        // before `startRun` registers anything, and neither the button nor the
+        // panel re-renders until the run exists — so without this flag a second
+        // click inside that window passed the same check, dispatched a second
+        // review, and `startRun` cancel-replaced the first. That is exactly the
+        // outcome refusing exists to prevent, and it bills two requests for one
+        // click pair.
+        this.panelDispatchInFlight.add(path)
+        this.refreshAll()
+        void this.reviewFile(path).finally(() => {
+            this.panelDispatchInFlight.delete(path)
+            if (!this.disposed) {
+                this.refreshAll()
+            }
+        })
     }
 
     /** Current run binding for the (last) active markdown file, if any. */

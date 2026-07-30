@@ -269,25 +269,28 @@ describe('labels & summaries', () => {
         ).toBe('folder "Blog" → reviewed by panel Publish gate (Concision)')
     })
 
-    test('ruleSummary says so when a rule does nothing', () => {
+    test('ruleSummary distinguishes an inert rule from one that blocks reviews', () => {
         const settings = fixture()
         const rule = settings.rules[0]
         if (!rule) {
             throw new Error('fixture rule missing')
         }
+        // No target: the engine skips the rule entirely.
         expect(ruleSummary(settings, { ...rule, defaultTarget: null })).toContain('does nothing')
+        // Deleted target: the rule still MATCHES, and an assignment that names
+        // nobody refuses the review — the opposite of doing nothing.
         expect(
             ruleSummary(settings, {
                 ...rule,
                 defaultTarget: { targetType: 'editor', targetId: 'gone' }
             })
-        ).toBe('folder "Blog" → deleted editor (rule does nothing)')
+        ).toBe('folder "Blog" → deleted editor (blocks reviews on matching notes)')
         expect(
             ruleSummary(settings, {
                 ...rule,
                 defaultTarget: { targetType: 'panel', targetId: 'gone' }
             })
-        ).toBe('folder "Blog" → deleted panel (rule does nothing)')
+        ).toBe('folder "Blog" → deleted panel (blocks reviews on matching notes)')
     })
 })
 

@@ -1,21 +1,31 @@
+import type { RuleOutcome } from '../domain/rules/rule-engine'
 import type { EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { isExcluded } from './context/exclusions'
 import { noteRuleOutcome } from './rules/note-rules'
 import type { NoteFactsSource } from './rules/note-rules'
-import { resolveApiBackend } from './review-service'
+import { resolveApiBackend, resolveReviewParticipants } from './review-service'
 
 /**
  * Shared reviewability predicate for every interaction surface (command
  * gates, context menus, the rail, the CLI, the daemon). One answer to one
- * question: "can a review start on this note right now?" — the note is not
+ * question: "can a review start on THIS note right now?" — the note is not
  * privacy-excluded (Business Rules #7), no binding rule switches the plugin
- * off for it (plan §4b), AND at least one enabled review-capable editor can
- * actually dispatch (its backend resolves).
+ * off for it (plan §4b), AND at least one editor of the pool that would
+ * actually run on this note can dispatch.
+ *
+ * That last clause is note-scoped on purpose. The gate used to ask a GLOBAL
+ * question (`hasReviewCapableEditor`) while `startReview` asked a note-scoped
+ * one, so a note whose `assign` rule named an editor that could not run — a
+ * deleted one, a disabled one, one without the review capability, one whose
+ * backend does not resolve — passed the gate on every surface and then refused
+ * on click, every time. Both now derive the pool through the same
+ * `resolveReviewParticipants`, so the disagreement is not a bug that was fixed
+ * but a state that cannot be expressed.
  *
  * No rule is duplicated here: `isExcluded` comes from `context/exclusions`,
- * the kill switch from `rules/note-rules`, and editor/backend resolution from
- * `resolveApiBackend` — so a surface gated by `isReviewable` can never
- * disagree with what `startReview` would refuse.
+ * the kill switch from `rules/note-rules`, and participant resolution from
+ * `review-service` — so a surface gated by `isReviewable` can never disagree
+ * with what `startReview` would refuse.
  *
  * `reviewGate` is the ONE evaluation; `isReviewable` and
  * `isPluginEnabledForNote` are projections of its answer. Surfaces that only
@@ -58,14 +68,24 @@ export function hasReviewCapableEditor(settings: PluginSettingsV1): boolean {
  * can make about a note), then the kill switch (plan §4b), then whether any
  * editor could carry the request.
  *
- * `rule-disabled` carries the rule label so a surface can name the rule the
- * user has to find in the Rules tab; the two refusals are deliberately NOT
- * collapsed, because their fixes live in different settings tabs.
+ * `rule-disabled` and `rule-target-unusable` carry the rule label so a surface
+ * can name the rule the user has to find in the Rules tab. None of these are
+ * collapsed together, because their fixes live in different settings tabs:
+ * Behavior for the exclusion, Rules for the kill switch, Rules AND Editors for
+ * a rule whose assigned pool cannot run, Editors/Backends for the global case.
  */
 export type ReviewGate =
     | { readonly status: 'ok' }
     | { readonly status: 'excluded' }
     | { readonly status: 'rule-disabled'; readonly ruleLabel: string }
+    /**
+     * An `assign` rule matched, and nothing in the pool it names can review:
+     * the target was deleted, or every editor in it is disabled, lacks the
+     * review capability, or has no usable backend. Distinct from `no-editor`
+     * because the vault may be full of perfectly working editors — this note
+     * just is not allowed to use them.
+     */
+    | { readonly status: 'rule-target-unusable'; readonly ruleLabel: string }
     | { readonly status: 'no-editor' }
 
 /**
@@ -81,31 +101,40 @@ export function reviewGate(
     settings: PluginSettingsV1
 ): ReviewGate {
     const note = noteGate(path, source, settings)
-    if (note !== null) {
-        return note
+    if (note.refusal !== null) {
+        return note.refusal
     }
-    return hasReviewCapableEditor(settings) ? { status: 'ok' } : { status: 'no-editor' }
+    // The pool this NOTE would dispatch — not the vault's editor list. The
+    // rule outcome is reused rather than recomputed: resolving it twice would
+    // pay for the metadata facts twice on a path that runs on every refresh.
+    const { participants } = resolveReviewParticipants(settings, note.outcome)
+    if (participants.length > 0) {
+        return { status: 'ok' }
+    }
+    return note.outcome.kind === 'assigned'
+        ? { status: 'rule-target-unusable', ruleLabel: note.outcome.ruleLabel }
+        : { status: 'no-editor' }
 }
 
 /**
  * The note-level half of the gate: the two refusals that are about the NOTE
- * (privacy, kill switch), or `null` when neither applies. Split out so
- * `isPluginEnabledForNote` never pays for the editor/backend scan it does not
- * care about — it runs on every rail refresh of every open pane.
+ * (privacy, kill switch), or the rule outcome the participant pool needs. Split
+ * out so `isPluginEnabledForNote` never pays for the editor/backend scan it
+ * does not care about — it runs on every rail refresh of every open pane.
  */
-function noteGate(
-    path: string,
-    source: NoteFactsSource,
-    settings: PluginSettingsV1
-): ReviewGate | null {
+type NoteGate =
+    | { readonly refusal: ReviewGate }
+    | { readonly refusal: null; readonly outcome: RuleOutcome }
+
+function noteGate(path: string, source: NoteFactsSource, settings: PluginSettingsV1): NoteGate {
     if (isExcluded(path, source.getNoteMetadata(path), settings.behavior)) {
-        return { status: 'excluded' }
+        return { refusal: { status: 'excluded' } }
     }
     const outcome = noteRuleOutcome(path, source, settings)
     if (outcome.kind === 'disabled') {
-        return { status: 'rule-disabled', ruleLabel: outcome.ruleLabel }
+        return { refusal: { status: 'rule-disabled', ruleLabel: outcome.ruleLabel } }
     }
-    return null
+    return { refusal: null, outcome }
 }
 
 /**
@@ -120,7 +149,7 @@ export function isPluginEnabledForNote(
     source: NoteFactsSource,
     settings: PluginSettingsV1
 ): boolean {
-    return noteGate(path, source, settings) === null
+    return noteGate(path, source, settings).refusal === null
 }
 
 /**

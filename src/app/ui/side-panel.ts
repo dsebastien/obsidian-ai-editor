@@ -7,7 +7,7 @@ import type { EditorRunState, RunHandle } from '../services/orchestration/run-co
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
-import { panelReviewButtonState } from './panel-review-button'
+import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
 import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
 
@@ -223,10 +223,11 @@ export class ReviewSidePanelView extends ItemView {
         if (!binding) {
             root.createDiv({
                 cls: 'ai-editor-panel-empty',
-                text:
-                    state.review.noteName === null
-                        ? 'No review yet. Open a note, then select Review.'
-                        : 'No review yet. Select Review to start one.'
+                text: panelEmptyStateText({
+                    noteName: state.review.noteName,
+                    gate: state.review.gate,
+                    busy: state.review.isBusy()
+                })
             })
             return
         }

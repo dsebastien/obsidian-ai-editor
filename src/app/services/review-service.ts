@@ -1,4 +1,5 @@
 import { resolveRuleEditorPool } from '../domain/rules/rule-engine'
+import type { RuleOutcome } from '../domain/rules/rule-engine'
 import type {
     ApiBackend,
     BehaviorSettings,
@@ -463,6 +464,135 @@ export function createEditorSpec(input: {
 // Review orchestration
 // ---------------------------------------------------------------------------
 
+/** One editor that will actually run, with the backend it resolved to. */
+export interface ReviewParticipant {
+    readonly editor: EditorConfig
+    readonly backend: ApiBackend
+    readonly model: string
+}
+
+/** Who would review a note right now, and who could not — with the reason. */
+export interface ReviewParticipantPool {
+    readonly participants: readonly ReviewParticipant[]
+    readonly skips: readonly EditorSkip[]
+}
+
+/** Editors a caller explicitly named, if any (see the precedence below). */
+export interface ReviewPoolRequest {
+    /** A per-run instruction's editors (ask-an-editor, a bound review verb). */
+    readonly instructionEditorIds?: readonly string[] | undefined
+    /** A KNOWN set being re-dispatched (a daemon refresh of a previous run). */
+    readonly editorIds?: readonly string[] | undefined
+}
+
+/**
+ * The participants of a review run, and the typed skip report for everyone who
+ * could not join. Pure over the settings and the note's rule outcome.
+ *
+ * THE single answer to "who would review this note": `startReview` dispatches
+ * exactly this list, and `reviewGate` decides whether a surface may offer a
+ * review by asking whether it is empty. Before this existed, the gate asked a
+ * GLOBAL question (`hasReviewCapableEditor`) while the dispatch asked a
+ * note-scoped one, so a note whose `assign` rule named an editor that could not
+ * run passed every gate — enabled command, enabled panel button, tooltip
+ * promising a review — and then refused on click, every time.
+ *
+ * Precedence, highest first:
+ * 1. A per-run instruction narrows the run to the editor(s) the user asked
+ *    for. The others were not asked at all, so they are not candidates and
+ *    never appear as skips.
+ * 2. `editorIds` re-dispatches a known set.
+ * 3. A matching `assign` binding rule (plan §4b): its editor, or every member
+ *    of its panel. Rules supply the DEFAULT pool only — a user or daemon
+ *    choice wins.
+ * 4. Otherwise every editor in the settings.
+ *
+ * Pools that NAME editors (1 and 3) report every named editor that cannot run
+ * — deleted ids and disabled editors included — instead of silently shrinking
+ * the ask / panel / rule (the resolution contract in `action-resolution.ts`).
+ * Pools 2 and 4 stay silent about disabled editors: the user turned them off on
+ * purpose, and a daemon refresh must not nag about them.
+ */
+export function resolveReviewParticipants(
+    settings: PluginSettingsV1,
+    ruleOutcome: RuleOutcome,
+    requested: ReviewPoolRequest = {}
+): ReviewParticipantPool {
+    const skips: EditorSkip[] = []
+    let pool: readonly string[] | null = null
+    let namedPool = false
+    if (requested.instructionEditorIds) {
+        pool = requested.instructionEditorIds
+        namedPool = true
+    } else if (requested.editorIds) {
+        pool = requested.editorIds
+    } else {
+        const rulePool = resolveRuleEditorPool(settings, ruleOutcome)
+        if (rulePool.kind === 'target-missing') {
+            // The rule names nobody: a deleted editor, a deleted panel, or a
+            // panel whose members are all gone (referential integrity reports
+            // it in the settings too). Refusing with the RULE named beats both
+            // an anonymous "unknown editor" skip and silently reviewing with
+            // every editor the rule was meant to replace.
+            return {
+                participants: [],
+                skips: [
+                    {
+                        editorId: rulePool.targetId,
+                        editorName:
+                            ruleOutcome.kind === 'assigned' ? ruleOutcome.ruleLabel : 'Rule',
+                        reason: 'rule-target-missing'
+                    }
+                ]
+            }
+        }
+        if (rulePool.kind === 'editors') {
+            pool = rulePool.editorIds
+            namedPool = true
+        }
+    }
+    const editorPool =
+        pool === null
+            ? settings.editors
+            : settings.editors.filter((editor) => pool.includes(editor.id))
+    if (namedPool && pool !== null) {
+        const known = new Set(settings.editors.map((editor) => editor.id))
+        for (const id of pool) {
+            if (!known.has(id)) {
+                skips.push({ editorId: id, editorName: 'Unknown editor', reason: 'editor-missing' })
+            }
+        }
+    }
+    const participants: ReviewParticipant[] = []
+    for (const editor of editorPool) {
+        if (!editor.enabled) {
+            if (namedPool) {
+                skips.push({
+                    editorId: editor.id,
+                    editorName: editor.name,
+                    reason: 'editor-disabled'
+                })
+            }
+            continue
+        }
+        if (!editor.capabilities.review) {
+            skips.push({
+                editorId: editor.id,
+                editorName: editor.name,
+                reason: 'no-review-capability'
+            })
+            continue
+        }
+        const resolution = resolveApiBackend(settings, editor)
+        if (!resolution.ok) {
+            skips.push({ editorId: editor.id, editorName: editor.name, reason: resolution.reason })
+            continue
+        }
+        participants.push({ editor, backend: resolution.backend, model: resolution.model })
+    }
+    return { participants, skips }
+}
+
 /**
  * Starts one review run for a snapshot: enforces the exclusion refusal and
  * the size guard, resolves the participating editors and their backends,
@@ -506,96 +636,11 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     }
 
     // -- Resolve participants -------------------------------------------------
-    // Precedence, highest first:
-    // 1. A per-run `instruction` narrows the run to the editor(s) the user
-    //    asked (ask-an-editor, a bound review-class verb). The others were not
-    //    asked at all, so they are not candidates and never appear as skips.
-    // 2. `editorIds` re-dispatches a KNOWN set (a daemon refresh of the note's
-    //    previous run).
-    // 3. A matching `assign` binding rule (plan §4b): its editor, or every
-    //    member of its panel. Rules only supply the DEFAULT pool — when the
-    //    user or the daemon named editors, that choice wins.
-    // 4. Otherwise every editor in the settings.
-    //
-    // Pools that NAME editors (1 and 3) report every named editor that cannot
-    // run — deleted ids and disabled editors included — instead of silently
-    // shrinking the ask / panel / rule (the resolution contract in
-    // `action-resolution.ts`). Pools 2 and 4 stay silent about disabled
-    // editors: the user turned them off on purpose, and a daemon refresh must
-    // not nag about them. A named pool none of whose editors can run yields
-    // `no-editors` with the full skip report, like any other empty selection.
     const instruction = input.instruction
-    const skips: EditorSkip[] = []
-    let requestedIds: readonly string[] | null = null
-    let namedPool = false
-    if (instruction) {
-        requestedIds = instruction.editorIds
-        namedPool = true
-    } else if (input.editorIds) {
-        requestedIds = input.editorIds
-    } else {
-        const rulePool = resolveRuleEditorPool(settings, ruleOutcome)
-        if (rulePool.kind === 'target-missing') {
-            // Dangling panel reference (referential integrity reports it in the
-            // settings too). Refusing with a named reason beats silently
-            // reviewing with every editor the rule was meant to replace.
-            return {
-                status: 'no-editors',
-                skips: [
-                    {
-                        editorId: rulePool.targetId,
-                        editorName:
-                            ruleOutcome.kind === 'assigned' ? ruleOutcome.ruleLabel : 'Rule',
-                        reason: 'rule-target-missing'
-                    }
-                ]
-            }
-        }
-        if (rulePool.kind === 'editors') {
-            requestedIds = rulePool.editorIds
-            namedPool = true
-        }
-    }
-    const pool = requestedIds
-    const editorPool =
-        pool === null
-            ? settings.editors
-            : settings.editors.filter((editor) => pool.includes(editor.id))
-    if (namedPool && pool !== null) {
-        const known = new Set(settings.editors.map((editor) => editor.id))
-        for (const id of pool) {
-            if (!known.has(id)) {
-                skips.push({ editorId: id, editorName: 'Unknown editor', reason: 'editor-missing' })
-            }
-        }
-    }
-    const participants: { editor: EditorConfig; backend: ApiBackend; model: string }[] = []
-    for (const editor of editorPool) {
-        if (!editor.enabled) {
-            if (namedPool) {
-                skips.push({
-                    editorId: editor.id,
-                    editorName: editor.name,
-                    reason: 'editor-disabled'
-                })
-            }
-            continue
-        }
-        if (!editor.capabilities.review) {
-            skips.push({
-                editorId: editor.id,
-                editorName: editor.name,
-                reason: 'no-review-capability'
-            })
-            continue
-        }
-        const resolution = resolveApiBackend(settings, editor)
-        if (!resolution.ok) {
-            skips.push({ editorId: editor.id, editorName: editor.name, reason: resolution.reason })
-            continue
-        }
-        participants.push({ editor, backend: resolution.backend, model: resolution.model })
-    }
+    const { participants, skips } = resolveReviewParticipants(settings, ruleOutcome, {
+        instructionEditorIds: instruction?.editorIds,
+        editorIds: input.editorIds
+    })
     if (participants.length === 0) {
         return { status: 'no-editors', skips }
     }

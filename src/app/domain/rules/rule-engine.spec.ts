@@ -338,7 +338,7 @@ describe('resolveRuleEditorPool', () => {
 
     it('names the single editor of an editor target', () => {
         expect(
-            resolveRuleEditorPool(makeSettings(), {
+            resolveRuleEditorPool(makeSettings({ editors: [{ id: 'editor-1', name: 'One' }] }), {
                 kind: 'assigned',
                 ruleId: 'r1',
                 ruleLabel: 'x',
@@ -347,8 +347,43 @@ describe('resolveRuleEditorPool', () => {
         ).toEqual({ kind: 'editors', editorIds: ['editor-1'] })
     })
 
+    it('reports a deleted EDITOR target the same way as a deleted panel', () => {
+        // Asymmetry bug: an editor target was returned as a one-element NAMED
+        // pool without checking it exists, so `startReview` refused with an
+        // anonymous `editor-missing` and every matching note became
+        // un-reviewable with no mention of the rule that did it.
+        expect(
+            resolveRuleEditorPool(makeSettings(), {
+                kind: 'assigned',
+                ruleId: 'r1',
+                ruleLabel: 'x',
+                target: EDITOR_TARGET
+            })
+        ).toEqual({ kind: 'target-missing', targetId: 'editor-1' })
+    })
+
+    it('reports a panel whose members have all been deleted', () => {
+        expect(
+            resolveRuleEditorPool(
+                makeSettings({
+                    panels: [{ id: 'panel-1', name: 'Pre-publish', memberEditorIds: ['gone'] }]
+                }),
+                {
+                    kind: 'assigned',
+                    ruleId: 'r1',
+                    ruleLabel: 'x',
+                    target: { targetType: 'panel', targetId: 'panel-1' }
+                }
+            )
+        ).toEqual({ kind: 'target-missing', targetId: 'panel-1' })
+    })
+
     it('names every member of a panel target, regardless of the panel enabled flag', () => {
         const settings = makeSettings({
+            editors: [
+                { id: 'editor-1', name: 'One' },
+                { id: 'editor-2', name: 'Two' }
+            ],
             panels: [
                 {
                     id: 'panel-1',

@@ -83,9 +83,14 @@ export function describeBackendRef(settings: PluginSettingsV1, ref: BackendRef |
 
 /**
  * One-line summary of a binding rule for list rows: what it matches, and what
- * it actually resolves to. Says explicitly when a rule does nothing (no target,
- * or the target no longer exists) — an inert rule that merely looks configured
- * is the most confusing state this tab can be in.
+ * it actually resolves to.
+ *
+ * The two inert states are worded differently on purpose, because they do
+ * opposite things. A rule with NO TARGET is skipped entirely by the engine —
+ * it genuinely does nothing. A rule whose target was DELETED still matches, and
+ * an assignment that names nobody refuses the review: every note the rule
+ * matches becomes un-reviewable until the rule is repointed or removed. Calling
+ * that "does nothing" told the user the exact opposite of what happens.
  */
 export function ruleSummary(settings: PluginSettingsV1, rule: BindingRule): string {
     const match = `${rule.match.matchType} "${rule.match.value}"`
@@ -100,19 +105,19 @@ export function ruleSummary(settings: PluginSettingsV1, rule: BindingRule): stri
             (editor) => editor.id === rule.defaultTarget?.targetId
         )?.name
         return name === undefined
-            ? `${match} → deleted editor (rule does nothing)`
+            ? `${match} → deleted editor (blocks reviews on matching notes)`
             : `${match} → reviewed by ${name}`
     }
     const panel = settings.panels.find((candidate) => candidate.id === rule.defaultTarget?.targetId)
     if (!panel) {
-        return `${match} → deleted panel (rule does nothing)`
+        return `${match} → deleted panel (blocks reviews on matching notes)`
     }
     const members = panel.memberEditorIds
         .map((memberId) => settings.editors.find((editor) => editor.id === memberId)?.name)
         .filter((name): name is string => name !== undefined)
     return members.length > 0
         ? `${match} → reviewed by panel ${panel.name} (${members.join(', ')})`
-        : `${match} → panel ${panel.name} has no members left (rule does nothing)`
+        : `${match} → panel ${panel.name} has no members left (blocks reviews on matching notes)`
 }
 
 // ---------------------------------------------------------------------------

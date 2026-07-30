@@ -114,6 +114,17 @@ export function panelReviewButtonState(input: PanelReviewButtonInput): PanelRevi
                 disabled: true,
                 busy: false
             }
+        case 'rule-target-unusable':
+            // Distinct from `no-editor` on purpose: the vault may be full of
+            // working editors — this note is confined to a pool that cannot
+            // run, so the fix starts in the Rules tab, not the Editors tab.
+            return {
+                text: 'Review',
+                ariaLabel: `Review ${noteName}`,
+                tooltip: `The rule ${gate.ruleLabel} (Rules tab) assigns ${noteName} to editors that cannot review — check that rule's editor or panel`,
+                disabled: true,
+                busy: false
+            }
         case 'no-editor':
             return {
                 text: 'Review',
@@ -124,4 +135,31 @@ export function panelReviewButtonState(input: PanelReviewButtonInput): PanelRevi
                 busy: false
             }
     }
+}
+
+/**
+ * What the panel body says when there is no run to show.
+ *
+ * Derived from the GATE, not from "is a note bound": on a note the plugin
+ * refuses — excluded, kill-switched, or confined by a rule to a pool that
+ * cannot run — the body used to read "No review yet. Select Review to start
+ * one." next to a disabled button whose tooltip said the opposite. It invited
+ * an action the surface had just refused, and it claimed there was no review
+ * when a hidden bound run may still exist (a kill switch hides the binding, it
+ * does not end the run).
+ *
+ * The refusal wording is the button's own tooltip rather than a second copy of
+ * it, so the two halves of the panel cannot drift apart.
+ */
+export function panelEmptyStateText(input: PanelReviewButtonInput): string {
+    const { noteName, gate } = input
+    if (noteName === null || gate === null) {
+        return 'No review yet. Open a note, then select Review.'
+    }
+    if (input.busy) {
+        return 'Reviewing… findings appear here as they arrive.'
+    }
+    return gate.status === 'ok'
+        ? 'No review yet. Select Review to start one.'
+        : panelReviewButtonState(input).tooltip
 }
