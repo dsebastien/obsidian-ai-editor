@@ -195,6 +195,11 @@ jobs:
                   # Handle multi-line output
                   echo "notes<<EOF" >> $GITHUB_OUTPUT
                   echo "$NOTES" >> $GITHUB_OUTPUT
+                  # The separator is emitted here rather than kept in the
+                  # footer file: a file starting with `---` is frontmatter to
+                  # Prettier, which then reformats it.
+                  printf '\n---\n\n' >> $GITHUB_OUTPUT
+                  cat .github/release-footer.md >> $GITHUB_OUTPUT
                   echo "EOF" >> $GITHUB_OUTPUT
 
             - name: Generate artifact attestations
