@@ -302,6 +302,10 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
         expect(vm.panel?.title).toContain('open the review panel')
     })
 
+    it('names the member GROUP as a panel too — the bracket is decoration', () => {
+        expect(buildRailViewModel(withPanel()).panel?.groupLabel).toBe('Pre-publish Review (panel)')
+    })
+
     it('carries the verdict as the chip badge once the scorecard exists', () => {
         expect(buildRailViewModel(withPanel()).panel?.badge).toBe('Needs work')
     })

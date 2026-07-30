@@ -68,6 +68,15 @@ export interface ResolvedAction {
      * independent reviews that happen to start together.
      */
     readonly panelId: string | null
+    /**
+     * Name of that panel, or `null` for an editor binding. Carried alongside
+     * the id because every surface that OFFERS the action (context menu,
+     * palette command, notices) has to say it convenes a panel — Business
+     * Rules #11 — and looking the name up per surface would be four chances to
+     * word it differently. Compose the offered label with
+     * `actionDisplayLabel(label, panelName)`.
+     */
+    readonly panelName: string | null
 }
 
 export type ActionInvalidReason =
@@ -171,7 +180,7 @@ export function resolveActionBinding(
 
     const resolved = (
         editorIds: readonly string[],
-        panelId: string | null = null
+        panel: { readonly id: string; readonly name: string } | null = null
     ): ActionResolution => ({
         ok: true,
         action: {
@@ -181,7 +190,8 @@ export function resolveActionBinding(
             verbClass,
             kind: verb ? 'built-in' : 'custom',
             editorIds,
-            panelId
+            panelId: panel?.id ?? null,
+            panelName: panel?.name ?? null
         }
     })
 
@@ -203,7 +213,7 @@ export function resolveActionBinding(
         if (!anyMember) {
             return { ok: false, reason: 'no-dispatchable-member' }
         }
-        return resolved(panel.memberEditorIds, panel.id)
+        return resolved(panel.memberEditorIds, { id: panel.id, name: panel.name })
     }
 
     const editor = settings.editors.find((candidate) => candidate.id === target.targetId)

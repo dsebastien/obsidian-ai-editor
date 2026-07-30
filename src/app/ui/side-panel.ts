@@ -7,6 +7,7 @@ import type { EditorRunState, RunHandle } from '../services/orchestration/run-co
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
+import { entityName } from './entity-label'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
 import { buildScorecardView } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
@@ -222,12 +223,17 @@ export class ReviewSidePanelView extends ItemView {
         this.renderSkips(root, binding.skips)
 
         const colorById = new Map(binding.editors.map((editor) => [editor.id, editor.color]))
+        // Every editor of a panel run IS one of its members (the pool is the
+        // panel's membership — `resolveReviewParticipants`), so the panel's
+        // name is what each section below belongs to.
+        const panelName = binding.run.getPanelState()?.panelName ?? null
         for (const editorState of binding.run.getEditorStates()) {
             this.renderEditorSection(
                 root,
                 binding,
                 editorState,
-                colorById.get(editorState.editorId) ?? ''
+                colorById.get(editorState.editorId) ?? '',
+                panelName
             )
         }
     }
@@ -294,9 +300,11 @@ export class ReviewSidePanelView extends ItemView {
         })
 
         const header = box.createDiv({ cls: 'ai-editor-scorecard-header' })
-        // Ringed, like every other panel affordance (Business Rules #11).
+        // Ringed, like every other panel affordance (Business Rules #11) — and
+        // the name itself says "(panel)", because the ring is decoration and
+        // the member sections right below it are editors.
         header.createSpan({ cls: 'ai-editor-scorecard-ring' }).setAttribute('aria-hidden', 'true')
-        header.createSpan({ cls: 'ai-editor-scorecard-name', text: view.panelName })
+        header.createSpan({ cls: 'ai-editor-scorecard-name', text: view.panelLabel })
         if (view.verdict !== null) {
             header.createSpan({
                 cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${view.verdict.verdict}`,
@@ -483,12 +491,24 @@ export class ReviewSidePanelView extends ItemView {
         root: HTMLElement,
         binding: SidePanelBinding,
         state: EditorRunState,
-        color: string
+        color: string,
+        panelName: string | null
     ): void {
         const section = root.createEl('section', {
-            cls: 'ai-editor-panel-section',
+            cls: `ai-editor-panel-section${panelName === null ? '' : ' is-panel-member'}`,
             attr: { 'data-editor-id': state.editorId }
         })
+        if (panelName !== null) {
+            // The indent that groups members under the scorecard is decoration.
+            // Naming the section is what tells assistive tech these findings
+            // came from one member of a panel and not from a lone editor
+            // (Business Rules #11), and it keeps the editor's own identity —
+            // a panel weighs its members, it does not absorb them.
+            section.setAttribute(
+                'aria-label',
+                `${state.editorName} — member of ${entityName('panel', panelName)}`
+            )
+        }
 
         const header = section.createDiv({ cls: 'ai-editor-panel-section-header' })
         const dot = header.createSpan({ cls: 'ai-editor-panel-dot' })

@@ -1,4 +1,5 @@
 import type { VerbClass } from '../../domain/actions/verb-registry'
+import { actionDisplayLabel } from '../entity-label'
 
 /**
  * Pure decision logic for the AI Editor context menus (design doc
@@ -23,9 +24,24 @@ export const AI_EDITOR_MENU_SECTION = 'ai-editor'
 /** The slice of a resolved bound action the menu model needs. */
 export interface BoundActionView {
     readonly bindingId: string
-    /** Sentence-case display label (menu item title). */
+    /** Sentence-case verb label (`Critique`), without the target. */
     readonly label: string
     readonly verbClass: VerbClass
+    /** The panel this action convenes, or null for an editor binding. */
+    readonly panelName: string | null
+}
+
+/**
+ * What the menu item / palette entry actually says. A panel-bound verb names
+ * its panel (Business Rules #11, and one click there is one request per
+ * member); an editor-bound one stays the bare verb.
+ *
+ * Ordering deliberately still uses the bare `label`: the marker is about which
+ * kind the action convenes, and letting it move `Critique` under `C (panel…)`
+ * would shuffle a menu the user navigates by verb.
+ */
+export function actionMenuTitle(action: BoundActionView): string {
+    return actionDisplayLabel(action.label, action.panelName)
 }
 
 export interface EditorMenuState {

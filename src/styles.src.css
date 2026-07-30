@@ -1257,6 +1257,18 @@
     background-color: var(--background-secondary);
 }
 
+/*
+ * A member of a panel run sits visually under the scorecard above it: an
+ * accent rail on the left plus an indent. Editors stay flush — same
+ * grouping-by-shape idea as the rail's ringed panel chip owning solid member
+ * dots (Business Rules #11). The section's `aria-label` carries the same fact
+ * for assistive tech; this is decoration only.
+ */
+.ai-editor-panel-section.is-panel-member {
+    @apply ml-2;
+    border-left: 2px solid var(--text-accent);
+}
+
 .ai-editor-panel-section-header {
     @apply flex flex-wrap items-center gap-1.5;
 }

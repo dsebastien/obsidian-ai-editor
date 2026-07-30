@@ -1,6 +1,7 @@
 import { Modal, Notice, Setting } from 'obsidian'
 import type { App, DropdownComponent } from 'obsidian'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
+import { entityOptionText } from '../ui/entity-label'
 import { backendKindLabel, encodeActionTarget, moveItem } from './helpers'
 import { NotePathSuggest } from './note-path-suggest'
 
@@ -174,7 +175,7 @@ export function populateTargetDropdown(
         const group = dropdown.selectEl.createEl('optgroup', { attr: { label: 'Editors' } })
         for (const editor of settings.editors) {
             group.createEl('option', {
-                text: `● ${editor.name}`,
+                text: entityOptionText('editor', editor.name),
                 attr: {
                     value: encodeActionTarget({ targetType: 'editor', targetId: editor.id })
                 }
@@ -185,7 +186,7 @@ export function populateTargetDropdown(
         const group = dropdown.selectEl.createEl('optgroup', { attr: { label: 'Panels' } })
         for (const panel of settings.panels) {
             group.createEl('option', {
-                text: `◎ ${panel.name} (panel)`,
+                text: entityOptionText('panel', panel.name),
                 attr: {
                     value: encodeActionTarget({ targetType: 'panel', targetId: panel.id })
                 }

@@ -48,6 +48,10 @@ describe('buildScorecardView status', () => {
                 []
             )
             expect(view.panelName).toBe('Pre-publish Review')
+            // The block sits directly above the member EDITORS' sections, so
+            // the name has to say which kind it is (Business Rules #11) — the
+            // ring next to it is decoration.
+            expect(view.panelLabel).toBe('Pre-publish Review (panel)')
             expect(view.status.label.length).toBeGreaterThan(0)
         }
     })

@@ -3,7 +3,12 @@ import type { Plugin } from 'obsidian'
 import type { PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import { resolveActions } from '../../services/actions/action-resolution'
 import type { ReviewController } from '../review-controller'
-import { AI_EDITOR_MENU_SECTION, actionMenuIcon, editorMenuEntries } from './menu-model'
+import {
+    AI_EDITOR_MENU_SECTION,
+    actionMenuIcon,
+    actionMenuTitle,
+    editorMenuEntries
+} from './menu-model'
 
 /**
  * Editor context menu (design doc "Interaction surfaces" §1): right-click on
@@ -39,7 +44,7 @@ export function registerEditorMenu(
                         const action = entry.action
                         menu.addItem((menuItem) => {
                             menuItem
-                                .setTitle(action.label)
+                                .setTitle(actionMenuTitle(action))
                                 .setIcon(actionMenuIcon(action.verbClass))
                                 .setSection(AI_EDITOR_MENU_SECTION)
                                 .onClick(() => {

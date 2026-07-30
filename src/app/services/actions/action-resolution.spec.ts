@@ -129,7 +129,8 @@ describe('resolveActionBinding', () => {
             verbClass: 'transform',
             kind: 'built-in',
             editorIds: ['editor-1'],
-            panelId: null
+            panelId: null,
+            panelName: null
         })
     })
 
@@ -246,6 +247,29 @@ describe('resolveActionBinding', () => {
             })
         )
         expect(resolution.ok && resolution.action.editorIds).toEqual(['editor-1', 'editor-2'])
+    })
+
+    it('carries the panel NAME, so every surface offering the action can say so', () => {
+        // Business Rules #11: the menu item and the palette command have to
+        // announce that this verb convenes a panel, and one lookup here beats
+        // four surfaces each finding the name for themselves.
+        const settings = makeSettings({
+            editors: [makeEditor()],
+            panels: [makePanel({ name: 'Pre-publish Review', memberEditorIds: ['editor-1'] })]
+        })
+        const resolution = resolveActionBinding(
+            settings,
+            makeBinding({
+                id: 'critique',
+                actionId: 'critique',
+                binding: { targetType: 'panel', targetId: 'panel-1' }
+            })
+        )
+        if (!resolution.ok) {
+            throw new Error(`Expected ok, got ${resolution.reason}`)
+        }
+        expect(resolution.action.panelId).toBe('panel-1')
+        expect(resolution.action.panelName).toBe('Pre-publish Review')
     })
 
     it('refuses a panel binding on transform and generate verbs', () => {

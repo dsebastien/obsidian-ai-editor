@@ -2,6 +2,7 @@ import { MarkdownView } from 'obsidian'
 import type { Plugin } from 'obsidian'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { resolveActionById, resolveActions } from '../services/actions/action-resolution'
+import { actionMenuTitle } from '../ui/menus/menu-model'
 import type { ReviewController } from '../ui/review-controller'
 import { canRunBoundAction } from './command-gates'
 import { diffCommands } from './command-sync'
@@ -40,7 +41,11 @@ export interface ActionCommandView extends CommandView {
 export function desiredActionCommands(settings: PluginSettingsV1): ActionCommandView[] {
     return resolveActions(settings).map((action) => ({
         id: `action-${action.bindingId}`,
-        name: action.label,
+        // Same title the context menu shows: a panel-bound verb names its
+        // panel (Business Rules #11). Rebinding a verb between an editor and a
+        // panel therefore renames the command, which the sync diff handles as
+        // an in-place `addCommand` — the id is unchanged, so hotkeys survive.
+        name: actionMenuTitle(action),
         bindingId: action.bindingId
     }))
 }

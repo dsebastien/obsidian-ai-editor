@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { ACTION_MENU_CAP, actionMenuIcon, editorMenuEntries, fileMenuItems } from './menu-model'
+import {
+    ACTION_MENU_CAP,
+    actionMenuIcon,
+    actionMenuTitle,
+    editorMenuEntries,
+    fileMenuItems
+} from './menu-model'
 import type { BoundActionView, EditorMenuState, FileMenuState } from './menu-model'
 
 // ---------------------------------------------------------------------------
@@ -7,7 +13,13 @@ import type { BoundActionView, EditorMenuState, FileMenuState } from './menu-mod
 // ---------------------------------------------------------------------------
 
 function action(overrides: Partial<BoundActionView> = {}): BoundActionView {
-    return { bindingId: 'humanize', label: 'Humanize', verbClass: 'transform', ...overrides }
+    return {
+        bindingId: 'humanize',
+        label: 'Humanize',
+        verbClass: 'transform',
+        panelName: null,
+        ...overrides
+    }
 }
 
 function editorState(overrides: Partial<EditorMenuState> = {}): EditorMenuState {
@@ -136,5 +148,47 @@ describe('fileMenuItems', () => {
 
     it('offers nothing for a non-markdown non-reviewable target', () => {
         expect(fileMenuItems({ markdownFile: false, reviewable: false })).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// actionMenuTitle
+// ---------------------------------------------------------------------------
+
+describe('actionMenuTitle', () => {
+    it('names the panel a verb convenes — one click there is one request per member', () => {
+        expect(
+            actionMenuTitle(
+                action({ label: 'Critique', verbClass: 'review', panelName: 'Pre-publish Review' })
+            )
+        ).toBe('Critique (panel: Pre-publish Review)')
+    })
+
+    it('leaves an editor-bound verb as the bare label', () => {
+        expect(actionMenuTitle(action({ label: 'Humanize' }))).toBe('Humanize')
+    })
+
+    it('does not let the marker reorder the menu — sorting is by the bare label', () => {
+        // 'Critique' bound to a panel must still sit between 'Astonish' and
+        // 'Humanize', not under whatever '(panel: …)' sorts as.
+        const entries = editorMenuEntries(
+            editorState({
+                actions: [
+                    action({ bindingId: 'h', label: 'Humanize' }),
+                    action({
+                        bindingId: 'c',
+                        label: 'Critique',
+                        verbClass: 'review',
+                        panelName: 'Zzz Panel'
+                    }),
+                    action({ bindingId: 'a', label: 'Astonish' })
+                ]
+            })
+        )
+        expect(
+            entries
+                .filter((entry) => entry.kind === 'action')
+                .map((entry) => (entry.kind === 'action' ? entry.action.bindingId : ''))
+        ).toEqual(['a', 'c', 'h'])
     })
 })

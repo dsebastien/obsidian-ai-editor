@@ -7,6 +7,7 @@
  * the view-owned DOM keeps the DOM layer trivial and disposable.
  */
 
+import { entityName } from '../entity-label'
 import type { ScorecardStatusKind } from '../panel-scorecard'
 
 export type RailEditorStatus =
@@ -123,6 +124,13 @@ export interface RailPanelViewModel {
     readonly color: string
     readonly ariaLabel: string
     readonly title: string
+    /**
+     * Accessible name of the GROUP holding the chip and its member dots — the
+     * only thing telling assistive tech that those dots belong to a panel
+     * (the bracket that says it visually is decoration). Built here rather
+     * than in the DOM layer so `(panel)` has exactly one author.
+     */
+    readonly groupLabel: string
 }
 
 export interface RailViewModel {
@@ -290,15 +298,18 @@ const PANEL_STATUS_LABELS: Readonly<Record<ScorecardStatusKind, string>> = {
 function buildPanel(panel: RailPanelState): RailPanelViewModel {
     // "(panel)" is in the NAME, not only in the shape: a ring is a visual
     // distinction, and a screen reader has no ring (Business Rules #11 has to
-    // hold in the accessibility tree too).
-    const label = `${panel.name} (panel) — ${PANEL_STATUS_LABELS[panel.status]}`
+    // hold in the accessibility tree too). One author for the marker —
+    // `entityName` (ui/entity-label.ts).
+    const marked = entityName('panel', panel.name)
+    const label = `${marked} — ${PANEL_STATUS_LABELS[panel.status]}`
     return {
         name: panel.name,
         status: panel.status,
         badge: panel.verdictLabel ?? null,
         color: panel.color,
         ariaLabel: label,
-        title: `${label}. Select to open the review panel.`
+        title: `${label}. Select to open the review panel.`,
+        groupLabel: marked
     }
 }
 

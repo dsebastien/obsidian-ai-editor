@@ -4,6 +4,7 @@ import type {
     PanelAggregationStatus,
     PanelRunState
 } from '../services/orchestration/run-controller'
+import { entityName } from './entity-label'
 import { verdictLabel } from './verdict-label'
 
 /**
@@ -67,6 +68,14 @@ export interface ScorecardMember {
 
 export interface ScorecardView {
     readonly panelName: string
+    /**
+     * The panel's name with the `(panel)` marker (`entityName`). The scorecard
+     * block is the one place in the side panel where a panel and its member
+     * editors sit in the same list, and the ring next to the name is
+     * decoration — this is what makes Business Rules #11 hold for a screen
+     * reader.
+     */
+    readonly panelLabel: string
     readonly status: ScorecardStatus
     /** The panel's overall verdict; null until the scorecard exists. */
     readonly verdict: { readonly verdict: Verdict; readonly label: string } | null
@@ -212,6 +221,7 @@ export function buildScorecardView(
     const result = panel.result
     return {
         panelName: panel.panelName,
+        panelLabel: entityName('panel', panel.panelName),
         status: statusOf(panel),
         verdict:
             result === null

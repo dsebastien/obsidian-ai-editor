@@ -121,7 +121,7 @@ export class PersonaRail {
             const groupEl = this.doc.createElement('div')
             groupEl.classList.add('ai-editor-rail-panel')
             groupEl.setAttribute('role', 'group')
-            groupEl.setAttribute('aria-label', `${panel.name} (panel)`)
+            groupEl.setAttribute('aria-label', panel.groupLabel)
             groupEl.appendChild(this.renderPanelChip(panel))
             for (const dot of viewModel.dots.filter((candidate) => candidate.member)) {
                 groupEl.appendChild(this.renderChip(dot))
