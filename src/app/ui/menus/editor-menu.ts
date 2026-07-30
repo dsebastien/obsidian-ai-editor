@@ -30,7 +30,7 @@ export function registerEditorMenu(
                 editable: info.getMode() !== 'preview',
                 hasSelection: editor.somethingSelected(),
                 reviewable: controller.canReview(info),
-                excluded: file === null || controller.isNoteExcluded(file.path),
+                blocked: file === null || !controller.isPluginEnabledFor(file.path),
                 actions: resolveActions(getSettings())
             })
             for (const entry of entries) {

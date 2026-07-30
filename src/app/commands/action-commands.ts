@@ -114,7 +114,7 @@ function addActionCommand(
             }
             // Live dispatchability + the class-specific editor state gate.
             const resolved = resolveActionById(getSettings(), command.bindingId)
-            if (!resolved || controller.isNoteExcluded(file.path)) {
+            if (!resolved || !controller.isPluginEnabledFor(file.path)) {
                 return false
             }
             const allowed = canRunBoundAction({

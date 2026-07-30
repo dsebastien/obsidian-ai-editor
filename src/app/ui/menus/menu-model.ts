@@ -36,11 +36,16 @@ export interface EditorMenuState {
     /** The note passes the shared reviewability predicate (`isReviewable`). */
     readonly reviewable: boolean
     /**
-     * The note is privacy-excluded (Business Rules #7). Gates the bound
-     * actions independently of `reviewable`: a vault whose editors are all
-     * rewrite-only is not "reviewable", yet its transform actions dispatch.
+     * The plugin does not operate on this note: privacy-excluded (Business
+     * Rules #7) or switched off by a binding rule (plan §4b). Both produce the
+     * same menu outcome — nothing offered — so one flag covers them; the
+     * dispatch services keep the two apart where the difference is actionable.
+     *
+     * Gates the bound actions independently of `reviewable`: a vault whose
+     * editors are all rewrite-only is not "reviewable", yet its transform
+     * actions dispatch.
      */
-    readonly excluded: boolean
+    readonly blocked: boolean
     /** Dispatchable bound actions (`resolveActions`), settings order. */
     readonly actions: readonly BoundActionView[]
 }
@@ -69,21 +74,25 @@ export function actionMenuIcon(verbClass: VerbClass): string {
  * Entries for the editor context menu, in presentation order (design §1):
  * bound actions first — alphabetical by label, capped at `ACTION_MENU_CAP` —
  * then "Review selection" and "Ask an editor…". Everything requires a
- * non-empty selection in an editable view; the review items additionally
- * need the note to be reviewable, the bound actions only need it not
- * privacy-excluded (each action's own dispatchability was already resolved
+ * non-empty selection in an editable view on a note the plugin operates on;
+ * the review items additionally need the note to be reviewable, the bound
+ * actions do not (each action's own dispatchability was already resolved
  * upstream — undispatchable actions never reach `state.actions`).
  */
 export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEntry[] {
     if (!state.editable || !state.hasSelection) {
         return []
     }
+    // Whole-plugin refusal: not one item, review or action (`reviewable` is
+    // necessarily false too, but the contract is stated here rather than
+    // inferred from a caller building consistent state).
+    if (state.blocked) {
+        return []
+    }
     const entries: EditorMenuEntry[] = []
-    if (!state.excluded) {
-        const sorted = [...state.actions].sort((a, b) => a.label.localeCompare(b.label))
-        for (const action of sorted.slice(0, ACTION_MENU_CAP)) {
-            entries.push({ kind: 'action', action })
-        }
+    const sorted = [...state.actions].sort((a, b) => a.label.localeCompare(b.label))
+    for (const action of sorted.slice(0, ACTION_MENU_CAP)) {
+        entries.push({ kind: 'action', action })
     }
     if (state.reviewable) {
         entries.push({ kind: 'review-selection' }, { kind: 'ask-editor' })

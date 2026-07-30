@@ -36,7 +36,11 @@ import { createSnapshot, hashText } from '../domain/snapshot'
 import type { DocumentSnapshot } from '../domain/snapshot'
 import { resolveActionById, resolveCustomInstruction } from '../services/actions/action-resolution'
 import type { ResolvedAction } from '../services/actions/action-resolution'
-import { isExcluded, isReviewable, reviewCapableEditors } from '../services/reviewability'
+import {
+    isPluginEnabledForNote,
+    isReviewable,
+    reviewCapableEditors
+} from '../services/reviewability'
 import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type {
     EditorRunStatus,
@@ -236,6 +240,13 @@ interface ViewGlue {
     layout: PaneLayoutMode
     /** Pane-width observer; disconnected when the glue is destroyed. */
     paneObserver: ResizeObserver | null
+    /**
+     * Whether a binding rule / privacy exclusion currently switches the plugin
+     * off for this glue's note (plan §4b). Tracked so the transition INTO the
+     * off state can close an open finding card exactly once instead of
+     * dispatching a close effect on every refresh cycle.
+     */
+    pluginDisabled: boolean
 }
 
 const REVEAL_SELECTION_MS = 1_500
@@ -468,16 +479,18 @@ export class ReviewController {
     }
 
     /**
-     * Privacy exclusion alone (Business Rules #7) — the gate for bound
-     * actions, which dispatch independently of the note being "reviewable"
-     * (a vault whose editors are all rewrite-only still runs transforms).
+     * Whether the plugin operates on this note at all: not privacy-excluded
+     * (Business Rules #7) and not switched off by a binding rule (plan §4b).
+     *
+     * The gate for every surface that is not review-specific — the rail and
+     * the bound actions, which dispatch independently of the note being
+     * "reviewable" (a vault whose editors are all rewrite-only still runs
+     * transforms). Both refusals produce the same UI outcome (nothing offered),
+     * so one predicate covers them; the dispatch services still distinguish the
+     * two in their typed refusals, where the difference is actionable.
      */
-    isNoteExcluded(path: string): boolean {
-        return isExcluded(
-            path,
-            this.vaultReader.getNoteMetadata(path),
-            this.deps.getSettings().behavior
-        )
+    isPluginEnabledFor(path: string): boolean {
+        return isPluginEnabledForNote(path, this.vaultReader, this.deps.getSettings())
     }
 
     /**
@@ -1393,9 +1406,7 @@ export class ReviewController {
      * triage surface operates on (`null` when nothing is bound).
      */
     private activeRunContext(): { path: string; run: RunHandle } | null {
-        const path = this.resolveActiveFilePath()
-        const run = path ? this.deps.runController.getRun(path) : null
-        return path && run ? { path, run } : null
+        return this.runContextFor(this.resolveActiveFilePath())
     }
 
     /**
@@ -1404,11 +1415,19 @@ export class ReviewController {
      * rendered for), otherwise the active file (command palette).
      */
     private runContextFor(filePath: string | null): { path: string; run: RunHandle } | null {
-        if (filePath === null) {
-            return this.activeRunContext()
+        const path = filePath ?? this.resolveActiveFilePath()
+        if (path === null) {
+            return null
         }
-        const run = this.deps.runController.getRun(filePath)
-        return run ? { path: filePath, run } : null
+        // The single choke point every ambient triage surface goes through
+        // (navigation, accept/dismiss, bulk operations, the severity filter):
+        // a note the plugin is switched off for reports no run, so none of
+        // those commands is available and none of them can mutate it.
+        if (!this.isPluginEnabledFor(path)) {
+            return null
+        }
+        const run = this.deps.runController.getRun(path)
+        return run ? { path, run } : null
     }
 
     /**
@@ -1635,6 +1654,11 @@ export class ReviewController {
         if (!path) {
             return null
         }
+        // Kill switch / exclusion: the panel is chrome like the rail, so it
+        // shows the file's empty state rather than a run the user cannot act on.
+        if (!this.isPluginEnabledFor(path)) {
+            return null
+        }
         const run = this.deps.runController.getRun(path)
         if (!run) {
             return null
@@ -1702,6 +1726,11 @@ export class ReviewController {
             return null
         }
         if (finding.status !== 'open' && finding.status !== 'preview') {
+            return null
+        }
+        // Kill switch / exclusion (plan §4b): no card can open, and an open
+        // card's next refresh resolves to no sections and closes itself.
+        if (!this.isPluginEnabledFor(run.snapshot.filePath)) {
             return null
         }
         const editor = this.deps
@@ -2081,7 +2110,8 @@ export class ReviewController {
             // renders the wide rail for a frame. A pane being measured while
             // hidden reports 0 and keeps the default (see `nextLayoutMode`).
             layout: nextLayoutMode(view.contentEl.clientWidth, 'wide'),
-            paneObserver: null
+            paneObserver: null,
+            pluginDisabled: false
         }
         this.observePaneWidth(glue, doc)
         return glue
@@ -2191,30 +2221,54 @@ export class ReviewController {
             this.daemon?.syncRunState(filePath, run !== null && !run.isSettled())
         }
 
+        // Plugin kill switch (plan §4b) / privacy exclusion: the note gets NO
+        // chrome at all — no rail, no highlights, no card. The run itself is
+        // kept bound (edit forwarding keeps anchors correct, so removing the
+        // rule restores a coherent run rather than a set of stale offsets); it
+        // is only hidden.
+        const pluginDisabled = filePath !== null && !this.isPluginEnabledFor(filePath)
+        const disabledJustNow = pluginDisabled && !glue.pluginDisabled
+        glue.pluginDisabled = pluginDisabled
+
         // Rail only makes sense over an editable editor (Reading view is out
         // of scope for v1 interactions).
-        glue.railWrapperEl.toggleClass('ai-editor-hidden', glue.view.getMode() === 'preview')
+        glue.railWrapperEl.toggleClass(
+            'ai-editor-hidden',
+            glue.view.getMode() === 'preview' || pluginDisabled
+        )
         // Narrow pane: the wrapper hugs the edge (every reclaimed pixel is a
         // pixel of text) and the rail itself renders in its compact form.
         const narrow = glue.layout === 'narrow'
         glue.railWrapperEl.toggleClass('ai-editor-rail-wrapper-compact', narrow)
         glue.rail.render({
-            editors: this.buildRailEditors(run, transformRun),
+            editors: pluginDisabled ? [] : this.buildRailEditors(run, transformRun),
             running:
-                (run !== null && !run.isSettled()) ||
-                (transformRun !== null && !transformRun.isSettled()),
-            daemonArmed: filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
+                !pluginDisabled &&
+                ((run !== null && !run.isSettled()) ||
+                    (transformRun !== null && !transformRun.isSettled())),
+            daemonArmed:
+                !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
             narrow
         })
-        this.dispatchDecorations(glue, run)
-        this.dispatchCardRefresh(glue, run)
+        this.dispatchDecorations(glue, pluginDisabled ? null : run)
+        if (disabledJustNow) {
+            // Rule added while a card was open: its findings are no longer
+            // reachable, so close it. Once, on the transition — the card's own
+            // refresh already closes it when its sections resolve to nothing.
+            editorViewOf(glue.view)?.dispatch({ effects: showFindingCardEffect.of(null) })
+        }
+        this.dispatchCardRefresh(glue, pluginDisabled ? null : run)
         // File/doc coherence: right after this glue rebound to a different
         // file (note switch, fresh mount), Obsidian has assigned `view.file`
         // but the async content load may not have replaced the CM document
         // yet — the same load window `handleEditorUpdate`'s file-path guard
         // defends against. The preview dispatch must not treat that stale
         // document as evidence the file's text changed.
-        this.dispatchTransformPreview(glue, transformRun, previousPath !== filePath)
+        this.dispatchTransformPreview(
+            glue,
+            pluginDisabled ? null : transformRun,
+            previousPath !== filePath
+        )
     }
 
     /**

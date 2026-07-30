@@ -15,7 +15,7 @@ function editorState(overrides: Partial<EditorMenuState> = {}): EditorMenuState 
         editable: true,
         hasSelection: true,
         reviewable: true,
-        excluded: false,
+        blocked: false,
         actions: [],
         ...overrides
     }
@@ -68,16 +68,19 @@ describe('editorMenuEntries', () => {
         expect(entries.filter((entry) => entry.kind === 'action')).toHaveLength(ACTION_MENU_CAP)
     })
 
-    it('offers bound actions on a non-reviewable note as long as it is not excluded', () => {
+    it('offers bound actions on a non-reviewable note the plugin still operates on', () => {
         // A vault whose editors are all rewrite-only: reviewable is false,
         // yet transform actions dispatch — the review items alone are hidden.
         const state = editorState({ reviewable: false, actions: [action()] })
         expect(entryIds(state)).toEqual(['action:humanize'])
     })
 
-    it('offers no bound actions on an excluded note (Business Rules #7)', () => {
-        const state = editorState({ excluded: true, reviewable: false, actions: [action()] })
-        expect(entryIds(state)).toEqual([])
+    it('offers nothing at all on a blocked note (exclusion or rule kill switch)', () => {
+        const excluded = editorState({ blocked: true, reviewable: false, actions: [action()] })
+        expect(entryIds(excluded)).toEqual([])
+        // Even with a caller that wrongly still reports the note reviewable.
+        const inconsistent = editorState({ blocked: true, reviewable: true, actions: [action()] })
+        expect(entryIds(inconsistent)).toEqual([])
     })
 
     it('offers nothing without a selection', () => {
@@ -95,7 +98,7 @@ describe('editorMenuEntries', () => {
                     editable: false,
                     hasSelection: false,
                     reviewable: false,
-                    excluded: true
+                    blocked: true
                 })
             )
         ).toEqual([])
