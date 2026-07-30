@@ -61,7 +61,10 @@ export interface RailButtonViewModel {
      */
     readonly text: string
     readonly action: 'review' | 'cancel'
+    /** Accessible name: what the control IS, identical in both layouts. */
     readonly ariaLabel: string
+    /** Hover/tooltip text: the accessible name plus narrow-pane guidance. */
+    readonly tooltip: string
     readonly disabled: boolean
 }
 
@@ -139,13 +142,17 @@ const COMPACT_BUTTON_GLYPHS: Readonly<Record<'review' | 'cancel', string>> = {
 }
 
 /**
- * Appended to the compact button's tooltip: in a narrow pane the rail is a
- * launcher, not a reading surface — the side panel is where the findings and
+ * Appended to the compact button's TOOLTIP (never to its accessible name — a
+ * control is named, not instructed): in a narrow pane the rail is a launcher,
+ * not a reading surface, and the side panel is where the findings and
  * summaries are legible (plan M2/M4: the panel IS the narrow-pane fallback).
  * Only the button carries it; repeating it on every chip would be noise, and
  * the chip tooltips already carry name + status.
+ *
+ * Names the real palette entry — `Open review panel`, not the review command.
  */
-export const NARROW_PANEL_HINT = 'narrow pane — open "AI Editor: Review" for the full list'
+export const NARROW_PANEL_HINT =
+    'narrow pane — run "AI Editor: Open review panel" for the full list'
 
 const BADGE_MAX = 99
 
@@ -241,7 +248,7 @@ export function buildRailViewModel(state: RailState): RailViewModel {
     const button: RailButtonViewModel = {
         ...base,
         text: compact ? COMPACT_BUTTON_GLYPHS[base.action] : base.label,
-        ariaLabel: compact ? `${base.ariaLabel} (${NARROW_PANEL_HINT})` : base.ariaLabel
+        tooltip: compact ? `${base.ariaLabel} (${NARROW_PANEL_HINT})` : base.ariaLabel
     }
     return {
         button,

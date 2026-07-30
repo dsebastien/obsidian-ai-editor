@@ -84,7 +84,10 @@ export class PersonaRail {
             button.classList.add('ai-editor-rail-button-cancel')
         }
         button.textContent = viewModel.button.text
-        this.applyTooltip(button, viewModel.button.ariaLabel)
+        // The compact form shows a glyph, so the accessible name has to come
+        // from the model — the narrow-pane guidance rides the tooltip only.
+        button.setAttribute('aria-label', viewModel.button.ariaLabel)
+        this.applyTooltip(button, viewModel.button.tooltip)
         button.disabled = viewModel.button.disabled
         button.addEventListener('click', () => {
             if (viewModel.button.action === 'cancel') {

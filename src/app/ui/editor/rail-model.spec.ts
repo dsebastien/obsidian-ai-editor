@@ -57,7 +57,8 @@ describe('buildRailViewModel', () => {
         it('is not compact by default', () => {
             const vm = buildRailViewModel(state())
             expect(vm.compact).toBe(false)
-            expect(vm.button.ariaLabel).not.toContain(NARROW_PANEL_HINT)
+            expect(vm.button.tooltip).not.toContain(NARROW_PANEL_HINT)
+            expect(vm.button.tooltip).toBe(vm.button.ariaLabel)
         })
 
         it('replaces the button label with a glyph, keeping the semantics', () => {
@@ -74,10 +75,20 @@ describe('buildRailViewModel', () => {
             expect(cancel.button.text).not.toBe(review.button.text)
         })
 
-        it('nudges towards the side panel in the button tooltip', () => {
+        it('nudges towards the side panel in the button tooltip only', () => {
             const vm = buildRailViewModel(state({ narrow: true }))
-            expect(vm.button.ariaLabel).toContain('Review this note')
-            expect(vm.button.ariaLabel).toContain(NARROW_PANEL_HINT)
+            expect(vm.button.tooltip).toContain('Review this note')
+            expect(vm.button.tooltip).toContain(NARROW_PANEL_HINT)
+            // The accessible name names the control; it never becomes an
+            // instruction paragraph, and it is the same in both layouts.
+            expect(vm.button.ariaLabel).toBe('Review this note with the enabled editors')
+            expect(buildRailViewModel(state()).button.ariaLabel).toBe(vm.button.ariaLabel)
+        })
+
+        it('points the hint at a command that exists', () => {
+            // The palette entry is "Open review panel" (review-commands.ts) —
+            // following the hint must open the panel, not start a review.
+            expect(NARROW_PANEL_HINT).toContain('Open review panel')
         })
 
         it('keeps the disabled rule and the chips unchanged', () => {

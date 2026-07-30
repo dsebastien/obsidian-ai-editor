@@ -872,6 +872,15 @@ class FindingCardPlugin implements PluginValue {
         if (view.rows.length > 0) {
             const list = doc.createElement('div')
             list.classList.add('ai-editor-finding-card-thread')
+            // Scrollable region inside a dialog: keyboard-reachable so the
+            // exchange can be scrolled back through without a mouse (WCAG
+            // 2.1.1), and a polite log so replies injected asynchronously
+            // (`refreshFindingCardEffect`) are announced — the Notice that
+            // reports a completed turn is not a live region.
+            list.tabIndex = 0
+            list.setAttribute('role', 'log')
+            list.setAttribute('aria-live', 'polite')
+            list.setAttribute('aria-label', `Push-back thread with ${data.editorName}`)
             for (const row of view.rows) {
                 const message = doc.createElement('div')
                 message.classList.add(

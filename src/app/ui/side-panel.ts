@@ -212,7 +212,14 @@ export class ReviewSidePanelView extends ItemView {
             cls: 'ai-editor-panel-filter-button',
             text: severityFilterLabel(binding.severityFilter)
         })
-        button.setAttribute('aria-label', 'Cycle the severity filter')
+        // The accessible name carries the CURRENT mode as well as the action:
+        // the button's visible text IS the state, so announcing only "cycle
+        // the severity filter" would hide which lens is active and that
+        // anything changed (and drop the visible label — WCAG 2.5.3).
+        button.setAttribute(
+            'aria-label',
+            `Show ${severityFilterLabel(binding.severityFilter)} — select to cycle the severity filter`
+        )
         button.addEventListener('click', () => binding.cycleSeverityFilter())
         if (hidden > 0) {
             row.createSpan({
