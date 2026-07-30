@@ -6,7 +6,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and
 - **Panels**: groups of 1-n editors producing an aggregated scorecard: verdicts, top fixes, dissenting opinions.
 - **Review loop**: summon your editors, watch findings land as highlighted spans, triage them with keyboard-first accept/reject, push back and argue, refine suggestions.
 - **Actions**: rephrase, critique, say more, find evidence, identify assumptions — each bound to the editor or panel of your choice, plus your own custom actions (name, instruction, and whether the answer rewrites the selection, is inserted at the cursor, or comes back as findings).
-- **Async margin comments**: select text, leave an instruction, and a background agent works on it while you keep writing.
+- **Async margin comments**: select text, leave a question, and an editor answers it in the background while you keep writing. The comment lives in a column beside the text, aligned with the line it is about, and survives note switches and restarts — a comment whose text you edited away is kept and shown with its quote, never silently dropped.
 - **Vault as configuration**: point personas, panels, and your voice/style profile at vault notes — documenting your assistant in your vault IS configuring the plugin.
 - **Portable configuration**: export the editors, panels, actions, rules, and voice profile you built to a JSON file (API keys never included) and import them into another vault, after confirming exactly what will be added.
 - **Bring your own backend**: direct LLM APIs (Anthropic, OpenAI, OpenRouter and other compatibles, Azure AI Foundry, Ollama) or agent CLIs (Claude Code, Codex) running on your own machine, behind the security boundary described below. Desktop-only.

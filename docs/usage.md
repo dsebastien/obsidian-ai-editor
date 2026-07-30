@@ -36,7 +36,7 @@ A local model that is still loading can time out here and work fine for real rev
 | Open review panel   | Opens the review side panel listing each editor's status, findings, summary, and verdict for the active note.               |
 | Run setup wizard    | Re-opens the guided setup (backend, editors, voice profile, run mode). Nothing is saved until the last step.                |
 
-More commands (review selection, ask an editor, cancel, triage, bulk operations, severity filter) are listed under the sections below. None of them ship a default hotkey — assign your own in **Settings → Hotkeys**.
+More commands (review selection, ask an editor, ask for comments, cancel, triage, bulk operations, severity filter, margin column toggle) are listed under the sections below. None of them ship a default hotkey — assign your own in **Settings → Hotkeys**.
 
 ## The review flow
 
@@ -89,6 +89,17 @@ Findings come in three severities: warning, suggestion, and info. **Cycle severi
 
 The filter is a lens per note, not a deletion: hidden findings come back untouched when you cycle around. While a filter is active, hidden findings disappear from the highlights and the panel list, triage steps skip them, and bulk operations leave them alone — the panel tells you how many are hidden.
 
+## Margin comments
+
+A **margin comment** is a question you park on a piece of text — "is this claim supported?", "is this too long?" — that an editor answers in the background. It survives note switches, closing the note, and restarting Obsidian.
+
+- **Ask for one** by selecting text and using the **Ask for comments** command, the **Ask for comments…** item in the right-click menu, or the **Ask for comments** button at the top of the review panel. Pick the editor (the dialog opens on the one set in **Settings → Behavior → Default comment editor**) and type the question.
+- The answer arrives whenever it arrives — you can keep writing, switch notes, or close the note. Background comments never queue ahead of a review you are watching.
+- **Comments appear in a column beside the text**, each card aligned with the line it is about: who was asked, where the job stands (with a live timer while it runs), and the answer once there is one. Several comments on one line collapse into an **N comments** chip that expands.
+- **Resolve** closes a comment and keeps the record so the same question is not re-asked. **Delete** removes it for good, after a confirmation. **Retry** re-asks a comment that failed or was interrupted by a restart — always a new request, never a resumed one.
+- If you edit away the text a comment was about, the comment is **not deleted**. It moves to a collapsed group at the top of the column, with the text it originally quoted, so you can find it yourself.
+- The column needs room: it appears in panes of about 700px and wider. With **Readable line length** on (Obsidian's default) it uses the empty margin and your text does not move at all; with it off, the editor is padded once so the cards never sit on top of your prose. Turn the whole column off with **Toggle the margin comment column** or **Settings → Behavior → Margin comment column** — the comments then live in the review panel only.
+
 ## Panels
 
 A **panel** is a group of editors that review together and then get summed up. Compose one in **Settings → AI Editor → Panels**: pick the members, write a **charter** (the shared brief — it goes into every member's prompt _and_ is what the summary is written against), and choose the backend that writes the summary. The starter pack ships **Pre-publish Review** (Devil's Advocate + Flow & Structure + Beginner Reader + Humanizer).
@@ -103,7 +114,7 @@ A panel run is **one** run, not four reviews that happen to start together: the 
 
 Actions are verbs you run on a selection: built-in ones (rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions) plus your own custom actions. Each action is bound to an editor in **Settings → AI Editor → Actions** — the starter pack binds sensible defaults (for example humanize → Humanizer, rephrase → Concision Editor) so the selection menu works out of the box.
 
-- **Right-click a selection**: bound actions appear at the top of the context menu, with **Review selection** and **Ask an editor…** below them.
+- **Right-click a selection**: bound actions appear at the top of the context menu, with **Review selection**, **Ask an editor…** and **Ask for comments…** below them.
 - **Command palette**: every bound action is also a command (for example "Humanize"), so you can assign hotkeys via Obsidian's hotkey settings. Commands appear and disappear as you change bindings — no reload needed — and hotkeys survive renames.
 - **Rewrite verbs** (rephrase, summarize, simplify, humanize) never touch your text directly: the proposal appears as an inline diff below the selection — old text struck through, new text highlighted — with **Accept** and **Reject** (Enter/Esc while the widget has focus). Accept is a single undo step, and only applies while the selected text is unchanged; editing it dismisses the stale proposal.
 - **Continue writing / Say more** insert a proposed continuation at the cursor, through the same preview.
