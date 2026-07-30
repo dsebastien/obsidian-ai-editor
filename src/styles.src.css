@@ -1624,7 +1624,7 @@
    events on its empty area — the note underneath must stay clickable, since
    in `overlay` mode the column sits over the readable-line-length margin. */
 .ai-editor-margin {
-    @apply pointer-events-none absolute overflow-hidden;
+    @apply pointer-events-none absolute flex flex-col overflow-hidden;
     top: 0;
     bottom: 0;
     right: 0;
@@ -1634,12 +1634,14 @@
 }
 
 .ai-editor-margin-orphans {
-    @apply pointer-events-auto relative;
+    @apply pointer-events-auto relative shrink-0;
 }
 
+/* The positioning context for the anchored groups: what is left of the column
+   once the pinned orphan box has taken its space. Its client rect IS the
+   coordinate space the stacker works in (see MarginColumn.groupsBox). */
 .ai-editor-margin-groups {
-    @apply relative;
-    height: 100%;
+    @apply relative flex-1;
 }
 
 /* Absolutely positioned by the stacker; `transition` on `top` deliberately

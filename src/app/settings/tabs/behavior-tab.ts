@@ -234,6 +234,20 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
             })
         })
 
+    new Setting(containerEl)
+        .setName('Margin comment column')
+        .setDesc(
+            'Show margin comments next to the text they are about. Turn this off to keep them in the review panel only. Needs a wide enough pane; with readable line length on, the column uses the empty margin and the text does not move.'
+        )
+        .addToggle((toggle) => {
+            toggle.setValue(settings.behavior.showMarginComments)
+            toggle.onChange((value) => {
+                commit(ctx, (draft) => {
+                    draft.behavior.showMarginComments = value
+                })
+            })
+        })
+
     new Setting(containerEl).setName('Import & export').setHeading()
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',

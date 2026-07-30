@@ -321,7 +321,15 @@ export const behaviorSettingsSchema = z.object({
     /** '' → answer in the note's language; otherwise a fixed language. */
     responseLanguageOverride: z.string().max(50).default(''),
     /** Editor handling async margin comments by default. */
-    defaultCommentEditorId: z.string().default('')
+    defaultCommentEditorId: z.string().default(''),
+    /**
+     * Whether durable margin comments are rendered in a column next to the
+     * text (plan §5.5 / M8). Off puts them in the side panel only — the
+     * comments themselves are unaffected, this is purely a view preference.
+     * Default on: a parked question the user cannot see next to its span is
+     * the feature not working.
+     */
+    showMarginComments: z.boolean().default(true)
 })
 export type BehaviorSettings = z.infer<typeof behaviorSettingsSchema>
 

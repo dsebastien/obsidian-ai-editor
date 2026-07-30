@@ -2,7 +2,7 @@ import { MarkdownView, Modal, Notice, Setting, TFile, setTooltip } from 'obsidia
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import { isolateHistory } from '@codemirror/commands'
 import { Prec } from '@codemirror/state'
-import type { Extension } from '@codemirror/state'
+import type { Extension, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
 import {
@@ -90,6 +90,14 @@ import {
 import type { FindingDecorationSpec } from './editor/finding-decorations'
 import { nextLayoutMode } from './editor/layout-mode'
 import type { PaneLayoutMode } from './editor/layout-mode'
+import { MarginColumn } from './editor/margin-column'
+import { clusterByLine, marginColumnPlacement, stackMarginSlots } from './editor/margin-layout'
+import type { MarginPlacementMode } from './editor/margin-layout'
+import { isMarginVisible, marginColumnModel } from './editor/margin-model'
+import type { MarginCommentInput, MarginGroupInput } from './editor/margin-model'
+import { reanchorComment, reanchorComments } from '../domain/comments/reanchor'
+import type { AnchoredComment } from '../domain/comments/reanchor'
+import type { MarginComment } from '../domain/comments/margin-comment'
 import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
 import type { TransformPreviewSpec } from './editor/transform-preview'
@@ -209,6 +217,53 @@ class SizeConfirmModal extends Modal {
 }
 
 // ---------------------------------------------------------------------------
+// Margin comment deletion (irreversible — Business Rules #13)
+// ---------------------------------------------------------------------------
+
+/**
+ * Confirms deleting a durable margin comment.
+ *
+ * Not a `window.confirm` (forbidden — see AGENTS.md), and not a one-click
+ * button either: the comment holds a question the user wrote and an answer
+ * they paid a backend request for, and nothing brings it back. **Resolve** is
+ * offered right next to it for the reversible-feeling case, so this dialog
+ * only ever has to explain the difference once.
+ */
+class DeleteCommentModal extends Modal {
+    constructor(
+        app: App,
+        private readonly onConfirm: () => void
+    ) {
+        super(app)
+    }
+
+    override onOpen(): void {
+        this.setTitle('Delete this comment?')
+        this.modalEl.addClass('ai-editor-modal')
+        this.contentEl.createEl('p', {
+            text: 'The question and the answer are removed for good. To keep the record but take it out of the margin, resolve it instead.'
+        })
+        new Setting(this.contentEl)
+            .addButton((button) => {
+                button.setButtonText('Cancel').onClick(() => this.close())
+            })
+            .addButton((button) => {
+                button
+                    .setButtonText('Delete')
+                    .setWarning()
+                    .onClick(() => {
+                        this.close()
+                        this.onConfirm()
+                    })
+            })
+    }
+
+    override onClose(): void {
+        this.contentEl.empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
 
@@ -264,6 +319,38 @@ interface ViewGlue {
     layout: PaneLayoutMode
     /** Pane-width observer; disconnected when the glue is destroyed. */
     paneObserver: ResizeObserver | null
+    /**
+     * Margin comment column (plan §5.5 / M8). `null` when the plugin has no
+     * comment store at all (headless/test callers) — every margin path then
+     * degrades to "no column" rather than to a crash.
+     */
+    marginColumn: MarginColumn | null
+    /** Placement currently applied, for the mode hysteresis. */
+    marginPlacement: MarginPlacementMode
+    /** Reserve (px) currently padding the editor, so it can be measured out. */
+    marginReserve: number
+    /** Comment ids whose answer the user expanded. */
+    marginExpandedBodies: Set<string>
+    /** Cluster keys (a line's first comment id) the user expanded. */
+    marginExpandedGroups: Set<string>
+    marginOrphansExpanded: boolean
+    /**
+     * Re-anchoring cache. Resolving every comment runs `matchQuote` over the
+     * whole note, and the refresh cycle fires on every edit batch — so the
+     * result is memoized against the CM document's identity (immutable, so a
+     * new object IS a changed document) and the stored comments' revisions.
+     */
+    marginAnchors: { doc: Text; key: string; anchored: readonly AnchoredComment[] } | null
+    /**
+     * Measured group heights, by cluster key. Kept so a scroll frame can
+     * re-stack without reading `offsetHeight` again — measuring forces a
+     * layout, and the DOM only changes when the column is actually rebuilt.
+     */
+    marginHeights: Map<string, number>
+    /** Column width the cached heights were measured at (text wraps by width). */
+    marginWidth: number
+    /** Removes the capture-phase scroll listener; called on destroy. */
+    marginScrollOff: (() => void) | null
     /**
      * Whether a binding rule / privacy exclusion currently switches the plugin
      * off for this glue's note (plan §4b). Tracked so the transition INTO the
@@ -2559,10 +2646,89 @@ export class ReviewController {
             // hidden reports 0 and keeps the default (see `nextLayoutMode`).
             layout: nextLayoutMode(view.contentEl.clientWidth, 'wide'),
             paneObserver: null,
+            marginColumn: null,
+            marginPlacement: 'hidden',
+            marginReserve: 0,
+            marginExpandedBodies: new Set<string>(),
+            marginExpandedGroups: new Set<string>(),
+            marginOrphansExpanded: false,
+            marginAnchors: null,
+            marginHeights: new Map<string, number>(),
+            marginWidth: 0,
+            marginScrollOff: null,
             pluginDisabled: false
         }
         this.observePaneWidth(glue, doc)
+        this.mountMarginColumn(glue, doc)
         return glue
+    }
+
+    /**
+     * Mounts the margin comment column next to the note (plan §5.5 / M8).
+     *
+     * Only when a comment store exists: without one there is nothing to
+     * render, and an empty column is chrome every note would pay for.
+     *
+     * The scroll listener is attached in the CAPTURE phase on the view's
+     * content element rather than on CodeMirror's scroller: `scroll` does not
+     * bubble, the scroller does not exist yet at mount time, and a capture
+     * listener on an ancestor catches it from whichever descendant actually
+     * scrolls. It only repositions — never re-renders (see `marginModelKey`).
+     */
+    private mountMarginColumn(glue: ViewGlue, doc: Document): void {
+        if (!this.deps.commentJobs) {
+            return
+        }
+        glue.marginColumn = new MarginColumn(
+            glue.view.contentEl,
+            {
+                onReveal: (commentId) => {
+                    void this.revealComment(glue, commentId)
+                },
+                onRetry: (commentId) => {
+                    const path = glue.view.file?.path
+                    if (path) {
+                        void this.retryComment(path, commentId)
+                    }
+                },
+                onCancel: (commentId) => {
+                    this.deps.commentJobs?.cancel(commentId)
+                    this.scheduleRefresh()
+                },
+                onResolve: (commentId) => {
+                    const path = glue.view.file?.path
+                    if (path) {
+                        this.deps.commentJobs?.dismiss(path, commentId)
+                        this.scheduleRefresh()
+                    }
+                },
+                onDelete: (commentId) => {
+                    this.confirmDeleteComment(glue, commentId)
+                },
+                onToggleBody: (commentId) => {
+                    toggleMember(glue.marginExpandedBodies, commentId)
+                    this.scheduleRefresh()
+                },
+                onToggleGroup: (key) => {
+                    toggleMember(glue.marginExpandedGroups, key)
+                    this.scheduleRefresh()
+                },
+                onToggleOrphans: () => {
+                    glue.marginOrphansExpanded = !glue.marginOrphansExpanded
+                    this.scheduleRefresh()
+                }
+            },
+            doc,
+            // Same placement as the rail's: the column hugs the right edge.
+            (el, tooltip) => setTooltip(el, tooltip, { placement: 'left' })
+        )
+        const onScroll = (): void => {
+            this.repositionMargin(glue)
+        }
+        glue.view.contentEl.addEventListener('scroll', onScroll, true)
+        glue.marginScrollOff = (): void => {
+            glue.view.contentEl.removeEventListener('scroll', onScroll, true)
+        }
     }
 
     /**
@@ -2592,12 +2758,16 @@ export class ReviewController {
             return
         }
         const layout = nextLayoutMode(width, glue.layout)
-        if (layout === glue.layout) {
+        const layoutChanged = layout !== glue.layout
+        glue.layout = layout
+        // The margin column's width, placement and card heights are all
+        // functions of the pane width, so ANY resize matters to it — not only
+        // a layout-mode flip. Re-render only, never synchronous DOM work
+        // inside the observer callback (that is how ResizeObserver loops
+        // start); the refresh is coalesced to one per frame.
+        if (!layoutChanged && glue.marginColumn === null) {
             return
         }
-        glue.layout = layout
-        // Rail re-render only — never synchronous DOM work inside the
-        // observer callback (that is how ResizeObserver loops start).
         this.scheduleRefresh()
     }
 
@@ -2609,6 +2779,11 @@ export class ReviewController {
         glue.transformUnsubscribe = null
         glue.paneObserver?.disconnect()
         glue.paneObserver = null
+        glue.marginScrollOff?.()
+        glue.marginScrollOff = null
+        this.clearMarginReserve(glue)
+        glue.marginColumn?.destroy()
+        glue.marginColumn = null
         glue.rail.destroy()
         glue.railWrapperEl.remove()
         glue.view.contentEl.removeClass('ai-editor-rail-host')
@@ -2719,6 +2894,272 @@ export class ReviewController {
             pluginDisabled ? null : transformRun,
             previousPath !== filePath
         )
+        // Note switch: the expansion state belonged to the previous note's
+        // comments, and the anchoring cache to its text.
+        if (previousPath !== filePath) {
+            glue.marginExpandedBodies.clear()
+            glue.marginExpandedGroups.clear()
+            glue.marginOrphansExpanded = false
+            glue.marginAnchors = null
+        }
+        this.refreshMargin(glue)
+    }
+
+    // -- Margin comment column (plan §5.5 / M8) -------------------------------
+
+    /**
+     * Renders the note's durable comments next to the lines they were parked
+     * on, and keeps them there as the note scrolls and changes.
+     *
+     * Every rule this obeys lives somewhere pure: WHERE a column may exist and
+     * how the groups stack is `margin-layout.ts`, WHAT a card says is
+     * `margin-model.ts`, and WHERE a comment currently points is
+     * `reanchorComment` — the same matcher findings use. This method measures,
+     * assembles and applies.
+     *
+     * Comments whose line is not currently in view are left out rather than
+     * clamped to the edge of the column: a note with fifty comments would
+     * otherwise pile forty-nine of them on top of the one the user is reading.
+     * The column itself STAYS mounted while the note has any comment at all,
+     * so scrolling never adds or removes the reserved space (which would
+     * reflow the text under the reader's eyes).
+     */
+    private refreshMargin(glue: ViewGlue): void {
+        const column = glue.marginColumn
+        const registry = this.deps.commentJobs
+        if (!column || !registry) {
+            return
+        }
+        const filePath = glue.filePath
+        const editorView = editorViewOf(glue.view)
+        // Reading view is out of scope for v1 interactions (Business Rules
+        // #6 is about Live Preview vs Source), and a note the plugin does not
+        // operate on gets no chrome at all (plan §4b).
+        if (
+            filePath === null ||
+            editorView === null ||
+            glue.view.getMode() === 'preview' ||
+            glue.pluginDisabled
+        ) {
+            this.hideMargin(glue)
+            return
+        }
+        const comments = registry.commentsFor(filePath).filter(isMarginVisible)
+        const placement = marginColumnPlacement({
+            enabled: this.deps.getSettings().behavior.showMarginComments,
+            hasComments: comments.length > 0,
+            paneWidth: glue.view.contentEl.clientWidth,
+            freeRight: this.measureFreeRight(glue, editorView),
+            current: glue.marginPlacement
+        })
+        if (placement.mode === 'hidden') {
+            this.hideMargin(glue)
+            return
+        }
+        glue.marginPlacement = placement.mode
+        const widthChanged = glue.marginWidth !== placement.width
+        glue.marginWidth = placement.width
+        column.setWidth(placement.width)
+        this.applyMarginReserve(glue, placement.reserve)
+        column.setVisible(true)
+
+        const views = new Map(registry.viewsFor(filePath).map((view) => [view.commentId, view]))
+        const colors = this.editorColors()
+        const names = new Map(
+            this.deps.getSettings().editors.map((editor) => [editor.id, editor.name])
+        )
+        const box = column.groupsBox()
+        const inputs = new Map<string, MarginCommentInput>()
+        const anchors: { id: string; anchorTop: number }[] = []
+        const orphans: MarginCommentInput[] = []
+        for (const entry of this.anchoredComments(glue, editorView, comments)) {
+            const view = views.get(entry.comment.id)
+            if (!view) {
+                continue
+            }
+            const input: MarginCommentInput = {
+                comment: entry.comment,
+                view,
+                outcome: entry.outcome,
+                color: colors.get(entry.comment.editorId) ?? 'var(--text-accent)',
+                editorName:
+                    names.get(entry.comment.editorId) ??
+                    (entry.comment.editorName || 'Unknown editor'),
+                expanded: glue.marginExpandedBodies.has(entry.comment.id)
+            }
+            inputs.set(entry.comment.id, input)
+            if (entry.anchor === null) {
+                orphans.push(input)
+                continue
+            }
+            const anchorTop = this.anchorTopFor(editorView, entry.anchor.from, box.top)
+            if (anchorTop < 0 || anchorTop > box.height) {
+                continue // its line is off-screen: nothing to sit next to
+            }
+            anchors.push({ id: entry.comment.id, anchorTop })
+        }
+
+        const groups: MarginGroupInput[] = clusterByLine(anchors).map((cluster) => ({
+            key: cluster.key,
+            anchorTop: cluster.anchorTop,
+            expanded: glue.marginExpandedGroups.has(cluster.key),
+            comments: cluster.ids
+                .map((id) => inputs.get(id))
+                .filter((input): input is MarginCommentInput => input !== undefined)
+        }))
+        const rebuilt = column.render(
+            marginColumnModel({
+                groups,
+                orphans,
+                orphansExpanded: glue.marginOrphansExpanded
+            })
+        )
+        if (rebuilt || widthChanged) {
+            // Measuring forces a layout, so it happens only when the DOM (or
+            // the width the text wraps at) actually changed.
+            glue.marginHeights = new Map(column.measure().map((slot) => [slot.key, slot.height]))
+        }
+        column.applyPositions(
+            stackMarginSlots(
+                groups.map((group) => ({
+                    key: group.key,
+                    anchorTop: group.anchorTop,
+                    height: glue.marginHeights.get(group.key) ?? 0
+                })),
+                { top: 0, bottom: box.height }
+            )
+        )
+    }
+
+    /**
+     * Scroll handler: the column follows the text. Goes through the full
+     * refresh because scrolling changes which comments have a visible line —
+     * but `marginModelKey` excludes positions, so an unchanged set is
+     * repositioned without touching the DOM structure.
+     */
+    private repositionMargin(glue: ViewGlue): void {
+        if (this.disposed || glue.marginColumn === null) {
+            return
+        }
+        this.refreshMargin(glue)
+    }
+
+    private hideMargin(glue: ViewGlue): void {
+        glue.marginColumn?.setVisible(false)
+        glue.marginPlacement = 'hidden'
+        this.clearMarginReserve(glue)
+    }
+
+    /**
+     * Free space to the right of the TEXT, as it would be with the column
+     * reserving nothing.
+     *
+     * The correction matters: padding the scroller by `P` moves a full-width
+     * text block left by `P`, but a text block centered by Obsidian's
+     * **readable line length** only by `P / 2`. Feeding the raw measurement
+     * back into the placement decision would make the mode oscillate — reserve
+     * widens the margin, the wider margin says overlay, dropping the reserve
+     * narrows it again. When the readable-width class cannot be found the full
+     * correction is used: it under-reports the free space, so the column stays
+     * in `reserve` rather than flapping.
+     */
+    private measureFreeRight(glue: ViewGlue, editorView: EditorView): number {
+        const pane = glue.view.contentEl.getBoundingClientRect()
+        const content = editorView.contentDOM.getBoundingClientRect()
+        const readable =
+            glue.view.contentEl
+                .querySelector('.markdown-source-view')
+                ?.classList.contains('is-readable-line-width') ?? false
+        return pane.right - content.right - (readable ? glue.marginReserve / 2 : glue.marginReserve)
+    }
+
+    /** Pads the editor so the column costs the text space, or stops paying. */
+    private applyMarginReserve(glue: ViewGlue, reserve: number): void {
+        if (glue.marginReserve === reserve) {
+            return
+        }
+        glue.marginReserve = reserve
+        glue.view.contentEl.toggleClass('ai-editor-margin-reserved', reserve > 0)
+        if (reserve > 0) {
+            glue.view.contentEl.style.setProperty('--ai-editor-margin-reserve', `${reserve}px`)
+        } else {
+            glue.view.contentEl.style.removeProperty('--ai-editor-margin-reserve')
+        }
+    }
+
+    private clearMarginReserve(glue: ViewGlue): void {
+        this.applyMarginReserve(glue, 0)
+    }
+
+    /** Column-relative y of a document position. */
+    private anchorTopFor(editorView: EditorView, from: number, boxTop: number): number {
+        const pos = Math.max(0, Math.min(from, editorView.state.doc.length))
+        return editorView.documentTop + editorView.lineBlockAt(pos).top - boxTop
+    }
+
+    /**
+     * Re-anchors the note's comments, memoized against the CM document's
+     * identity (immutable — a new object IS a changed document) and the
+     * stored comments' revisions. Without the cache every refresh cycle would
+     * run `matchQuote` over the whole note once per comment, and the refresh
+     * cycle fires on every edit batch and every scroll frame.
+     */
+    private anchoredComments(
+        glue: ViewGlue,
+        editorView: EditorView,
+        comments: readonly MarginComment[]
+    ): readonly AnchoredComment[] {
+        const doc = editorView.state.doc
+        const key = comments.map((comment) => `${comment.id}:${comment.updatedAt}`).join('|')
+        const cached = glue.marginAnchors
+        if (cached && cached.doc === doc && cached.key === key) {
+            return cached.anchored
+        }
+        const anchored = reanchorComments(doc.toString(), comments)
+        glue.marginAnchors = { doc, key, anchored }
+        return anchored
+    }
+
+    /**
+     * Goes to the text a comment is about, through the same reveal path the
+     * side panel uses. Re-anchored at click time rather than trusting the
+     * rendered position: the note may have changed since the column was built
+     * (Business Rules #13 — a comment is never restored from a position).
+     */
+    private async revealComment(glue: ViewGlue, commentId: string): Promise<void> {
+        const filePath = glue.view.file?.path ?? null
+        const registry = this.deps.commentJobs
+        if (filePath === null || !registry || this.disposed) {
+            return
+        }
+        const comment = registry.commentFor(filePath, commentId)
+        if (!comment) {
+            return
+        }
+        const anchored = reanchorComment(glue.view.editor.getValue(), comment)
+        if (anchored.anchor === null) {
+            new Notice('The text this comment was about is no longer in the note.')
+            this.scheduleRefresh() // it just became an orphan; show it as one
+            return
+        }
+        await this.revealRange(filePath, anchored.anchor.from, anchored.anchor.to)
+    }
+
+    /**
+     * Deleting a parked question is irreversible and destroys something the
+     * user wrote, so it is confirmed. Business Rules #13 forbids deleting a
+     * comment silently — this dialog is what makes the deletion not silent.
+     */
+    private confirmDeleteComment(glue: ViewGlue, commentId: string): void {
+        const filePath = glue.view.file?.path ?? null
+        const registry = this.deps.commentJobs
+        if (filePath === null || !registry || this.disposed) {
+            return
+        }
+        new DeleteCommentModal(this.deps.app, () => {
+            registry.delete(filePath, commentId)
+            this.scheduleRefresh()
+        }).open()
     }
 
     /**
@@ -3105,14 +3546,30 @@ export class ReviewController {
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {
             return null
         }
+        return this.revealRange(filePath, finding.anchor.from, finding.anchor.to)
+    }
+
+    /**
+     * Opens the note, scrolls to a range and selects it briefly. The ONE
+     * reveal path: the side panel, keyboard triage and the margin column all
+     * go through it, so a jump feels identical wherever it was asked for.
+     *
+     * Returns the view it landed in (`null` when nothing was revealed) so
+     * triage stepping can chain the card open onto it.
+     */
+    private async revealRange(
+        filePath: string,
+        rangeFrom: number,
+        rangeTo: number
+    ): Promise<MarkdownView | null> {
         const view = await this.openMarkdownView(filePath)
         if (!view) {
             return null
         }
         const editor = view.editor
         const docLength = editor.getValue().length
-        const from = Math.min(finding.anchor.from, docLength)
-        const to = Math.min(finding.anchor.to, docLength)
+        const from = Math.min(rangeFrom, docLength)
+        const to = Math.min(rangeTo, docLength)
         const fromPos = editor.offsetToPos(from)
         const toPos = editor.offsetToPos(to)
         editor.setSelection(fromPos, toPos)
@@ -3197,6 +3654,13 @@ function railStatusOf(status: EditorRunStatus): RailEditorStatus {
             // Distinct from 'idle' so the rail can offer the per-editor
             // retry affordance on cancelled editors too.
             return 'cancelled'
+    }
+}
+
+/** Set membership toggle for the margin column's expansion state. */
+function toggleMember(set: Set<string>, value: string): void {
+    if (!set.delete(value)) {
+        set.add(value)
     }
 }
 

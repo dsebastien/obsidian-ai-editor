@@ -191,6 +191,32 @@ export class CommentJobRegistry {
         return this.deps.runs.cancel(commentId)
     }
 
+    /**
+     * Removes a comment from the store for good, cancelling its job first.
+     *
+     * Business Rules #13 forbids deleting a comment SILENTLY — never
+     * deleting one at all would be a different rule, and a worse one: the
+     * user wrote the question, and an orphan they no longer care about would
+     * otherwise be un-removable. Every caller must therefore ask first; the
+     * store never deletes on its own.
+     *
+     * Follows a renamed note like every other mutation here.
+     */
+    delete(notePath: string, commentId: string): boolean {
+        this.cancel(commentId)
+        if (this.deps.repository.remove(notePath, commentId)) {
+            this.notify()
+            return true
+        }
+        const located = this.locate(commentId)
+        if (!located) {
+            return false
+        }
+        const removed = this.deps.repository.remove(located.notePath, commentId)
+        this.notify()
+        return removed
+    }
+
     /** Closes a comment without acting on it. */
     dismiss(notePath: string, commentId: string): boolean {
         this.cancel(commentId)

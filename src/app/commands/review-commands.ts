@@ -1,5 +1,6 @@
-import { MarkdownView } from 'obsidian'
+import { MarkdownView, Notice } from 'obsidian'
 import type { Plugin } from 'obsidian'
+import type { SettingsFacade } from '../settings/settings-facade'
 import type { ReviewController } from '../ui/review-controller'
 import { canCancelRun, canReviewSelection } from './command-gates'
 
@@ -37,8 +38,15 @@ import { canCancelRun, canReviewSelection } from './command-gates'
  * - `filter-severity` — cycle the active file's severity lens (all →
  *   warnings and suggestions → warnings only); the Notice says what is shown
  *   and how much is hidden.
+ * - `toggle-margin-comments` — show/hide the margin comment column (plan
+ *   §5.5 / M8). A global view preference, so it is always available and
+ *   persists; the Notice says where the comments went either way.
  */
-export function registerReviewCommands(plugin: Plugin, controller: ReviewController): void {
+export function registerReviewCommands(
+    plugin: Plugin,
+    controller: ReviewController,
+    settings: SettingsFacade
+): void {
     plugin.addCommand({
         id: 'review-current-note',
         name: 'Review current note',
@@ -241,6 +249,30 @@ export function registerReviewCommands(plugin: Plugin, controller: ReviewControl
             // already on the note are kept; the new ones are appended.
             controller.generateMore()
             return true
+        }
+    })
+
+    plugin.addCommand({
+        id: 'toggle-margin-comments',
+        name: 'Toggle the margin comment column',
+        // No gate: this is a view preference, not an operation on a note, and
+        // a command that vanishes when the active note has no comments would
+        // be unfindable exactly when the user wants to turn the column back
+        // on. It never sends anything anywhere.
+        callback: (): void => {
+            const next = !settings.getSettings().behavior.showMarginComments
+            void settings
+                .update((draft) => {
+                    draft.behavior.showMarginComments = next
+                })
+                .then(() => {
+                    controller.requestRefresh()
+                    new Notice(
+                        next
+                            ? 'Margin comments are on. They appear beside the text when the pane is wide enough.'
+                            : 'Margin comments are off. They are still listed in the review panel.'
+                    )
+                })
         }
     })
 

@@ -148,7 +148,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         reviewController.attachDaemon(daemonController)
         this.register(this.subscribe(() => daemonController.settingsChanged()))
 
-        registerReviewCommands(this, reviewController)
+        registerReviewCommands(this, reviewController, this)
         registerSetupCommands(this, this)
         this.openSetupWizardOnFirstRun()
         // Dynamic `action-<bindingId>` commands (design §3): registration

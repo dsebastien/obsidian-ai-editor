@@ -166,9 +166,14 @@ export class MarginColumn {
         return slots
     }
 
-    /** Height of the pinned orphan box, so the host can stack below it. */
-    orphanHeight(): number {
-        return this.orphansEl.offsetHeight
+    /**
+     * The box the anchored groups are positioned inside, in client
+     * coordinates. The host converts CodeMirror's document coordinates into
+     * this box's space, so the two never have to agree on anything else.
+     */
+    groupsBox(): { readonly top: number; readonly height: number } {
+        const rect = this.groupsEl.getBoundingClientRect()
+        return { top: rect.top, height: rect.height }
     }
 
     /** Places each group at the position the stacker computed. */

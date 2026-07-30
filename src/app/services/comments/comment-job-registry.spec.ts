@@ -363,6 +363,40 @@ describe('cancellation and unload', () => {
         // The cancellation resolution must not reopen a dismissed comment.
         expect(repository.listFor(NOTE)[0]?.status).toEqual('dismissed')
     })
+
+    it('deleting cancels the job and removes the comment for good', async () => {
+        const { registry, repository, runs } = setup()
+        registry.launch({
+            notePath: NOTE,
+            comment: comment(),
+            run: {
+                request: request(),
+                editorId: 'editor-1',
+                editorName: 'Fact Checker',
+                execute: hangingExecutor()
+            }
+        })
+        await settle()
+        expect(registry.delete(NOTE, 'c1')).toBe(true)
+        await settle()
+        expect(repository.listFor(NOTE)).toEqual([])
+        // Cancelled, and the terminal transition cannot resurrect the entry.
+        expect(runs.get('c1')?.isSettled() ?? true).toBe(true)
+        expect(repository.listFor(NOTE)).toEqual([])
+    })
+
+    it('follows a renamed note when deleting', () => {
+        const { registry, repository } = setup()
+        repository.upsert(NOTE, comment({ status: 'done' }))
+        repository.noteRenamed(NOTE, 'Notes/Renamed.md')
+        expect(registry.delete(NOTE, 'c1')).toBe(true)
+        expect(repository.listFor('Notes/Renamed.md')).toEqual([])
+    })
+
+    it('reports nothing deleted for an unknown comment', () => {
+        const { registry } = setup()
+        expect(registry.delete(NOTE, 'nope')).toBe(false)
+    })
 })
 
 describe('retry preparation', () => {
