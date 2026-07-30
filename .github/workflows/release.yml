@@ -115,8 +115,15 @@ jobs:
               if: steps.version.outputs.prepared != 'true'
               run: bun run format
 
-            - name: Build (release gate — do not tag a commit that cannot build)
+            - name: Build (release gate — do not tag a commit that cannot ship)
+              # Same gate as ci.yml, on purpose: without lint and format:check
+              # here, a lint regression — including one a new
+              # eslint-plugin-obsidianmd version introduces after a dependency
+              # bump — could be tagged and published, with CI only catching it
+              # after the tag exists.
               run: |
+                  bun run lint
+                  bun run format:check
                   bun run build
                   bun test
 
