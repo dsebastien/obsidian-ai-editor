@@ -216,19 +216,37 @@ describe('labels & summaries', () => {
         if (!rule) {
             throw new Error('fixture rule missing')
         }
-        expect(ruleSummary(settings, rule)).toBe('folder "Blog" → Concision')
+        expect(ruleSummary(settings, rule)).toBe('folder "Blog" → reviewed by Concision')
         expect(ruleSummary(settings, { ...rule, effect: 'disabled' })).toBe(
             'folder "Blog" → plugin disabled'
-        )
-        expect(ruleSummary(settings, { ...rule, defaultTarget: null })).toBe(
-            'folder "Blog" → no target yet'
         )
         expect(
             ruleSummary(settings, {
                 ...rule,
                 defaultTarget: { targetType: 'panel', targetId: 'p1' }
             })
-        ).toBe('folder "Blog" → panel Publish gate')
+        ).toBe('folder "Blog" → reviewed by panel Publish gate (Concision)')
+    })
+
+    test('ruleSummary says so when a rule does nothing', () => {
+        const settings = fixture()
+        const rule = settings.rules[0]
+        if (!rule) {
+            throw new Error('fixture rule missing')
+        }
+        expect(ruleSummary(settings, { ...rule, defaultTarget: null })).toContain('does nothing')
+        expect(
+            ruleSummary(settings, {
+                ...rule,
+                defaultTarget: { targetType: 'editor', targetId: 'gone' }
+            })
+        ).toBe('folder "Blog" → deleted editor (rule does nothing)')
+        expect(
+            ruleSummary(settings, {
+                ...rule,
+                defaultTarget: { targetType: 'panel', targetId: 'gone' }
+            })
+        ).toBe('folder "Blog" → deleted panel (rule does nothing)')
     })
 })
 

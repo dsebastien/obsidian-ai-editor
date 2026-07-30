@@ -1,6 +1,7 @@
 import { Setting } from 'obsidian'
 import type { BindingRule, RuleMatch } from '../../domain/settings/settings-schema'
 import { generateId } from '../../domain/ids'
+import { isStarterKitAvailable } from '../../ui/osk-note-types'
 import { populateTargetDropdown } from '../components'
 import { decodeActionTarget, encodeActionTarget, moveItem, ruleSummary } from '../helpers'
 import { commit } from './shared'
@@ -14,31 +15,48 @@ const MATCH_TYPE_LABELS: Record<RuleMatch['matchType'], string> = {
 }
 
 const VALUE_PLACEHOLDERS: Record<RuleMatch['matchType'], string> = {
-    'folder': 'Folder path, e.g. Blog',
+    'folder': 'Folder path, e.g. Blog (/ = whole vault)',
     'tag': 'Tag without #, e.g. draft',
     'frontmatter': 'key: value, e.g. type: article',
     'osk-note-type': 'Note type name, e.g. permanent-notes'
 }
 
 /**
- * Rules tab: ordered binding rules (first match wins). A rule matches notes
- * by folder/tag/frontmatter/OSK note type and either assigns a default
- * reviewer (editor or panel) or disables the plugin UI for that scope.
+ * Rules tab: ordered binding rules. A rule matches notes by
+ * folder/tag/frontmatter/OSK note type and either assigns a default reviewer
+ * (editor or panel) or disables the plugin entirely for that scope.
+ *
+ * The copy here states the evaluation order the engine actually implements
+ * (`domain/rules/rule-engine.ts`): kill switches win from any position, then
+ * the first matching assignment in list order.
  */
 export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',
-        text: 'Rules are evaluated top to bottom; the first match wins. “Disable plugin” is a kill switch: no rail, no menus, no AI for matching notes.'
+        text: '“Disable plugin” is a kill switch: no rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.'
     })
     containerEl.createEl('p', {
         cls: 'ai-editor-tab-intro',
-        text: 'OSK note type matching requires the Obsidian Starter Kit plugin; type auto-discovery is feature-detected in a later milestone. Rules using it stay inert until then.'
+        text: 'Among the remaining rules, the first match from the top assigns who reviews the note — one rule, not a union. Use the arrows to set priority.'
+    })
+    containerEl.createEl('p', {
+        cls: 'ai-editor-tab-intro',
+        text: 'Notes no rule matches are reviewed by every enabled editor, which is also what happens when there are no rules at all.'
+    })
+    containerEl.createEl('p', {
+        cls: 'ai-editor-tab-intro',
+        text: isStarterKitAvailable(ctx.app)
+            ? 'Obsidian Starter Kit detected: “OSK note type” matches its type names (for example “Permanent Notes”). The type/… tag on a note works as well.'
+            : 'Obsidian Starter Kit not detected: “OSK note type” falls back to the type/… tag on a note, so match the tag spelling (for example “permanent_note”).'
     })
 
     if (settings.rules.length === 0) {
-        containerEl.createEl('p', { cls: 'ai-editor-empty-state', text: 'No rules yet.' })
+        containerEl.createEl('p', {
+            cls: 'ai-editor-empty-state',
+            text: 'No rules yet — every enabled editor reviews every note.'
+        })
     }
     settings.rules.forEach((rule, index) => {
         renderRuleRow(containerEl, ctx, rule, index, settings.rules.length)

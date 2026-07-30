@@ -80,25 +80,38 @@ export function describeBackendRef(settings: PluginSettingsV1, ref: BackendRef |
     return ref.model.length > 0 ? `${backend.label} · ${ref.model}` : backend.label
 }
 
-/** One-line summary of a binding rule for list rows. */
+/**
+ * One-line summary of a binding rule for list rows: what it matches, and what
+ * it actually resolves to. Says explicitly when a rule does nothing (no target,
+ * or the target no longer exists) — an inert rule that merely looks configured
+ * is the most confusing state this tab can be in.
+ */
 export function ruleSummary(settings: PluginSettingsV1, rule: BindingRule): string {
     const match = `${rule.match.matchType} "${rule.match.value}"`
     if (rule.effect === 'disabled') {
         return `${match} → plugin disabled`
     }
     if (!rule.defaultTarget) {
-        return `${match} → no target yet`
+        return `${match} → no target yet (rule does nothing)`
     }
     if (rule.defaultTarget.targetType === 'editor') {
-        const name =
-            settings.editors.find((editor) => editor.id === rule.defaultTarget?.targetId)?.name ??
-            'unknown editor'
-        return `${match} → ${name}`
+        const name = settings.editors.find(
+            (editor) => editor.id === rule.defaultTarget?.targetId
+        )?.name
+        return name === undefined
+            ? `${match} → deleted editor (rule does nothing)`
+            : `${match} → reviewed by ${name}`
     }
-    const name =
-        settings.panels.find((panel) => panel.id === rule.defaultTarget?.targetId)?.name ??
-        'unknown panel'
-    return `${match} → panel ${name}`
+    const panel = settings.panels.find((candidate) => candidate.id === rule.defaultTarget?.targetId)
+    if (!panel) {
+        return `${match} → deleted panel (rule does nothing)`
+    }
+    const members = panel.memberEditorIds
+        .map((memberId) => settings.editors.find((editor) => editor.id === memberId)?.name)
+        .filter((name): name is string => name !== undefined)
+    return members.length > 0
+        ? `${match} → reviewed by panel ${panel.name} (${members.join(', ')})`
+        : `${match} → panel ${panel.name} has no members left (rule does nothing)`
 }
 
 // ---------------------------------------------------------------------------
