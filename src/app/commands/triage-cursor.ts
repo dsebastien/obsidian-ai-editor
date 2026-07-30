@@ -1,3 +1,4 @@
+import { deleteKeysUnder } from '../domain/path-scope'
 import type { TriageMemory } from './finding-navigation'
 
 /**
@@ -45,6 +46,14 @@ export class TriageCursorStore {
 
     clear(filePath: string): void {
         this.byFile.delete(filePath)
+    }
+
+    /**
+     * `clear` for a path AND everything under it — a FOLDER rename or delete,
+     * which Obsidian reports without per-child events.
+     */
+    clearUnder(path: string): void {
+        deleteKeysUnder(this.byFile, path)
     }
 
     clearAll(): void {

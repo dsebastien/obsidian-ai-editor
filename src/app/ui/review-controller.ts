@@ -1,4 +1,4 @@
-import { MarkdownView, Modal, Notice, Setting, TFile, setTooltip } from 'obsidian'
+import { MarkdownView, Modal, Notice, Setting, setTooltip } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import { isolateHistory } from '@codemirror/commands'
 import { Prec } from '@codemirror/state'
@@ -31,6 +31,7 @@ import type { ActionVerb } from '../domain/actions/verb-registry'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
+import { deleteKeysUnder, isPathUnder, remapPathUnder } from '../domain/path-scope'
 import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
@@ -505,34 +506,35 @@ export class ReviewController {
         // file: without these, a renamed file orphans its run (holding the full
         // snapshot text forever) and a deleted file leaves skip notices that a
         // later, unrelated run on the same path would inherit.
+        //
+        // Deliberately NOT guarded on `TFile`, and deliberately prefix-aware:
+        // a FOLDER rename or delete moves or drops every note under it, and
+        // Obsidian does not emit per-child events for it (the margin-comment
+        // repository handles both shapes for exactly this reason). Matching
+        // only the exact path left every note under a renamed folder holding a
+        // live run — an uncancelled request keeping a concurrency permit, a
+        // retained snapshot for the plugin's lifetime, and a stale run a note
+        // later created at a reused path would inherit, decorating it with
+        // another note's finding anchors.
         plugin.registerEvent(
             app.vault.on('rename', (file, oldPath) => {
-                if (!(file instanceof TFile)) {
-                    return
-                }
-                this.deps.runController.discardRun(oldPath)
-                this.deps.transformController.discardRun(oldPath)
-                this.skipsByFile.delete(oldPath)
-                this.undecoratedByFile.delete(oldPath)
-                this.triageCursors.clear(oldPath)
-                this.severityFilters.clear(oldPath)
-                this.daemon?.fileClosed(oldPath)
-                if (this.lastActiveMarkdownFile === oldPath) {
-                    this.lastActiveMarkdownFile = file.path
+                this.discardFileState(oldPath)
+                if (this.lastActiveMarkdownFile !== null) {
+                    const moved = remapPathUnder(this.lastActiveMarkdownFile, oldPath, file.path)
+                    if (moved !== null) {
+                        this.lastActiveMarkdownFile = moved
+                    }
                 }
                 this.scheduleRefresh()
             })
         )
         plugin.registerEvent(
             app.vault.on('delete', (file) => {
-                this.deps.runController.discardRun(file.path)
-                this.deps.transformController.discardRun(file.path)
-                this.skipsByFile.delete(file.path)
-                this.undecoratedByFile.delete(file.path)
-                this.triageCursors.clear(file.path)
-                this.severityFilters.clear(file.path)
-                this.daemon?.fileClosed(file.path)
-                if (this.lastActiveMarkdownFile === file.path) {
+                this.discardFileState(file.path)
+                if (
+                    this.lastActiveMarkdownFile !== null &&
+                    isPathUnder(this.lastActiveMarkdownFile, file.path)
+                ) {
                     this.lastActiveMarkdownFile = null
                 }
                 this.scheduleRefresh()
@@ -542,6 +544,26 @@ export class ReviewController {
             this.trackActiveFile()
             this.scheduleRefresh()
         })
+    }
+
+    /**
+     * Forgets every per-file state the controller owns for `path` and for
+     * everything under it — the sweep both vault hooks above share.
+     *
+     * A rename drops rather than remaps, which is the pre-existing single-file
+     * semantics kept deliberately: the run is cancelled either way (its
+     * snapshot is about a file that no longer exists at that path), so keeping
+     * a triage cursor or a severity filter pointed at findings that are gone
+     * would only be state pretending to be useful.
+     */
+    private discardFileState(path: string): void {
+        this.deps.runController.discardUnder(path)
+        this.deps.transformController.discardUnder(path)
+        deleteKeysUnder(this.skipsByFile, path)
+        deleteKeysUnder(this.undecoratedByFile, path)
+        this.triageCursors.clearUnder(path)
+        this.severityFilters.clearUnder(path)
+        this.daemon?.filesClosedUnder(path)
     }
 
     /**

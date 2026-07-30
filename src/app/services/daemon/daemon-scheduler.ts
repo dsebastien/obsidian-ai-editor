@@ -27,6 +27,8 @@
  *   at most one line per file (`logOversized`), never a modal or Notice.
  */
 
+import { deleteKeysUnder } from '../../domain/path-scope'
+
 export interface DaemonConfig {
     readonly enabled: boolean
     /** Idle window in ms (`behavior.daemonIdleSeconds` × 1000). */
@@ -155,6 +157,17 @@ export class DaemonScheduler {
     fileClosed(path: string): void {
         this.paths.delete(path)
         this.oversizedLogged.delete(path)
+    }
+
+    /**
+     * `fileClosed` for a path AND everything under it — a FOLDER rename or
+     * delete, which Obsidian reports without per-child events. Without it a
+     * deleted folder's notes stay armed, and the daemon keeps a schedule for
+     * files that no longer exist.
+     */
+    filesClosedUnder(path: string): void {
+        deleteKeysUnder(this.paths, path)
+        deleteKeysUnder(this.oversizedLogged, path)
     }
 
     /** When the file's timer should fire, or null when nothing is armed. */

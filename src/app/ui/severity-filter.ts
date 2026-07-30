@@ -1,4 +1,5 @@
 import type { Severity } from '../domain/operations/contract'
+import { deleteKeysUnder } from '../domain/path-scope'
 
 /**
  * Severity filter (plan M4 "Bulk triage": severity filter): a per-file VIEW
@@ -96,6 +97,14 @@ export class SeverityFilterStore {
 
     clear(filePath: string): void {
         this.byFile.delete(filePath)
+    }
+
+    /**
+     * `clear` for a path AND everything under it — a FOLDER rename or delete,
+     * which Obsidian reports without per-child events.
+     */
+    clearUnder(path: string): void {
+        deleteKeysUnder(this.byFile, path)
     }
 
     clearAll(): void {

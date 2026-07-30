@@ -18,6 +18,7 @@ import type {
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import { rawFindingIdentity } from '../../domain/operations/finding-identity'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
+import { isPathUnder } from '../../domain/path-scope'
 import type {
     PanelAggregationBudget,
     PanelAggregationPlan,
@@ -1514,6 +1515,24 @@ export class RunController {
         }
         run.cancelRun()
         this.runs.delete(filePath)
+    }
+
+    /**
+     * `discardRun` for a path AND everything under it — the shape a FOLDER
+     * rename or delete arrives in. Obsidian does not necessarily emit a
+     * per-child vault event for a folder, so a controller that only handled the
+     * exact path would leave every note under it holding a live run: an
+     * uncancelled request keeping a concurrency permit, and a retained snapshot
+     * for the plugin's lifetime. Worse, a note later created at a reused path
+     * would inherit the stale run and get another note's findings painted over
+     * its text.
+     */
+    discardUnder(path: string): void {
+        for (const filePath of [...this.runs.keys()]) {
+            if (isPathUnder(filePath, path)) {
+                this.discardRun(filePath)
+            }
+        }
     }
 
     /** Cancels every active run and forgets them (e.g. on plugin unload). */

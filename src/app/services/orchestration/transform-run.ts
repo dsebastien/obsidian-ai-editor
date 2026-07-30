@@ -6,6 +6,7 @@ import type {
     TransformSelectionRequest
 } from '../../domain/operations/contract'
 import type { DocumentSnapshot } from '../../domain/snapshot'
+import { isPathUnder } from '../../domain/path-scope'
 import type { OperationErrorInfo } from './run-controller'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
@@ -399,6 +400,19 @@ export class TransformController {
         }
         run.cancel()
         this.runs.delete(filePath)
+    }
+
+    /**
+     * `discardRun` for a path AND everything under it — a FOLDER rename or
+     * delete, which Obsidian reports as one event without per-child ones. Same
+     * reasoning as `RunController.discardUnder`.
+     */
+    discardUnder(path: string): void {
+        for (const filePath of [...this.runs.keys()]) {
+            if (isPathUnder(filePath, path)) {
+                this.discardRun(filePath)
+            }
+        }
     }
 
     /** Cancels every active transform run and forgets them (plugin unload). */

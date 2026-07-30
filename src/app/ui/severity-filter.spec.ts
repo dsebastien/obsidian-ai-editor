@@ -82,6 +82,17 @@ describe('SeverityFilterStore', () => {
         expect(store.get('a.md')).toBe('all')
     })
 
+    it('clearUnder sweeps a renamed/deleted folder, sparing prefix look-alikes', () => {
+        const store = new SeverityFilterStore()
+        store.cycle('Notes/A.md')
+        store.cycle('Notes/Sub/B.md')
+        store.cycle('NotesArchive/C.md')
+        store.clearUnder('Notes')
+        expect(store.get('Notes/A.md')).toBe('all')
+        expect(store.get('Notes/Sub/B.md')).toBe('all')
+        expect(store.get('NotesArchive/C.md')).toBe('warning-and-suggestion')
+    })
+
     it('clears one file and all files', () => {
         const store = new SeverityFilterStore()
         store.cycle('a.md')

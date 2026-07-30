@@ -1,3 +1,4 @@
+import { isPathUnder } from '../domain/path-scope'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { DaemonScheduler } from '../services/daemon/daemon-scheduler'
 import type { DaemonFireProbe } from '../services/daemon/daemon-scheduler'
@@ -87,6 +88,20 @@ export class DaemonController {
     fileClosed(path: string): void {
         this.scheduler.fileClosed(path)
         this.clearTimer(path)
+    }
+
+    /**
+     * `fileClosed` for a path AND everything under it — a FOLDER rename or
+     * delete, which Obsidian reports as one vault event with no per-child ones.
+     * Without it the schedule (and its real timer) outlives the notes.
+     */
+    filesClosedUnder(path: string): void {
+        this.scheduler.filesClosedUnder(path)
+        for (const tracked of [...this.timers.keys()]) {
+            if (isPathUnder(tracked, path)) {
+                this.clearTimer(tracked)
+            }
+        }
     }
 
     /** Settings observer entry: re-reads the daemon config live. */

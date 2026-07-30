@@ -255,6 +255,17 @@ describe('DaemonScheduler fire-time gates', () => {
 // ---------------------------------------------------------------------------
 
 describe('DaemonScheduler lifecycle', () => {
+    it('filesClosedUnder drops a whole folder, sparing prefix look-alikes', () => {
+        // Obsidian reports a folder rename/delete as ONE event: without the
+        // prefix sweep the daemon keeps a schedule for notes that are gone.
+        const scheduler = makeScheduler()
+        scheduler.recordEdit('Notes/A.md', 1_000)
+        scheduler.recordEdit('Notes/Sub/B.md', 1_000)
+        scheduler.recordEdit('NotesArchive/C.md', 1_000)
+        scheduler.filesClosedUnder('Notes')
+        expect(scheduler.armedPaths()).toEqual(['NotesArchive/C.md'])
+    })
+
     it('drops all state when a file closes (arm + oversized log memory)', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)

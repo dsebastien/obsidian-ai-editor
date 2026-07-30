@@ -575,6 +575,30 @@ describe('TransformController', () => {
         controller.discardRun('Notes/Test.md') // idempotent
     })
 
+    it('discardUnder sweeps a folder and cancels what it sweeps', async () => {
+        const controller = new TransformController()
+        const inside = pendingExecutor('run-inside')
+        const outside = pendingExecutor('run-outside')
+        const runInside = controller.startTransform(
+            makeInput({
+                execute: inside.execute,
+                snapshot: createSnapshot({ filePath: 'Notes/Sub/A.md', text: DOC_TEXT })
+            })
+        )
+        const runOutside = controller.startTransform(
+            makeInput({
+                execute: outside.execute,
+                snapshot: createSnapshot({ filePath: 'NotesArchive/B.md', text: DOC_TEXT })
+            })
+        )
+        await tick()
+        controller.discardUnder('Notes')
+        expect(runInside.getState().status).toBe('cancelled')
+        expect(controller.getRun('Notes/Sub/A.md')).toBeNull()
+        expect(runOutside.getState().status).not.toBe('cancelled')
+        expect(controller.getRun('NotesArchive/B.md')).toBe(runOutside)
+    })
+
     it('cancelAll cancels and forgets every run', async () => {
         const controller = new TransformController()
         const pendingA = pendingExecutor('run-a')

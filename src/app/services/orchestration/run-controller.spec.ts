@@ -648,6 +648,51 @@ describe('RunController subscriptions', () => {
         gate.resolve()
         await run.settled
     })
+
+    it('discardUnder sweeps a renamed/deleted FOLDER, and nothing outside it', async () => {
+        // Obsidian emits ONE vault event for a folder, with no per-child ones:
+        // a controller that only matched the exact path left every note under
+        // it holding a live run (permit + retained snapshot), and a note later
+        // created at a reused path inherited it.
+        const controller = new RunController()
+        const editor = scriptedEditor('done', (runId) => [result(runId, [])])
+        const paths = ['Notes', 'Notes/A.md', 'Notes/Sub/B.md', 'NotesArchive/C.md', 'Other.md']
+        for (const filePath of paths) {
+            const run = controller.startRun({
+                snapshot: createSnapshot({ filePath, text: DOC }),
+                editors: [editor]
+            })
+            await run.settled
+        }
+        controller.discardUnder('Notes')
+        expect(controller.getRun('Notes')).toBeNull()
+        expect(controller.getRun('Notes/A.md')).toBeNull()
+        expect(controller.getRun('Notes/Sub/B.md')).toBeNull()
+        expect(controller.getRun('NotesArchive/C.md')).not.toBeNull()
+        expect(controller.getRun('Other.md')).not.toBeNull()
+    })
+
+    it('discardUnder cancels the in-flight runs it sweeps', async () => {
+        const controller = new RunController()
+        const gate = deferred()
+        const hanging: RunEditorSpec = {
+            editorId: 'hang',
+            editorName: 'Hang',
+            execute: async function* (request) {
+                yield finding(request.runId, raw())
+                await gate.promise
+            }
+        }
+        const run = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'Notes/Sub/B.md', text: DOC }),
+            editors: [hanging]
+        })
+        await Promise.resolve()
+        controller.discardUnder('Notes')
+        expect(run.getEditorState('hang')?.status).toEqual('cancelled')
+        gate.resolve()
+        await run.settled
+    })
 })
 
 describe('RunController finding lookup', () => {

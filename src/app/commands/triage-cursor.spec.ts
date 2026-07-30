@@ -45,6 +45,17 @@ describe('TriageCursorStore', () => {
         expect(store.get('note.md', runA)).toEqual({ id: 'f-2', from: 9 })
     })
 
+    it('clearUnder sweeps a renamed/deleted folder, sparing prefix look-alikes', () => {
+        const store = new TriageCursorStore()
+        store.set('Notes/A.md', runA, { id: 'f-1', from: 1 })
+        store.set('Notes/Sub/B.md', runA, { id: 'f-2', from: 2 })
+        store.set('NotesArchive/C.md', runA, { id: 'f-3', from: 3 })
+        store.clearUnder('Notes')
+        expect(store.has('Notes/A.md')).toBe(false)
+        expect(store.has('Notes/Sub/B.md')).toBe(false)
+        expect(store.has('NotesArchive/C.md')).toBe(true)
+    })
+
     it('clearAll empties every file', () => {
         const store = new TriageCursorStore()
         store.set('one.md', runA, { id: 'f-1', from: 1 })
