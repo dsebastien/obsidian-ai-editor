@@ -5,8 +5,7 @@ import { CONTRACT_VERSION } from '../domain/operations/contract'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../domain/snapshot'
 import { hashText } from '../domain/snapshot'
-import { createApiEditorExecutor } from './backends/api-editor-backend'
-import { redactSecret } from './backends/providers'
+import { createBackendExecutor } from './backends/backend-executor'
 import { ExcludedTargetError } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
@@ -23,8 +22,7 @@ import {
     buildEditorPrompt,
     countWords,
     isRequestedSelectionValid,
-    resolveApiBackend,
-    reviewTimeoutMs,
+    resolveEditorBackend,
     startReview
 } from './review-service'
 import type { EditorSkip, ReviewStart } from './review-service'
@@ -247,7 +245,7 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
             ]
         }
     }
-    const resolution = resolveApiBackend(settings, editor)
+    const resolution = resolveEditorBackend(settings, editor)
     if (!resolution.ok) {
         return {
             status: 'no-editor',
@@ -338,6 +336,13 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
     }
 
     // -- Dispatch through the shared backend executor machinery ---------------
+    const executor = createBackendExecutor({
+        backend: resolution.backend,
+        model: resolution.model,
+        systemPrompt,
+        behavior,
+        fetchImpl
+    })
     const startInput: StartTransformInput = {
         snapshot: runSnapshot,
         request,
@@ -345,14 +350,8 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
         editorId: editor.id,
         editorName: editor.name,
         actionLabel: verb.label,
-        redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
-        execute: createApiEditorExecutor({
-            backendConfig: resolution.backend,
-            model: resolution.model,
-            systemPrompt,
-            timeoutMs: reviewTimeoutMs(behavior),
-            fetchImpl
-        })
+        redactError: executor.redactError,
+        execute: executor.execute
     }
     const run = input.transformController.startTransform(startInput)
     return { status: 'started', run }

@@ -12,7 +12,8 @@ import type { ContextBudgetReport, ContextSection } from './context/context-budg
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
 import { resolvePanelCharter } from './panels/panel-charter'
-import { buildEditorPrompt, resolveApiBackend } from './review-service'
+import { resolvedBackendLabel } from './backends/backend-executor'
+import { buildEditorPrompt, resolveEditorBackend } from './review-service'
 import type { SkipReason } from './review-service'
 import { noteRuleOutcome } from './rules/note-rules'
 
@@ -226,7 +227,7 @@ export async function previewEditorContext(
         throw cause
     }
 
-    const resolution = resolveApiBackend(settings, editor)
+    const resolution = resolveEditorBackend(settings, editor)
     return {
         status: 'ready',
         preview: {
@@ -239,7 +240,7 @@ export async function previewEditorContext(
             sections: built.context.sections,
             budget: built.context.budget,
             backendLabel: resolution.ok
-                ? `${resolution.backend.label} (${resolution.model})`
+                ? resolvedBackendLabel(resolution.backend, resolution.model)
                 : null,
             backendIssue: resolution.ok ? null : resolution.reason
         }

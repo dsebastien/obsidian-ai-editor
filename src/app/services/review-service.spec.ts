@@ -18,8 +18,7 @@ import {
     countWords,
     createEditorSpec,
     isRequestedSelectionValid,
-    resolveApiBackend,
-    reviewTimeoutMs,
+    resolveEditorBackend,
     skipReasonLabel,
     startReview
 } from './review-service'
@@ -176,7 +175,7 @@ describe('skipReasonLabel', () => {
             'no-backend-configured',
             'backend-not-found',
             'backend-disabled',
-            'cli-backend-unsupported',
+            'cli-consent-required',
             'no-model-configured',
             'editor-disabled',
             'editor-missing'
@@ -215,10 +214,10 @@ describe('isRequestedSelectionValid', () => {
     })
 })
 
-describe('resolveApiBackend', () => {
+describe('resolveEditorBackend', () => {
     it('inherits the global default backend and its default model', () => {
         const settings = makeSettings()
-        const resolution = resolveApiBackend(settings, settings.editors[0]!)
+        const resolution = resolveEditorBackend(settings, settings.editors[0]!)
         expect(resolution).toEqual({
             ok: true,
             backend: settings.backends[0] as ApiBackend,
@@ -232,46 +231,106 @@ describe('resolveApiBackend', () => {
             backends: [makeBackend(), other],
             editors: [makeEditor({ backend: { backendId: 'backend-2', model: 'override' } })]
         })
-        const resolution = resolveApiBackend(settings, settings.editors[0]!)
+        const resolution = resolveEditorBackend(settings, settings.editors[0]!)
         expect(resolution).toEqual({ ok: true, backend: other, model: 'override' })
     })
 
     it('reports missing configuration as typed skips', () => {
         const editor = makeEditor()
-        expect(resolveApiBackend(makeSettings({ defaultBackend: null }), editor)).toEqual({
+        expect(resolveEditorBackend(makeSettings({ defaultBackend: null }), editor)).toEqual({
             ok: false,
             reason: 'no-backend-configured'
         })
         expect(
-            resolveApiBackend(
+            resolveEditorBackend(
                 makeSettings({ defaultBackend: { backendId: 'ghost', model: '' } }),
                 editor
             )
         ).toEqual({ ok: false, reason: 'backend-not-found' })
         expect(
-            resolveApiBackend(makeSettings({ backends: [makeBackend({ enabled: false })] }), editor)
+            resolveEditorBackend(
+                makeSettings({ backends: [makeBackend({ enabled: false })] }),
+                editor
+            )
         ).toEqual({ ok: false, reason: 'backend-disabled' })
         expect(
-            resolveApiBackend(
+            resolveEditorBackend(
                 makeSettings({ backends: [makeBackend({ defaultModel: '' })] }),
                 editor
             )
         ).toEqual({ ok: false, reason: 'no-model-configured' })
     })
 
-    it('skips CLI backends until their executor exists', () => {
+    it('refuses an enabled CLI backend the user never consented to launching', () => {
+        // `enabled` is not consent: a synced or hand-edited data.json can set
+        // it without anyone having been shown what launching a program means.
         const cli = cliBackendSchema.parse({
             id: 'backend-1',
             family: 'cli',
             kind: 'claude-code',
             label: 'Claude Code',
+            executablePath: '/usr/local/bin/claude',
             enabled: true
         })
         const settings = makeSettings({ backends: [cli] })
-        expect(resolveApiBackend(settings, settings.editors[0]!)).toEqual({
+        expect(resolveEditorBackend(settings, settings.editors[0]!)).toEqual({
             ok: false,
-            reason: 'cli-backend-unsupported'
+            reason: 'cli-consent-required'
         })
+    })
+
+    it('refuses a CLI backend whose consent names a different executable', () => {
+        const cli = cliBackendSchema.parse({
+            id: 'backend-1',
+            family: 'cli',
+            kind: 'claude-code',
+            label: 'Claude Code',
+            executablePath: '/opt/new/claude',
+            consent: { launchPath: '/usr/local/bin/claude', toolsPath: '' },
+            enabled: true
+        })
+        const settings = makeSettings({ backends: [cli] })
+        expect(resolveEditorBackend(settings, settings.editors[0]!)).toEqual({
+            ok: false,
+            reason: 'cli-consent-required'
+        })
+    })
+
+    it('resolves a consented CLI backend, and lets an empty model mean the tool default', () => {
+        const cli = cliBackendSchema.parse({
+            id: 'backend-1',
+            family: 'cli',
+            kind: 'claude-code',
+            label: 'Claude Code',
+            executablePath: '/usr/local/bin/claude',
+            consent: { launchPath: '/usr/local/bin/claude', toolsPath: '' },
+            enabled: true
+        })
+        const settings = makeSettings({ backends: [cli] })
+        expect(resolveEditorBackend(settings, settings.editors[0]!)).toEqual({
+            ok: true,
+            backend: cli,
+            model: ''
+        })
+    })
+
+    it('prefers the editor model override over the CLI backend default', () => {
+        const cli = cliBackendSchema.parse({
+            id: 'backend-1',
+            family: 'cli',
+            kind: 'claude-code',
+            label: 'Claude Code',
+            executablePath: '/usr/local/bin/claude',
+            defaultModel: 'backend-default',
+            consent: { launchPath: '/usr/local/bin/claude', toolsPath: '' },
+            enabled: true
+        })
+        const settings = makeSettings({ backends: [cli] })
+        const editor = {
+            ...settings.editors[0]!,
+            backend: { backendId: 'backend-1', model: 'opus' }
+        }
+        expect(resolveEditorBackend(settings, editor)).toMatchObject({ ok: true, model: 'opus' })
     })
 })
 
@@ -410,15 +469,6 @@ describe('buildEditorPrompt', () => {
 // backends/api-editor-backend.spec.ts — this seam binds identity + redaction)
 // ---------------------------------------------------------------------------
 
-describe('reviewTimeoutMs', () => {
-    it('converts the behavior setting from seconds to milliseconds', () => {
-        const behavior = makeSettings().behavior
-        expect(behavior.requestTimeoutSeconds).toBe(600)
-        expect(reviewTimeoutMs(behavior)).toBe(600_000)
-        expect(reviewTimeoutMs({ ...behavior, requestTimeoutSeconds: 45 })).toBe(45_000)
-    })
-})
-
 describe('createEditorSpec', () => {
     it('binds editor identity and the key-redaction seam', () => {
         const spec = createEditorSpec({
@@ -426,7 +476,7 @@ describe('createEditorSpec', () => {
             backend: makeBackend(),
             model: 'claude-test-1',
             systemPrompt: 'Be harsh.',
-            timeoutMs: 5_000,
+            behavior: makeSettings().behavior,
             fetchImpl: fetchReturning(anthropicReviewBody())
         })
         expect(spec.editorId).toBe('editor-1')
@@ -454,7 +504,9 @@ describe('createEditorSpec', () => {
             backend: makeBackend(),
             model: 'claude-test-1',
             systemPrompt: 'Be harsh.',
-            timeoutMs: 20,
+            // Sub-second on purpose: the spec exercises the timeout path, not the
+            // setting's UI range.
+            behavior: { ...makeSettings().behavior, requestTimeoutSeconds: 0.02 },
             fetchImpl: hangingFetch
         })
 

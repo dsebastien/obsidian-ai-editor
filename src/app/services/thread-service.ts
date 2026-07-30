@@ -1,8 +1,7 @@
 import { currentSpanText } from '../domain/operations/thread'
 import type { ThreadBeginFailure } from '../domain/operations/thread'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
-import { createApiEditorExecutor } from './backends/api-editor-backend'
-import { redactSecret } from './backends/providers'
+import { createBackendExecutor } from './backends/backend-executor'
 import { ExcludedTargetError } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
 import type { VaultReader } from './context/vault-reader.intf'
@@ -10,7 +9,7 @@ import type { FindingId } from '../domain/ids'
 import type { RunController, ThreadTurnResolution } from './orchestration/run-controller'
 import { noteRuleOutcome } from './rules/note-rules'
 import type { EditorSkip } from './review-service'
-import { buildEditorPrompt, resolveApiBackend, reviewTimeoutMs } from './review-service'
+import { buildEditorPrompt, resolveEditorBackend } from './review-service'
 
 /**
  * Push-back entry point: turns a user message on one finding into a
@@ -114,7 +113,7 @@ export async function startThreadTurn(input: StartThreadTurnServiceInput): Promi
     if (!editor.capabilities.review) {
         return skipOf('no-review-capability')
     }
-    const resolution = resolveApiBackend(settings, editor)
+    const resolution = resolveEditorBackend(settings, editor)
     if (!resolution.ok) {
         return skipOf(resolution.reason)
     }
@@ -162,18 +161,19 @@ export async function startThreadTurn(input: StartThreadTurnServiceInput): Promi
         return { status: 'no-run' }
     }
 
+    const executor = createBackendExecutor({
+        backend: resolution.backend,
+        model: resolution.model,
+        systemPrompt,
+        behavior,
+        fetchImpl
+    })
     const started = run.startThreadTurn({
         findingId,
         message: input.message,
         quote,
-        redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
-        execute: createApiEditorExecutor({
-            backendConfig: resolution.backend,
-            model: resolution.model,
-            systemPrompt,
-            timeoutMs: reviewTimeoutMs(behavior),
-            fetchImpl
-        })
+        redactError: executor.redactError,
+        execute: executor.execute
     })
     if (!started.ok) {
         return { status: 'refused', reason: started.reason }

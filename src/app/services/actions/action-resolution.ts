@@ -9,7 +9,7 @@ import type {
 } from '../../domain/settings/settings-schema'
 import { resolvePromptSourceText } from '../context/prompt-source-text'
 import type { VaultReader } from '../context/vault-reader.intf'
-import { resolveApiBackend } from '../review-service'
+import { resolveEditorBackend } from '../review-service'
 
 /**
  * Action-binding resolution: turns the persisted `settings.actions` entries
@@ -27,7 +27,7 @@ import { resolveApiBackend } from '../review-service'
  *   needs (`review` for review-class verbs, `rewrite` for
  *   transform/generate), and their backend must resolve — mirroring the
  *   participant checks in `startReview`/`startAction` via the same
- *   `resolveApiBackend`.
+ *   `resolveEditorBackend`.
  * - Panel targets are valid ONLY for review-class verbs, and dispatch ONE
  *   panel run (plan M6): the members review in parallel with the charter in
  *   their prompts and the verb instruction on top, then the run aggregates.
@@ -142,7 +142,7 @@ function editorCanDispatch(
     }
     const capability =
         verbClass === 'review' ? editor.capabilities.review : editor.capabilities.rewrite
-    return capability && resolveApiBackend(settings, editor).ok
+    return capability && resolveEditorBackend(settings, editor).ok
 }
 
 /**
@@ -228,7 +228,7 @@ export function resolveActionBinding(
     if (!capability) {
         return { ok: false, reason: 'no-capability' }
     }
-    if (!resolveApiBackend(settings, editor).ok) {
+    if (!resolveEditorBackend(settings, editor).ok) {
         return { ok: false, reason: 'backend-unusable' }
     }
     return resolved([editor.id])

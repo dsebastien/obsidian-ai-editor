@@ -1,7 +1,8 @@
 import { resolveRuleEditorPool } from '../domain/rules/rule-engine'
 import type { RuleOutcome } from '../domain/rules/rule-engine'
+import { hasLaunchConsent } from '../domain/settings/cli-consent'
 import type {
-    ApiBackend,
+    BackendInstance,
     BackendRef,
     BehaviorSettings,
     EditorConfig,
@@ -9,8 +10,8 @@ import type {
     PluginSettingsV1
 } from '../domain/settings/settings-schema'
 import type { DocumentSnapshot } from '../domain/snapshot'
-import { createApiEditorExecutor } from './backends/api-editor-backend'
-import { redactSecret } from './backends/providers'
+import { createBackendExecutor } from './backends/backend-executor'
+import { resolveCliModel } from './backends/cli'
 import { ExcludedTargetError, assembleContext } from './context/context-assembler'
 import type { AssembledContext } from './context/context-assembler'
 import { isExcluded } from './context/exclusions'
@@ -26,7 +27,7 @@ import { noteRuleOutcome } from './rules/note-rules'
 
 /**
  * Review-run entry point: turns settings + a document snapshot into one
- * orchestrated run against the configured API backends.
+ * orchestrated run against the configured backends (API or CLI).
  *
  * Obsidian-free by design: the vault is injected as `VaultReader`, the
  * network as `fetchImpl`, so every decision in here (exclusion refusal, size
@@ -59,7 +60,8 @@ export type SkipReason =
     | 'no-backend-configured'
     | 'backend-not-found'
     | 'backend-disabled'
-    | 'cli-backend-unsupported'
+    /** A CLI backend the user has not consented to launching (BR #9). */
+    | 'cli-consent-required'
     | 'no-model-configured'
     /** Named-pool runs only: a named editor is disabled. */
     | 'editor-disabled'
@@ -88,8 +90,8 @@ export function skipReasonLabel(reason: SkipReason): string {
             return 'its backend no longer exists'
         case 'backend-disabled':
             return 'its backend is disabled'
-        case 'cli-backend-unsupported':
-            return 'CLI backends are not supported yet'
+        case 'cli-consent-required':
+            return 'its CLI backend has not been allowed to run — confirm it in settings'
         case 'no-model-configured':
             return 'no model configured'
         case 'editor-disabled':
@@ -291,15 +293,26 @@ export function isRequestedSelectionValid(
 }
 
 export type BackendResolution =
-    | { readonly ok: true; readonly backend: ApiBackend; readonly model: string }
+    | { readonly ok: true; readonly backend: BackendInstance; readonly model: string }
     | { readonly ok: false; readonly reason: SkipReason }
 
 /**
  * Resolves a backend reference (an editor's binding, a panel's aggregation
- * backend) to a usable API backend, falling back to the global default when
- * the reference is null (inherit). Only enabled API-family backends with a
- * resolvable model are usable — anything else is a typed reason, never a
- * silent drop.
+ * backend) to a usable backend of EITHER family, falling back to the global
+ * default when the reference is null (inherit). Every refusal is a typed
+ * reason, never a silent drop.
+ *
+ * The two families differ in exactly two checks, both of which fail closed:
+ *
+ * - **Model.** An API request body has to name a model, so a missing one is a
+ *   broken request. A CLI tool already ships a default that tracks its
+ *   vendor's current recommendation, so an empty model is legal there and
+ *   means "defer to the tool" (`resolveCliModel`).
+ * - **Consent.** A CLI backend may only run when the user consented to
+ *   launching THIS executable (Business Rules #9). `enabled` is not consent:
+ *   a `data.json` that syncs, an edited path, or a hand-written file can all
+ *   produce an enabled backend nobody agreed to start, and this is the check
+ *   that catches every one of them.
  */
 export function resolveBackendRef(
     settings: PluginSettingsV1,
@@ -316,11 +329,11 @@ export function resolveBackendRef(
     if (!instance.enabled) {
         return { ok: false, reason: 'backend-disabled' }
     }
-    if (instance.family !== 'api') {
-        // SEAM (M7): CLI agent backends (Claude Code / Codex) plug in behind
-        // the security boundary of Business Rules #9 once their executor
-        // exists. Until then they are reported, never silently dropped.
-        return { ok: false, reason: 'cli-backend-unsupported' }
+    if (instance.family === 'cli') {
+        if (!hasLaunchConsent(instance)) {
+            return { ok: false, reason: 'cli-consent-required' }
+        }
+        return { ok: true, backend: instance, model: resolveCliModel(resolved, instance) }
     }
     const model = resolved.model.length > 0 ? resolved.model : instance.defaultModel
     if (model.length === 0) {
@@ -330,10 +343,10 @@ export function resolveBackendRef(
 }
 
 /**
- * Resolves the API backend an editor runs on: its own binding, or the global
+ * Resolves the backend an editor runs on: its own binding, or the global
  * default when set to inherit.
  */
-export function resolveApiBackend(
+export function resolveEditorBackend(
     settings: PluginSettingsV1,
     editor: EditorConfig
 ): BackendResolution {
@@ -514,43 +527,31 @@ export async function buildEditorPrompt(input: BuildEditorPromptInput): Promise<
 // ---------------------------------------------------------------------------
 
 /**
- * Converts the behavior-level request timeout (seconds, user-facing) to the
- * milliseconds the transport consumes. One editor's whole API operation
- * (connect + full stream) is bounded by this — the setting exists precisely
- * because slow local models (Ollama on a laptop) stream for many minutes.
- */
-export function reviewTimeoutMs(behavior: BehaviorSettings): number {
-    return behavior.requestTimeoutSeconds * 1_000
-}
-
-/**
- * Builds the `RunEditorSpec` bridging one editor persona to its API backend.
- * The transport/protocol glue lives in `backends/api-editor-backend.ts`
- * (provider adapter + fetch, streaming for verified SSE providers, buffered
- * otherwise, exactly-one-terminal-event protocol). `redactError` is bound to
- * the backend's API key so any error message echoing the key never reaches
- * user-visible state (Business Rules #12) — defense in depth on top of the
- * executor's status-only error messages.
+ * Builds the `RunEditorSpec` bridging one editor persona to its backend — of
+ * either family. Everything family-specific (which executor, which timeout,
+ * what redaction means) is decided once in `createBackendExecutor`, so this
+ * function has no idea whether the run will go over HTTPS or over a pipe.
  */
 export function createEditorSpec(input: {
     readonly editor: EditorConfig
-    readonly backend: ApiBackend
+    readonly backend: BackendInstance
     readonly model: string
     readonly systemPrompt: string
-    readonly timeoutMs: number
+    readonly behavior: BehaviorSettings
     readonly fetchImpl: typeof fetch
 }): RunEditorSpec {
+    const executor = createBackendExecutor({
+        backend: input.backend,
+        model: input.model,
+        systemPrompt: input.systemPrompt,
+        behavior: input.behavior,
+        fetchImpl: input.fetchImpl
+    })
     return {
         editorId: input.editor.id,
         editorName: input.editor.name,
-        redactError: (message: string): string => redactSecret(message, input.backend.apiKey),
-        execute: createApiEditorExecutor({
-            backendConfig: input.backend,
-            model: input.model,
-            systemPrompt: input.systemPrompt,
-            timeoutMs: input.timeoutMs,
-            fetchImpl: input.fetchImpl
-        })
+        redactError: executor.redactError,
+        execute: executor.execute
     }
 }
 
@@ -561,7 +562,7 @@ export function createEditorSpec(input: {
 /** One editor that will actually run, with the backend it resolved to. */
 export interface ReviewParticipant {
     readonly editor: EditorConfig
-    readonly backend: ApiBackend
+    readonly backend: BackendInstance
     readonly model: string
 }
 
@@ -699,7 +700,7 @@ export function resolveReviewParticipants(
             })
             continue
         }
-        const resolution = resolveApiBackend(settings, editor)
+        const resolution = resolveEditorBackend(settings, editor)
         if (!resolution.ok) {
             skips.push({ editorId: editor.id, editorName: editor.name, reason: resolution.reason })
             continue
@@ -816,7 +817,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                     backend: participant.backend,
                     model: participant.model,
                     systemPrompt: built.systemPrompt,
-                    timeoutMs: reviewTimeoutMs(behavior),
+                    behavior,
                     fetchImpl
                 })
             )
@@ -888,7 +889,6 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                       panel,
                       settings,
                       charterText,
-                      timeoutMs: reviewTimeoutMs(behavior),
                       fetchImpl
                   })
               }
@@ -918,7 +918,6 @@ function createPanelSpec(input: {
     readonly panel: PanelConfig
     readonly settings: PluginSettingsV1
     readonly charterText: string
-    readonly timeoutMs: number
     readonly fetchImpl: typeof fetch
 }): RunPanelSpec {
     const { panel, settings } = input
@@ -926,6 +925,13 @@ function createPanelSpec(input: {
     if (!resolution.ok) {
         return { panelId: panel.id, panelName: panel.name }
     }
+    const executor = createBackendExecutor({
+        backend: resolution.backend,
+        model: resolution.model,
+        systemPrompt: input.charterText,
+        behavior: settings.behavior,
+        fetchImpl: input.fetchImpl
+    })
     return {
         panelId: panel.id,
         panelName: panel.name,
@@ -936,13 +942,7 @@ function createPanelSpec(input: {
             contextBudgetChars: settings.behavior.contextBudgetChars,
             charterChars: input.charterText.length
         },
-        redactError: (message: string): string => redactSecret(message, resolution.backend.apiKey),
-        aggregate: createApiEditorExecutor({
-            backendConfig: resolution.backend,
-            model: resolution.model,
-            systemPrompt: input.charterText,
-            timeoutMs: input.timeoutMs,
-            fetchImpl: input.fetchImpl
-        })
+        redactError: executor.redactError,
+        aggregate: executor.execute
     }
 }

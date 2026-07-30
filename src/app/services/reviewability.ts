@@ -3,7 +3,7 @@ import type { EditorConfig, PluginSettingsV1 } from '../domain/settings/settings
 import { isExcluded } from './context/exclusions'
 import { noteRuleOutcome } from './rules/note-rules'
 import type { NoteFactsSource } from './rules/note-rules'
-import { resolveApiBackend, resolveReviewParticipants } from './review-service'
+import { resolveEditorBackend, resolveReviewParticipants } from './review-service'
 
 /**
  * Shared reviewability predicate for every interaction surface (command
@@ -48,7 +48,9 @@ export { isPluginDisabledByRule } from './rules/note-rules'
 export function reviewCapableEditors(settings: PluginSettingsV1): EditorConfig[] {
     return settings.editors.filter(
         (editor) =>
-            editor.enabled && editor.capabilities.review && resolveApiBackend(settings, editor).ok
+            editor.enabled &&
+            editor.capabilities.review &&
+            resolveEditorBackend(settings, editor).ok
     )
 }
 
