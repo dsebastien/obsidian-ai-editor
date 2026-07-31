@@ -255,9 +255,9 @@ export class ImportSettingsModal extends Modal {
 
         new Setting(contentEl)
             .setName('Or paste the JSON')
-            .setClass('editor-ai-daemons-settings-textarea')
+            .setClass('ai-editor-settings-textarea')
             .addTextArea((textArea) => {
-                textArea.setPlaceholder('{ "format": "editor-ai-daemons-settings", … }')
+                textArea.setPlaceholder('{ "format": "ai-editor-settings", … }')
                 textArea.onChange((value) => {
                     this.text = value
                     this.review()

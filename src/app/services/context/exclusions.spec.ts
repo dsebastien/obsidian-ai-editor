@@ -113,30 +113,24 @@ describe('isExcluded — tags', () => {
 })
 
 describe('isExcluded — frontmatter opt-out', () => {
-    test('editor_ai_daemons === false excludes', () => {
+    test('ai_editor === false excludes', () => {
         expect(
-            isExcluded('a.md', metadata({ frontmatter: { editor_ai_daemons: false } }), behavior())
+            isExcluded('a.md', metadata({ frontmatter: { ai_editor: false } }), behavior())
         ).toBe(true)
     })
 
     test('only strict false excludes — truthy, string, absent do not', () => {
+        expect(isExcluded('a.md', metadata({ frontmatter: { ai_editor: true } }), behavior())).toBe(
+            false
+        )
         expect(
-            isExcluded('a.md', metadata({ frontmatter: { editor_ai_daemons: true } }), behavior())
-        ).toBe(false)
-        expect(
-            isExcluded(
-                'a.md',
-                metadata({ frontmatter: { editor_ai_daemons: 'false' } }),
-                behavior()
-            )
+            isExcluded('a.md', metadata({ frontmatter: { ai_editor: 'false' } }), behavior())
         ).toBe(false)
         expect(isExcluded('a.md', metadata(), behavior())).toBe(false)
     })
 
     test('flag is ignored when respectFrontmatterOptOut is off', () => {
         const off = behavior({ respectFrontmatterOptOut: false })
-        expect(
-            isExcluded('a.md', metadata({ frontmatter: { editor_ai_daemons: false } }), off)
-        ).toBe(false)
+        expect(isExcluded('a.md', metadata({ frontmatter: { ai_editor: false } }), off)).toBe(false)
     })
 })

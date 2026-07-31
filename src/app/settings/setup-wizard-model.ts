@@ -43,7 +43,7 @@ const STEP_COUNT_WORD = STEP_COUNT_WORDS[SETUP_STEP_COUNT] ?? String(SETUP_STEP_
 const STEP_BODIES: Record<SetupWizardStepId, readonly string[]> = {
     welcome: [
         'AI Editor reviews the note you are writing with editors you configure — personas with their own instructions, each reporting findings you accept or dismiss one by one. It also rewrites selections and continues your text, always as a suggestion you approve first.',
-        'Nothing is ever sent to an AI backend without an explicit action from you, and nothing is ever written into a note without your confirmation.',
+        "By default nothing reaches an AI backend until you ask for it — and nothing is ever written into a note without your confirmation. The one exception is daemon mode, which you can turn on at the end of this wizard: it refreshes a note's review on its own after you stop typing.",
         `This wizard takes ${STEP_COUNT_WORD} short steps. You can leave any of them empty and change everything later in the settings.`
     ],
     backend: [

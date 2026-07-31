@@ -194,7 +194,7 @@ describe('isReviewable', () => {
     })
 
     it('is false for a frontmatter opt-out note', () => {
-        const metadata: NoteMetadata = { tags: [], frontmatter: { editor_ai_daemons: false } }
+        const metadata: NoteMetadata = { tags: [], frontmatter: { ai_editor: false } }
         expect(isReviewable('Notes/idea.md', factsOf(metadata), makeSettings())).toBe(false)
     })
 

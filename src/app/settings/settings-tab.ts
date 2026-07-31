@@ -52,7 +52,7 @@ function tabDomId(tabId: string): string {
  * worse than none. The panel says which tab it belongs to through
  * `aria-labelledby`, re-pointed at the active tab button each render.
  */
-const SETTINGS_PANEL_DOM_ID = 'editor-ai-daemons-settings-panel'
+const SETTINGS_PANEL_DOM_ID = 'ai-editor-settings-panel'
 
 /**
  * Tabbed settings tab (Backends / Editors / Panels / Actions / Voice & style
@@ -107,7 +107,7 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
             SETTINGS_TABS.findIndex((tab) => tab.id === this.activeTabId)
         )
         const content = containerEl.createDiv({
-            cls: 'editor-ai-daemons-settings-content',
+            cls: 'ai-editor-settings-content',
             attr: {
                 'role': 'tabpanel',
                 // Programmatically focusable so activating a tab can put focus

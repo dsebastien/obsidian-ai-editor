@@ -5,7 +5,7 @@ Extracted 2026-07-31 from the per-day development history before that history wa
 grouped by the feature that introduced the check. Work through this before submitting.
 
 Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, and
-`editor_ai_daemons: false` (not the old key) is the frontmatter opt-out.
+`ai_editor: false` (not the old key) is the frontmatter opt-out.
 
 ---
 

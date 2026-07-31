@@ -141,7 +141,10 @@
 
 /* Key-storage disclosure and intros */
 .editor-ai-daemons-settings-callout {
-    @apply mb-4 p-3 text-sm;
+    /* Symmetric margin: the callout is a block interrupting prose, and a
+       margin-bottom alone left it welded to the paragraph above it in the
+       setup wizard, where it follows body copy rather than a heading. */
+    @apply my-4 p-3 text-sm;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-left: 4px solid var(--color-yellow, orange);
@@ -281,19 +284,19 @@
 }
 
 /* Full-width textarea rows (prompts, charters, voice profile) */
-.editor-ai-daemons-settings-textarea {
+.ai-editor-settings-textarea {
     @apply flex-col items-stretch gap-2;
 }
 
-.editor-ai-daemons-settings-textarea .setting-item-info {
+.ai-editor-settings-textarea .setting-item-info {
     @apply w-full;
 }
 
-.editor-ai-daemons-settings-textarea .setting-item-control {
+.ai-editor-settings-textarea .setting-item-control {
     @apply w-full;
 }
 
-.editor-ai-daemons-settings-textarea textarea {
+.ai-editor-settings-textarea textarea {
     @apply w-full;
     min-height: 110px;
     resize: vertical;
@@ -645,22 +648,62 @@
     color: var(--text-error, var(--color-red, red));
 }
 
-/* Setup wizard (src/app/settings/setup-wizard-modal.ts) */
+/* ----------------------------------------
+   Setup wizard (src/app/settings/setup-wizard-modal.ts)
+
+   The first thing a new user sees, and the only screen that mixes prose,
+   form rows and a callout in one column. Obsidian's modal styles give
+   `.setting-item` its own padding but say nothing about paragraphs, so
+   the rhythm has to be declared here: the step owns the spacing between
+   its blocks, and no child is allowed to sit flush against another.
+   ---------------------------------------- */
+.editor-ai-daemons-wizard .modal-content {
+    @apply flex flex-col;
+    /* One rhythm for every direct child — prose, callouts, setting rows,
+       the navigation row — so a step cannot look cramped just because of
+       which block types it happens to contain. */
+    gap: var(--size-4-3);
+    padding-top: var(--size-4-2);
+}
+
+/* Children carry the gap, so their own vertical margins would double it. */
+.editor-ai-daemons-wizard .modal-content > * {
+    @apply my-0;
+}
+
+/* The prose column stays readable rather than stretching to the dialog. */
+.editor-ai-daemons-wizard .modal-content > p {
+    @apply max-w-prose leading-relaxed;
+    color: var(--text-normal);
+}
+
+/* Setting rows are the wizard's inputs: they need air from the prose that
+   introduces them and a divider so a stack of them reads as a group. */
+.editor-ai-daemons-wizard .modal-content > .setting-item {
+    @apply border-t-0 py-2;
+}
+
+/* The navigation row sits apart from the step content, not in its flow. */
+.editor-ai-daemons-wizard .editor-ai-daemons-wizard-nav {
+    @apply mt-2 pt-4;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
 .editor-ai-daemons-wizard-progress {
-    @apply mb-2 text-xs uppercase;
+    @apply text-xs uppercase;
     letter-spacing: 0.06em;
     color: var(--text-faint);
 }
 
 .editor-ai-daemons-wizard-aside {
-    @apply my-2 text-xs;
+    @apply text-xs;
     color: var(--text-muted);
 }
 
 /* Health-check verdict. Three states, three colors: "reached but unusable" is
    not a success and not a connection failure, and the color has to say so. */
 .editor-ai-daemons-wizard-health {
-    @apply my-2 text-sm;
+    @apply text-sm;
     color: var(--text-muted);
 }
 

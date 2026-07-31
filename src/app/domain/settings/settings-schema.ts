@@ -315,7 +315,7 @@ export const behaviorSettingsSchema = z.object({
     daemonIdleSeconds: z.number().int().min(5).max(600).default(30),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
-    /** Frontmatter flag that opts a note out entirely: `editor_ai_daemons: false`. */
+    /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */
     respectFrontmatterOptOut: z.boolean().default(true),
     /**
      * Removes the leading frontmatter block from the reviewed note, from every

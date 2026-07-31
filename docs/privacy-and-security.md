@@ -9,9 +9,9 @@ This plugin sends your writing to an AI model. Everything here is about making t
 
 ## Nothing runs on its own
 
-Every backend request is triggered by an explicit action of yours: Review, an action verb, a push-back reply, a margin comment, a health check, a CLI invocation. There is no timer, no on-open hook, no on-save hook.
+With the default settings, every backend request is triggered by an explicit action of yours: Review, an action verb, a push-back reply, a margin comment, a health check, a CLI invocation. Nothing fires on note open or on save.
 
-The one exception is **[daemon mode](daemon-mode.md)**, a settings toggle that is off by default. Turning it on _is_ the explicit permission for the automatic refreshes it performs, and its settings copy states the cost implication plainly.
+**[Daemon mode](daemon-mode.md)** changes that, deliberately, and it is the only thing that does. It is a settings toggle, off by default; with it on there IS a timer — after you stop typing for the configured idle delay, a note whose text actually changed is re-reviewed on its own. Turning the toggle on is the permission for every refresh that follows, which is why its settings copy states the cost plainly: an afternoon of editing can be dozens of runs.
 
 ## Nothing is written without a diff
 
@@ -25,11 +25,11 @@ Findings quote your text **verbatim**. A quote that cannot be located exactly, o
 
 **Settings → AI Editor → Behavior → Privacy exclusions.** Three ways to exclude a note:
 
-| Mechanism       | How                                                        |
-| --------------- | ---------------------------------------------------------- |
-| **Folder**      | Add the folder path to **Excluded folders**                |
-| **Tag**         | Add the tag (without `#`) to **Excluded tags**             |
-| **Frontmatter** | Put `editor_ai_daemons: false` in the note (on by default) |
+| Mechanism       | How                                                |
+| --------------- | -------------------------------------------------- |
+| **Folder**      | Add the folder path to **Excluded folders**        |
+| **Tag**         | Add the tag (without `#`) to **Excluded tags**     |
+| **Frontmatter** | Put `ai_editor: false` in the note (on by default) |
 
 An excluded note is never sent to any backend — **not as the review target, not as attached linked context, and not through an explicit wikilink reference from another prompt**. Excluded notes are dropped from every source before their content is read.
 

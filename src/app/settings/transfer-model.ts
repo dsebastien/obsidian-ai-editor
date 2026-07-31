@@ -31,7 +31,7 @@ export function sectionTitle(section: TransferSection): string {
 }
 
 /** Default file name an export dialog opens with. */
-export const DEFAULT_EXPORT_PATH = 'editor-ai-daemons-settings.json'
+export const DEFAULT_EXPORT_PATH = 'ai-editor-settings.json'
 
 /** A typed export path, or the reason the typed one cannot be written. */
 export type ExportPath =
@@ -46,7 +46,7 @@ export type ExportPath =
  *
  * Traversal is REFUSED rather than normalized away. `vault.create` joins the
  * path onto the vault's base path and the adapter resolves `..`, so a typed
- * `../editor-ai-daemons-settings.json` writes outside the vault — past Obsidian's
+ * `../ai-editor-settings.json` writes outside the vault — past Obsidian's
  * sandbox and past the caller's `getAbstractFileByPath` existence check, which
  * only ever sees in-vault paths and would therefore skip the overwrite
  * confirmation for exactly the files least safe to overwrite silently.

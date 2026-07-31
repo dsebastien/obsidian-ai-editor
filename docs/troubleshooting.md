@@ -70,12 +70,12 @@ Dismiss it, or run the review again for a fresh look at the text as it now reads
 
 Hover the panel's **Review** button — the tooltip says which of these it is.
 
-| Reason                   | Fix                                                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| **No note open**         | Open a markdown note                                                                                         |
-| **Excluded**             | The note matches a [privacy exclusion](privacy-and-security.md) — folder, tag, or `editor_ai_daemons: false` |
-| **Rule-disabled**        | A [binding rule](rules.md) switched the plugin off for it. The message names the rule                        |
-| **No editor can review** | Every editor is disabled, has no usable backend, or has review capability off                                |
+| Reason                   | Fix                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **No note open**         | Open a markdown note                                                                                 |
+| **Excluded**             | The note matches a [privacy exclusion](privacy-and-security.md) — folder, tag, or `ai_editor: false` |
+| **Rule-disabled**        | A [binding rule](rules.md) switched the plugin off for it. The message names the rule                |
+| **No editor can review** | Every editor is disabled, has no usable backend, or has review capability off                        |
 
 A rule-disabled note has no rail, no menu items and no commands either — that is what the kill switch means.
 

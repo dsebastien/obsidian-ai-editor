@@ -529,7 +529,11 @@ export class SetupWizardModal extends Modal {
 
     private renderNavigation(contentEl: HTMLElement): void {
         const stepId = this.state.stepId
-        const setting = new Setting(contentEl)
+        // Explicitly classed rather than styled as the last `.setting-item`:
+        // `:last-of-type` matches by tag name, and the wizard's steps mix
+        // divs freely, so a step ending in any other div would lose the
+        // separator that sets the buttons apart from the step's content.
+        const setting = new Setting(contentEl).setClass('editor-ai-daemons-wizard-nav')
         if (previousSetupStep(stepId) !== null) {
             setting.addButton((button) => {
                 button.setButtonText('Back').onClick(() => this.goBack())
