@@ -61,14 +61,17 @@ export class ExportSettingsModal extends Modal {
 
     override onOpen(): void {
         this.setTitle('Export settings')
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         const { contentEl } = this
 
         contentEl.createEl('p', {
             text: 'Pick what to include. The file is plain JSON — keep it in the vault, or paste it into another vault.'
         })
-        contentEl.createEl('p', { cls: 'ai-editor-transfer-notice', text: EXPORT_KEY_NOTICE })
-        this.riskEl = contentEl.createDiv({ cls: 'ai-editor-transfer-risks' })
+        contentEl.createEl('p', {
+            cls: 'editor-ai-daemons-transfer-notice',
+            text: EXPORT_KEY_NOTICE
+        })
+        this.riskEl = contentEl.createDiv({ cls: 'editor-ai-daemons-transfer-risks' })
 
         for (const section of TRANSFER_SECTIONS) {
             new Setting(contentEl).setName(sectionTitle(section)).addToggle((toggle) => {
@@ -91,7 +94,7 @@ export class ExportSettingsModal extends Modal {
                 })
             })
 
-        this.summaryEl = contentEl.createEl('p', { cls: 'ai-editor-transfer-summary' })
+        this.summaryEl = contentEl.createEl('p', { cls: 'editor-ai-daemons-transfer-summary' })
         this.renderSummary()
 
         new Setting(contentEl)
@@ -127,7 +130,7 @@ export class ExportSettingsModal extends Modal {
         if (this.riskEl) {
             this.riskEl.empty()
             for (const line of exportRiskLines(exportSecretRisks(settings, this.selection))) {
-                this.riskEl.createEl('p', { cls: 'ai-editor-transfer-notice', text: line })
+                this.riskEl.createEl('p', { cls: 'editor-ai-daemons-transfer-notice', text: line })
             }
         }
     }
@@ -228,7 +231,7 @@ export class ImportSettingsModal extends Modal {
 
     override onOpen(): void {
         this.setTitle('Import settings')
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         const { contentEl } = this
 
         contentEl.createEl('p', {
@@ -252,16 +255,16 @@ export class ImportSettingsModal extends Modal {
 
         new Setting(contentEl)
             .setName('Or paste the JSON')
-            .setClass('ai-editor-settings-textarea')
+            .setClass('editor-ai-daemons-settings-textarea')
             .addTextArea((textArea) => {
-                textArea.setPlaceholder('{ "format": "ai-editor-settings", … }')
+                textArea.setPlaceholder('{ "format": "editor-ai-daemons-settings", … }')
                 textArea.onChange((value) => {
                     this.text = value
                     this.review()
                 })
             })
 
-        this.reviewEl = contentEl.createDiv({ cls: 'ai-editor-transfer-review' })
+        this.reviewEl = contentEl.createDiv({ cls: 'editor-ai-daemons-transfer-review' })
 
         new Setting(contentEl)
             .addButton((button) => {
@@ -322,13 +325,13 @@ export class ImportSettingsModal extends Modal {
         const result = planImportFromJson(this.text, this.getSettings())
         if (!result.ok) {
             body.createEl('p', {
-                cls: 'ai-editor-transfer-error',
+                cls: 'editor-ai-daemons-transfer-error',
                 text: importErrorMessage(result.error)
             })
             return
         }
         const plan = result.plan
-        const summary = body.createEl('ul', { cls: 'ai-editor-transfer-summary-list' })
+        const summary = body.createEl('ul', { cls: 'editor-ai-daemons-transfer-summary-list' })
         for (const line of importSummaryLines(plan)) {
             summary.createEl('li', { text: line })
         }
@@ -338,30 +341,30 @@ export class ImportSettingsModal extends Modal {
         const destinations = importDestinationLines(plan)
         if (destinations.length > 0) {
             body.createEl('h4', { text: 'Where these backends send your notes' })
-            const list = body.createEl('ul', { cls: 'ai-editor-transfer-lines' })
+            const list = body.createEl('ul', { cls: 'editor-ai-daemons-transfer-lines' })
             for (const line of destinations) {
                 list.createEl('li', { text: line })
             }
         }
         const participation = importParticipationLine(plan)
         if (participation !== null) {
-            body.createEl('p', { cls: 'ai-editor-transfer-notice', text: participation })
+            body.createEl('p', { cls: 'editor-ai-daemons-transfer-notice', text: participation })
         }
         if (plan.adjustments.length > 0) {
             body.createEl('h4', { text: 'Adjusted' })
-            const list = body.createEl('ul', { cls: 'ai-editor-transfer-lines' })
+            const list = body.createEl('ul', { cls: 'editor-ai-daemons-transfer-lines' })
             for (const adjustment of plan.adjustments) {
                 list.createEl('li', { text: adjustmentLine(adjustment) })
             }
         }
         if (plan.rejected.length > 0) {
             body.createEl('h4', { text: 'Skipped' })
-            const list = body.createEl('ul', { cls: 'ai-editor-transfer-lines' })
+            const list = body.createEl('ul', { cls: 'editor-ai-daemons-transfer-lines' })
             for (const rejection of plan.rejected) {
                 list.createEl('li', { text: rejectionLine(rejection) })
             }
         }
-        body.createEl('p', { cls: 'ai-editor-transfer-notice', text: IMPORT_KEY_NOTICE })
+        body.createEl('p', { cls: 'editor-ai-daemons-transfer-notice', text: IMPORT_KEY_NOTICE })
         if (importPlanIsEmpty(plan)) {
             // Nothing to confirm: a disabled CTA says that better than a
             // dialog that appears to succeed and changes nothing.
@@ -386,7 +389,7 @@ export class ImportSettingsModal extends Modal {
         try {
             await this.commitPlan(plan)
         } catch {
-            new Notice('AI Editor: failed to save the imported settings.')
+            new Notice('Editor AI Daemons: failed to save the imported settings.')
             this.setImportEnabled(true)
             return
         }

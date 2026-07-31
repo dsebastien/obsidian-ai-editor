@@ -133,7 +133,7 @@ const SECTION_MAX: Record<Exclude<TransferSection, 'voiceProfile'>, number> = {
 // ---------------------------------------------------------------------------
 
 /** Marker written into every export so a file can identify itself. */
-export const EXPORT_FORMAT = 'ai-editor-settings'
+export const EXPORT_FORMAT = 'editor-ai-daemons-settings'
 
 /**
  * The exported document. Unselected sections are ABSENT rather than empty:

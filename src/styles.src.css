@@ -16,7 +16,7 @@
    already uses `.hidden` and `.outline`, so enabling the plugin would restyle
    the app (and any theme or sibling plugin using those names). This plugin
    never puts a bare utility class on an element: every class it writes is
-   `ai-editor-*` (plus `.support-header-margin`), and utilities reach the
+   `editor-ai-daemons-*` (plus `.support-header-margin`), and utilities reach the
    output through `@apply` inside those rules, which `source(none)` does not
    affect. If a bare utility class is ever needed in TypeScript, add it to a
    plugin-prefixed class here with `@apply` instead of re-enabling scanning.
@@ -46,46 +46,46 @@
 /* The content element carries this class, so the layout never depends on
    Obsidian's internal `.view-content` markup. The container class is repeated
    to outrank Obsidian's own `.view-content` padding. */
-.ai-editor-whats-new-view .ai-editor-whats-new-content {
+.editor-ai-daemons-whats-new-view .editor-ai-daemons-whats-new-content {
     @apply overflow-y-auto px-7 pt-6 pb-8;
 }
 
 /* Readable measure, centered in wide tabs. One wrapper rather than centering
    each child: a child's `margin` shorthand would reset `margin-inline: auto`. */
-.ai-editor-whats-new-body {
+.editor-ai-daemons-whats-new-body {
     @apply mx-auto max-w-[720px];
 }
 
-.ai-editor-whats-new-title {
+.editor-ai-daemons-whats-new-title {
     @apply mt-0 mb-4;
 }
 
 /* Release notes card */
-.ai-editor-whats-new-notes {
+.editor-ai-daemons-whats-new-notes {
     @apply mx-0 mt-1 mb-6 border border-solid px-5 pt-4 pb-8;
     border-color: var(--background-modifier-border);
     border-radius: var(--radius-m, 8px);
     background-color: var(--background-secondary);
 }
 
-.ai-editor-whats-new-notes > :first-child {
+.editor-ai-daemons-whats-new-notes > :first-child {
     @apply mt-0;
 }
 
 /* Version headings stay compact inside the tab */
-.ai-editor-whats-new-notes h1,
-.ai-editor-whats-new-notes h2 {
+.editor-ai-daemons-whats-new-notes h1,
+.editor-ai-daemons-whats-new-notes h2 {
     @apply mt-3 mb-2;
     font-size: var(--h4-size, 1.15em);
 }
 
-.ai-editor-whats-new-notes h3 {
+.editor-ai-daemons-whats-new-notes h3 {
     @apply mt-4 mb-1;
     font-size: var(--h5-size, 1em);
 }
 
 /* Separator between versions (emitted between changelog sections) */
-.ai-editor-whats-new-notes hr {
+.editor-ai-daemons-whats-new-notes hr {
     @apply my-6 border-t border-solid;
     border-color: var(--background-modifier-border);
 }
@@ -93,15 +93,15 @@
 /* Community + support block. Rows keep the theme's own `.setting-item`
    padding: many themes render them as cards, and overriding their padding
    would push the text flush against the card edge. */
-.ai-editor-whats-new-body .ai-editor-whats-new-links {
+.editor-ai-daemons-whats-new-body .editor-ai-daemons-whats-new-links {
     @apply mt-6;
 }
 
-.ai-editor-whats-new-body .ai-editor-whats-new-links .setting-item {
+.editor-ai-daemons-whats-new-body .editor-ai-daemons-whats-new-links .setting-item {
     @apply gap-4 border-t-0;
 }
 
-.ai-editor-whats-new-body .ai-editor-whats-new-links .setting-item-description {
+.editor-ai-daemons-whats-new-body .editor-ai-daemons-whats-new-links .setting-item-description {
     @apply pr-3;
 }
 
@@ -113,12 +113,12 @@
    ======================================== */
 
 /* Tab bar */
-.ai-editor-settings-tabbar {
+.editor-ai-daemons-settings-tabbar {
     @apply flex flex-wrap gap-1 mb-6;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.ai-editor-settings-tab {
+.editor-ai-daemons-settings-tab {
     @apply cursor-pointer px-3 py-2;
     border: none;
     border-radius: var(--radius-s, 4px) var(--radius-s, 4px) 0 0;
@@ -128,19 +128,19 @@
     color: var(--text-muted);
 }
 
-.ai-editor-settings-tab:hover {
+.editor-ai-daemons-settings-tab:hover {
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
 }
 
-.ai-editor-settings-tab.is-active {
+.editor-ai-daemons-settings-tab.is-active {
     border-bottom-color: var(--interactive-accent);
     color: var(--text-normal);
     font-weight: var(--font-semibold, 600);
 }
 
 /* Key-storage disclosure and intros */
-.ai-editor-settings-callout {
+.editor-ai-daemons-settings-callout {
     @apply mb-4 p-3 text-sm;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -149,85 +149,85 @@
     color: var(--text-normal);
 }
 
-.ai-editor-settings-callout strong {
+.editor-ai-daemons-settings-callout strong {
     @apply block mb-1;
 }
 
-.ai-editor-tab-intro {
+.editor-ai-daemons-tab-intro {
     @apply mt-0 mb-4 text-sm;
     color: var(--text-muted);
 }
 
-.ai-editor-empty-state {
+.editor-ai-daemons-empty-state {
     @apply my-3 text-sm italic;
     color: var(--text-muted);
 }
 
 /* Undispatchable action binding note (actions tab) */
-.ai-editor-binding-warning {
+.editor-ai-daemons-binding-warning {
     @apply mt-1 text-xs;
     color: var(--color-yellow, orange);
 }
 
 /* Identity dots: solid = editor, ringed = panel (Business Rule #11) */
-.ai-editor-color-dot {
+.editor-ai-daemons-color-dot {
     @apply mr-1.5 inline-block shrink-0 rounded-full align-middle;
     width: 12px;
     height: 12px;
 }
 
-.ai-editor-color-dot--ring {
+.editor-ai-daemons-color-dot--ring {
     background-color: transparent;
     border: 3px solid var(--text-muted);
 }
 
 /* Card gallery (editors, panels) */
-.ai-editor-card-grid {
+.editor-ai-daemons-card-grid {
     @apply mt-2 grid gap-3;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
-.ai-editor-card {
+.editor-ai-daemons-card {
     @apply flex flex-col gap-1.5 p-3;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
 }
 
-.ai-editor-card.is-disabled {
+.editor-ai-daemons-card.is-disabled {
     @apply opacity-60;
 }
 
-.ai-editor-card-title {
+.editor-ai-daemons-card-title {
     @apply flex items-center font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-card-sub {
+.editor-ai-daemons-card-sub {
     @apply text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-card-actions {
+.editor-ai-daemons-card-actions {
     @apply mt-2 flex items-center justify-end gap-2;
 }
 
-.ai-editor-card-actions .checkbox-container {
+.editor-ai-daemons-card-actions .checkbox-container {
     margin-right: auto;
 }
 
 /* Chip lists (excluded folders / tags) */
-.ai-editor-chip-list {
+.editor-ai-daemons-chip-list {
     @apply my-2 flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-chip {
+.editor-ai-daemons-chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs;
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
 }
 
-.ai-editor-chip-remove {
+.editor-ai-daemons-chip-remove {
     @apply cursor-pointer p-0 text-xs leading-none;
     border: none;
     background-color: transparent;
@@ -235,21 +235,21 @@
     color: var(--text-muted);
 }
 
-.ai-editor-chip-remove:hover {
+.editor-ai-daemons-chip-remove:hover {
     color: var(--text-error);
 }
 
-.ai-editor-chip-empty {
+.editor-ai-daemons-chip-empty {
     @apply text-xs italic;
     color: var(--text-faint);
 }
 
 /* Color swatches (editor/panel modals) */
-.ai-editor-swatch-row {
+.editor-ai-daemons-swatch-row {
     @apply flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-swatch {
+.editor-ai-daemons-swatch {
     @apply cursor-pointer rounded-full p-0;
     width: 20px;
     height: 20px;
@@ -257,7 +257,7 @@
     box-shadow: none;
 }
 
-.ai-editor-swatch.is-selected {
+.editor-ai-daemons-swatch.is-selected {
     border-color: var(--text-normal);
 }
 
@@ -266,7 +266,7 @@
    guaranteed to contrast with it: a white glyph inside a dark halo is legible
    over every preset and every custom value, which is the whole point of
    having a non-colour indicator here at all. */
-.ai-editor-swatch-check {
+.editor-ai-daemons-swatch-check {
     @apply block text-xs leading-none;
     color: #fff;
     text-shadow:
@@ -274,50 +274,50 @@
         0 0 4px rgb(0 0 0 / 60%);
 }
 
-.ai-editor-swatch-custom {
+.editor-ai-daemons-swatch-custom {
     @apply cursor-pointer;
     width: 30px;
     height: 22px;
 }
 
 /* Full-width textarea rows (prompts, charters, voice profile) */
-.ai-editor-settings-textarea {
+.editor-ai-daemons-settings-textarea {
     @apply flex-col items-stretch gap-2;
 }
 
-.ai-editor-settings-textarea .setting-item-info {
+.editor-ai-daemons-settings-textarea .setting-item-info {
     @apply w-full;
 }
 
-.ai-editor-settings-textarea .setting-item-control {
+.editor-ai-daemons-settings-textarea .setting-item-control {
     @apply w-full;
 }
 
-.ai-editor-settings-textarea textarea {
+.editor-ai-daemons-settings-textarea textarea {
     @apply w-full;
     min-height: 110px;
     resize: vertical;
 }
 
 /* Note-reference rows */
-.ai-editor-note-ref-row .setting-item-name {
+.editor-ai-daemons-note-ref-row .setting-item-name {
     @apply text-sm;
     font-family: var(--font-monospace);
 }
 
 /* Note autocomplete suggestions (NotePathSuggest popover items) */
-.ai-editor-note-suggestion {
+.editor-ai-daemons-note-suggestion {
     @apply flex flex-col;
 }
 
-.ai-editor-note-suggestion-path {
+.editor-ai-daemons-note-suggestion-path {
     @apply text-xs;
     color: var(--text-muted);
     font-family: var(--font-monospace);
 }
 
 /* Rule rows carry many controls; let them wrap gracefully */
-.ai-editor-rule-row .setting-item-control {
+.editor-ai-daemons-rule-row .setting-item-control {
     @apply flex-wrap justify-end gap-y-2;
 }
 
@@ -326,20 +326,20 @@
    Floating card opened by clicking a finding
    highlight. position: fixed; left/top are
    computed and viewport-clamped in code. The
-   `ai-editor-finding-card*` names are distinct
-   from the settings gallery `ai-editor-card*`
+   `editor-ai-daemons-finding-card*` names are distinct
+   from the settings gallery `editor-ai-daemons-card*`
    block above and from rail/decoration classes.
    ======================================== */
 
 /* Highlights are clickable — advertise it */
-.ai-editor-finding {
+.editor-ai-daemons-finding {
     cursor: pointer;
 }
 
 /* `max-width` is set in code from the pane box (see layout-mode.ts) so a card
    in a narrow split never spills over the neighbouring document — it wins over
    the preferred width below. */
-.ai-editor-finding-card {
+.editor-ai-daemons-finding-card {
     @apply fixed flex min-w-0 flex-col overflow-y-auto;
     border-radius: var(--radius-s);
     z-index: var(--layer-menu, 25);
@@ -350,54 +350,54 @@
     box-shadow: var(--shadow-s, 0 2px 8px rgb(0 0 0 / 0.15));
 }
 
-.ai-editor-finding-card-section {
+.editor-ai-daemons-finding-card-section {
     @apply flex flex-col gap-3 p-4;
 }
 
-.ai-editor-finding-card-section + .ai-editor-finding-card-section {
+.editor-ai-daemons-finding-card-section + .editor-ai-daemons-finding-card-section {
     border-top: 1px solid var(--background-modifier-border);
 }
 
 /* Same accent rail the side panel gives a panel member's section: the finding
    belongs to one editor, and that editor reviewed as part of a panel. The
    section's `aria-label` carries the fact; this is decoration only. */
-.ai-editor-finding-card-section.is-panel-member {
+.editor-ai-daemons-finding-card-section.is-panel-member {
     border-left: 2px solid var(--text-accent);
 }
 
-.ai-editor-finding-card-header {
+.editor-ai-daemons-finding-card-header {
     @apply flex items-center gap-2;
 }
 
 /* Editor identity dot, tinted by the persona color set in code */
-.ai-editor-finding-card-dot {
+.editor-ai-daemons-finding-card-dot {
     @apply inline-block shrink-0 rounded-full;
     width: 10px;
     height: 10px;
-    background-color: var(--ai-editor-editor-color, var(--text-accent));
+    background-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
 }
 
-.ai-editor-finding-card-name {
+.editor-ai-daemons-finding-card-name {
     @apply text-sm font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-finding-card-severity {
+.editor-ai-daemons-finding-card-severity {
     @apply ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs;
     background-color: var(--background-modifier-hover);
     color: var(--text-muted);
 }
 
-.ai-editor-finding-card-severity-warning {
+.editor-ai-daemons-finding-card-severity-warning {
     color: var(--color-orange, var(--text-error));
 }
 
-.ai-editor-finding-card-critique {
+.editor-ai-daemons-finding-card-critique {
     @apply m-0 text-sm;
     color: var(--text-normal);
 }
 
-.ai-editor-finding-card-quote {
+.editor-ai-daemons-finding-card-quote {
     @apply m-0 pl-2 text-sm italic;
     border-left: 2px solid var(--background-modifier-border);
     color: var(--text-muted);
@@ -406,13 +406,13 @@
 }
 
 /* Plain two-block old/new suggestion preview (no word-level diff yet) */
-.ai-editor-finding-card-diff {
+.editor-ai-daemons-finding-card-diff {
     @apply flex flex-col gap-1 p-2 text-sm;
     border-radius: var(--radius-s);
     background-color: var(--background-secondary);
 }
 
-.ai-editor-finding-card-diff-old {
+.editor-ai-daemons-finding-card-diff-old {
     color: var(--text-error);
     text-decoration: line-through;
     white-space: pre-wrap;
@@ -423,7 +423,7 @@
    for anyone who cannot resolve the hue, and "struck out" already carries the
    removal. The addition therefore carries an underline — a second, non-colour
    signal that survives a monochrome display and every red/green deficiency. */
-.ai-editor-finding-card-diff-new {
+.editor-ai-daemons-finding-card-diff-new {
     color: var(--color-green, var(--text-success));
     text-decoration: underline;
     text-decoration-thickness: 1px;
@@ -434,154 +434,154 @@
 
 /* Wraps rather than overflows: a card clamped to a narrow pane can be too
    narrow for the action row on one line. */
-.ai-editor-finding-card-actions {
+.editor-ai-daemons-finding-card-actions {
     @apply flex flex-wrap items-center justify-end gap-2;
 }
 
 /* Push-back thread: compact message list, scrollable, newest at the bottom
    (the card scrolls it into view after every render). */
-.ai-editor-finding-card-thread {
+.editor-ai-daemons-finding-card-thread {
     @apply flex flex-col gap-1.5 overflow-y-auto p-2 text-xs;
     border-radius: var(--radius-s);
     max-height: 160px;
     background-color: var(--background-secondary);
 }
 
-.ai-editor-finding-card-thread-message {
+.editor-ai-daemons-finding-card-thread-message {
     @apply flex flex-col gap-0.5;
 }
 
-.ai-editor-finding-card-thread-who {
+.editor-ai-daemons-finding-card-thread-who {
     @apply text-xs font-medium;
     color: var(--text-muted);
 }
 
-.ai-editor-finding-card-thread-body {
+.editor-ai-daemons-finding-card-thread-body {
     color: var(--text-normal);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 
-.ai-editor-finding-card-thread-user .ai-editor-finding-card-thread-body {
+.editor-ai-daemons-finding-card-thread-user .editor-ai-daemons-finding-card-thread-body {
     color: var(--text-muted);
 }
 
 /* Message in flight: dimmed, with the pulse the rail uses for live requests */
-.ai-editor-finding-card-thread-pending {
+.editor-ai-daemons-finding-card-thread-pending {
     @apply opacity-70;
-    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
 }
 
-.ai-editor-finding-card-thread-failed .ai-editor-finding-card-thread-body {
+.editor-ai-daemons-finding-card-thread-failed .editor-ai-daemons-finding-card-thread-body {
     color: var(--text-error);
 }
 
-.ai-editor-finding-card-thread-failure {
+.editor-ai-daemons-finding-card-thread-failure {
     @apply m-0 text-xs;
     color: var(--text-error);
 }
 
-.ai-editor-finding-card-pushback {
+.editor-ai-daemons-finding-card-pushback {
     @apply flex items-center gap-2;
 }
 
 /* `min-w-0`: a text input's default intrinsic width would otherwise push the
    Send button out of a card clamped to a narrow pane. */
-.ai-editor-finding-card-pushback-input {
+.editor-ai-daemons-finding-card-pushback-input {
     @apply w-full min-w-0;
 }
 
-.ai-editor-finding-card-pushback-send {
+.editor-ai-daemons-finding-card-pushback-send {
     @apply shrink-0;
 }
 
 /* Modals (backend / editor / panel / confirm) */
-.modal.ai-editor-modal {
+.modal.editor-ai-daemons-modal {
     width: min(620px, 94vw);
 }
 
-.ai-editor-modal-warning {
+.editor-ai-daemons-modal-warning {
     @apply mt-1 text-xs;
     color: var(--color-yellow, orange);
 }
 
-.ai-editor-confirm-lines {
+.editor-ai-daemons-confirm-lines {
     @apply my-2 pl-5;
 }
 
 /* CLI backend dialog (src/app/settings/tabs/cli-backend-modal.ts) */
-.ai-editor-modal-hint {
+.editor-ai-daemons-modal-hint {
     @apply mt-1 mb-2 text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-wide-input {
+.editor-ai-daemons-wide-input {
     @apply w-full;
 }
 
 /* Consent state under a CLI backend row (settings/tabs/backends-tab.ts) */
-.ai-editor-consent-line {
+.editor-ai-daemons-consent-line {
     @apply mt-1 text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-consent-line.is-missing {
+.editor-ai-daemons-consent-line.is-missing {
     color: var(--color-yellow, orange);
 }
 
 /* "Ask an editor" modal (src/app/ui/ask-editor-modal.ts) */
-.ai-editor-ask-textarea {
+.editor-ai-daemons-ask-textarea {
     @apply my-2 w-full;
     min-height: 6em;
     resize: vertical;
     font-family: inherit;
 }
 
-.ai-editor-ask-single-editor {
+.editor-ai-daemons-ask-single-editor {
     color: var(--text-normal);
 }
 
 /* "What will be sent" preview modal (src/app/ui/context-preview-modal.ts).
    Wider than the other dialogs on purpose: it exists to be READ, and the
    system prompt it shows is long. */
-.modal.ai-editor-preview-modal {
+.modal.editor-ai-daemons-preview-modal {
     width: min(780px, 96vw);
 }
 
-.ai-editor-preview-note {
+.editor-ai-daemons-preview-note {
     @apply mt-0 mb-2 text-sm;
     color: var(--text-muted);
     word-break: break-word;
 }
 
-.ai-editor-preview-status,
-.ai-editor-preview-refusal {
+.editor-ai-daemons-preview-status,
+.editor-ai-daemons-preview-refusal {
     @apply my-3 text-sm;
 }
 
-.ai-editor-preview-refusal {
+.editor-ai-daemons-preview-refusal {
     color: var(--text-warning, var(--color-yellow, orange));
 }
 
-.ai-editor-preview-summary {
+.editor-ai-daemons-preview-summary {
     @apply my-2 pl-5 text-sm;
 }
 
-.ai-editor-preview-sections {
+.editor-ai-daemons-preview-sections {
     @apply my-2 text-sm;
 }
 
-.ai-editor-preview-row {
+.editor-ai-daemons-preview-row {
     @apply flex items-baseline justify-between gap-3 py-1;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.ai-editor-preview-row-name {
+.editor-ai-daemons-preview-row-name {
     @apply min-w-0;
     word-break: break-word;
 }
 
-.ai-editor-preview-row-detail {
+.editor-ai-daemons-preview-row-detail {
     @apply shrink-0;
     color: var(--text-muted);
 }
@@ -589,19 +589,19 @@
 /* Truncated and dropped rows must be distinguishable without relying on
    colour alone — the detail text spells out the consequence, so this is
    emphasis, not the signal itself. */
-.ai-editor-preview-row-truncated .ai-editor-preview-row-detail {
+.editor-ai-daemons-preview-row-truncated .editor-ai-daemons-preview-row-detail {
     color: var(--text-warning, var(--color-yellow, orange));
 }
 
-.ai-editor-preview-row-dropped {
+.editor-ai-daemons-preview-row-dropped {
     opacity: 0.75;
 }
 
-.ai-editor-preview-row-dropped .ai-editor-preview-row-detail {
+.editor-ai-daemons-preview-row-dropped .editor-ai-daemons-preview-row-detail {
     color: var(--text-error, var(--color-red, red));
 }
 
-.ai-editor-preview-prompt {
+.editor-ai-daemons-preview-prompt {
     @apply my-2 w-full overflow-auto p-2 text-xs;
     max-height: 40vh;
     white-space: pre-wrap;
@@ -613,66 +613,66 @@
 }
 
 /* Import / export dialogs (src/app/settings/transfer-modals.ts) */
-.ai-editor-transfer-notice {
+.editor-ai-daemons-transfer-notice {
     @apply my-2 text-sm;
     color: var(--text-muted);
 }
 
-.ai-editor-transfer-summary {
+.editor-ai-daemons-transfer-summary {
     @apply my-3 text-sm font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-transfer-review {
+.editor-ai-daemons-transfer-review {
     @apply my-2 text-sm;
 }
 
-.ai-editor-transfer-review h4 {
+.editor-ai-daemons-transfer-review h4 {
     @apply mt-3 mb-1 text-sm;
 }
 
-.ai-editor-transfer-summary-list {
+.editor-ai-daemons-transfer-summary-list {
     @apply my-2 pl-5 font-medium;
 }
 
-.ai-editor-transfer-lines {
+.editor-ai-daemons-transfer-lines {
     @apply my-1 pl-5;
     color: var(--text-muted);
 }
 
-.ai-editor-transfer-error {
+.editor-ai-daemons-transfer-error {
     @apply my-2 text-sm;
     color: var(--text-error, var(--color-red, red));
 }
 
 /* Setup wizard (src/app/settings/setup-wizard-modal.ts) */
-.ai-editor-wizard-progress {
+.editor-ai-daemons-wizard-progress {
     @apply mb-2 text-xs uppercase;
     letter-spacing: 0.06em;
     color: var(--text-faint);
 }
 
-.ai-editor-wizard-aside {
+.editor-ai-daemons-wizard-aside {
     @apply my-2 text-xs;
     color: var(--text-muted);
 }
 
 /* Health-check verdict. Three states, three colors: "reached but unusable" is
    not a success and not a connection failure, and the color has to say so. */
-.ai-editor-wizard-health {
+.editor-ai-daemons-wizard-health {
     @apply my-2 text-sm;
     color: var(--text-muted);
 }
 
-.ai-editor-wizard-health-ok {
+.editor-ai-daemons-wizard-health-ok {
     color: var(--color-green, green);
 }
 
-.ai-editor-wizard-health-unusable {
+.editor-ai-daemons-wizard-health-unusable {
     color: var(--color-yellow, orange);
 }
 
-.ai-editor-wizard-health-failed {
+.editor-ai-daemons-wizard-health-failed {
     color: var(--text-error, var(--color-red, red));
 }
 
@@ -685,11 +685,11 @@
    ======================================== */
 
 /* Anchor for the absolutely-positioned rail (added to view.contentEl) */
-.ai-editor-rail-host {
+.editor-ai-daemons-rail-host {
     position: relative;
 }
 
-.ai-editor-rail-wrapper {
+.editor-ai-daemons-rail-wrapper {
     @apply absolute;
     top: 8px;
     right: 18px;
@@ -699,23 +699,23 @@
 /* Narrow pane (plan M4 adaptive layout): hug the edge — in a ~500px pane every
    reclaimed pixel is a pixel of text. Toggled by the review controller from
    the pane ResizeObserver. */
-.ai-editor-rail-wrapper-compact {
+.editor-ai-daemons-rail-wrapper-compact {
     top: 4px;
     right: 6px;
 }
 
-.ai-editor-hidden {
+.editor-ai-daemons-hidden {
     display: none;
 }
 
-.ai-editor-rail {
+.editor-ai-daemons-rail {
     @apply flex flex-col items-center gap-2 p-1.5;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: color-mix(in srgb, var(--background-primary) 85%, transparent);
 }
 
-.ai-editor-rail-button {
+.editor-ai-daemons-rail-button {
     @apply cursor-pointer px-2 py-1 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -724,24 +724,24 @@
     color: var(--text-normal);
 }
 
-.ai-editor-rail-button:hover {
+.editor-ai-daemons-rail-button:hover {
     background-color: var(--interactive-hover);
 }
 
-.ai-editor-rail-button:disabled {
+.editor-ai-daemons-rail-button:disabled {
     @apply cursor-not-allowed opacity-50;
 }
 
-.ai-editor-rail-button-cancel {
+.editor-ai-daemons-rail-button-cancel {
     color: var(--text-error);
 }
 
-.ai-editor-rail-dots {
+.editor-ai-daemons-rail-dots {
     @apply flex flex-col items-center gap-1.5;
 }
 
 /* One editor chip: status dot + optional retry button (failed/cancelled). */
-.ai-editor-rail-chip {
+.editor-ai-daemons-rail-chip {
     @apply flex flex-col items-center gap-0.5;
 }
 
@@ -751,31 +751,31 @@
    survive at 16px, so it is shape, never colour alone. The bracket around the
    group says the members belong to it without absorbing them. */
 
-.ai-editor-rail-panel {
+.editor-ai-daemons-rail-panel {
     @apply flex flex-col items-center gap-1.5 py-1;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     border-right: none;
 }
 
-.ai-editor-rail-panel-chip {
+.editor-ai-daemons-rail-panel-chip {
     @apply relative cursor-pointer rounded-full p-0;
     width: 16px;
     height: 16px;
     /* Hollow on purpose: the ring IS the panel signature. */
     background-color: transparent;
-    border: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    border: 3px solid var(--editor-ai-daemons-editor-color, var(--text-accent));
     box-shadow: none;
 }
 
-.ai-editor-rail-panel-chip:hover {
+.editor-ai-daemons-rail-panel-chip:hover {
     background-color: var(--background-modifier-hover);
 }
 
-.ai-editor-rail-panel-waiting,
-.ai-editor-rail-panel-skipped,
-.ai-editor-rail-panel-unavailable,
-.ai-editor-rail-panel-cancelled {
+.editor-ai-daemons-rail-panel-waiting,
+.editor-ai-daemons-rail-panel-skipped,
+.editor-ai-daemons-rail-panel-unavailable,
+.editor-ai-daemons-rail-panel-cancelled {
     @apply opacity-60;
 }
 
@@ -784,19 +784,19 @@
    vocabulary as the editor dots: slow pulse while queued, fast while working.
    Motion is switched off wholesale at the foot of this file — no per-animation
    opt-in to forget (see "REDUCED MOTION"). */
-.ai-editor-rail-panel-waiting {
-    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+.editor-ai-daemons-rail-panel-waiting {
+    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
 }
 
-.ai-editor-rail-panel-running {
-    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+.editor-ai-daemons-rail-panel-running {
+    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
 }
 
-.ai-editor-rail-panel-failed {
+.editor-ai-daemons-rail-panel-failed {
     border-color: var(--text-error);
 }
 
-.ai-editor-rail-panel-badge {
+.editor-ai-daemons-rail-panel-badge {
     @apply absolute rounded-full px-1 leading-tight whitespace-nowrap;
     top: -7px;
     left: 18px;
@@ -806,18 +806,18 @@
     color: var(--text-normal);
 }
 
-.ai-editor-rail-compact .ai-editor-rail-panel-chip {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-panel-chip {
     width: 12px;
     height: 12px;
     border-width: 2px;
 }
 
 /* The verdict label has no room next to a 12px chip; the tooltip carries it. */
-.ai-editor-rail-compact .ai-editor-rail-panel-badge {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-panel-badge {
     @apply hidden;
 }
 
-.ai-editor-rail-retry {
+.editor-ai-daemons-rail-retry {
     @apply cursor-pointer rounded-full p-0;
     width: 16px;
     height: 16px;
@@ -829,56 +829,56 @@
     box-shadow: none;
 }
 
-.ai-editor-rail-retry:hover {
+.editor-ai-daemons-rail-retry:hover {
     color: var(--text-normal);
     background-color: var(--interactive-hover);
 }
 
-.ai-editor-rail-dot {
+.editor-ai-daemons-rail-dot {
     @apply relative cursor-pointer rounded-full p-0;
     width: 16px;
     height: 16px;
     border: 2px solid transparent;
-    background-color: var(--ai-editor-editor-color, var(--text-accent));
+    background-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
     box-shadow: none;
 }
 
-.ai-editor-rail-dot:hover {
+.editor-ai-daemons-rail-dot:hover {
     border-color: var(--text-normal);
 }
 
-.ai-editor-rail-dot-idle {
+.editor-ai-daemons-rail-dot-idle {
     @apply opacity-60;
 }
 
 /* Waiting for a concurrency permit: dimmed with a slow pulse — visibly
    alive but distinct from the fast pulse of an active review. */
-.ai-editor-rail-dot-pending {
+.editor-ai-daemons-rail-dot-pending {
     @apply opacity-60;
-    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
 }
 
-.ai-editor-rail-dot-running {
-    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+.editor-ai-daemons-rail-dot-running {
+    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
 }
 
 /* A transform/generate action in flight on this editor: same liveliness as
    an active review (the chip tooltip says "transforming"). */
-.ai-editor-rail-dot-transforming {
-    animation: ai-editor-pulse 1.2s ease-in-out infinite;
+.editor-ai-daemons-rail-dot-transforming {
+    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
 }
 
-.ai-editor-rail-dot-error {
+.editor-ai-daemons-rail-dot-error {
     border-color: var(--text-error);
     opacity: 0.7;
 }
 
-.ai-editor-rail-dot-cancelled {
+.editor-ai-daemons-rail-dot-cancelled {
     border-color: var(--text-muted);
     opacity: 0.6;
 }
 
-@keyframes ai-editor-pulse {
+@keyframes editor-ai-daemons-pulse {
     0%,
     100% {
         opacity: 1;
@@ -890,16 +890,16 @@
 
 /* Daemon armed indicator: a tiny pulsing dot under the editor chips —
    deliberately subtle (tooltip carries the explanation, no layout churn). */
-.ai-editor-rail-daemon {
+.editor-ai-daemons-rail-daemon {
     @apply rounded-full;
     width: 6px;
     height: 6px;
     margin: 2px auto 0;
     background-color: var(--text-faint);
-    animation: ai-editor-pulse 2.4s ease-in-out infinite;
+    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
 }
 
-.ai-editor-rail-badge {
+.editor-ai-daemons-rail-badge {
     @apply absolute rounded-full px-1 leading-tight;
     top: -7px;
     right: -9px;
@@ -919,32 +919,32 @@
    pane's findings are read.
    ---------------------------------------- */
 
-.ai-editor-rail-compact {
+.editor-ai-daemons-rail-compact {
     @apply gap-1.5 p-1;
 }
 
-.ai-editor-rail-compact .ai-editor-rail-button {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-button {
     @apply px-1 py-0 text-xs;
     width: 20px;
     height: 20px;
     line-height: 1;
 }
 
-.ai-editor-rail-compact .ai-editor-rail-dots {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-dots {
     @apply gap-1;
 }
 
-.ai-editor-rail-compact .ai-editor-rail-dot,
-.ai-editor-rail-compact .ai-editor-rail-retry {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-dot,
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-retry {
     width: 12px;
     height: 12px;
 }
 
-.ai-editor-rail-compact .ai-editor-rail-retry {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-retry {
     font-size: 9px;
 }
 
-.ai-editor-rail-compact .ai-editor-rail-badge {
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-badge {
     top: -6px;
     right: -7px;
     font-size: 8px;
@@ -954,21 +954,25 @@
    FINDING HIGHLIGHTS (CM6 mark decorations,
    src/app/ui/editor/finding-decorations.ts)
    The per-editor persona color arrives via the
-   --ai-editor-finding-color custom property;
+   --editor-ai-daemons-finding-color custom property;
    color-mix keeps the tint readable in light
    and dark themes alike.
    ======================================== */
 
-.ai-editor-finding {
+.editor-ai-daemons-finding {
     @apply cursor-pointer;
     border-radius: 2px;
     background-color: color-mix(
         in srgb,
-        var(--ai-editor-finding-color, var(--text-accent)) 18%,
+        var(--editor-ai-daemons-finding-color, var(--text-accent)) 18%,
         transparent
     );
     border-bottom: 2px solid
-        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
+        color-mix(
+            in srgb,
+            var(--editor-ai-daemons-finding-color, var(--text-accent)) 65%,
+            transparent
+        );
 }
 
 /* Per-persona bottom-edge STYLE (WCAG 1.4.1, plan M9). With three editors
@@ -978,19 +982,19 @@
    (finding-identity.ts), so it is stable and matches the rail's order.
 
    Only the STYLE varies: width and colour stay put, so no persona's
-   highlight is louder than another's. `.ai-editor-finding-stale` below sets
+   highlight is louder than another's. `.editor-ai-daemons-finding-stale` below sets
    `border-bottom: none` and comes later in the file, so a stale mark still
    loses its edge entirely. */
-.ai-editor-finding-edge-1 {
+.editor-ai-daemons-finding-edge-1 {
     border-bottom-style: dotted;
     border-bottom-width: 3px;
 }
 
-.ai-editor-finding-edge-2 {
+.editor-ai-daemons-finding-edge-2 {
     border-bottom-style: dashed;
 }
 
-.ai-editor-finding-edge-3 {
+.editor-ai-daemons-finding-edge-3 {
     border-bottom-style: double;
     border-bottom-width: 4px;
 }
@@ -1001,28 +1005,28 @@
    by the emphasizeEditorEffect (finding-decorations.ts); marks also carry
    data-editor-id for scoping/debugging. Motion-sensitive users keep the
    static stronger tint without the pulse (see the reduced-motion block). */
-.ai-editor-finding-emphasized {
+.editor-ai-daemons-finding-emphasized {
     background-color: color-mix(
         in srgb,
-        var(--ai-editor-finding-color, var(--text-accent)) 38%,
+        var(--editor-ai-daemons-finding-color, var(--text-accent)) 38%,
         transparent
     );
-    animation: ai-editor-emphasis 1s ease-in-out 2;
+    animation: editor-ai-daemons-emphasis 1s ease-in-out 2;
 }
 
-@keyframes ai-editor-emphasis {
+@keyframes editor-ai-daemons-emphasis {
     0%,
     100% {
         background-color: color-mix(
             in srgb,
-            var(--ai-editor-finding-color, var(--text-accent)) 38%,
+            var(--editor-ai-daemons-finding-color, var(--text-accent)) 38%,
             transparent
         );
     }
     50% {
         background-color: color-mix(
             in srgb,
-            var(--ai-editor-finding-color, var(--text-accent)) 22%,
+            var(--editor-ai-daemons-finding-color, var(--text-accent)) 22%,
             transparent
         );
     }
@@ -1031,28 +1035,36 @@
 /* Current: the keyboard-triage cursor's finding — a static persona-colored
    ring distinct from the transient emphasis tint (the two can coexist).
    No animation, so no reduced-motion variant is needed. */
-.ai-editor-finding-current {
+.editor-ai-daemons-finding-current {
     background-color: color-mix(
         in srgb,
-        var(--ai-editor-finding-color, var(--text-accent)) 30%,
+        var(--editor-ai-daemons-finding-color, var(--text-accent)) 30%,
         transparent
     );
     box-shadow: 0 0 0 1.5px
-        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 70%, transparent);
+        color-mix(
+            in srgb,
+            var(--editor-ai-daemons-finding-color, var(--text-accent)) 70%,
+            transparent
+        );
     border-radius: 2px;
 }
 
 /* Stale: the underlying text changed — dimmed, dashed, non-actionable */
-.ai-editor-finding-stale {
+.editor-ai-daemons-finding-stale {
     @apply opacity-55;
     background-color: color-mix(
         in srgb,
-        var(--ai-editor-finding-color, var(--text-accent)) 8%,
+        var(--editor-ai-daemons-finding-color, var(--text-accent)) 8%,
         transparent
     );
     border-bottom: none;
     text-decoration: underline dashed
-        color-mix(in srgb, var(--ai-editor-finding-color, var(--text-accent)) 65%, transparent);
+        color-mix(
+            in srgb,
+            var(--editor-ai-daemons-finding-color, var(--text-accent)) 65%,
+            transparent
+        );
     text-underline-offset: 3px;
 }
 
@@ -1063,14 +1075,14 @@
    transformed span: word-level del (red,
    struck) / ins (green) segments, rationale,
    Accept / Reject. The persona color arrives
-   via --ai-editor-editor-color.
+   via --editor-ai-daemons-editor-color.
    ======================================== */
 
-.ai-editor-transform-preview {
+.editor-ai-daemons-transform-preview {
     @apply my-1 flex flex-col gap-2 p-3 text-sm;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
-    border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    border-left: 3px solid var(--editor-ai-daemons-editor-color, var(--text-accent));
     background-color: var(--background-secondary);
 }
 
@@ -1079,30 +1091,30 @@
    the indicator for a keyboard user too. The ring itself is added by the
    KEYBOARD FOCUS block at the foot of this file — this rule only keeps the
    persona's left edge from being repainted by the focus border. */
-.ai-editor-transform-preview:focus-visible {
+.editor-ai-daemons-transform-preview:focus-visible {
     border-color: var(--background-modifier-border-focus, var(--interactive-accent));
-    border-left-color: var(--ai-editor-editor-color, var(--text-accent));
+    border-left-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
 }
 
-.ai-editor-transform-preview-header {
+.editor-ai-daemons-transform-preview-header {
     @apply flex items-center gap-2;
 }
 
-.ai-editor-transform-preview-dot {
+.editor-ai-daemons-transform-preview-dot {
     @apply inline-block shrink-0 rounded-full;
     width: 10px;
     height: 10px;
-    background-color: var(--ai-editor-editor-color, var(--text-accent));
+    background-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
 }
 
-.ai-editor-transform-preview-title {
+.editor-ai-daemons-transform-preview-title {
     @apply text-sm font-medium;
     color: var(--text-normal);
 }
 
 /* Word-level diff body: segments flow as inline text; whitespace (incl.
    newlines inside segments) must render verbatim. */
-.ai-editor-transform-preview-diff {
+.editor-ai-daemons-transform-preview-diff {
     @apply p-2 text-sm;
     border-radius: var(--radius-s);
     background-color: var(--background-primary);
@@ -1111,7 +1123,7 @@
     overflow-wrap: anywhere;
 }
 
-.ai-editor-transform-preview-del {
+.editor-ai-daemons-transform-preview-del {
     border-radius: 2px;
     color: var(--color-red, var(--text-error));
     background-color: color-mix(in srgb, var(--color-red, #e93147) 12%, transparent);
@@ -1123,7 +1135,7 @@
    non-colour signal of its own — otherwise the two segments differ by hue
    alone and a red/green deficiency reads the whole diff as one block of text.
    `<ins>`'s native underline, restored rather than suppressed. */
-.ai-editor-transform-preview-ins {
+.editor-ai-daemons-transform-preview-ins {
     border-radius: 2px;
     color: var(--color-green, var(--text-success));
     background-color: color-mix(in srgb, var(--color-green, #08b94e) 12%, transparent);
@@ -1133,18 +1145,18 @@
     text-underline-offset: 2px;
 }
 
-.ai-editor-transform-preview-rationale {
+.editor-ai-daemons-transform-preview-rationale {
     @apply m-0 text-xs italic;
     color: var(--text-muted);
 }
 
 /* Wraps in narrow panes: the widget is as wide as the editor content, so
    Accept + Reject + the keyboard hint do not always fit on one line. */
-.ai-editor-transform-preview-actions {
+.editor-ai-daemons-transform-preview-actions {
     @apply flex flex-wrap items-center gap-2;
 }
 
-.ai-editor-transform-preview-hint {
+.editor-ai-daemons-transform-preview-hint {
     @apply ml-auto text-xs;
     color: var(--text-faint);
 }
@@ -1155,27 +1167,27 @@
    per-editor sections, findings, skip report.
    ======================================== */
 
-.ai-editor-panel {
+.editor-ai-daemons-panel {
     @apply flex flex-col gap-3;
 }
 
-.ai-editor-panel-empty {
+.editor-ai-daemons-panel-empty {
     @apply my-3 text-sm italic;
     color: var(--text-muted);
 }
 
 /* Header row: bound note name + the Review button (issue #16). The name
    truncates rather than wrapping, so the button never moves as notes change. */
-.ai-editor-panel-header {
+.editor-ai-daemons-panel-header {
     @apply flex items-center gap-2;
 }
 
-.ai-editor-panel-file {
+.editor-ai-daemons-panel-file {
     @apply min-w-0 flex-1 truncate text-sm font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-panel-review-button {
+.editor-ai-daemons-panel-review-button {
     @apply flex shrink-0 cursor-pointer items-center gap-1.5 px-2 py-1 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1184,33 +1196,33 @@
     box-shadow: none;
 }
 
-.ai-editor-panel-review-button:hover:not(:disabled),
-.ai-editor-panel-review-button:focus-visible {
+.editor-ai-daemons-panel-review-button:hover:not(:disabled),
+.editor-ai-daemons-panel-review-button:focus-visible {
     background-color: var(--interactive-hover);
 }
 
 /* Refused (no note, excluded, kill-switched, no editor) or busy: the tooltip
    carries the reason, so the visual only has to stop inviting the click. */
-.ai-editor-panel-review-button:disabled {
+.editor-ai-daemons-panel-review-button:disabled {
     @apply cursor-default opacity-60;
 }
 
-.ai-editor-panel-review-spinner {
+.editor-ai-daemons-panel-review-spinner {
     @apply shrink-0 rounded-full;
     width: 10px;
     height: 10px;
     border: 2px solid var(--background-modifier-border);
     border-top-color: var(--text-accent);
-    animation: ai-editor-spin 0.8s linear infinite;
+    animation: editor-ai-daemons-spin 0.8s linear infinite;
 }
 
-@keyframes ai-editor-spin {
+@keyframes editor-ai-daemons-spin {
     to {
         transform: rotate(360deg);
     }
 }
 
-.ai-editor-panel-skips {
+.editor-ai-daemons-panel-skips {
     @apply p-2 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1224,50 +1236,50 @@
    rather than the status bar: a per-second timer in global chrome would
    animate permanently for a feature the user is deliberately not watching. */
 
-.ai-editor-panel-comments {
+.editor-ai-daemons-panel-comments {
     @apply flex flex-col gap-1.5;
 }
 
-.ai-editor-panel-comments-heading {
+.editor-ai-daemons-panel-comments-heading {
     @apply text-xs font-medium;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-comment {
+.editor-ai-daemons-panel-comment {
     @apply flex flex-col gap-1 p-2 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
 }
 
-.ai-editor-panel-comment-head {
+.editor-ai-daemons-panel-comment-head {
     @apply flex flex-wrap items-center justify-between gap-1.5;
 }
 
-.ai-editor-panel-comment-editor {
+.editor-ai-daemons-panel-comment-editor {
     @apply font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-panel-comment-status {
+.editor-ai-daemons-panel-comment-status {
     /* Tabular figures so a ticking timer does not shift the row every second. */
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-comment-question {
+.editor-ai-daemons-panel-comment-question {
     color: var(--text-normal);
 }
 
-.ai-editor-panel-comment-detail {
+.editor-ai-daemons-panel-comment-detail {
     color: var(--text-muted);
 }
 
-.ai-editor-panel-comment-actions {
+.editor-ai-daemons-panel-comment-actions {
     @apply flex flex-wrap gap-1.5;
 }
 
-.ai-editor-panel-comment-action {
+.editor-ai-daemons-panel-comment-action {
     @apply cursor-pointer px-2 py-1;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1275,7 +1287,7 @@
     color: var(--text-normal);
 }
 
-.ai-editor-panel-comment-action:hover {
+.editor-ai-daemons-panel-comment-action:hover {
     background-color: var(--interactive-hover);
 }
 
@@ -1284,7 +1296,7 @@
    signature (Business Rules #11: editors are solid, panels are ringed), so
    the block reads as ONE entity above the member sections. */
 
-.ai-editor-scorecard {
+.editor-ai-daemons-scorecard {
     @apply flex flex-col gap-2 p-2.5;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1293,11 +1305,11 @@
     background-color: var(--background-secondary);
 }
 
-.ai-editor-scorecard-header {
+.editor-ai-daemons-scorecard-header {
     @apply flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-scorecard-ring {
+.editor-ai-daemons-scorecard-ring {
     @apply inline-block shrink-0 rounded-full;
     width: 10px;
     height: 10px;
@@ -1305,18 +1317,18 @@
     border: 2px solid var(--text-accent);
 }
 
-.ai-editor-scorecard-name {
+.editor-ai-daemons-scorecard-name {
     @apply text-sm font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-scorecard-status {
+.editor-ai-daemons-scorecard-status {
     @apply text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-scorecard-failed .ai-editor-scorecard-status,
-.ai-editor-scorecard-detail {
+.editor-ai-daemons-scorecard-failed .editor-ai-daemons-scorecard-status,
+.editor-ai-daemons-scorecard-detail {
     @apply text-xs;
     color: var(--text-error);
     overflow-wrap: anywhere;
@@ -1324,25 +1336,25 @@
 
 /* The scorecard below was written before the round now in flight: kept
    (its findings are all still on the note) but never presented as current. */
-.ai-editor-scorecard-stale {
+.editor-ai-daemons-scorecard-stale {
     @apply text-xs italic;
     color: var(--text-muted);
 }
 
-.ai-editor-scorecard-rationale {
+.editor-ai-daemons-scorecard-rationale {
     @apply text-xs;
     color: var(--text-normal);
 }
 
-.ai-editor-scorecard-members {
+.editor-ai-daemons-scorecard-members {
     @apply flex flex-col gap-1;
 }
 
-.ai-editor-scorecard-member {
+.editor-ai-daemons-scorecard-member {
     @apply flex flex-wrap items-center gap-1.5 text-xs;
 }
 
-.ai-editor-scorecard-member-name {
+.editor-ai-daemons-scorecard-member-name {
     @apply font-medium;
     color: var(--text-normal);
 }
@@ -1352,27 +1364,27 @@
    Obsidian's lowest-contrast token (~2.6:1) and fails 4.5:1 for normal text —
    fine for supplementary attribution, wrong for the thing the scorecard exists
    to make non-silent. */
-.ai-editor-scorecard-missing {
+.editor-ai-daemons-scorecard-missing {
     @apply rounded-full px-2 py-0.5 text-xs;
     border: 1px solid var(--background-modifier-border);
     color: var(--text-muted);
 }
 
-.ai-editor-scorecard-keypoint {
+.editor-ai-daemons-scorecard-keypoint {
     color: var(--text-muted);
 }
 
-.ai-editor-scorecard-subheader {
+.editor-ai-daemons-scorecard-subheader {
     @apply text-xs font-medium uppercase;
     letter-spacing: 0.04em;
     color: var(--text-faint);
 }
 
-.ai-editor-scorecard-fixes {
+.editor-ai-daemons-scorecard-fixes {
     @apply m-0 flex list-decimal flex-col gap-1 pl-5 text-xs;
 }
 
-.ai-editor-scorecard-fix-button {
+.editor-ai-daemons-scorecard-fix-button {
     @apply cursor-pointer p-0 text-left text-xs underline;
     background: none;
     border: none;
@@ -1384,38 +1396,38 @@
    button strips border and box-shadow and sits in a list of similar-looking
    underlined text, so the focus ring has to be explicit — every sibling
    control in this panel has one. */
-.ai-editor-scorecard-fix-button:hover,
-.ai-editor-scorecard-fix-button:focus-visible {
+.editor-ai-daemons-scorecard-fix-button:hover,
+.editor-ai-daemons-scorecard-fix-button:focus-visible {
     color: var(--text-accent);
 }
 
-.ai-editor-scorecard-fix-source {
+.editor-ai-daemons-scorecard-fix-source {
     @apply ml-1.5 text-xs;
     color: var(--text-faint);
 }
 
-.ai-editor-scorecard-dissent {
+.editor-ai-daemons-scorecard-dissent {
     @apply flex flex-col gap-1.5;
 }
 
-.ai-editor-scorecard-dissent-item {
+.editor-ai-daemons-scorecard-dissent-item {
     @apply flex flex-col gap-0.5 p-1.5 text-xs;
     border-radius: var(--radius-s);
     border-left: 3px solid var(--color-purple, var(--text-accent));
     background-color: var(--background-primary-alt);
 }
 
-.ai-editor-scorecard-dissent-subject {
+.editor-ai-daemons-scorecard-dissent-subject {
     @apply font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-scorecard-dissent-position {
+.editor-ai-daemons-scorecard-dissent-position {
     @apply flex flex-wrap gap-1.5;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-section {
+.editor-ai-daemons-panel-section {
     @apply flex flex-col gap-1.5 p-2;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1429,38 +1441,38 @@
  * dots (Business Rules #11). The section's `aria-label` carries the same fact
  * for assistive tech; this is decoration only.
  */
-.ai-editor-panel-section.is-panel-member {
+.editor-ai-daemons-panel-section.is-panel-member {
     @apply ml-2;
     border-left: 2px solid var(--text-accent);
 }
 
-.ai-editor-panel-section-header {
+.editor-ai-daemons-panel-section-header {
     @apply flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-panel-dot {
+.editor-ai-daemons-panel-dot {
     @apply inline-block shrink-0 rounded-full;
     width: 10px;
     height: 10px;
     background-color: var(--text-accent);
 }
 
-.ai-editor-panel-editor-name {
+.editor-ai-daemons-panel-editor-name {
     @apply text-sm font-medium;
     color: var(--text-normal);
 }
 
-.ai-editor-panel-status {
+.editor-ai-daemons-panel-status {
     @apply ml-auto text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-status-error {
+.editor-ai-daemons-panel-status-error {
     color: var(--text-error);
 }
 
 /* Per-editor retry (section header, mirrors the rail chip affordance). */
-.ai-editor-panel-retry {
+.editor-ai-daemons-panel-retry {
     @apply flex cursor-pointer items-center justify-center p-0;
     border-radius: var(--radius-s);
     width: 20px;
@@ -1472,57 +1484,57 @@
     flex-shrink: 0;
 }
 
-.ai-editor-panel-retry:hover {
+.editor-ai-daemons-panel-retry:hover {
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
 }
 
-.ai-editor-panel-retry .svg-icon {
+.editor-ai-daemons-panel-retry .svg-icon {
     width: var(--icon-xs, 14px);
     height: var(--icon-xs, 14px);
 }
 
-.ai-editor-panel-verdict {
+.editor-ai-daemons-panel-verdict {
     @apply rounded-full px-2 py-0.5 text-xs font-medium;
     border: 1px solid var(--background-modifier-border);
     color: var(--text-normal);
 }
 
-.ai-editor-panel-verdict-publish {
+.editor-ai-daemons-panel-verdict-publish {
     color: var(--color-green, green);
 }
 
-.ai-editor-panel-verdict-needs-work {
+.editor-ai-daemons-panel-verdict-needs-work {
     color: var(--color-yellow, orange);
 }
 
-.ai-editor-panel-verdict-kill {
+.editor-ai-daemons-panel-verdict-kill {
     color: var(--text-error);
 }
 
-.ai-editor-panel-error {
+.editor-ai-daemons-panel-error {
     @apply text-xs;
     color: var(--text-error);
     overflow-wrap: anywhere;
 }
 
-.ai-editor-panel-summary {
+.editor-ai-daemons-panel-summary {
     @apply text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-none {
+.editor-ai-daemons-panel-none {
     @apply text-xs italic;
     color: var(--text-faint);
 }
 
 /* Severity filter control (one button cycling the lens + hidden count). */
-.ai-editor-panel-filter {
+.editor-ai-daemons-panel-filter {
     @apply flex flex-wrap items-center gap-1.5 text-xs;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-filter-button {
+.editor-ai-daemons-panel-filter-button {
     @apply cursor-pointer px-2 py-0.5 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1531,22 +1543,22 @@
     box-shadow: none;
 }
 
-.ai-editor-panel-filter-button:hover,
-.ai-editor-panel-filter-button:focus-visible {
+.editor-ai-daemons-panel-filter-button:hover,
+.editor-ai-daemons-panel-filter-button:focus-visible {
     background-color: var(--background-modifier-hover);
 }
 
-.ai-editor-panel-filter-hidden {
+.editor-ai-daemons-panel-filter-hidden {
     @apply italic;
     color: var(--text-faint);
 }
 
 /* Per-editor bulk triage row (accept all / dismiss all). */
-.ai-editor-panel-bulk {
+.editor-ai-daemons-panel-bulk {
     @apply flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-panel-bulk-button {
+.editor-ai-daemons-panel-bulk-button {
     @apply cursor-pointer px-2 py-0.5 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1555,18 +1567,18 @@
     box-shadow: none;
 }
 
-.ai-editor-panel-bulk-button:hover,
-.ai-editor-panel-bulk-button:focus-visible {
+.editor-ai-daemons-panel-bulk-button:hover,
+.editor-ai-daemons-panel-bulk-button:focus-visible {
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
 }
 
 /* "Generate more" (plan M6) — one more pass by this editor, appended. */
-.ai-editor-panel-more {
+.editor-ai-daemons-panel-more {
     @apply flex flex-wrap items-center gap-1.5;
 }
 
-.ai-editor-panel-more-button {
+.editor-ai-daemons-panel-more-button {
     @apply cursor-pointer px-2 py-0.5 text-xs;
     border-radius: var(--radius-s);
     border: 1px dashed var(--background-modifier-border);
@@ -1575,80 +1587,80 @@
     box-shadow: none;
 }
 
-.ai-editor-panel-more-button:hover:not(:disabled),
-.ai-editor-panel-more-button:focus-visible {
+.editor-ai-daemons-panel-more-button:hover:not(:disabled),
+.editor-ai-daemons-panel-more-button:focus-visible {
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
 }
 
-.ai-editor-panel-more-button:disabled {
+.editor-ai-daemons-panel-more-button:disabled {
     @apply cursor-default;
     opacity: 0.6;
 }
 
-.ai-editor-panel-more-error {
+.editor-ai-daemons-panel-more-error {
     @apply text-xs;
     color: var(--text-warning, var(--color-yellow, orange));
 }
 
-.ai-editor-panel-subheader {
+.editor-ai-daemons-panel-subheader {
     @apply mt-1 text-xs font-medium uppercase;
     letter-spacing: 0.04em;
     color: var(--text-faint);
 }
 
-.ai-editor-panel-findings {
+.editor-ai-daemons-panel-findings {
     @apply flex flex-col gap-1;
 }
 
-.ai-editor-panel-finding {
+.editor-ai-daemons-panel-finding {
     @apply flex items-start gap-1.5 p-1.5;
     border-radius: var(--radius-s);
     border: 1px solid transparent;
 }
 
-.ai-editor-panel-finding.is-clickable {
+.editor-ai-daemons-panel-finding.is-clickable {
     @apply cursor-pointer;
 }
 
-.ai-editor-panel-finding.is-clickable:hover,
-.ai-editor-panel-finding.is-clickable:focus-visible {
+.editor-ai-daemons-panel-finding.is-clickable:hover,
+.editor-ai-daemons-panel-finding.is-clickable:focus-visible {
     border-color: var(--background-modifier-border);
     background-color: var(--background-modifier-hover);
 }
 
-.ai-editor-panel-finding.is-stale {
+.editor-ai-daemons-panel-finding.is-stale {
     @apply opacity-60;
 }
 
-.ai-editor-panel-severity {
+.editor-ai-daemons-panel-severity {
     @apply shrink-0;
     color: var(--text-muted);
 }
 
-.ai-editor-panel-severity .svg-icon {
+.editor-ai-daemons-panel-severity .svg-icon {
     width: var(--icon-xs, 14px);
     height: var(--icon-xs, 14px);
 }
 
-.ai-editor-panel-severity-warning {
+.editor-ai-daemons-panel-severity-warning {
     color: var(--color-orange, orange);
 }
 
-.ai-editor-panel-severity-info {
+.editor-ai-daemons-panel-severity-info {
     color: var(--color-blue, steelblue);
 }
 
-.ai-editor-panel-finding-body {
+.editor-ai-daemons-panel-finding-body {
     @apply flex min-w-0 flex-col gap-0.5;
 }
 
-.ai-editor-panel-critique {
+.editor-ai-daemons-panel-critique {
     @apply text-xs;
     color: var(--text-normal);
 }
 
-.ai-editor-panel-quote {
+.editor-ai-daemons-panel-quote {
     @apply text-xs;
     font-family: var(--font-monospace);
     color: var(--text-muted);
@@ -1657,7 +1669,7 @@
     overflow-wrap: anywhere;
 }
 
-.ai-editor-panel-stale-note {
+.editor-ai-daemons-panel-stale-note {
     @apply text-xs italic;
     color: var(--text-faint);
 }
@@ -1676,12 +1688,12 @@
 /* The column occupies the right edge of the pane and never captures pointer
    events on its empty area — the note underneath must stay clickable, since
    in `overlay` mode the column sits over the readable-line-length margin. */
-.ai-editor-margin {
+.editor-ai-daemons-margin {
     @apply pointer-events-none absolute overflow-hidden;
     top: 0;
     bottom: 0;
     right: 0;
-    width: var(--ai-editor-margin-width, 280px);
+    width: var(--editor-ai-daemons-margin-width, 280px);
     z-index: var(--layer-popover, 30);
     padding: 8px 8px 8px 0;
 }
@@ -1692,7 +1704,7 @@
    few orphan cards shrank it to nothing, so every comment whose line was
    plainly visible silently disappeared as "off-screen". Capped and scrollable
    so it can never cover the whole column either. */
-.ai-editor-margin-orphans {
+.editor-ai-daemons-margin-orphans {
     @apply pointer-events-auto absolute overflow-y-auto;
     top: 8px;
     left: 0;
@@ -1704,7 +1716,7 @@
 /* The positioning context for the anchored groups: the WHOLE column, so the
    anchors the host computes are measured against the pane and not against a
    box some other element's height controls. */
-.ai-editor-margin-groups {
+.editor-ai-daemons-margin-groups {
     @apply absolute;
     /* The column's own padding, applied here: an absolutely positioned child
        is laid out against the padding box, not the content box. */
@@ -1714,17 +1726,17 @@
 /* Absolutely positioned by the stacker; `transition` on `top` deliberately
    omitted — the position is recomputed on every scroll frame and animating it
    would make the column lag behind the text it annotates. */
-.ai-editor-margin-group {
+.editor-ai-daemons-margin-group {
     @apply pointer-events-auto absolute flex flex-col gap-1.5;
     left: 0;
     right: 0;
 }
 
-.ai-editor-margin-card {
+.editor-ai-daemons-margin-card {
     @apply flex flex-col gap-1 p-2 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
-    border-left: 3px solid var(--ai-editor-editor-color, var(--text-accent));
+    border-left: 3px solid var(--editor-ai-daemons-editor-color, var(--text-accent));
     background-color: var(--background-primary);
     color: var(--text-normal);
     /* The theme's own small elevation, not a hand-mixed black: a light-on-dark
@@ -1735,41 +1747,41 @@
 
 /* An orphan has no line to sit next to; the muted border says so without
    relying on colour alone (the group heading states it in words). */
-.ai-editor-margin-card-orphaned {
+.editor-ai-daemons-margin-card-orphaned {
     border-left-style: dashed;
     border-left-color: var(--text-faint);
 }
 
-.ai-editor-margin-head {
+.editor-ai-daemons-margin-head {
     @apply flex items-baseline justify-between gap-2;
 }
 
-.ai-editor-margin-editor {
+.editor-ai-daemons-margin-editor {
     @apply truncate font-medium;
-    color: var(--ai-editor-editor-color, var(--text-accent));
+    color: var(--editor-ai-daemons-editor-color, var(--text-accent));
 }
 
-.ai-editor-margin-status {
+.editor-ai-daemons-margin-status {
     @apply text-[0.9em] whitespace-nowrap;
     color: var(--text-muted);
 }
 
-.ai-editor-margin-question {
+.editor-ai-daemons-margin-question {
     @apply m-0 w-full cursor-default border-none bg-transparent p-0 text-left text-xs font-medium;
     color: var(--text-normal);
     box-shadow: none;
     overflow-wrap: anywhere;
 }
 
-.ai-editor-margin-reveal {
+.editor-ai-daemons-margin-reveal {
     @apply cursor-pointer;
 }
 
-.ai-editor-margin-reveal:hover {
+.editor-ai-daemons-margin-reveal:hover {
     color: var(--text-accent);
 }
 
-.ai-editor-margin-quote {
+.editor-ai-daemons-margin-quote {
     @apply m-0 text-xs;
     font-family: var(--font-monospace);
     color: var(--text-muted);
@@ -1778,20 +1790,20 @@
     overflow-wrap: anywhere;
 }
 
-.ai-editor-margin-drift {
+.editor-ai-daemons-margin-drift {
     @apply text-[0.9em] italic;
     color: var(--text-faint);
 }
 
 /* `pre-wrap`: the answer may come back as paragraphs, and the model keeps
    them (margin-model.ts normalizes spaces but not newlines). */
-.ai-editor-margin-body {
+.editor-ai-daemons-margin-body {
     @apply text-xs whitespace-pre-wrap;
     color: var(--text-muted);
     overflow-wrap: anywhere;
 }
 
-.ai-editor-margin-more {
+.editor-ai-daemons-margin-more {
     @apply cursor-pointer self-start border-none bg-transparent p-0 text-[0.9em];
     color: var(--text-accent);
     box-shadow: none;
@@ -1799,11 +1811,11 @@
 
 /* Wraps rather than overflowing: the column clamps down to ~220px in a
    narrow-ish pane and the action row must stay usable there. */
-.ai-editor-margin-actions {
+.editor-ai-daemons-margin-actions {
     @apply flex flex-wrap gap-1.5;
 }
 
-.ai-editor-margin-action {
+.editor-ai-daemons-margin-action {
     @apply cursor-pointer px-1.5 py-0.5 text-[0.9em];
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1812,13 +1824,13 @@
     box-shadow: none;
 }
 
-.ai-editor-margin-action:hover {
+.editor-ai-daemons-margin-action:hover {
     background-color: var(--interactive-hover);
     color: var(--text-normal);
 }
 
 /* One line with several comments: a chip that expands to the cards. */
-.ai-editor-margin-chip {
+.editor-ai-daemons-margin-chip {
     @apply cursor-pointer px-2 py-1 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1827,25 +1839,25 @@
     box-shadow: none;
 }
 
-.ai-editor-margin-chip:hover {
+.editor-ai-daemons-margin-chip:hover {
     background-color: var(--interactive-hover);
     color: var(--text-normal);
 }
 
-.ai-editor-margin-orphan-box {
+.editor-ai-daemons-margin-orphan-box {
     @apply mb-2 flex flex-col gap-1.5 p-1.5;
     border-radius: var(--radius-s);
     border: 1px dashed var(--background-modifier-border);
     background-color: color-mix(in srgb, var(--background-secondary) 85%, transparent);
 }
 
-.ai-editor-margin-orphan-toggle {
+.editor-ai-daemons-margin-orphan-toggle {
     @apply cursor-pointer border-none bg-transparent p-0 text-left text-xs;
     color: var(--text-muted);
     box-shadow: none;
 }
 
-.ai-editor-margin-orphan-toggle:hover {
+.editor-ai-daemons-margin-orphan-toggle:hover {
     color: var(--text-normal);
 }
 
@@ -1853,12 +1865,12 @@
    column pays for itself by padding the editor scroller. Set as a custom
    property by the review controller and cleared on every other placement —
    nothing can leave the editor padded. */
-.ai-editor-margin-reserved .cm-scroller {
-    padding-right: var(--ai-editor-margin-reserve, 0);
+.editor-ai-daemons-margin-reserved .cm-scroller {
+    padding-right: var(--editor-ai-daemons-margin-reserve, 0);
 }
 
 /* "Ask for comments" next to the panel's Review button (plan §5.5 / M8). */
-.ai-editor-panel-comment-ask {
+.editor-ai-daemons-panel-comment-ask {
     @apply cursor-pointer px-2 py-1 text-xs;
     border-radius: var(--radius-s);
     border: 1px solid var(--background-modifier-border);
@@ -1867,7 +1879,7 @@
     box-shadow: none;
 }
 
-.ai-editor-panel-comment-ask:hover {
+.editor-ai-daemons-panel-comment-ask:hover {
     background-color: var(--interactive-hover);
     color: var(--text-normal);
 }
@@ -1894,10 +1906,10 @@
    everywhere in the plugin.
    ======================================== */
 
-.ai-editor-panel-finding.is-clickable:focus-visible,
-.ai-editor-transform-preview:focus-visible,
-.ai-editor-preview-prompt:focus-visible,
-.ai-editor-finding-card-thread:focus-visible {
+.editor-ai-daemons-panel-finding.is-clickable:focus-visible,
+.editor-ai-daemons-transform-preview:focus-visible,
+.editor-ai-daemons-preview-prompt:focus-visible,
+.editor-ai-daemons-finding-card-thread:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
 }
@@ -1936,7 +1948,7 @@
    ======================================== */
 
 @media (prefers-reduced-motion: reduce) {
-    [class*='ai-editor-'] {
+    [class*='editor-ai-daemons-'] {
         animation-duration: 1ms;
         animation-iteration-count: 1;
         transition-duration: 1ms;

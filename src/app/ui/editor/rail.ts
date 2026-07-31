@@ -59,7 +59,7 @@ export class PersonaRail {
     ) {
         this.doc = doc ?? containerEl.ownerDocument
         this.rootEl = this.doc.createElement('div')
-        this.rootEl.classList.add('ai-editor-rail')
+        this.rootEl.classList.add('editor-ai-daemons-rail')
         containerEl.appendChild(this.rootEl)
     }
 
@@ -88,12 +88,12 @@ export class PersonaRail {
         const viewModel = buildRailViewModel(state)
         this.rootEl.replaceChildren()
         // Narrow pane: icon-only, tighter spacing (plan M4 adaptive layout).
-        this.rootEl.classList.toggle('ai-editor-rail-compact', viewModel.compact)
+        this.rootEl.classList.toggle('editor-ai-daemons-rail-compact', viewModel.compact)
 
         const button = this.doc.createElement('button')
-        button.classList.add('ai-editor-rail-button')
+        button.classList.add('editor-ai-daemons-rail-button')
         if (viewModel.button.action === 'cancel') {
-            button.classList.add('ai-editor-rail-button-cancel')
+            button.classList.add('editor-ai-daemons-rail-button-cancel')
         }
         button.textContent = viewModel.button.text
         // The compact form shows a glyph, so the accessible name has to come
@@ -110,7 +110,7 @@ export class PersonaRail {
         this.rootEl.appendChild(button)
 
         const dotsEl = this.doc.createElement('div')
-        dotsEl.classList.add('ai-editor-rail-dots')
+        dotsEl.classList.add('editor-ai-daemons-rail-dots')
         dotsEl.setAttribute('role', 'group')
         dotsEl.setAttribute('aria-label', 'Editors')
         // A panel run renders as ONE entity: a ringed chip owning its members
@@ -119,7 +119,7 @@ export class PersonaRail {
         const panel = viewModel.panel
         if (panel !== null) {
             const groupEl = this.doc.createElement('div')
-            groupEl.classList.add('ai-editor-rail-panel')
+            groupEl.classList.add('editor-ai-daemons-rail-panel')
             groupEl.setAttribute('role', 'group')
             groupEl.setAttribute('aria-label', panel.groupLabel)
             groupEl.appendChild(this.renderPanelChip(panel))
@@ -139,7 +139,7 @@ export class PersonaRail {
         // deliberately minimal, no layout churn (absent when not armed).
         if (viewModel.daemon !== null) {
             const daemonEl = this.doc.createElement('div')
-            daemonEl.classList.add('ai-editor-rail-daemon')
+            daemonEl.classList.add('editor-ai-daemons-rail-daemon')
             daemonEl.setAttribute('role', 'status')
             this.applyTooltip(daemonEl, viewModel.daemon.title)
             this.rootEl.appendChild(daemonEl)
@@ -157,11 +157,11 @@ export class PersonaRail {
      */
     private renderChip(dot: RailDotViewModel): HTMLElement {
         const chipEl = this.doc.createElement('div')
-        chipEl.classList.add('ai-editor-rail-chip')
+        chipEl.classList.add('editor-ai-daemons-rail-chip')
         chipEl.appendChild(this.renderDot(dot))
         if (dot.retryAriaLabel !== null) {
             const retryEl = this.doc.createElement('button')
-            retryEl.classList.add('ai-editor-rail-retry')
+            retryEl.classList.add('editor-ai-daemons-rail-retry')
             // Text glyph on purpose: the rail is Obsidian-free DOM (no
             // setIcon) and must not use innerHTML.
             retryEl.textContent = '↻'
@@ -181,15 +181,18 @@ export class PersonaRail {
      */
     private renderPanelChip(panel: RailPanelViewModel): HTMLElement {
         const chipEl = this.doc.createElement('button')
-        chipEl.classList.add('ai-editor-rail-panel-chip', `ai-editor-rail-panel-${panel.status}`)
-        chipEl.style.setProperty('--ai-editor-editor-color', panel.color)
+        chipEl.classList.add(
+            'editor-ai-daemons-rail-panel-chip',
+            `editor-ai-daemons-rail-panel-${panel.status}`
+        )
+        chipEl.style.setProperty('--editor-ai-daemons-editor-color', panel.color)
         this.applyTooltip(chipEl, panel.title, panel.ariaLabel)
         chipEl.addEventListener('click', () => {
             this.callbacks.onPanelClick()
         })
         if (panel.badge !== null) {
             const badgeEl = this.doc.createElement('span')
-            badgeEl.classList.add('ai-editor-rail-panel-badge')
+            badgeEl.classList.add('editor-ai-daemons-rail-panel-badge')
             badgeEl.textContent = panel.badge
             // The verdict is already in the chip's accessible name.
             badgeEl.setAttribute('aria-hidden', 'true')
@@ -200,8 +203,11 @@ export class PersonaRail {
 
     private renderDot(dot: RailDotViewModel): HTMLElement {
         const dotEl = this.doc.createElement('button')
-        dotEl.classList.add('ai-editor-rail-dot', `ai-editor-rail-dot-${dot.status}`)
-        dotEl.style.setProperty('--ai-editor-editor-color', dot.color)
+        dotEl.classList.add(
+            'editor-ai-daemons-rail-dot',
+            `editor-ai-daemons-rail-dot-${dot.status}`
+        )
+        dotEl.style.setProperty('--editor-ai-daemons-editor-color', dot.color)
         this.applyTooltip(dotEl, dot.title)
         dotEl.dataset['editorId'] = dot.editorId
         dotEl.addEventListener('click', () => {
@@ -209,7 +215,7 @@ export class PersonaRail {
         })
         if (dot.badge !== null) {
             const badgeEl = this.doc.createElement('span')
-            badgeEl.classList.add('ai-editor-rail-badge')
+            badgeEl.classList.add('editor-ai-daemons-rail-badge')
             badgeEl.textContent = dot.badge
             // The count is already in the dot's aria-label.
             badgeEl.setAttribute('aria-hidden', 'true')

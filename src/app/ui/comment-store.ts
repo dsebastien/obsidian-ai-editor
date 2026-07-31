@@ -76,7 +76,7 @@ export function createCommentRepository(plugin: Plugin): MarginCommentRepository
         onWriteStalled: (failures, message) => {
             log(`Margin comments have failed to save ${failures} times: ${message}`, 'error')
             new Notice(
-                `AI Editor: margin comments could not be saved (${failures} attempts). Check that the vault is writable — the comments are kept in memory meanwhile.`
+                `Editor AI Daemons: margin comments could not be saved (${failures} attempts). Check that the vault is writable — the comments are kept in memory meanwhile.`
             )
         },
         onExternalChange: (adopted, backupPath) => {
@@ -85,7 +85,7 @@ export function createCommentRepository(plugin: Plugin): MarginCommentRepository
             log(`Margin comment store changed elsewhere; adopted ${adopted} comments`, 'warn')
             if (adopted > 0 || backupPath !== null) {
                 new Notice(
-                    `AI Editor: the margin comment store was changed by another device (likely a sync) and the two were merged.${kept}`
+                    `Editor AI Daemons: the margin comment store was changed by another device (likely a sync) and the two were merged.${kept}`
                 )
             }
         }
@@ -122,7 +122,7 @@ export function registerCommentStoreHooks(
             if (dropped > 0) {
                 // Business Rules #13: a comment is never dropped silently.
                 new Notice(
-                    `AI Editor: ${dropped} margin ${dropped === 1 ? 'comment' : 'comments'} could not be moved to ${file.path} — it is already at the comment limit.`
+                    `Editor AI Daemons: ${dropped} margin ${dropped === 1 ? 'comment' : 'comments'} could not be moved to ${file.path} — it is already at the comment limit.`
                 )
             }
         })

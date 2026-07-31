@@ -70,10 +70,10 @@ export class AskEditorModal extends Modal {
 
     override onOpen(): void {
         this.setTitle(this.copy.title)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         if (this.copy.description !== undefined) {
             this.contentEl.createEl('p', {
-                cls: 'ai-editor-tab-intro',
+                cls: 'editor-ai-daemons-tab-intro',
                 text: this.copy.description
             })
         }
@@ -83,7 +83,7 @@ export class AskEditorModal extends Modal {
         if (single) {
             // Exactly one possible editor: static text, no pointless dropdown.
             editorSetting.controlEl.createSpan({
-                cls: 'ai-editor-ask-single-editor',
+                cls: 'editor-ai-daemons-ask-single-editor',
                 text: single.name
             })
         } else {
@@ -98,7 +98,7 @@ export class AskEditorModal extends Modal {
         }
 
         const textarea = this.contentEl.createEl('textarea', {
-            cls: 'ai-editor-ask-textarea',
+            cls: 'editor-ai-daemons-ask-textarea',
             attr: {
                 'placeholder': this.copy.placeholder,
                 'rows': '5',

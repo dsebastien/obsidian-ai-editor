@@ -55,7 +55,7 @@ export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): voi
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Every action verb in the selection menu routes to an editor. Review-class verbs (critique, find evidence, identify assumptions) can route to a panel instead (◎ marks panels) — each member editor runs the action. Unbound actions stay hidden from the menu and the command palette.'
     })
 
@@ -94,7 +94,7 @@ export function renderActionsTab(containerEl: HTMLElement, ctx: TabContext): voi
     const customActions = settings.actions.filter((action) => !isBuiltInActionId(action.actionId))
     if (customActions.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'No custom actions yet.'
         })
     }
@@ -160,7 +160,7 @@ function renderCustomActionRows(
     }
 
     const reviewClass = action.customVerbClass === 'review'
-    const row = new Setting(containerEl).setClass('ai-editor-custom-action-row')
+    const row = new Setting(containerEl).setClass('editor-ai-daemons-custom-action-row')
     row.addText((text) => {
         text.setPlaceholder('Action name')
         text.setValue(action.customName)
@@ -298,7 +298,7 @@ function renderBindingWarning(row: Setting, action: ActionBinding, ctx: TabConte
         return
     }
     row.descEl.createDiv({
-        cls: 'ai-editor-binding-warning',
+        cls: 'editor-ai-daemons-binding-warning',
         text: `Hidden from menus and the command palette: ${actionInvalidReasonLabel(resolution.reason)}.`
     })
 }

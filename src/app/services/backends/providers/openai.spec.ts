@@ -318,7 +318,7 @@ describe('openrouter profile', () => {
         expect(request.headers['http-referer']).toBe(
             'https://github.com/dsebastien/obsidian-ai-editor'
         )
-        expect(request.headers['x-title']).toBe('AI Editor (Obsidian)')
+        expect(request.headers['x-title']).toBe('Editor AI Daemons (Obsidian)')
     })
 
     it('requires an API key', () => {

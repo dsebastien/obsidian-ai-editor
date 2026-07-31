@@ -679,7 +679,7 @@ export async function handleReviewCli(
                 errorOutput(
                     path,
                     'rule-disabled',
-                    `AI Editor is disabled for this note by the rule ${start.ruleLabel}`
+                    `Editor AI Daemons is disabled for this note by the rule ${start.ruleLabel}`
                 ),
                 args.format
             )

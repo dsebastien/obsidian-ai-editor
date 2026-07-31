@@ -58,7 +58,7 @@ export class BackendModal extends Modal {
                 ? `Add ${apiKindLabel(this.draft.kind)} backend`
                 : `Edit ${apiKindLabel(this.draft.kind)} backend`
         )
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.renderContent()
     }
 
@@ -104,7 +104,7 @@ export class BackendModal extends Modal {
                 })
             })
         const insecureWarning = contentEl.createDiv({
-            cls: 'ai-editor-modal-warning',
+            cls: 'editor-ai-daemons-modal-warning',
             text: 'This endpoint uses unencrypted HTTP to a remote host — the API key and note content would travel in clear text.'
         })
         const updateInsecureWarning = (): void => {

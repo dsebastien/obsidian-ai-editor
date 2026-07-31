@@ -14,7 +14,7 @@ export function renderPanelsTab(containerEl: HTMLElement, ctx: TabContext): void
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Panels group editors and aggregate their findings into a scorecard with verdicts, top fixes, and dissent. A ringed dot identifies a panel everywhere.'
     })
 
@@ -32,7 +32,7 @@ export function renderPanelsTab(containerEl: HTMLElement, ctx: TabContext): void
         })
     if (settings.editors.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'Create editors first — panels are built from them.'
         })
         return
@@ -40,13 +40,13 @@ export function renderPanelsTab(containerEl: HTMLElement, ctx: TabContext): void
 
     if (settings.panels.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'No panels yet.'
         })
         return
     }
 
-    const grid = containerEl.createDiv({ cls: 'ai-editor-card-grid' })
+    const grid = containerEl.createDiv({ cls: 'editor-ai-daemons-card-grid' })
     for (const panel of settings.panels) {
         renderPanelCard(grid, ctx, panel)
     }
@@ -54,12 +54,12 @@ export function renderPanelsTab(containerEl: HTMLElement, ctx: TabContext): void
 
 function renderPanelCard(grid: HTMLElement, ctx: TabContext, panel: PanelConfig): void {
     const settings = ctx.facade.getSettings()
-    const card = grid.createDiv({ cls: 'ai-editor-card' })
+    const card = grid.createDiv({ cls: 'editor-ai-daemons-card' })
     if (!panel.enabled) {
         card.addClass('is-disabled')
     }
 
-    const title = card.createDiv({ cls: 'ai-editor-card-title' })
+    const title = card.createDiv({ cls: 'editor-ai-daemons-card-title' })
     renderColorDot(title, panel.color, 'panel')
     title.createSpan({ text: panel.name })
 
@@ -68,15 +68,15 @@ function renderPanelCard(grid: HTMLElement, ctx: TabContext, panel: PanelConfig)
             settings.editors.find((editor) => editor.id === memberId)?.name ?? 'missing editor'
     )
     card.createDiv({
-        cls: 'ai-editor-card-sub',
+        cls: 'editor-ai-daemons-card-sub',
         text: `${memberNames.length} member${memberNames.length === 1 ? '' : 's'}: ${memberNames.join(', ')}`
     })
     card.createDiv({
-        cls: 'ai-editor-card-sub',
+        cls: 'editor-ai-daemons-card-sub',
         text: `Aggregation: ${describeBackendRef(settings, panel.aggregationBackend)}`
     })
 
-    const actions = card.createDiv({ cls: 'ai-editor-card-actions' })
+    const actions = card.createDiv({ cls: 'editor-ai-daemons-card-actions' })
     const toggle = new ToggleComponent(actions)
     toggle.setValue(panel.enabled)
     toggle.setTooltip(panel.enabled ? 'Enabled' : 'Disabled')

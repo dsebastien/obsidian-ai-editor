@@ -317,7 +317,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         const next = produce(this.settings, mutator)
         const parsed = pluginSettingsSchema.safeParse(next)
         if (!parsed.success) {
-            throw new Error('AI Editor: rejected a settings update that failed schema validation')
+            throw new Error(
+                'Editor AI Daemons: rejected a settings update that failed schema validation'
+            )
         }
         this.settings = parsed.data
         await this.persistSettings()
@@ -365,7 +367,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             // Business Rule #7, dropped backends would lose API keys.
             log(`Invalid persisted settings reset to defaults: ${boot.dropped.join(', ')}`, 'warn')
             new Notice(
-                `AI Editor: some saved settings were invalid and were reset to defaults (${boot.dropped.join(
+                `Editor AI Daemons: some saved settings were invalid and were reset to defaults (${boot.dropped.join(
                     ', '
                 )}). Review the plugin settings — especially privacy exclusions.`
             )
@@ -376,7 +378,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             // the UI displays — resolved keep-first, later ids regenerated.
             log(`Duplicate entity ids regenerated: ${boot.regeneratedIds.join(', ')}`, 'warn')
             new Notice(
-                `AI Editor: duplicate entity ids were found in the saved settings (likely a sync conflict) and were repaired (${boot.regeneratedIds.join(
+                `Editor AI Daemons: duplicate entity ids were found in the saved settings (likely a sync conflict) and were repaired (${boot.regeneratedIds.join(
                     ', '
                 )}). Review the plugin settings — especially backend assignments.`
             )

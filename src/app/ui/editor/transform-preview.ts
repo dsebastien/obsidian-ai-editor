@@ -145,29 +145,32 @@ class TransformPreviewWidget extends WidgetType {
         const doc = view.dom.ownerDocument
         const spec = this.spec
         const root = doc.createElement('div')
-        root.classList.add('ai-editor-transform-preview')
-        root.style.setProperty('--ai-editor-editor-color', sanitizePreviewColor(spec.editorColor))
+        root.classList.add('editor-ai-daemons-transform-preview')
+        root.style.setProperty(
+            '--editor-ai-daemons-editor-color',
+            sanitizePreviewColor(spec.editorColor)
+        )
         root.setAttribute('role', 'region')
         root.setAttribute('aria-label', previewAriaLabel(spec))
         root.tabIndex = 0
 
         const header = doc.createElement('div')
-        header.classList.add('ai-editor-transform-preview-header')
+        header.classList.add('editor-ai-daemons-transform-preview-header')
         const dot = doc.createElement('span')
-        dot.classList.add('ai-editor-transform-preview-dot')
+        dot.classList.add('editor-ai-daemons-transform-preview-dot')
         dot.setAttribute('aria-hidden', 'true')
         header.appendChild(dot)
         const title = doc.createElement('span')
-        title.classList.add('ai-editor-transform-preview-title')
+        title.classList.add('editor-ai-daemons-transform-preview-title')
         title.textContent = spec.title
         header.appendChild(title)
         root.appendChild(header)
 
         const diff = doc.createElement('div')
-        diff.classList.add('ai-editor-transform-preview-diff')
+        diff.classList.add('editor-ai-daemons-transform-preview-diff')
         for (const segment of spec.segments) {
             const el = doc.createElement(SEGMENT_TAGS[segment.kind])
-            el.classList.add(`ai-editor-transform-preview-${segment.kind}`)
+            el.classList.add(`editor-ai-daemons-transform-preview-${segment.kind}`)
             el.textContent = segment.text
             diff.appendChild(el)
         }
@@ -175,25 +178,25 @@ class TransformPreviewWidget extends WidgetType {
 
         if (spec.rationale !== null && spec.rationale.length > 0) {
             const rationale = doc.createElement('p')
-            rationale.classList.add('ai-editor-transform-preview-rationale')
+            rationale.classList.add('editor-ai-daemons-transform-preview-rationale')
             rationale.textContent = spec.rationale
             root.appendChild(rationale)
         }
 
         const actions = doc.createElement('div')
-        actions.classList.add('ai-editor-transform-preview-actions')
+        actions.classList.add('editor-ai-daemons-transform-preview-actions')
         const accept = doc.createElement('button')
-        accept.classList.add('ai-editor-transform-preview-accept', 'mod-cta')
+        accept.classList.add('editor-ai-daemons-transform-preview-accept', 'mod-cta')
         accept.textContent = 'Accept'
         accept.addEventListener('click', () => spec.actions.onAccept())
         actions.appendChild(accept)
         const reject = doc.createElement('button')
-        reject.classList.add('ai-editor-transform-preview-reject')
+        reject.classList.add('editor-ai-daemons-transform-preview-reject')
         reject.textContent = 'Reject'
         reject.addEventListener('click', () => spec.actions.onReject())
         actions.appendChild(reject)
         const hint = doc.createElement('span')
-        hint.classList.add('ai-editor-transform-preview-hint')
+        hint.classList.add('editor-ai-daemons-transform-preview-hint')
         hint.textContent = 'Enter to accept · Esc to reject'
         hint.setAttribute('aria-hidden', 'true')
         actions.appendChild(hint)

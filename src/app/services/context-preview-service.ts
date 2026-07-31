@@ -99,7 +99,7 @@ export type ContextPreviewResult =
     | { readonly status: 'ready'; readonly preview: ContextPreview }
     /** Business Rules #7 — nothing about this note ever leaves the vault. */
     | { readonly status: 'excluded'; readonly notePath: string }
-    /** Plan §4b kill switch — AI Editor does not operate on this note. */
+    /** Plan §4b kill switch — Editor AI Daemons does not operate on this note. */
     | {
           readonly status: 'rule-disabled'
           readonly notePath: string

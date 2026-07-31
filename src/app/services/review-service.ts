@@ -146,7 +146,7 @@ export type ReviewStart =
      * Typed refusal distinct from `excluded`: a binding rule switches the
      * plugin OFF for this note (plan §4b kill switch). Different cause,
      * different fix, so it gets its own status — `excluded` means "this
-     * content never leaves the vault", `rule-disabled` means "AI Editor does
+     * content never leaves the vault", `rule-disabled` means "Editor AI Daemons does
      * not operate here". `ruleLabel` names the rule so the user can find it.
      */
     | { readonly status: 'rule-disabled'; readonly notePath: string; readonly ruleLabel: string }

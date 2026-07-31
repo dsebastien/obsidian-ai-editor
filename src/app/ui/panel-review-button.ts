@@ -110,7 +110,7 @@ export function panelReviewButtonState(input: PanelReviewButtonInput): PanelRevi
             return {
                 text: 'Review',
                 ariaLabel: `Review ${noteName}`,
-                tooltip: `AI Editor is turned off for ${noteName} by the rule ${gate.ruleLabel} (Rules tab)`,
+                tooltip: `Editor AI Daemons is turned off for ${noteName} by the rule ${gate.ruleLabel} (Rules tab)`,
                 disabled: true,
                 busy: false
             }

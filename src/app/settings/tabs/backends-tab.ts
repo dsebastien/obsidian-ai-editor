@@ -51,7 +51,7 @@ function addChoiceLabel(choice: AddChoice): string {
 export function renderBackendsTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
 
-    const callout = containerEl.createDiv({ cls: 'ai-editor-settings-callout' })
+    const callout = containerEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
     callout.createEl('strong', { text: 'API keys are stored in plain text' })
     callout.createEl('div', {
         text: 'Keys live in this plugin’s data.json inside your vault. If the vault syncs (Obsidian Sync, iCloud, Git…), the keys travel with it. Use minimal-scope keys and rotate them if the vault ever leaks.'
@@ -97,7 +97,7 @@ export function renderBackendsTab(containerEl: HTMLElement, ctx: TabContext): vo
     new Setting(containerEl).setName('Configured backends').setHeading()
     if (settings.backends.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'No backends yet. Add one below so editors can call a model.'
         })
     }
@@ -162,8 +162,8 @@ function renderBackendRow(
         // report after asking for a review.
         row.descEl.createDiv({
             cls: hasLaunchConsent(backend)
-                ? 'ai-editor-consent-line'
-                : 'ai-editor-consent-line is-missing',
+                ? 'editor-ai-daemons-consent-line'
+                : 'editor-ai-daemons-consent-line is-missing',
             text: launchConsentLine(backend)
         })
     }

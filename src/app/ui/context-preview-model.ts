@@ -72,7 +72,7 @@ export function refusalMessage(result: Exclude<ContextPreviewResult, { status: '
         case 'excluded':
             return `Nothing would be sent: ${result.notePath} is excluded from AI processing. Change that in the Behavior tab's privacy exclusions.`
         case 'rule-disabled':
-            return `Nothing would be sent: the binding rule "${result.ruleLabel}" switches AI Editor off for this note. Change that in the Rules tab.`
+            return `Nothing would be sent: the binding rule "${result.ruleLabel}" switches Editor AI Daemons off for this note. Change that in the Rules tab.`
         case 'note-unreadable':
             return `Nothing to preview: ${result.notePath} could not be read.`
         case 'editor-missing':
@@ -180,7 +180,7 @@ export function previewClipboardText(preview: ContextPreview): string {
     const rows = sectionRows(preview).map((row) => `- ${row.name}: ${row.detail}`)
     const instruction = preview.instruction
     return [
-        `AI Editor — what will be sent`,
+        `Editor AI Daemons — what will be sent`,
         `Editor: ${preview.editorName}`,
         `Note: ${preview.notePath}`,
         ...(instruction === null ? [] : [`Action: ${instruction.label}`]),

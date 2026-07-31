@@ -31,7 +31,7 @@ export function sectionTitle(section: TransferSection): string {
 }
 
 /** Default file name an export dialog opens with. */
-export const DEFAULT_EXPORT_PATH = 'ai-editor-settings.json'
+export const DEFAULT_EXPORT_PATH = 'editor-ai-daemons-settings.json'
 
 /** A typed export path, or the reason the typed one cannot be written. */
 export type ExportPath =
@@ -46,7 +46,7 @@ export type ExportPath =
  *
  * Traversal is REFUSED rather than normalized away. `vault.create` joins the
  * path onto the vault's base path and the adapter resolves `..`, so a typed
- * `../ai-editor-settings.json` writes outside the vault — past Obsidian's
+ * `../editor-ai-daemons-settings.json` writes outside the vault — past Obsidian's
  * sandbox and past the caller's `getAbstractFileByPath` existence check, which
  * only ever sees in-vault paths and would therefore skip the overwrite
  * confirmation for exactly the files least safe to overwrite silently.
@@ -231,8 +231,8 @@ export function importErrorMessage(error: ImportError): string {
         case 'not-json':
             return 'That is not valid JSON. Paste an exported file, or pick one from the vault.'
         case 'not-an-object':
-            return 'That JSON is not an AI Editor export.'
+            return 'That JSON is not an Editor AI Daemons export.'
         case 'no-sections':
-            return 'That file carries no AI Editor settings — no backends, editors, panels, actions, rules, or voice profile.'
+            return 'That file carries no Editor AI Daemons settings — no backends, editors, panels, actions, rules, or voice profile.'
     }
 }

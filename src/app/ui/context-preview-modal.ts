@@ -70,11 +70,11 @@ export class ContextPreviewModal extends Modal {
 
     override onOpen(): void {
         this.setTitle('What will be sent')
-        this.modalEl.addClass('ai-editor-modal')
-        this.modalEl.addClass('ai-editor-preview-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
+        this.modalEl.addClass('editor-ai-daemons-preview-modal')
 
         this.contentEl.createEl('p', {
-            cls: 'ai-editor-preview-note',
+            cls: 'editor-ai-daemons-preview-note',
             text: `Note: ${this.notePath}`
         })
 
@@ -82,7 +82,7 @@ export class ContextPreviewModal extends Modal {
         const single = this.choices.length === 1 ? this.choices[0] : undefined
         if (single) {
             editorSetting.controlEl.createSpan({
-                cls: 'ai-editor-ask-single-editor',
+                cls: 'editor-ai-daemons-ask-single-editor',
                 text: single.name
             })
         } else {
@@ -112,7 +112,7 @@ export class ContextPreviewModal extends Modal {
             })
         }
 
-        this.bodyEl = this.contentEl.createDiv({ cls: 'ai-editor-preview-body' })
+        this.bodyEl = this.contentEl.createDiv({ cls: 'editor-ai-daemons-preview-body' })
 
         new Setting(this.contentEl)
             .addButton((button) => {
@@ -141,7 +141,7 @@ export class ContextPreviewModal extends Modal {
             return
         }
         body.empty()
-        body.createEl('p', { cls: 'ai-editor-preview-status', text: 'Assembling…' })
+        body.createEl('p', { cls: 'editor-ai-daemons-preview-status', text: 'Assembling…' })
         const result = await this.resolve(this.selectedEditorId, this.selectedActionId)
         if (token !== this.renderToken || this.bodyEl !== body) {
             return // a newer selection already took over, or the modal closed
@@ -154,26 +154,26 @@ export class ContextPreviewModal extends Modal {
         body.empty()
         if (result.status !== 'ready') {
             body.createEl('p', {
-                cls: 'ai-editor-preview-refusal',
+                cls: 'editor-ai-daemons-preview-refusal',
                 text: refusalMessage(result)
             })
             return
         }
         const preview = result.preview
 
-        const summary = body.createEl('ul', { cls: 'ai-editor-preview-summary' })
+        const summary = body.createEl('ul', { cls: 'editor-ai-daemons-preview-summary' })
         for (const line of previewSummaryLines(preview)) {
             summary.createEl('li', { text: line })
         }
 
         body.createEl('h4', { text: 'Sections' })
-        const list = body.createDiv({ cls: 'ai-editor-preview-sections' })
+        const list = body.createDiv({ cls: 'editor-ai-daemons-preview-sections' })
         for (const row of sectionRows(preview)) {
             const rowEl = list.createDiv({
-                cls: `ai-editor-preview-row ai-editor-preview-row-${row.status}`
+                cls: `editor-ai-daemons-preview-row editor-ai-daemons-preview-row-${row.status}`
             })
-            rowEl.createSpan({ cls: 'ai-editor-preview-row-name', text: row.name })
-            rowEl.createSpan({ cls: 'ai-editor-preview-row-detail', text: row.detail })
+            rowEl.createSpan({ cls: 'editor-ai-daemons-preview-row-name', text: row.name })
+            rowEl.createSpan({ cls: 'editor-ai-daemons-preview-row-detail', text: row.detail })
         }
 
         body.createEl('h4', { text: 'System prompt' })
@@ -181,7 +181,7 @@ export class ContextPreviewModal extends Modal {
         // accessible name has to say WHOSE prompt it is — the picker above can
         // change it.
         body.createEl('pre', {
-            cls: 'ai-editor-preview-prompt',
+            cls: 'editor-ai-daemons-preview-prompt',
             text: preview.systemPrompt,
             attr: {
                 'tabindex': '0',

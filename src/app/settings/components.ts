@@ -35,11 +35,11 @@ export class ConfirmModal extends Modal {
 
     override onOpen(): void {
         this.setTitle(this.options.title)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         const { contentEl } = this
         contentEl.createEl('p', { text: this.options.message })
         if (this.options.impactLines.length > 0) {
-            const list = contentEl.createEl('ul', { cls: 'ai-editor-confirm-lines' })
+            const list = contentEl.createEl('ul', { cls: 'editor-ai-daemons-confirm-lines' })
             for (const line of this.options.impactLines) {
                 list.createEl('li', { text: line })
             }
@@ -74,9 +74,9 @@ export function renderColorDot(
     color: string,
     variant: 'editor' | 'panel'
 ): HTMLElement {
-    const dot = parent.createSpan({ cls: 'ai-editor-color-dot' })
+    const dot = parent.createSpan({ cls: 'editor-ai-daemons-color-dot' })
     if (variant === 'panel') {
-        dot.addClass('ai-editor-color-dot--ring')
+        dot.addClass('editor-ai-daemons-color-dot--ring')
         dot.style.borderColor = color
     } else {
         dot.style.backgroundColor = color
@@ -114,7 +114,7 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
     const setting = new Setting(containerEl)
         .setName(options.label)
         .setDesc('Pick a theme preset or a custom color.')
-    const row = setting.controlEl.createDiv({ cls: 'ai-editor-swatch-row' })
+    const row = setting.controlEl.createDiv({ cls: 'editor-ai-daemons-swatch-row' })
 
     // `render()` rebuilds the row, destroying the button that was clicked —
     // so the swatch that ends up selected takes the focus back. Without it a
@@ -127,7 +127,7 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
         for (const preset of COLOR_PRESETS) {
             const isSelected = preset.value === current
             const swatch = row.createEl('button', {
-                cls: 'ai-editor-swatch',
+                cls: 'editor-ai-daemons-swatch',
                 attr: {
                     'aria-label': `Use ${preset.label}`,
                     'type': 'button',
@@ -145,7 +145,10 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
                 // background is a user-chosen hue, not a theme surface, so no
                 // theme variable can be relied on to contrast with it. The
                 // stylesheet gives the mark a halo that works over any of them.
-                const check = swatch.createSpan({ cls: 'ai-editor-swatch-check', text: '✓' })
+                const check = swatch.createSpan({
+                    cls: 'editor-ai-daemons-swatch-check',
+                    text: '✓'
+                })
                 check.setAttribute('aria-hidden', 'true')
                 selectedEl = swatch
             }
@@ -161,7 +164,7 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
             selectedEl?.focus()
         }
         const custom = row.createEl('input', {
-            cls: 'ai-editor-swatch-custom',
+            cls: 'editor-ai-daemons-swatch-custom',
             type: 'color',
             attr: { 'aria-label': 'Custom color' }
         })
@@ -253,7 +256,7 @@ export function renderPromptTextArea(
     new Setting(containerEl)
         .setName(options.name)
         .setDesc(options.desc)
-        .setClass('ai-editor-settings-textarea')
+        .setClass('editor-ai-daemons-settings-textarea')
         .addTextArea((textArea) => {
             textArea.setPlaceholder(options.placeholder)
             textArea.setValue(options.get())
@@ -307,16 +310,16 @@ export function renderNoteRefsEditor(
         new Setting(wrapper)
             .setName(options.name)
             .setDesc(options.desc)
-            .setClass('ai-editor-note-refs-header')
+            .setClass('editor-ai-daemons-note-refs-header')
         if (paths.length === 0) {
             wrapper.createEl('p', {
-                cls: 'ai-editor-empty-state',
+                cls: 'editor-ai-daemons-empty-state',
                 text: 'No notes referenced yet.'
             })
         }
         paths.forEach((path, index) => {
             const row = new Setting(wrapper).setName(path)
-            row.setClass('ai-editor-note-ref-row')
+            row.setClass('editor-ai-daemons-note-ref-row')
             row.addExtraButton((button) => {
                 button
                     .setIcon('arrow-up')
@@ -363,7 +366,7 @@ export function renderNoteRefsEditor(
             add(pending)
         }
         new Setting(wrapper)
-            .setClass('ai-editor-note-ref-add')
+            .setClass('editor-ai-daemons-note-ref-add')
             .addText((text) => {
                 text.setPlaceholder('Search notes, or type a path')
                 text.onChange((value) => {
@@ -432,7 +435,7 @@ export function renderChipList(containerEl: HTMLElement, options: ChipListOption
                     // The facade rejects schema-invalid values (e.g. an
                     // over-long entry): keep the previous list and tell the
                     // user instead of persisting data the load path would wipe.
-                    new Notice('AI Editor: value rejected — failed to save settings.')
+                    new Notice('Editor AI Daemons: value rejected — failed to save settings.')
                     render()
                 })
         }
@@ -464,15 +467,15 @@ export function renderChipList(containerEl: HTMLElement, options: ChipListOption
                 button.setButtonText('Add').onClick(submit)
             })
 
-        const list = wrapper.createDiv({ cls: 'ai-editor-chip-list' })
+        const list = wrapper.createDiv({ cls: 'editor-ai-daemons-chip-list' })
         if (values.length === 0) {
-            list.createSpan({ cls: 'ai-editor-chip-empty', text: options.emptyText })
+            list.createSpan({ cls: 'editor-ai-daemons-chip-empty', text: options.emptyText })
         }
         values.forEach((value, index) => {
-            const chip = list.createSpan({ cls: 'ai-editor-chip' })
+            const chip = list.createSpan({ cls: 'editor-ai-daemons-chip' })
             chip.createSpan({ text: value })
             const remove = chip.createEl('button', {
-                cls: 'ai-editor-chip-remove',
+                cls: 'editor-ai-daemons-chip-remove',
                 text: '✕',
                 attr: { 'aria-label': `Remove ${value}`, 'type': 'button' }
             })

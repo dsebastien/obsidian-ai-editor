@@ -204,7 +204,7 @@ class SizeConfirmModal extends Modal {
 
     override onOpen(): void {
         this.setTitle(this.labels.title)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.contentEl.createEl('p', {
             text:
                 `This note has about ${this.wordCount} words — above your size warning ` +
@@ -254,7 +254,7 @@ class DeleteCommentModal extends Modal {
 
     override onOpen(): void {
         this.setTitle('Delete this comment?')
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.contentEl.createEl('p', {
             text: 'The question and the answer are removed for good. To keep the record but take it out of the margin, resolve it instead.'
         })
@@ -777,7 +777,9 @@ export class ReviewController {
                 new Notice('This note is excluded from AI review by your privacy settings.')
                 return
             case 'rule-disabled':
-                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
+                new Notice(
+                    `Editor AI Daemons is turned off for this note by the rule ${result.ruleLabel}.`
+                )
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
@@ -1053,7 +1055,9 @@ export class ReviewController {
                 new Notice('This note is excluded from AI actions by your privacy settings.')
                 return
             case 'rule-disabled':
-                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
+                new Notice(
+                    `Editor AI Daemons is turned off for this note by the rule ${result.ruleLabel}.`
+                )
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(
@@ -1125,7 +1129,7 @@ export class ReviewController {
             // accepting the question would spend a backend request on an
             // answer that dies at quit, having promised the opposite.
             new Notice(
-                'AI Editor: margin comments cannot be saved this session, so new ones are not accepted. See the comment store warning from startup.'
+                'Editor AI Daemons: margin comments cannot be saved this session, so new ones are not accepted. See the comment store warning from startup.'
             )
             return
         }
@@ -1752,7 +1756,7 @@ export class ReviewController {
 
     /**
      * Flashes one editor's highlights for ~2 s (`emphasizeEditorEffect` adds
-     * the `ai-editor-finding-emphasized` class to exactly that editor's
+     * the `editor-ai-daemons-finding-emphasized` class to exactly that editor's
      * marks; the stylesheet keeps the pulse reduced-motion aware). Re-clicks
      * restart the window; the timer is cleared on note switch, glue teardown
      * and dispose (`pendingTimers`). The clear dispatch is safe on a
@@ -2359,7 +2363,7 @@ export class ReviewController {
         }
         if (registry.isReadOnly()) {
             new Notice(
-                'AI Editor: margin comments cannot be saved this session, so a retry would not be recorded.'
+                'Editor AI Daemons: margin comments cannot be saved this session, so a retry would not be recorded.'
             )
             return
         }
@@ -2640,7 +2644,9 @@ export class ReviewController {
                 new Notice(`${start.notePath} is excluded from AI review.`)
                 return false
             case 'rule-disabled':
-                new Notice(`AI Editor is turned off for that note by the rule ${start.ruleLabel}.`)
+                new Notice(
+                    `Editor AI Daemons is turned off for that note by the rule ${start.ruleLabel}.`
+                )
                 return false
             case 'no-editor':
                 new Notice(
@@ -2897,9 +2903,9 @@ export class ReviewController {
     private createGlue(view: MarkdownView): ViewGlue {
         // Popout safety: every element is created via the view's own document.
         const doc = view.contentEl.ownerDocument
-        view.contentEl.addClass('ai-editor-rail-host')
+        view.contentEl.addClass('editor-ai-daemons-rail-host')
         const railWrapperEl = doc.createElement('div')
-        railWrapperEl.classList.add('ai-editor-rail-wrapper')
+        railWrapperEl.classList.add('editor-ai-daemons-rail-wrapper')
         view.contentEl.appendChild(railWrapperEl)
         const rail = new PersonaRail(
             railWrapperEl,
@@ -3093,7 +3099,7 @@ export class ReviewController {
         glue.marginColumn = null
         glue.rail.destroy()
         glue.railWrapperEl.remove()
-        glue.view.contentEl.removeClass('ai-editor-rail-host')
+        glue.view.contentEl.removeClass('editor-ai-daemons-rail-host')
     }
 
     private refreshGlue(glue: ViewGlue): void {
@@ -3163,13 +3169,13 @@ export class ReviewController {
         // Rail only makes sense over an editable editor (Reading view is out
         // of scope for v1 interactions).
         glue.railWrapperEl.toggleClass(
-            'ai-editor-hidden',
+            'editor-ai-daemons-hidden',
             glue.view.getMode() === 'preview' || pluginDisabled
         )
         // Narrow pane: the wrapper hugs the edge (every reclaimed pixel is a
         // pixel of text) and the rail itself renders in its compact form.
         const narrow = glue.layout === 'narrow'
-        glue.railWrapperEl.toggleClass('ai-editor-rail-wrapper-compact', narrow)
+        glue.railWrapperEl.toggleClass('editor-ai-daemons-rail-wrapper-compact', narrow)
         const railPanel = pluginDisabled ? null : this.buildRailPanel(run)
         glue.rail.render({
             editors: pluginDisabled ? [] : this.buildRailEditors(run, transformRun),
@@ -3401,11 +3407,14 @@ export class ReviewController {
             return
         }
         glue.marginReserve = reserve
-        glue.view.contentEl.toggleClass('ai-editor-margin-reserved', reserve > 0)
+        glue.view.contentEl.toggleClass('editor-ai-daemons-margin-reserved', reserve > 0)
         if (reserve > 0) {
-            glue.view.contentEl.style.setProperty('--ai-editor-margin-reserve', `${reserve}px`)
+            glue.view.contentEl.style.setProperty(
+                '--editor-ai-daemons-margin-reserve',
+                `${reserve}px`
+            )
         } else {
-            glue.view.contentEl.style.removeProperty('--ai-editor-margin-reserve')
+            glue.view.contentEl.style.removeProperty('--editor-ai-daemons-margin-reserve')
         }
     }
 

@@ -11,7 +11,7 @@ export function renderVoiceTab(containerEl: HTMLElement, ctx: TabContext): void 
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'The voice profile teaches every editor how you write. It is prepended to each run unless an editor disables “Inject voice profile”.'
     })
 

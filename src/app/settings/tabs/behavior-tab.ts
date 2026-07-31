@@ -155,7 +155,7 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
 
     new Setting(containerEl).setName('Privacy exclusions').setHeading()
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Excluded notes are never sent to any backend — not as the review target, not as linked context, not via an explicit wikilink reference.'
     })
     renderChipList(containerEl, {
@@ -250,7 +250,7 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
 
     new Setting(containerEl).setName('Import & export').setHeading()
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Move your configuration between vaults, or keep a copy in this one. API keys are never included — the vault that imports the file enters its own.'
     })
     new Setting(containerEl)

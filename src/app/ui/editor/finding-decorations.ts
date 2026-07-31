@@ -19,15 +19,15 @@
  *   — the eventual-consistency backstop.
  *
  * Rendering: each finding is a `Decoration.mark` with class
- * `ai-editor-finding` (plus `ai-editor-finding-stale` when stale, plus
- * `ai-editor-finding-emphasized` during the rail-chip click flash, plus
- * `ai-editor-finding-current` on the keyboard-triage cursor's finding) and
- * the per-editor persona color exposed as the `--ai-editor-finding-color`
+ * `editor-ai-daemons-finding` (plus `editor-ai-daemons-finding-stale` when stale, plus
+ * `editor-ai-daemons-finding-emphasized` during the rail-chip click flash, plus
+ * `editor-ai-daemons-finding-current` on the keyboard-triage cursor's finding) and
+ * the per-editor persona color exposed as the `--editor-ai-daemons-finding-color`
  * CSS custom property via an inline style attribute, so the stylesheet
  * controls how the tint is applied.
  *
  * The tint is never the only signal (plan M9): every mark also carries an
- * `ai-editor-finding-edge-<n>` class — a per-editor bottom-edge STYLE, so two
+ * `editor-ai-daemons-finding-edge-<n>` class — a per-editor bottom-edge STYLE, so two
  * personas' highlights differ in shape as well as hue — and a `title` naming
  * the editor, its panel, the severity and staleness. Both are derived in
  * `finding-identity.ts`, which documents why the name rides a `title` rather
@@ -79,7 +79,7 @@ export interface FindingDecorationSpec {
     readonly stale: boolean
     /**
      * The keyboard-triage cursor's finding (at most one per dispatch):
-     * rendered with the distinct `ai-editor-finding-current` ring.
+     * rendered with the distinct `editor-ai-daemons-finding-current` ring.
      */
     readonly current: boolean
 }
@@ -114,7 +114,7 @@ export const markStaleEffect = StateEffect.define<readonly string[]>()
 /**
  * Emphasizes ONE editor's marks in place (the ~2 s rail-chip click flash —
  * plan §0 "Live-testing feedback #3"): the given editor's marks gain the
- * `ai-editor-finding-emphasized` class, every other mark loses it. `null`
+ * `editor-ai-daemons-finding-emphasized` class, every other mark loses it. `null`
  * clears the emphasis everywhere. A full `setFindingsEffect` rebuild also
  * resets emphasis (specs never carry it), so a note switch or run change
  * clears the flash without anyone remembering to.
@@ -147,26 +147,26 @@ function sanitizeColor(color: string): string {
 }
 
 function buildMark(spec: FindingMarkSpec): Decoration {
-    const classes = ['ai-editor-finding']
+    const classes = ['editor-ai-daemons-finding']
     const edge = edgeSlot(spec.edgeIndex)
     if (edge > 0) {
         // Slot 0 is the plain solid edge every mark starts with, so it needs
         // no class of its own — a plugin with one editor emits none of these.
-        classes.push(`ai-editor-finding-edge-${edge}`)
+        classes.push(`editor-ai-daemons-finding-edge-${edge}`)
     }
     if (spec.stale) {
-        classes.push('ai-editor-finding-stale')
+        classes.push('editor-ai-daemons-finding-stale')
     }
     if (spec.emphasized) {
-        classes.push('ai-editor-finding-emphasized')
+        classes.push('editor-ai-daemons-finding-emphasized')
     }
     if (spec.current) {
-        classes.push('ai-editor-finding-current')
+        classes.push('editor-ai-daemons-finding-current')
     }
     return Decoration.mark({
         class: classes.join(' '),
         attributes: {
-            'style': `--ai-editor-finding-color: ${sanitizeColor(spec.color)}`,
+            'style': `--editor-ai-daemons-finding-color: ${sanitizeColor(spec.color)}`,
             'data-finding-id': spec.findingId,
             'data-editor-id': spec.editorId,
             // The mark's own disclosure: the persona colour is not readable

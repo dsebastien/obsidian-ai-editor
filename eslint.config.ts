@@ -109,7 +109,7 @@ export default defineConfig([
                         'Node.js',
                         'GitHub Sponsors',
                         // Backends, tools and products this plugin names
-                        'AI Editor',
+                        'Editor AI Daemons',
                         'Anthropic',
                         'Azure OpenAI',
                         'Claude',

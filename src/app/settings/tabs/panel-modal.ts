@@ -43,7 +43,7 @@ export class PanelModal extends Modal {
 
     override onOpen(): void {
         this.setTitle(this.isNew ? 'Add panel' : `Edit panel: ${this.draft.name}`)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.renderContent()
     }
 
@@ -78,7 +78,7 @@ export class PanelModal extends Modal {
         new Setting(contentEl).setName('Members').setHeading()
         if (settings.editors.length === 0) {
             contentEl.createEl('p', {
-                cls: 'ai-editor-empty-state',
+                cls: 'editor-ai-daemons-empty-state',
                 text: 'No editors exist yet — create editors first, then compose panels from them.'
             })
         }

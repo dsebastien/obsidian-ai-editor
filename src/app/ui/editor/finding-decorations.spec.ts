@@ -93,8 +93,8 @@ describe('findingDecorationsField', () => {
             expect(marks).toHaveLength(1)
             expect(marks[0]?.from).toBe(6)
             expect(marks[0]?.to).toBe(10)
-            expect(marks[0]?.classes).toBe('ai-editor-finding')
-            expect(marks[0]?.style).toBe('--ai-editor-finding-color: #ff0000')
+            expect(marks[0]?.classes).toBe('editor-ai-daemons-finding')
+            expect(marks[0]?.style).toBe('--editor-ai-daemons-finding-color: #ff0000')
         })
 
         it('renders stale specs with the stale class', () => {
@@ -102,7 +102,9 @@ describe('findingDecorationsField', () => {
                 'alpha beta gamma',
                 setFindingsEffect.of([findingSpec({ stale: true })])
             )
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marksOf(state)[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
         })
 
         it('replaces any previous findings wholesale', () => {
@@ -145,7 +147,9 @@ describe('findingDecorationsField', () => {
                 'alpha',
                 setFindingsEffect.of([findingSpec({ color: 'red; background: url(evil)' })])
             )
-            expect(marksOf(state)[0]?.style).toBe('--ai-editor-finding-color: var(--text-accent)')
+            expect(marksOf(state)[0]?.style).toBe(
+                '--editor-ai-daemons-finding-color: var(--text-accent)'
+            )
         })
     })
 
@@ -194,8 +198,10 @@ describe('findingDecorationsField', () => {
             )
             state = apply(state, { effects: markStaleEffect.of(['f-2']) })
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding')
-            expect(marks[1]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marks[0]?.classes).toBe('editor-ai-daemons-finding')
+            expect(marks[1]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
             expect(marks[1]?.from).toBe(6)
             expect(marks[1]?.to).toBe(10)
         })
@@ -203,7 +209,7 @@ describe('findingDecorationsField', () => {
         it('ignores unknown finding ids', () => {
             let state = stateWith('alpha', setFindingsEffect.of([findingSpec()]))
             state = apply(state, { effects: markStaleEffect.of(['nope']) })
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding')
+            expect(marksOf(state)[0]?.classes).toBe('editor-ai-daemons-finding')
         })
 
         it('applies to positions already mapped through the same transaction', () => {
@@ -216,7 +222,9 @@ describe('findingDecorationsField', () => {
                 effects: markStaleEffect.of(['f-1'])
             })
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marks[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
             expect(marks[0]?.from).toBe(7)
             expect(marks[0]?.to).toBe(11)
         })
@@ -232,8 +240,10 @@ describe('findingDecorationsField', () => {
             let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
-            expect(marks[1]?.classes).toBe('ai-editor-finding')
+            expect(marks[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-emphasized'
+            )
+            expect(marks[1]?.classes).toBe('editor-ai-daemons-finding')
         })
 
         it('never emphasizes stale marks (dimmed, non-revealable)', () => {
@@ -252,8 +262,12 @@ describe('findingDecorationsField', () => {
             )
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
-            expect(marks[1]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marks[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-emphasized'
+            )
+            expect(marks[1]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
         })
 
         it('moves the emphasis when another editor chip is clicked', () => {
@@ -261,8 +275,10 @@ describe('findingDecorationsField', () => {
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             state = apply(state, { effects: emphasizeEditorEffect.of('e-2') })
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding')
-            expect(marks[1]?.classes).toBe('ai-editor-finding ai-editor-finding-emphasized')
+            expect(marks[0]?.classes).toBe('editor-ai-daemons-finding')
+            expect(marks[1]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-emphasized'
+            )
         })
 
         it('clears the emphasis with null (auto-clear timer)', () => {
@@ -270,8 +286,8 @@ describe('findingDecorationsField', () => {
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             state = apply(state, { effects: emphasizeEditorEffect.of(null) })
             expect(marksOf(state).map((mark) => mark.classes)).toEqual([
-                'ai-editor-finding',
-                'ai-editor-finding'
+                'editor-ai-daemons-finding',
+                'editor-ai-daemons-finding'
             ])
         })
 
@@ -279,7 +295,9 @@ describe('findingDecorationsField', () => {
             let state = stateWith('alpha beta gamma', setFindingsEffect.of(twoEditors))
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             state = apply(state, { effects: markStaleEffect.of(['mine']) })
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marksOf(state)[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
         })
 
         it('resets on a full setFindings rebuild (note switch, run change)', () => {
@@ -287,8 +305,8 @@ describe('findingDecorationsField', () => {
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             state = apply(state, { effects: setFindingsEffect.of(twoEditors) })
             expect(marksOf(state).map((mark) => mark.classes)).toEqual([
-                'ai-editor-finding',
-                'ai-editor-finding'
+                'editor-ai-daemons-finding',
+                'editor-ai-daemons-finding'
             ])
         })
 
@@ -297,7 +315,7 @@ describe('findingDecorationsField', () => {
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             state = apply(state, { changes: { from: 15, to: 15, insert: '!' } })
             expect(marksOf(state)[0]?.classes).toBe(
-                'ai-editor-finding ai-editor-finding-emphasized'
+                'editor-ai-daemons-finding editor-ai-daemons-finding-emphasized'
             )
         })
     })
@@ -312,15 +330,19 @@ describe('findingDecorationsField', () => {
                 ])
             )
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toBe('ai-editor-finding ai-editor-finding-current')
-            expect(marks[1]?.classes).toBe('ai-editor-finding')
+            expect(marks[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-current'
+            )
+            expect(marks[1]?.classes).toBe('editor-ai-daemons-finding')
         })
 
         it('survives a full rebuild carrying the flag (unlike the emphasis flash)', () => {
             const specs = [findingSpec({ findingId: 'cursor', from: 0, to: 5, current: true })]
             let state = stateWith('alpha beta gamma', setFindingsEffect.of(specs))
             state = apply(state, { effects: setFindingsEffect.of(specs) })
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-current')
+            expect(marksOf(state)[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-current'
+            )
         })
 
         it('drops from a rebuild whose specs no longer carry it (cursor cleared)', () => {
@@ -335,7 +357,7 @@ describe('findingDecorationsField', () => {
                     findingSpec({ findingId: 'cursor', from: 0, to: 5 })
                 ])
             })
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding')
+            expect(marksOf(state)[0]?.classes).toBe('editor-ai-daemons-finding')
         })
 
         it('never renders a stale spec as current', () => {
@@ -345,7 +367,9 @@ describe('findingDecorationsField', () => {
                     findingSpec({ findingId: 'both', from: 0, to: 5, current: true, stale: true })
                 ])
             )
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marksOf(state)[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
         })
 
         it('drops the current ring when the mark goes stale in place', () => {
@@ -356,7 +380,9 @@ describe('findingDecorationsField', () => {
                 ])
             )
             state = apply(state, { effects: markStaleEffect.of(['cursor']) })
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding ai-editor-finding-stale')
+            expect(marksOf(state)[0]?.classes).toBe(
+                'editor-ai-daemons-finding editor-ai-daemons-finding-stale'
+            )
         })
 
         it('coexists with the chip-click emphasis on the same mark', () => {
@@ -374,7 +400,7 @@ describe('findingDecorationsField', () => {
             )
             state = apply(state, { effects: emphasizeEditorEffect.of('e-1') })
             expect(marksOf(state)[0]?.classes).toBe(
-                'ai-editor-finding ai-editor-finding-emphasized ai-editor-finding-current'
+                'editor-ai-daemons-finding editor-ai-daemons-finding-emphasized editor-ai-daemons-finding-current'
             )
         })
     })
@@ -557,12 +583,12 @@ describe('findingDecorationsField', () => {
             const staled = opened.update({ effects: markStaleEffect.of(['f-1']) }).state
             const mark = marksOf(staled)[0]
             expect(mark?.title).toContain('stale')
-            expect(mark?.classes).toContain('ai-editor-finding-stale')
+            expect(mark?.classes).toContain('editor-ai-daemons-finding-stale')
         })
 
         it('emits no edge class for the first editor — slot 0 is the plain edge', () => {
             const state = stateWith('alpha', setFindingsEffect.of([findingSpec()]))
-            expect(marksOf(state)[0]?.classes).toBe('ai-editor-finding')
+            expect(marksOf(state)[0]?.classes).toBe('editor-ai-daemons-finding')
         })
 
         it('carries a per-editor edge style class, clamped onto the defined slots', () => {
@@ -574,8 +600,8 @@ describe('findingDecorationsField', () => {
                 ])
             )
             const marks = marksOf(state)
-            expect(marks[0]?.classes).toContain('ai-editor-finding-edge-2')
-            expect(marks[1]?.classes).toContain('ai-editor-finding-edge-3')
+            expect(marks[0]?.classes).toContain('editor-ai-daemons-finding-edge-2')
+            expect(marks[1]?.classes).toContain('editor-ai-daemons-finding-edge-3')
         })
     })
 })

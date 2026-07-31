@@ -15,7 +15,7 @@ export function renderEditorsTab(containerEl: HTMLElement, ctx: TabContext): voi
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Editors are AI personas that review your notes. A solid color dot identifies an editor everywhere in the plugin.'
     })
 
@@ -33,13 +33,13 @@ export function renderEditorsTab(containerEl: HTMLElement, ctx: TabContext): voi
 
     if (settings.editors.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'No editors yet. Add one to get your first reviewer.'
         })
         return
     }
 
-    const grid = containerEl.createDiv({ cls: 'ai-editor-card-grid' })
+    const grid = containerEl.createDiv({ cls: 'editor-ai-daemons-card-grid' })
     for (const editor of settings.editors) {
         renderEditorCard(grid, ctx, editor)
     }
@@ -47,17 +47,17 @@ export function renderEditorsTab(containerEl: HTMLElement, ctx: TabContext): voi
 
 function renderEditorCard(grid: HTMLElement, ctx: TabContext, editor: EditorConfig): void {
     const settings = ctx.facade.getSettings()
-    const card = grid.createDiv({ cls: 'ai-editor-card' })
+    const card = grid.createDiv({ cls: 'editor-ai-daemons-card' })
     if (!editor.enabled) {
         card.addClass('is-disabled')
     }
 
-    const title = card.createDiv({ cls: 'ai-editor-card-title' })
+    const title = card.createDiv({ cls: 'editor-ai-daemons-card-title' })
     renderColorDot(title, editor.color, 'editor')
     title.createSpan({ text: editor.name })
 
     card.createDiv({
-        cls: 'ai-editor-card-sub',
+        cls: 'editor-ai-daemons-card-sub',
         text: describeBackendRef(settings, editor.backend)
     })
     const capabilities: string[] = []
@@ -71,11 +71,11 @@ function renderEditorCard(grid: HTMLElement, ctx: TabContext, editor: EditorConf
         capabilities.push('research')
     }
     card.createDiv({
-        cls: 'ai-editor-card-sub',
+        cls: 'editor-ai-daemons-card-sub',
         text: capabilities.length > 0 ? capabilities.join(' · ') : 'no capabilities'
     })
 
-    const actions = card.createDiv({ cls: 'ai-editor-card-actions' })
+    const actions = card.createDiv({ cls: 'editor-ai-daemons-card-actions' })
     const toggle = new ToggleComponent(actions)
     toggle.setValue(editor.enabled)
     toggle.setTooltip(editor.enabled ? 'Enabled' : 'Disabled')

@@ -111,7 +111,7 @@ export async function waitUntil(
 export function trackedRunDir(): { create: CreateRunDir; paths: string[] } {
     const paths: string[] = []
     const create: CreateRunDir = () => {
-        const path = mkdtempSync(join(tmpdir(), 'ai-editor-spec-'))
+        const path = mkdtempSync(join(tmpdir(), 'editor-ai-daemons-spec-'))
         paths.push(path)
         const handle: RunDirHandle = {
             path,

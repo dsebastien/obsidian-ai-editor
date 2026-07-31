@@ -60,7 +60,7 @@ describe('normalizeExportPath', () => {
 
     it('refuses to leave the vault, however the traversal is spelled', () => {
         for (const raw of [
-            '../ai-editor-settings.json',
+            '../editor-ai-daemons-settings.json',
             'Backups/../../escape.json',
             '..\\escape.json',
             '/../escape',

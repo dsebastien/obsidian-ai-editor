@@ -97,9 +97,9 @@ describe('spawnCliProcess — happy path', () => {
         // Node resolves symlinked temp roots (/tmp -> /private/tmp on macOS),
         // so compare on the unique directory name rather than the full path.
         const created = tracked.paths[0] ?? ''
-        expect(report.cwd.endsWith(created.slice(created.lastIndexOf('ai-editor-spec-')))).toBe(
-            true
-        )
+        expect(
+            report.cwd.endsWith(created.slice(created.lastIndexOf('editor-ai-daemons-spec-')))
+        ).toBe(true)
         expect(existsSync(created)).toBe(false)
     })
 
@@ -335,7 +335,7 @@ describe('spawnCliProcess — bounds', () => {
         // apart from "started, then killed quickly enough". The marker file
         // can: the fixture writes it as its very first statement, so if it
         // never appears, the program never ran.
-        const marker = join(tmpdir(), `ai-editor-spec-marker-${String(process.pid)}.txt`)
+        const marker = join(tmpdir(), `editor-ai-daemons-spec-marker-${String(process.pid)}.txt`)
         rmSync(marker, { force: true })
         const controller = new AbortController()
         controller.abort()

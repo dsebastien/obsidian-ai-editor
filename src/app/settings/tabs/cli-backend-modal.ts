@@ -81,7 +81,7 @@ export class CliBackendModal extends Modal {
     override onOpen(): void {
         const label = backendKindLabel(this.draft)
         this.setTitle(this.isNew ? `Add ${label} backend` : `Edit ${label} backend`)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.renderContent()
     }
 
@@ -101,7 +101,7 @@ export class CliBackendModal extends Modal {
         const { contentEl } = this
         contentEl.empty()
 
-        const callout = contentEl.createDiv({ cls: 'ai-editor-settings-callout' })
+        const callout = contentEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
         callout.createEl('strong', { text: 'This backend runs a program on your computer' })
         callout.createEl('div', {
             text: 'Your note is sent to it on standard input. It runs with no shell, in a temporary folder outside your vault, with a minimal environment — and only when you ask for a review or an action.'
@@ -195,7 +195,7 @@ export class CliBackendModal extends Modal {
         setting.addText((text) => {
             text.setPlaceholder('/usr/local/bin/claude')
             text.setValue(this.draft.executablePath)
-            text.inputEl.addClass('ai-editor-wide-input')
+            text.inputEl.addClass('editor-ai-daemons-wide-input')
             text.inputEl.addEventListener('change', () => {
                 const value = text.inputEl.value
                 this.update((draft) => {
@@ -234,11 +234,11 @@ export class CliBackendModal extends Modal {
         })
         if (this.detectLine.length > 0) {
             const hint = contentEl.createDiv({
-                cls: 'ai-editor-modal-hint',
+                cls: 'editor-ai-daemons-modal-hint',
                 text: this.detectLine
             })
             if (this.detectAlternatives.length > 0) {
-                const list = hint.createEl('ul', { cls: 'ai-editor-confirm-lines' })
+                const list = hint.createEl('ul', { cls: 'editor-ai-daemons-confirm-lines' })
                 for (const path of this.detectAlternatives) {
                     list.createEl('li', { text: path })
                 }

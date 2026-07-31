@@ -142,7 +142,7 @@ export const openAiAdapter: ProviderAdapter = {
             // OpenRouter's recommended attribution headers (per-app
             // analytics). Static values only — nothing user-derived.
             headers['http-referer'] = 'https://github.com/dsebastien/obsidian-ai-editor'
-            headers['x-title'] = 'AI Editor (Obsidian)'
+            headers['x-title'] = 'Editor AI Daemons (Obsidian)'
         }
         const responseFormat =
             config.kind === 'openai'

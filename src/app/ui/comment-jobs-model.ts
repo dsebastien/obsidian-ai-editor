@@ -112,7 +112,7 @@ export function commentRetryNotice(
         case 'excluded':
             return 'That note is excluded, so nothing is sent for it.'
         case 'rule-disabled':
-            return 'A rule switches AI Editor off for that note.'
+            return 'A rule switches Editor AI Daemons off for that note.'
         case 'no-editor':
             return 'The editor this comment was asked of cannot run right now.'
         case 'needs-confirmation':
@@ -164,7 +164,7 @@ export function commentStartNotice(
         case 'excluded':
             return 'This note is excluded, so nothing is sent for it.'
         case 'rule-disabled':
-            return 'A rule switches AI Editor off for this note.'
+            return 'A rule switches Editor AI Daemons off for this note.'
         case 'no-editor':
             return 'That editor cannot run right now — check the Editors settings tab.'
         case 'needs-confirmation':

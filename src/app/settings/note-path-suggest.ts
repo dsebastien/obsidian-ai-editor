@@ -34,9 +34,9 @@ export class NotePathSuggest extends AbstractInputSuggest<string> {
     }
 
     override renderSuggestion(path: string, el: HTMLElement): void {
-        el.addClass('ai-editor-note-suggestion')
-        el.createDiv({ cls: 'ai-editor-note-suggestion-title', text: basenameOf(path) })
-        el.createDiv({ cls: 'ai-editor-note-suggestion-path', text: path })
+        el.addClass('editor-ai-daemons-note-suggestion')
+        el.createDiv({ cls: 'editor-ai-daemons-note-suggestion-title', text: basenameOf(path) })
+        el.createDiv({ cls: 'editor-ai-daemons-note-suggestion-path', text: path })
     }
 
     override selectSuggestion(path: string): void {

@@ -2,7 +2,7 @@ import type { VerbClass } from '../../domain/actions/verb-registry'
 import { actionDisplayLabel } from '../entity-label'
 
 /**
- * Pure decision logic for the AI Editor context menus (design doc
+ * Pure decision logic for the Editor AI Daemons context menus (design doc
  * "Interaction surfaces" §1/§2): given the observable state of the
  * right-clicked surface, which items appear, in which order? The Obsidian
  * `Menu` wiring (`editor-menu.ts`, `file-menu.ts`) stays thin — it only
@@ -14,7 +14,7 @@ import { actionDisplayLabel } from '../entity-label'
  * no model for it.
  */
 
-/** `MenuItem.setSection` value grouping every AI Editor item together. */
+/** `MenuItem.setSection` value grouping every Editor AI Daemons item together. */
 export const AI_EDITOR_MENU_SECTION = 'ai-editor'
 
 // ---------------------------------------------------------------------------

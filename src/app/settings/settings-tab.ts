@@ -41,7 +41,7 @@ const SETTINGS_TABS: readonly SettingsTabDefinition[] = [
 
 /** DOM id of one tab button — the `aria-labelledby` target of its panel. */
 function tabDomId(tabId: string): string {
-    return `ai-editor-settings-tab-${tabId}`
+    return `editor-ai-daemons-settings-tab-${tabId}`
 }
 
 /**
@@ -52,7 +52,7 @@ function tabDomId(tabId: string): string {
  * worse than none. The panel says which tab it belongs to through
  * `aria-labelledby`, re-pointed at the active tab button each render.
  */
-const SETTINGS_PANEL_DOM_ID = 'ai-editor-settings-panel'
+const SETTINGS_PANEL_DOM_ID = 'editor-ai-daemons-settings-panel'
 
 /**
  * Tabbed settings tab (Backends / Editors / Panels / Actions / Voice & style
@@ -99,15 +99,15 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
         containerEl.empty()
 
         const tabBar = containerEl.createDiv({
-            cls: 'ai-editor-settings-tabbar',
-            attr: { 'role': 'tablist', 'aria-label': 'AI Editor settings sections' }
+            cls: 'editor-ai-daemons-settings-tabbar',
+            attr: { 'role': 'tablist', 'aria-label': 'Editor AI Daemons settings sections' }
         })
         const activeIndex = Math.max(
             0,
             SETTINGS_TABS.findIndex((tab) => tab.id === this.activeTabId)
         )
         const content = containerEl.createDiv({
-            cls: 'ai-editor-settings-content',
+            cls: 'editor-ai-daemons-settings-content',
             attr: {
                 'role': 'tabpanel',
                 // Programmatically focusable so activating a tab can put focus
@@ -122,7 +122,9 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
         SETTINGS_TABS.forEach((tab, index) => {
             const isActive = index === activeIndex
             const button = tabBar.createEl('button', {
-                cls: isActive ? 'ai-editor-settings-tab is-active' : 'ai-editor-settings-tab',
+                cls: isActive
+                    ? 'editor-ai-daemons-settings-tab is-active'
+                    : 'editor-ai-daemons-settings-tab',
                 text: tab.label,
                 attr: {
                     'role': 'tab',

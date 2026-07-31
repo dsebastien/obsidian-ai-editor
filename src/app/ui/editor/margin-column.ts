@@ -71,15 +71,15 @@ export class MarginColumn {
     ) {
         this.doc = doc ?? containerEl.ownerDocument
         this.rootEl = this.doc.createElement('div')
-        this.rootEl.classList.add('ai-editor-margin')
+        this.rootEl.classList.add('editor-ai-daemons-margin')
         this.rootEl.setAttribute('role', 'complementary')
         this.rootEl.setAttribute('aria-label', 'Margin comments')
         // Orphans are pinned at the top of the column; anchored groups are
         // positioned individually against the lines they belong to.
         this.orphansEl = this.doc.createElement('div')
-        this.orphansEl.classList.add('ai-editor-margin-orphans')
+        this.orphansEl.classList.add('editor-ai-daemons-margin-orphans')
         this.groupsEl = this.doc.createElement('div')
-        this.groupsEl.classList.add('ai-editor-margin-groups')
+        this.groupsEl.classList.add('editor-ai-daemons-margin-groups')
         this.rootEl.appendChild(this.orphansEl)
         this.rootEl.appendChild(this.groupsEl)
         containerEl.appendChild(this.rootEl)
@@ -87,12 +87,12 @@ export class MarginColumn {
 
     /** Column width in px, applied as a custom property. */
     setWidth(width: number): void {
-        this.rootEl.style.setProperty('--ai-editor-margin-width', `${width}px`)
+        this.rootEl.style.setProperty('--editor-ai-daemons-margin-width', `${width}px`)
     }
 
     /** Shows or hides the whole column without destroying it. */
     setVisible(visible: boolean): void {
-        this.rootEl.classList.toggle('ai-editor-hidden', !visible)
+        this.rootEl.classList.toggle('editor-ai-daemons-hidden', !visible)
     }
 
     /**
@@ -121,9 +121,9 @@ export class MarginColumn {
         if (model.orphans !== null) {
             const orphans = model.orphans
             const box = this.doc.createElement('div')
-            box.classList.add('ai-editor-margin-orphan-box')
+            box.classList.add('editor-ai-daemons-margin-orphan-box')
             const toggle = this.doc.createElement('button')
-            toggle.classList.add('ai-editor-margin-orphan-toggle')
+            toggle.classList.add('editor-ai-daemons-margin-orphan-toggle')
             toggle.type = 'button'
             // Text glyph, not an icon font: this file is Obsidian-free DOM.
             toggle.textContent = `${orphans.expanded ? '▾' : '▸'} ${orphans.heading}`
@@ -145,7 +145,7 @@ export class MarginColumn {
 
         for (const group of model.groups) {
             const groupEl = this.doc.createElement('div')
-            groupEl.classList.add('ai-editor-margin-group')
+            groupEl.classList.add('editor-ai-daemons-margin-group')
             groupEl.dataset['groupKey'] = group.key
             if (group.collapsed && group.chipLabel !== null) {
                 groupEl.appendChild(this.renderChip(group, group.chipLabel))
@@ -243,7 +243,7 @@ export class MarginColumn {
     /** A line with several comments: one chip that expands to all of them. */
     private renderChip(group: MarginGroupView, label: string): HTMLElement {
         const chip = this.doc.createElement('button')
-        chip.classList.add('ai-editor-margin-chip')
+        chip.classList.add('editor-ai-daemons-margin-chip')
         chip.type = 'button'
         chip.textContent = label
         chip.setAttribute('aria-expanded', 'false')
@@ -256,11 +256,11 @@ export class MarginColumn {
 
     private renderCard(card: MarginCardView): HTMLElement {
         const cardEl = this.doc.createElement('div')
-        cardEl.classList.add('ai-editor-margin-card')
+        cardEl.classList.add('editor-ai-daemons-margin-card')
         if (card.orphaned) {
-            cardEl.classList.add('ai-editor-margin-card-orphaned')
+            cardEl.classList.add('editor-ai-daemons-margin-card-orphaned')
         }
-        cardEl.style.setProperty('--ai-editor-editor-color', card.color)
+        cardEl.style.setProperty('--editor-ai-daemons-editor-color', card.color)
         cardEl.dataset['commentId'] = card.commentId
         // The composed sentence belongs on the CARD, which is a `group` and can
         // therefore carry a name. It used to ride on the question element —
@@ -271,13 +271,13 @@ export class MarginColumn {
         cardEl.setAttribute('aria-label', card.accessibleName)
 
         const head = this.doc.createElement('div')
-        head.classList.add('ai-editor-margin-head')
+        head.classList.add('editor-ai-daemons-margin-head')
         const name = this.doc.createElement('span')
-        name.classList.add('ai-editor-margin-editor')
+        name.classList.add('editor-ai-daemons-margin-editor')
         name.textContent = card.editorName
         head.appendChild(name)
         const status = this.doc.createElement('span')
-        status.classList.add('ai-editor-margin-status')
+        status.classList.add('editor-ai-daemons-margin-status')
         status.textContent = marginCardStatusText(card)
         // The card's own name already announces the editor and the state.
         status.setAttribute('aria-hidden', 'true')
@@ -289,7 +289,10 @@ export class MarginColumn {
         // to reveal, so it is plain text instead.
         if (card.actions.canReveal) {
             const reveal = this.doc.createElement('button')
-            reveal.classList.add('ai-editor-margin-question', 'ai-editor-margin-reveal')
+            reveal.classList.add(
+                'editor-ai-daemons-margin-question',
+                'editor-ai-daemons-margin-reveal'
+            )
             reveal.type = 'button'
             reveal.textContent = card.question
             this.applyHint(reveal, 'Go to the text this comment is about')
@@ -299,31 +302,31 @@ export class MarginColumn {
             cardEl.appendChild(reveal)
         } else {
             const question = this.doc.createElement('div')
-            question.classList.add('ai-editor-margin-question')
+            question.classList.add('editor-ai-daemons-margin-question')
             question.textContent = card.question
             cardEl.appendChild(question)
         }
 
         if (card.quote !== null) {
             const quote = this.doc.createElement('blockquote')
-            quote.classList.add('ai-editor-margin-quote')
+            quote.classList.add('editor-ai-daemons-margin-quote')
             quote.textContent = card.quote
             cardEl.appendChild(quote)
         }
         if (card.drifted) {
             const drift = this.doc.createElement('div')
-            drift.classList.add('ai-editor-margin-drift')
+            drift.classList.add('editor-ai-daemons-margin-drift')
             drift.textContent = 'The text has changed slightly since this was asked.'
             cardEl.appendChild(drift)
         }
         if (card.body !== null) {
             const body = this.doc.createElement('div')
-            body.classList.add('ai-editor-margin-body')
+            body.classList.add('editor-ai-daemons-margin-body')
             body.textContent = card.body
             cardEl.appendChild(body)
             if (card.truncated) {
                 const more = this.doc.createElement('button')
-                more.classList.add('ai-editor-margin-more')
+                more.classList.add('editor-ai-daemons-margin-more')
                 more.type = 'button'
                 more.textContent = card.expanded ? 'Show less' : 'Show more'
                 more.setAttribute('aria-expanded', String(card.expanded))
@@ -340,7 +343,7 @@ export class MarginColumn {
         }
 
         const actions = this.doc.createElement('div')
-        actions.classList.add('ai-editor-margin-actions')
+        actions.classList.add('editor-ai-daemons-margin-actions')
         if (card.actions.canRetry) {
             this.addAction(actions, card, 'Retry', () => this.callbacks.onRetry(card.commentId))
         }
@@ -368,7 +371,7 @@ export class MarginColumn {
         onClick: () => void
     ): void {
         const button = this.doc.createElement('button')
-        button.classList.add('ai-editor-margin-action')
+        button.classList.add('editor-ai-daemons-margin-action')
         button.type = 'button'
         button.textContent = label
         // Every card carries identically-labelled buttons; the accessible

@@ -34,19 +34,19 @@ export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void 
     const settings = ctx.facade.getSettings()
 
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'The “Disable plugin” action is a kill switch: no rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.'
     })
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Among the remaining rules, the first match from the top assigns who reviews the note — one rule, not a union. Use the arrows to set priority.'
     })
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: 'Notes no rule matches are reviewed by every enabled editor, which is also what happens when there are no rules at all.'
     })
     containerEl.createEl('p', {
-        cls: 'ai-editor-tab-intro',
+        cls: 'editor-ai-daemons-tab-intro',
         text: isStarterKitAvailable(ctx.app)
             ? 'Obsidian Starter Kit detected: “OSK note type” matches its type names (for example “Permanent Notes”). The type/… tag on a note works as well.'
             : 'Obsidian Starter Kit not detected: “OSK note type” falls back to the type/… tag on a note, so match the tag spelling (for example “permanent_note”).'
@@ -54,7 +54,7 @@ export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void 
 
     if (settings.rules.length === 0) {
         containerEl.createEl('p', {
-            cls: 'ai-editor-empty-state',
+            cls: 'editor-ai-daemons-empty-state',
             text: 'No rules yet — every enabled editor reviews every note.'
         })
     }
@@ -113,7 +113,7 @@ function renderRuleRow(
     }
 
     const row = new Setting(containerEl)
-    row.setClass('ai-editor-rule-row')
+    row.setClass('editor-ai-daemons-rule-row')
     row.setName(`Rule ${index + 1}`)
     row.setDesc(ruleSummary(settings, rule))
 

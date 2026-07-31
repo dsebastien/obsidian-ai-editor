@@ -80,8 +80,8 @@ export class SetupWizardModal extends Modal {
     }
 
     override onOpen(): void {
-        this.modalEl.addClass('ai-editor-modal')
-        this.modalEl.addClass('ai-editor-wizard')
+        this.modalEl.addClass('editor-ai-daemons-modal')
+        this.modalEl.addClass('editor-ai-daemons-wizard')
         this.render()
     }
 
@@ -145,13 +145,13 @@ export class SetupWizardModal extends Modal {
                 Object.assign(settings, applied)
             })
         } catch {
-            new Notice('AI Editor: could not save the setup. Nothing was changed.')
+            new Notice('Editor AI Daemons: could not save the setup. Nothing was changed.')
             return
         }
         this.committed = true
         this.close()
         this.onFinished()
-        new Notice('AI Editor is set up.')
+        new Notice('Editor AI Daemons is set up.')
     }
 
     // -- Rendering ------------------------------------------------------------
@@ -162,7 +162,10 @@ export class SetupWizardModal extends Modal {
         const stepId = this.state.stepId
         this.setTitle(stepTitle(stepId))
 
-        contentEl.createDiv({ cls: 'ai-editor-wizard-progress', text: stepProgressLabel(stepId) })
+        contentEl.createDiv({
+            cls: 'editor-ai-daemons-wizard-progress',
+            text: stepProgressLabel(stepId)
+        })
         for (const paragraph of stepBody(stepId)) {
             contentEl.createEl('p', { text: paragraph })
         }
@@ -192,7 +195,7 @@ export class SetupWizardModal extends Modal {
     }
 
     private renderWelcome(contentEl: HTMLElement): void {
-        const callout = contentEl.createDiv({ cls: 'ai-editor-settings-callout' })
+        const callout = contentEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
         callout.createEl('strong', { text: 'Where your API keys are stored' })
         callout.createEl('div', { text: KEY_STORAGE_DISCLOSURE })
     }
@@ -264,7 +267,7 @@ export class SetupWizardModal extends Modal {
                     })
                 })
             const insecureWarning = contentEl.createDiv({
-                cls: 'ai-editor-modal-warning',
+                cls: 'editor-ai-daemons-modal-warning',
                 text: 'This endpoint uses unencrypted HTTP to a remote host — the API key and note content would travel in clear text.'
             })
             insecureWarning.toggle(isInsecureRemoteUrl(draft.baseUrl))
@@ -294,7 +297,7 @@ export class SetupWizardModal extends Modal {
 
         this.renderHealthCheck(contentEl)
         contentEl.createEl('p', {
-            cls: 'ai-editor-wizard-aside',
+            cls: 'editor-ai-daemons-wizard-aside',
             text: 'Thinking modes, reasoning effort and per-host request flags live in the Backends tab — the defaults are fine to start with.'
         })
     }
@@ -320,7 +323,7 @@ export class SetupWizardModal extends Modal {
             resultEl.empty()
             resultEl.className = ''
             if (this.healthRunning) {
-                resultEl.className = 'ai-editor-wizard-health'
+                resultEl.className = 'editor-ai-daemons-wizard-health'
                 resultEl.setText('Testing the connection…')
                 return
             }
@@ -420,7 +423,7 @@ export class SetupWizardModal extends Modal {
         const choices = this.state.draft.editors
         if (choices.length === 0) {
             contentEl.createEl('p', {
-                cls: 'ai-editor-empty-state',
+                cls: 'editor-ai-daemons-empty-state',
                 text: 'No editors are configured yet. You can create them in the Editors tab.'
             })
             return
@@ -469,7 +472,10 @@ export class SetupWizardModal extends Modal {
                 }
             }
         })
-        contentEl.createEl('p', { cls: 'ai-editor-wizard-aside', text: FOLLOW_LINKS_EXPLANATION })
+        contentEl.createEl('p', {
+            cls: 'editor-ai-daemons-wizard-aside',
+            text: FOLLOW_LINKS_EXPLANATION
+        })
     }
 
     // -- Step 5: summon vs daemon --------------------------------------------
@@ -490,7 +496,7 @@ export class SetupWizardModal extends Modal {
             })
         })
         if (this.state.draft.daemonMode) {
-            const warning = contentEl.createDiv({ cls: 'ai-editor-modal-warning' })
+            const warning = contentEl.createDiv({ cls: 'editor-ai-daemons-modal-warning' })
             warning.setText(DAEMON_COST_WARNING)
         }
     }
@@ -505,12 +511,15 @@ export class SetupWizardModal extends Modal {
         // predicate every dispatch surface uses — so "nothing will run yet" is
         // the truth rather than an approximation of it.
         const canReview = hasReviewCapableEditor(applySetupWizard(settings, draft))
-        const summary = contentEl.createEl('ul', { cls: 'ai-editor-confirm-lines' })
+        const summary = contentEl.createEl('ul', { cls: 'editor-ai-daemons-confirm-lines' })
         for (const line of setupSummaryLines(outcome, canReview)) {
             summary.createEl('li', { text: line })
         }
-        contentEl.createEl('p', { cls: 'ai-editor-wizard-aside', text: 'Where to go from here:' })
-        const pointers = contentEl.createEl('ul', { cls: 'ai-editor-confirm-lines' })
+        contentEl.createEl('p', {
+            cls: 'editor-ai-daemons-wizard-aside',
+            text: 'Where to go from here:'
+        })
+        const pointers = contentEl.createEl('ul', { cls: 'editor-ai-daemons-confirm-lines' })
         for (const pointer of SETUP_POINTERS) {
             pointers.createEl('li', { text: pointer })
         }
@@ -541,7 +550,7 @@ export class SetupWizardModal extends Modal {
         })
         if (nextSetupStep(stepId) !== null) {
             contentEl.createEl('p', {
-                cls: 'ai-editor-wizard-aside',
+                cls: 'editor-ai-daemons-wizard-aside',
                 text: 'Nothing is saved until the last step.'
             })
         }

@@ -36,7 +36,7 @@ export class EditorModal extends Modal {
 
     override onOpen(): void {
         this.setTitle(this.isNew ? 'Add editor' : `Edit editor: ${this.draft.name}`)
-        this.modalEl.addClass('ai-editor-modal')
+        this.modalEl.addClass('editor-ai-daemons-modal')
         this.renderContent()
     }
 
@@ -212,7 +212,7 @@ export class EditorModal extends Modal {
                 .setName('Memory note path')
                 .setDesc('Vault note that stores what this editor learns (readable, editable).')
                 .addText((text) => {
-                    text.setPlaceholder('e.g. Meta/AI Editor/Concision memory.md')
+                    text.setPlaceholder('e.g. Meta/Editor AI Daemons/Concision memory.md')
                     text.setValue(this.draft.memoryNotePath)
                     text.onChange((value) => {
                         this.draft.memoryNotePath = value

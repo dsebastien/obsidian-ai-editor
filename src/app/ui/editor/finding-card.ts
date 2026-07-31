@@ -436,7 +436,7 @@ class FindingCardPlugin implements PluginValue {
      */
     handleClick(event: MouseEvent, view: EditorView): boolean {
         const target = event.target
-        if (!(target instanceof Element) || !target.closest('.ai-editor-finding')) {
+        if (!(target instanceof Element) || !target.closest('.editor-ai-daemons-finding')) {
             return false
         }
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
@@ -534,7 +534,7 @@ class FindingCardPlugin implements PluginValue {
         this.closeCard()
         const doc = this.view.dom.ownerDocument
         const card = doc.createElement('div')
-        card.classList.add('ai-editor-finding-card')
+        card.classList.add('editor-ai-daemons-finding-card')
         card.setAttribute('role', 'dialog')
         // Programmatically focusable (never in the tab order): focus parks
         // here while the reply input is disabled mid-turn.
@@ -642,7 +642,7 @@ class FindingCardPlugin implements PluginValue {
         }
         let focused: { findingId: string; selectionStart: number } | null = null
         for (const input of Array.from(
-            card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
+            card.querySelectorAll('input.editor-ai-daemons-finding-card-pushback-input')
         )) {
             if (!(input instanceof HTMLInputElement)) {
                 continue
@@ -688,7 +688,9 @@ class FindingCardPlugin implements PluginValue {
         if (!card) {
             return
         }
-        for (const list of Array.from(card.querySelectorAll('.ai-editor-finding-card-thread'))) {
+        for (const list of Array.from(
+            card.querySelectorAll('.editor-ai-daemons-finding-card-thread')
+        )) {
             list.scrollTop = list.scrollHeight
         }
     }
@@ -707,7 +709,7 @@ class FindingCardPlugin implements PluginValue {
             return
         }
         for (const input of Array.from(
-            card.querySelectorAll('input.ai-editor-finding-card-pushback-input')
+            card.querySelectorAll('input.editor-ai-daemons-finding-card-pushback-input')
         )) {
             if (
                 !(input instanceof HTMLInputElement) ||
@@ -763,7 +765,7 @@ class FindingCardPlugin implements PluginValue {
     private renderSection(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
         const section = doc.createElement('section')
-        section.classList.add('ai-editor-finding-card-section')
+        section.classList.add('editor-ai-daemons-finding-card-section')
         section.dataset['findingId'] = data.findingId
         if (data.panelName !== null) {
             section.classList.add('is-panel-member')
@@ -774,32 +776,32 @@ class FindingCardPlugin implements PluginValue {
         }
 
         const header = doc.createElement('header')
-        header.classList.add('ai-editor-finding-card-header')
+        header.classList.add('editor-ai-daemons-finding-card-header')
         const dot = doc.createElement('span')
-        dot.classList.add('ai-editor-finding-card-dot')
-        dot.style.setProperty('--ai-editor-editor-color', data.editorColor)
+        dot.classList.add('editor-ai-daemons-finding-card-dot')
+        dot.style.setProperty('--editor-ai-daemons-editor-color', data.editorColor)
         dot.setAttribute('aria-hidden', 'true')
         header.appendChild(dot)
         const name = doc.createElement('span')
-        name.classList.add('ai-editor-finding-card-name')
+        name.classList.add('editor-ai-daemons-finding-card-name')
         name.textContent = data.editorName
         header.appendChild(name)
         const severity = doc.createElement('span')
         severity.classList.add(
-            'ai-editor-finding-card-severity',
-            `ai-editor-finding-card-severity-${data.severity}`
+            'editor-ai-daemons-finding-card-severity',
+            `editor-ai-daemons-finding-card-severity-${data.severity}`
         )
         severity.textContent = SEVERITY_LABELS[data.severity]
         header.appendChild(severity)
         section.appendChild(header)
 
         const critique = doc.createElement('p')
-        critique.classList.add('ai-editor-finding-card-critique')
+        critique.classList.add('editor-ai-daemons-finding-card-critique')
         critique.textContent = data.critique
         section.appendChild(critique)
 
         const quote = doc.createElement('blockquote')
-        quote.classList.add('ai-editor-finding-card-quote')
+        quote.classList.add('editor-ai-daemons-finding-card-quote')
         quote.textContent = data.quote
         section.appendChild(quote)
 
@@ -821,13 +823,13 @@ class FindingCardPlugin implements PluginValue {
     private renderDiff(oldText: string, newText: string): HTMLElement {
         const doc = this.view.dom.ownerDocument
         const diff = doc.createElement('div')
-        diff.classList.add('ai-editor-finding-card-diff')
+        diff.classList.add('editor-ai-daemons-finding-card-diff')
         const oldEl = doc.createElement('del')
-        oldEl.classList.add('ai-editor-finding-card-diff-old')
+        oldEl.classList.add('editor-ai-daemons-finding-card-diff-old')
         oldEl.textContent = oldText
         diff.appendChild(oldEl)
         const newEl = doc.createElement('ins')
-        newEl.classList.add('ai-editor-finding-card-diff-new')
+        newEl.classList.add('editor-ai-daemons-finding-card-diff-new')
         newEl.textContent = newText
         diff.appendChild(newEl)
         return diff
@@ -836,11 +838,11 @@ class FindingCardPlugin implements PluginValue {
     private renderActions(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
         const actions = doc.createElement('div')
-        actions.classList.add('ai-editor-finding-card-actions')
+        actions.classList.add('editor-ai-daemons-finding-card-actions')
 
         if (data.suggestion !== null) {
             const accept = doc.createElement('button')
-            accept.classList.add('ai-editor-finding-card-accept', 'mod-cta')
+            accept.classList.add('editor-ai-daemons-finding-card-accept', 'mod-cta')
             accept.textContent = 'Accept'
             accept.disabled = !data.acceptable
             if (!data.acceptable) {
@@ -853,7 +855,7 @@ class FindingCardPlugin implements PluginValue {
         }
 
         const dismiss = doc.createElement('button')
-        dismiss.classList.add('ai-editor-finding-card-dismiss')
+        dismiss.classList.add('editor-ai-daemons-finding-card-dismiss')
         dismiss.textContent = 'Dismiss'
         dismiss.addEventListener('click', () => {
             this.dismissSection(data.findingId)
@@ -887,7 +889,7 @@ class FindingCardPlugin implements PluginValue {
 
         if (view.rows.length > 0) {
             const list = doc.createElement('div')
-            list.classList.add('ai-editor-finding-card-thread')
+            list.classList.add('editor-ai-daemons-finding-card-thread')
             // Scrollable region inside a dialog: keyboard-reachable so the
             // exchange can be scrolled back through without a mouse (WCAG
             // 2.1.1), and a polite log so replies injected asynchronously
@@ -900,18 +902,18 @@ class FindingCardPlugin implements PluginValue {
             for (const row of view.rows) {
                 const message = doc.createElement('div')
                 message.classList.add(
-                    'ai-editor-finding-card-thread-message',
-                    `ai-editor-finding-card-thread-${row.role}`
+                    'editor-ai-daemons-finding-card-thread-message',
+                    `editor-ai-daemons-finding-card-thread-${row.role}`
                 )
                 if (row.state !== 'settled') {
-                    message.classList.add(`ai-editor-finding-card-thread-${row.state}`)
+                    message.classList.add(`editor-ai-daemons-finding-card-thread-${row.state}`)
                 }
                 const who = doc.createElement('span')
-                who.classList.add('ai-editor-finding-card-thread-who')
+                who.classList.add('editor-ai-daemons-finding-card-thread-who')
                 who.textContent = row.role === 'user' ? 'You' : data.editorName
                 message.appendChild(who)
                 const body = doc.createElement('span')
-                body.classList.add('ai-editor-finding-card-thread-body')
+                body.classList.add('editor-ai-daemons-finding-card-thread-body')
                 body.textContent = row.content
                 message.appendChild(body)
                 list.appendChild(message)
@@ -921,16 +923,16 @@ class FindingCardPlugin implements PluginValue {
 
         if (view.failure !== null) {
             const failure = doc.createElement('p')
-            failure.classList.add('ai-editor-finding-card-thread-failure')
+            failure.classList.add('editor-ai-daemons-finding-card-thread-failure')
             failure.setAttribute('role', 'alert')
             failure.textContent = `Push-back failed: ${view.failure}`
             elements.push(failure)
         }
 
         const row = doc.createElement('div')
-        row.classList.add('ai-editor-finding-card-pushback')
+        row.classList.add('editor-ai-daemons-finding-card-pushback')
         const input = doc.createElement('input')
-        input.classList.add('ai-editor-finding-card-pushback-input')
+        input.classList.add('editor-ai-daemons-finding-card-pushback-input')
         input.type = 'text'
         input.dataset['findingId'] = data.findingId
         input.disabled = !view.inputEnabled
@@ -938,7 +940,7 @@ class FindingCardPlugin implements PluginValue {
         input.setAttribute('aria-label', `Push back to ${data.editorName}`)
         input.value = replyInputValue(this.drafts.get(data.findingId), view.restoreDraft)
         const send = doc.createElement('button')
-        send.classList.add('ai-editor-finding-card-pushback-send')
+        send.classList.add('editor-ai-daemons-finding-card-pushback-send')
         send.textContent = 'Send'
         send.disabled = !view.inputEnabled
         const submit = (): void => {

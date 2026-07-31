@@ -38,7 +38,7 @@ import { verdictLabel } from './verdict-label'
  * one from here.
  */
 
-export const REVIEW_PANEL_VIEW_TYPE = 'ai-editor-review'
+export const REVIEW_PANEL_VIEW_TYPE = 'editor-ai-daemons-review'
 
 export interface SidePanelEditorInfo {
     readonly id: string
@@ -233,7 +233,7 @@ export class ReviewSidePanelView extends ItemView {
      */
     revealEditorSection(editorId: string): void {
         const section = this.contentEl.querySelector(
-            `.ai-editor-panel-section[data-editor-id="${CSS.escape(editorId)}"]`
+            `.editor-ai-daemons-panel-section[data-editor-id="${CSS.escape(editorId)}"]`
         )
         if (section instanceof HTMLElement) {
             section.scrollIntoView({ block: 'start' })
@@ -243,7 +243,7 @@ export class ReviewSidePanelView extends ItemView {
     private render(): void {
         const { contentEl } = this
         contentEl.empty()
-        const root = contentEl.createDiv({ cls: 'ai-editor-panel' })
+        const root = contentEl.createDiv({ cls: 'editor-ai-daemons-panel' })
 
         const state = this.panelState
         if (!state) {
@@ -254,7 +254,7 @@ export class ReviewSidePanelView extends ItemView {
         const binding = state.binding
         if (!binding) {
             root.createDiv({
-                cls: 'ai-editor-panel-empty',
+                cls: 'editor-ai-daemons-panel-empty',
                 text: panelEmptyStateText({
                     noteName: state.review.noteName,
                     gate: state.review.gate,
@@ -301,9 +301,9 @@ export class ReviewSidePanelView extends ItemView {
      * accessible name.
      */
     private renderHeader(root: HTMLElement, state: SidePanelState): void {
-        const header = root.createDiv({ cls: 'ai-editor-panel-header' })
+        const header = root.createDiv({ cls: 'editor-ai-daemons-panel-header' })
         header.createDiv({
-            cls: 'ai-editor-panel-file',
+            cls: 'editor-ai-daemons-panel-file',
             text: state.review.noteName ?? 'No note'
         })
         const vm = panelReviewButtonState({
@@ -312,7 +312,7 @@ export class ReviewSidePanelView extends ItemView {
             busy: state.review.isBusy()
         })
         const button = header.createEl('button', {
-            cls: 'ai-editor-panel-review-button',
+            cls: 'editor-ai-daemons-panel-review-button',
             attr: { type: 'button' }
         })
         if (vm.busy) {
@@ -320,7 +320,7 @@ export class ReviewSidePanelView extends ItemView {
             // "Reviewing…", so the spinner carries no information of its own
             // and must not be announced.
             button
-                .createSpan({ cls: 'ai-editor-panel-review-spinner' })
+                .createSpan({ cls: 'editor-ai-daemons-panel-review-spinner' })
                 .setAttribute('aria-hidden', 'true')
         }
         button.createSpan({ text: vm.text })
@@ -337,7 +337,7 @@ export class ReviewSidePanelView extends ItemView {
             // about the note in front of you — and the only difference is
             // that its answer arrives later, in the margin.
             const ask = header.createEl('button', {
-                cls: 'ai-editor-panel-comment-ask',
+                cls: 'editor-ai-daemons-panel-comment-ask',
                 text: 'Ask for comments',
                 attr: { type: 'button' }
             })
@@ -366,8 +366,8 @@ export class ReviewSidePanelView extends ItemView {
         if (section.heading === null) {
             return
         }
-        const box = root.createDiv({ cls: 'ai-editor-panel-comments' })
-        box.createDiv({ cls: 'ai-editor-panel-comments-heading', text: section.heading })
+        const box = root.createDiv({ cls: 'editor-ai-daemons-panel-comments' })
+        box.createDiv({ cls: 'editor-ai-daemons-panel-comments-heading', text: section.heading })
         for (const row of section.rows) {
             this.renderCommentJobRow(box, jobs, row)
         }
@@ -378,24 +378,24 @@ export class ReviewSidePanelView extends ItemView {
         jobs: SidePanelCommentJobs,
         row: CommentJobRow
     ): void {
-        const item = box.createDiv({ cls: 'ai-editor-panel-comment' })
+        const item = box.createDiv({ cls: 'editor-ai-daemons-panel-comment' })
         // `role=generic` cannot be named (ARIA 1.2), so the composed sentence
         // needs a role that supports one — same fix as the margin card.
         item.setAttribute('role', 'group')
         item.setAttribute('aria-label', row.accessibleName)
-        const head = item.createDiv({ cls: 'ai-editor-panel-comment-head' })
-        head.createSpan({ cls: 'ai-editor-panel-comment-editor', text: row.editorName })
-        const status = head.createSpan({ cls: 'ai-editor-panel-comment-status' })
+        const head = item.createDiv({ cls: 'editor-ai-daemons-panel-comment-head' })
+        head.createSpan({ cls: 'editor-ai-daemons-panel-comment-editor', text: row.editorName })
+        const status = head.createSpan({ cls: 'editor-ai-daemons-panel-comment-status' })
         status.setText(
             row.view.timer === null
                 ? row.view.statusLabel
                 : `${row.view.statusLabel} ${row.view.timer}`
         )
-        item.createDiv({ cls: 'ai-editor-panel-comment-question', text: row.question })
+        item.createDiv({ cls: 'editor-ai-daemons-panel-comment-question', text: row.question })
         if (row.view.detail !== null) {
-            item.createDiv({ cls: 'ai-editor-panel-comment-detail', text: row.view.detail })
+            item.createDiv({ cls: 'editor-ai-daemons-panel-comment-detail', text: row.view.detail })
         }
-        const actions = item.createDiv({ cls: 'ai-editor-panel-comment-actions' })
+        const actions = item.createDiv({ cls: 'editor-ai-daemons-panel-comment-actions' })
         if (row.view.canRetry) {
             // Never "Resume": the request died with the session, and the word
             // would promise continuity this cannot deliver (plan M8).
@@ -429,7 +429,7 @@ export class ReviewSidePanelView extends ItemView {
         onClick: () => void
     ): void {
         const button = actions.createEl('button', {
-            cls: 'ai-editor-panel-comment-action',
+            cls: 'editor-ai-daemons-panel-comment-action',
             text: label,
             attr: { type: 'button' }
         })
@@ -454,37 +454,39 @@ export class ReviewSidePanelView extends ItemView {
         }
         const view = buildScorecardView(panel, this.topFixCandidates(binding))
         const box = root.createDiv({
-            cls: `ai-editor-scorecard ai-editor-scorecard-${view.status.kind}`
+            cls: `editor-ai-daemons-scorecard editor-ai-daemons-scorecard-${view.status.kind}`
         })
 
-        const header = box.createDiv({ cls: 'ai-editor-scorecard-header' })
+        const header = box.createDiv({ cls: 'editor-ai-daemons-scorecard-header' })
         // Ringed, like every other panel affordance (Business Rules #11) — and
         // the name itself says "(panel)", because the ring is decoration and
         // the member sections right below it are editors.
-        header.createSpan({ cls: 'ai-editor-scorecard-ring' }).setAttribute('aria-hidden', 'true')
-        header.createSpan({ cls: 'ai-editor-scorecard-name', text: view.panelLabel })
+        header
+            .createSpan({ cls: 'editor-ai-daemons-scorecard-ring' })
+            .setAttribute('aria-hidden', 'true')
+        header.createSpan({ cls: 'editor-ai-daemons-scorecard-name', text: view.panelLabel })
         if (view.verdict !== null) {
             header.createSpan({
-                cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${view.verdict.verdict}`,
+                cls: `editor-ai-daemons-panel-verdict editor-ai-daemons-panel-verdict-${view.verdict.verdict}`,
                 text: view.verdict.label
             })
         }
 
-        box.createDiv({ cls: 'ai-editor-scorecard-status', text: view.status.label })
+        box.createDiv({ cls: 'editor-ai-daemons-scorecard-status', text: view.status.label })
         if (view.stale) {
             // The scorecard below is the previous round's. It is kept because
             // every finding it weighed is still on the note — but a member is
             // adding to them, so it must not read as current.
             box.createDiv({
-                cls: 'ai-editor-scorecard-stale',
+                cls: 'editor-ai-daemons-scorecard-stale',
                 text: 'From the previous round — a member is generating more, so this will be rewritten.'
             })
         }
         if (view.status.detail !== null) {
-            box.createDiv({ cls: 'ai-editor-scorecard-detail', text: view.status.detail })
+            box.createDiv({ cls: 'editor-ai-daemons-scorecard-detail', text: view.status.detail })
         }
         if (view.rationale !== null && view.rationale.length > 0) {
-            box.createDiv({ cls: 'ai-editor-scorecard-rationale', text: view.rationale })
+            box.createDiv({ cls: 'editor-ai-daemons-scorecard-rationale', text: view.rationale })
         }
 
         this.renderScorecardMembers(box, view)
@@ -523,35 +525,41 @@ export class ReviewSidePanelView extends ItemView {
         if (view.members.length === 0) {
             return
         }
-        const list = box.createDiv({ cls: 'ai-editor-scorecard-members' })
+        const list = box.createDiv({ cls: 'editor-ai-daemons-scorecard-members' })
         for (const member of view.members) {
-            const row = list.createDiv({ cls: 'ai-editor-scorecard-member' })
+            const row = list.createDiv({ cls: 'editor-ai-daemons-scorecard-member' })
             // A row is a stack of unrelated spans; read as one run they blur
             // into the next member's name. `role=group` gives the sentence
             // its boundaries and can carry a name (a plain div cannot).
             row.setAttribute('role', 'group')
             row.setAttribute('aria-label', scorecardMemberName(member))
-            row.createSpan({ cls: 'ai-editor-scorecard-member-name', text: member.editorName })
+            row.createSpan({
+                cls: 'editor-ai-daemons-scorecard-member-name',
+                text: member.editorName
+            })
             if (member.missing) {
                 row.createSpan({
-                    cls: 'ai-editor-scorecard-missing',
+                    cls: 'editor-ai-daemons-scorecard-missing',
                     text: 'No review — not weighed'
                 })
             } else if (member.unnamed) {
                 // It ran and produced a review; the scorecard just never
                 // mentions it. Saying so beats a row that looks half-rendered.
                 row.createSpan({
-                    cls: 'ai-editor-scorecard-missing',
+                    cls: 'editor-ai-daemons-scorecard-missing',
                     text: 'Not named in the scorecard'
                 })
             } else if (member.verdict !== null && member.verdictLabel !== null) {
                 row.createSpan({
-                    cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${member.verdict}`,
+                    cls: `editor-ai-daemons-panel-verdict editor-ai-daemons-panel-verdict-${member.verdict}`,
                     text: member.verdictLabel
                 })
             }
             if (member.keyPoint !== null && member.keyPoint.length > 0) {
-                row.createSpan({ cls: 'ai-editor-scorecard-keypoint', text: member.keyPoint })
+                row.createSpan({
+                    cls: 'editor-ai-daemons-scorecard-keypoint',
+                    text: member.keyPoint
+                })
             }
         }
     }
@@ -566,8 +574,8 @@ export class ReviewSidePanelView extends ItemView {
         if (view.topFixes.length === 0) {
             return
         }
-        box.createDiv({ cls: 'ai-editor-scorecard-subheader', text: 'Top fixes' })
-        const list = box.createEl('ol', { cls: 'ai-editor-scorecard-fixes' })
+        box.createDiv({ cls: 'editor-ai-daemons-scorecard-subheader', text: 'Top fixes' })
+        const list = box.createEl('ol', { cls: 'editor-ai-daemons-scorecard-fixes' })
         for (const fix of view.topFixes) {
             this.renderTopFix(list.createEl('li'), binding, fix)
         }
@@ -576,17 +584,17 @@ export class ReviewSidePanelView extends ItemView {
     private renderTopFix(item: HTMLElement, binding: SidePanelBinding, fix: ScorecardTopFix): void {
         const findingId = fix.findingId
         if (findingId === null) {
-            item.createSpan({ cls: 'ai-editor-scorecard-fix-text', text: fix.action })
+            item.createSpan({ cls: 'editor-ai-daemons-scorecard-fix-text', text: fix.action })
         } else {
             const button = item.createEl('button', {
-                cls: 'ai-editor-scorecard-fix-button',
+                cls: 'editor-ai-daemons-scorecard-fix-button',
                 text: fix.action
             })
             button.setAttribute('aria-label', `${fix.action} — show the finding it comes from`)
             button.addEventListener('click', () => binding.revealFinding(findingId))
         }
         if (fix.editorName !== null) {
-            item.createSpan({ cls: 'ai-editor-scorecard-fix-source', text: fix.editorName })
+            item.createSpan({ cls: 'editor-ai-daemons-scorecard-fix-source', text: fix.editorName })
         }
     }
 
@@ -599,15 +607,21 @@ export class ReviewSidePanelView extends ItemView {
         if (view.dissent.length === 0) {
             return
         }
-        box.createDiv({ cls: 'ai-editor-scorecard-subheader', text: 'Where the members disagreed' })
-        const list = box.createDiv({ cls: 'ai-editor-scorecard-dissent' })
+        box.createDiv({
+            cls: 'editor-ai-daemons-scorecard-subheader',
+            text: 'Where the members disagreed'
+        })
+        const list = box.createDiv({ cls: 'editor-ai-daemons-scorecard-dissent' })
         for (const entry of view.dissent) {
-            const item = list.createDiv({ cls: 'ai-editor-scorecard-dissent-item' })
-            item.createDiv({ cls: 'ai-editor-scorecard-dissent-subject', text: entry.subject })
+            const item = list.createDiv({ cls: 'editor-ai-daemons-scorecard-dissent-item' })
+            item.createDiv({
+                cls: 'editor-ai-daemons-scorecard-dissent-subject',
+                text: entry.subject
+            })
             for (const position of entry.positions) {
-                const row = item.createDiv({ cls: 'ai-editor-scorecard-dissent-position' })
+                const row = item.createDiv({ cls: 'editor-ai-daemons-scorecard-dissent-position' })
                 row.createSpan({
-                    cls: 'ai-editor-scorecard-member-name',
+                    cls: 'editor-ai-daemons-scorecard-member-name',
                     text: position.editorName
                 })
                 row.createSpan({ text: position.stance })
@@ -630,10 +644,10 @@ export class ReviewSidePanelView extends ItemView {
         const hidden = live.filter(
             (finding) => !passesSeverityFilter(binding.severityFilter, finding.raw.severity)
         ).length
-        const row = root.createDiv({ cls: 'ai-editor-panel-filter' })
-        row.createSpan({ cls: 'ai-editor-panel-filter-label', text: 'Show' })
+        const row = root.createDiv({ cls: 'editor-ai-daemons-panel-filter' })
+        row.createSpan({ cls: 'editor-ai-daemons-panel-filter-label', text: 'Show' })
         const button = row.createEl('button', {
-            cls: 'ai-editor-panel-filter-button',
+            cls: 'editor-ai-daemons-panel-filter-button',
             text: severityFilterLabel(binding.severityFilter)
         })
         // The accessible name carries the CURRENT mode as well as the action:
@@ -647,7 +661,7 @@ export class ReviewSidePanelView extends ItemView {
         button.addEventListener('click', () => binding.cycleSeverityFilter())
         if (hidden > 0) {
             row.createSpan({
-                cls: 'ai-editor-panel-filter-hidden',
+                cls: 'editor-ai-daemons-panel-filter-hidden',
                 text: hidden === 1 ? '1 hidden' : `${hidden} hidden`
             })
         }
@@ -657,10 +671,10 @@ export class ReviewSidePanelView extends ItemView {
         if (skips.length === 0) {
             return
         }
-        const box = root.createDiv({ cls: 'ai-editor-panel-skips' })
+        const box = root.createDiv({ cls: 'editor-ai-daemons-panel-skips' })
         for (const skip of skips) {
             box.createDiv({
-                cls: 'ai-editor-panel-skip',
+                cls: 'editor-ai-daemons-panel-skip',
                 text: `Skipped ${skip.editorName}: ${skipReasonLabel(skip.reason)}.`
             })
         }
@@ -677,8 +691,8 @@ export class ReviewSidePanelView extends ItemView {
         if (text.length === 0) {
             return
         }
-        root.createDiv({ cls: 'ai-editor-panel-skips' }).createDiv({
-            cls: 'ai-editor-panel-skip',
+        root.createDiv({ cls: 'editor-ai-daemons-panel-skips' }).createDiv({
+            cls: 'editor-ai-daemons-panel-skip',
             text
         })
     }
@@ -691,7 +705,7 @@ export class ReviewSidePanelView extends ItemView {
         panelName: string | null
     ): void {
         const section = root.createEl('section', {
-            cls: `ai-editor-panel-section${panelName === null ? '' : ' is-panel-member'}`,
+            cls: `editor-ai-daemons-panel-section${panelName === null ? '' : ' is-panel-member'}`,
             attr: { 'data-editor-id': state.editorId }
         })
         // Every section is named, not only a panel member's. The indent that
@@ -702,19 +716,19 @@ export class ReviewSidePanelView extends ItemView {
         // way to ask who wrote it (Business Rules #11, plan M9).
         section.setAttribute('aria-label', memberSectionName(state.editorName, panelName))
 
-        const header = section.createDiv({ cls: 'ai-editor-panel-section-header' })
-        const dot = header.createSpan({ cls: 'ai-editor-panel-dot' })
+        const header = section.createDiv({ cls: 'editor-ai-daemons-panel-section-header' })
+        const dot = header.createSpan({ cls: 'editor-ai-daemons-panel-dot' })
         if (color.length > 0) {
             dot.style.backgroundColor = color
         }
-        header.createSpan({ cls: 'ai-editor-panel-editor-name', text: state.editorName })
+        header.createSpan({ cls: 'editor-ai-daemons-panel-editor-name', text: state.editorName })
         header.createSpan({
-            cls: `ai-editor-panel-status ai-editor-panel-status-${state.status}`,
+            cls: `editor-ai-daemons-panel-status editor-ai-daemons-panel-status-${state.status}`,
             text: statusLabel(state)
         })
         if (state.verdict !== null) {
             header.createSpan({
-                cls: `ai-editor-panel-verdict ai-editor-panel-verdict-${state.verdict}`,
+                cls: `editor-ai-daemons-panel-verdict editor-ai-daemons-panel-verdict-${state.verdict}`,
                 text: verdictLabel(state.verdict)
             })
         }
@@ -722,7 +736,7 @@ export class ReviewSidePanelView extends ItemView {
             // Per-editor retry (mirrors the rail chip): re-runs ONLY this
             // editor inside the existing run against the current buffer text.
             const retryLabel = `Retry ${state.editorName}`
-            const retryEl = header.createEl('button', { cls: 'ai-editor-panel-retry' })
+            const retryEl = header.createEl('button', { cls: 'editor-ai-daemons-panel-retry' })
             setIcon(retryEl, 'rotate-ccw')
             retryEl.setAttribute('aria-label', retryLabel)
             retryEl.title = retryLabel
@@ -733,13 +747,13 @@ export class ReviewSidePanelView extends ItemView {
 
         if (state.error !== null) {
             section.createDiv({
-                cls: 'ai-editor-panel-error',
+                cls: 'editor-ai-daemons-panel-error',
                 text: `${state.error.code}: ${state.error.message}`
             })
         }
 
         if (state.summary !== null && state.summary.length > 0) {
-            section.createDiv({ cls: 'ai-editor-panel-summary', text: state.summary })
+            section.createDiv({ cls: 'editor-ai-daemons-panel-summary', text: state.summary })
         }
 
         const live = state.findingIds
@@ -756,10 +770,10 @@ export class ReviewSidePanelView extends ItemView {
         const unanchored = findings.filter((finding) => finding.anchor === null)
 
         if (live.length === 0 && state.status === 'done') {
-            section.createDiv({ cls: 'ai-editor-panel-none', text: 'Nothing to report.' })
+            section.createDiv({ cls: 'editor-ai-daemons-panel-none', text: 'Nothing to report.' })
         } else if (findings.length === 0 && hidden > 0) {
             section.createDiv({
-                cls: 'ai-editor-panel-none',
+                cls: 'editor-ai-daemons-panel-none',
                 text:
                     hidden === 1
                         ? '1 finding hidden by the severity filter.'
@@ -770,13 +784,13 @@ export class ReviewSidePanelView extends ItemView {
         this.renderBulkActions(section, binding, state, findings)
         this.renderGenerateMore(section, binding, state, live.length)
 
-        const list = section.createDiv({ cls: 'ai-editor-panel-findings' })
+        const list = section.createDiv({ cls: 'editor-ai-daemons-panel-findings' })
         for (const finding of anchored) {
             this.renderFinding(list, binding, finding, true)
         }
         if (unanchored.length > 0) {
-            section.createDiv({ cls: 'ai-editor-panel-subheader', text: 'Not anchored' })
-            const orphanList = section.createDiv({ cls: 'ai-editor-panel-findings' })
+            section.createDiv({ cls: 'editor-ai-daemons-panel-subheader', text: 'Not anchored' })
+            const orphanList = section.createDiv({ cls: 'editor-ai-daemons-panel-findings' })
             for (const finding of unanchored) {
                 this.renderFinding(orphanList, binding, finding, false)
             }
@@ -802,7 +816,7 @@ export class ReviewSidePanelView extends ItemView {
         if (acceptable === 0 && findings.length === 0) {
             return
         }
-        const row = section.createDiv({ cls: 'ai-editor-panel-bulk' })
+        const row = section.createDiv({ cls: 'editor-ai-daemons-panel-bulk' })
         if (acceptable > 0) {
             this.addBulkButton(
                 row,
@@ -841,9 +855,9 @@ export class ReviewSidePanelView extends ItemView {
         if (!view.visible) {
             return
         }
-        const row = section.createDiv({ cls: 'ai-editor-panel-more' })
+        const row = section.createDiv({ cls: 'editor-ai-daemons-panel-more' })
         const button = row.createEl('button', {
-            cls: 'ai-editor-panel-more-button',
+            cls: 'editor-ai-daemons-panel-more-button',
             text: view.text
         })
         button.setAttribute('aria-label', view.ariaLabel)
@@ -854,7 +868,7 @@ export class ReviewSidePanelView extends ItemView {
             // The completed pass is untouched, so this is a note beside the
             // button, never the section's error state.
             row.createSpan({
-                cls: 'ai-editor-panel-more-error',
+                cls: 'editor-ai-daemons-panel-more-error',
                 text: `Could not generate more: ${view.error}`
             })
         }
@@ -866,7 +880,7 @@ export class ReviewSidePanelView extends ItemView {
         ariaLabel: string,
         onClick: () => void
     ): void {
-        const button = row.createEl('button', { cls: 'ai-editor-panel-bulk-button', text })
+        const button = row.createEl('button', { cls: 'editor-ai-daemons-panel-bulk-button', text })
         button.setAttribute('aria-label', ariaLabel)
         button.addEventListener('click', onClick)
     }
@@ -879,12 +893,12 @@ export class ReviewSidePanelView extends ItemView {
     ): void {
         const stale = finding.anchor?.state === 'stale'
         const item = list.createDiv({
-            cls: `ai-editor-panel-finding${clickable && !stale ? ' is-clickable' : ''}${
+            cls: `editor-ai-daemons-panel-finding${clickable && !stale ? ' is-clickable' : ''}${
                 stale ? ' is-stale' : ''
             }`
         })
         const iconEl = item.createSpan({
-            cls: `ai-editor-panel-severity ai-editor-panel-severity-${finding.raw.severity}`
+            cls: `editor-ai-daemons-panel-severity editor-ai-daemons-panel-severity-${finding.raw.severity}`
         })
         setIcon(iconEl, SEVERITY_ICONS[finding.raw.severity])
         // The severity was a coloured glyph and nothing else: the shape keeps
@@ -893,18 +907,18 @@ export class ReviewSidePanelView extends ItemView {
         // what makes a span nameable here.
         iconEl.setAttribute('role', 'img')
         iconEl.setAttribute('aria-label', SEVERITY_WORDS[finding.raw.severity])
-        const body = item.createDiv({ cls: 'ai-editor-panel-finding-body' })
+        const body = item.createDiv({ cls: 'editor-ai-daemons-panel-finding-body' })
         body.createDiv({
-            cls: 'ai-editor-panel-critique',
+            cls: 'editor-ai-daemons-panel-critique',
             text: truncate(finding.raw.critique, CRITIQUE_EXCERPT_MAX)
         })
         body.createDiv({
-            cls: 'ai-editor-panel-quote',
+            cls: 'editor-ai-daemons-panel-quote',
             text: truncate(finding.raw.quote, QUOTE_EXCERPT_MAX)
         })
         if (stale) {
             body.createDiv({
-                cls: 'ai-editor-panel-stale-note',
+                cls: 'editor-ai-daemons-panel-stale-note',
                 text: 'Stale — the text changed since this finding was made.'
             })
         }
