@@ -9,7 +9,7 @@ A **panel** is a group of editors that review together and are then summed up. I
 
 ## Compose one
 
-**Settings → AI Editor → Panels → Add panel**:
+**Settings → Editor AI Daemons → Panels → Add panel**:
 
 | Field                          | What it does                                                      |
 | ------------------------------ | ----------------------------------------------------------------- |
@@ -68,7 +68,7 @@ Panels are never distinguished by colour or shape alone:
 
 ## Panels from the command line
 
-`ai-editor:review` waits for the scorecard before returning and includes it in its output, rather than returning the moment the members settle — otherwise you would pay for a synthesis nothing ever shows you. See [The command line](command-line.md).
+`editor-ai-daemons:review` waits for the scorecard before returning and includes it in its output, rather than returning the moment the members settle — otherwise you would pay for a synthesis nothing ever shows you. See [The command line](command-line.md).
 
 ## Next
 

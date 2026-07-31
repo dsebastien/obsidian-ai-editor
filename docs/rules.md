@@ -7,7 +7,7 @@ nav_order: 9
 
 A **binding rule** decides, per scope of your vault, either **who reviews** those notes or that the plugin is **switched off** for them entirely.
 
-**Settings → AI Editor → Rules.** With no rules at all, every enabled editor reviews every note — which is also what happens to a note no rule matches.
+**Settings → Editor AI Daemons → Rules.** With no rules at all, every enabled editor reviews every note — which is also what happens to a note no rule matches.
 
 ## What a rule matches
 

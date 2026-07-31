@@ -54,25 +54,25 @@ Prereq: the plugin settings facade needs a mutation-observer hook (subscribe/not
 ## 4. Obsidian CLI extensions — GO
 
 - Bump `obsidian` devDependency to 1.12.3. Guard: `Platform.isDesktop && requireApiVersion('1.12.2')`.
-- v1 surface (decision §6.3): **three** subcommands — `ai-editor:review`, `ai-editor:cancel`, `ai-editor:status`. Shared machinery lives in `src/app/services/cli/cli-shared.ts` (flag parsing, the finding shape, text finding lines) so the subcommands stay in lockstep by construction; `--file` resolution is one shared resolver (`src/app/cli/resolve-note-path.ts`, wikilink-tolerant, markdown only).
+- v1 surface (decision §6.3): **three** subcommands — `editor-ai-daemons:review`, `editor-ai-daemons:cancel`, `editor-ai-daemons:status`. Shared machinery lives in `src/app/services/cli/cli-shared.ts` (flag parsing, the finding shape, text finding lines) so the subcommands stay in lockstep by construction; `--file` resolution is one shared resolver (`src/app/cli/resolve-note-path.ts`, wikilink-tolerant, markdown only).
 
-### `ai-editor:review`
+### `editor-ai-daemons:review`
 
 - Flags: `file` (required), `editors` (comma-separated ids or names; an unknown OR disabled token fails the whole invocation — no partial reviews for scripts), `format` (`json` default | `text`), `confirm-large` (boolean; without it an oversized note returns `needs-confirmation` instead of running). A `scope` flag (`note`|`selection`) was designed but **dropped for v1** (selection unsupported from the CLI; no non-functional flags are registered) — add it when CLI selection support lands. Every CLI run is whole-note.
 - Handler is buffered: runs the review, waits for settle, returns one JSON document: `{ ok, file, findings: [{ id, editor, severity, quote, critique, suggestion, anchor: {from,to,state}|null }], skips, summaryByEditor, error }` — `anchor` is `null` for findings whose quote could not be located. Machine-readable for scripting/agents; `text` mode prints one line per finding.
 - Open-note semantics (as shipped, fix pass): when the target note is open in a markdown view, the run snapshots the LIVE editor buffer (unsaved edits included) and binds to the view glue synchronously, so it shows in the rail/panel/highlights and edits typed during the run keep remapping anchors. When the note is not open, the run reviews the saved vault state and is discarded from the `RunController` after the output document is shaped (no unbounded accumulation from batch usage).
 - Errors are typed codes (`bad-args`, `file-not-found`, `excluded`, `needs-confirmation`, `no-editors`, `backend-error`, `timeout`), status-only messages (BR #12 redaction applies). `bad-args` (missing/blank required flag) is distinct from `file-not-found` so scripts can tell the two apart by code; it is mostly defensive since Obsidian enforces `required: true` flags before the handler runs.
 
-### `ai-editor:cancel`
+### `editor-ai-daemons:cancel`
 
 - Flags: `file` (required). Cancels the unsettled run for that note. Always one JSON document: `{ ok: true, file, cancelled: true }` | `{ ok: true, file, cancelled: false, reason: 'no-run' | 'already-settled' }` | typed error (`bad-args` | `file-not-found`). Nothing-to-cancel is `ok: true` — the invocation worked; the reason says why nothing changed.
-- Cancelling **never discards the run**: the findings collected so far stay inspectable via `ai-editor:status` and the review UI. Discard remains a UI lifecycle concern (file closed/deleted/renamed), not a cancel side effect.
+- Cancelling **never discards the run**: the findings collected so far stay inspectable via `editor-ai-daemons:status` and the review UI. Discard remains a UI lifecycle concern (file closed/deleted/renamed), not a cancel side effect.
 
-### `ai-editor:status`
+### `editor-ai-daemons:status`
 
 - Flags: `file` (required), `format` (`json` default | `text`). Reports the current run for the note WITHOUT running anything: `{ ok: true, file, run: null }` when none; otherwise `{ ok: true, file, run: { settled, editors: [{ id, name, status, error }], findings: [same shape as review output], summaryByEditor } }` (errors: `bad-args` | `file-not-found`). Per-editor `error` entries already passed the run's redaction seam (BR #12). `settled` is derived from the editor states (all in done/error/cancelled), NOT from the run's settle promise: `cancelRun` marks every editor terminal synchronously while the aborted loops are still unwinding, and a status poll in that window must not report the run as in progress.
 - `text` mode: one status headline (`Run in progress (1 running, 1 done) — 2 findings so far` / `Run settled (2 done) — 5 findings`) + one line per finding in the exact review line format.
-- This is the poll loop for external agents driving long reviews: start via `ai-editor:review` (or the UI), poll `ai-editor:status` until `settled`, optionally `ai-editor:cancel` — findings remain readable throughout.
+- This is the poll loop for external agents driving long reviews: start via `editor-ai-daemons:review` (or the UI), poll `editor-ai-daemons:status` until `settled`, optionally `editor-ai-daemons:cancel` — findings remain readable throughout.
 
 ### Common
 
@@ -94,4 +94,4 @@ The former "Open questions for Sébastien" are all decided:
 
 1. **Freeform "Ask an editor" = BOTH surfaces**: a context-menu entry opening a freeform modal (the note-level entry point; M3-adjacent) AND per-finding push-back threads embedded in the finding card (finding-level back-and-forth with the editor persona; M4). The §1 menu item stays hidden until the modal exists — never a dead menu item.
 2. **Batch review = deferred until cost estimation exists** (confirmed): §2 stands as written — no `files-menu` registration, no disabled placeholder, tracked as a GitHub issue. Revisit once rates are fetched/cached and a batch confirm UX is designed.
-3. **CLI v1 surface = review + cancel + status** (shipped 2026-07-29): `ai-editor:cancel` and `ai-editor:status` join `ai-editor:review` per §4 — status gives external agents a poll loop for long reviews; cancel never discards the run, so findings stay inspectable after cancellation.
+3. **CLI v1 surface = review + cancel + status** (shipped 2026-07-29): `editor-ai-daemons:cancel` and `editor-ai-daemons:status` join `editor-ai-daemons:review` per §4 — status gives external agents a poll loop for long reviews; cancel never discards the run, so findings stay inspectable after cancellation.

@@ -1,6 +1,6 @@
 # Architecture
 
-High-level structure of the AI Editor plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/ai-editor-v1-implementation-plan.md` for the roadmap.
+High-level structure of the Editor AI Daemons plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/editor-ai-daemons-v1-implementation-plan.md` for the roadmap.
 
 ## Layers
 
@@ -86,7 +86,7 @@ Comments are rendered beside the lines they were parked on by a positioned overl
 
 Three rules the UI layer holds itself to, all of them checkable by reading the code rather than by running a screen reader.
 
-- **Nothing is signalled by colour alone** (WCAG 1.4.1). Editors vs panels: `ui/entity-label.ts` — the name says `(panel)`, the ring and the glyph are additions. Findings in the document: the persona tint is joined by a per-editor bottom-edge STYLE (`ai-editor-finding-edge-<n>`, from the editor's position in settings) and a `title` naming the editor, its panel, the severity and staleness (`ui/editor/finding-identity.ts`, which also records why that name rides a `title` rather than an `aria-label` — a CM6 mark is a `<span>` in contenteditable, i.e. `role=generic`, which ARIA forbids naming). Diffs: the deletion is struck out, so the insertion is underlined. Severity in the side panel: a shaped Lucide glyph, named through `role=img`. The colour swatch: a check glyph plus `aria-pressed`.
+- **Nothing is signalled by colour alone** (WCAG 1.4.1). Editors vs panels: `ui/entity-label.ts` — the name says `(panel)`, the ring and the glyph are additions. Findings in the document: the persona tint is joined by a per-editor bottom-edge STYLE (`editor-ai-daemons-finding-edge-<n>`, from the editor's position in settings) and a `title` naming the editor, its panel, the severity and staleness (`ui/editor/finding-identity.ts`, which also records why that name rides a `title` rather than an `aria-label` — a CM6 mark is a `<span>` in contenteditable, i.e. `role=generic`, which ARIA forbids naming). Diffs: the deletion is struck out, so the insertion is underlined. Severity in the side panel: a shaped Lucide glyph, named through `role=img`. The colour swatch: a check glyph plus `aria-pressed`.
 - **Every region and every repeated control is named.** Side-panel sections are named for their editor and, when there is one, their panel (`memberSectionName`); scorecard rows are `role=group` carrying a composed sentence; margin cards and comment rows are `role=group` for the same reason; identically-labelled buttons (Retry, Cancel, Resolve, Delete, appearing once per comment) say which comment they act on (WCAG 2.4.6); a control whose visible text is already its name is never overridden by an `aria-label` (WCAG 2.5.3, `MarginColumn.applyHint`).
 - **Motion is a reinforcement, never the signal** (WCAG 2.2.2 / 2.3.3). One blanket `prefers-reduced-motion` block at the foot of `styles.src.css`, scoped to the plugin's own class prefix, collapses every animation and transition — an allow-list was tried first and carried its own warning that a new animation would silently escape it. Every animated state is also legible standing still: a pulsing rail dot is dimmed, the review spinner sits beside the word "Reviewing…", the chip-click emphasis keeps its stronger tint.
 

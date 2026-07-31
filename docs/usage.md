@@ -9,15 +9,15 @@ The review loop is the heart of the plugin: summon your editors, read what they 
 
 ## Start a review
 
-| How                     | What it does                                                             |
-| ----------------------- | ------------------------------------------------------------------------ |
-| **Review** on the rail  | Reviews the whole active note                                            |
-| **Review current note** | Same thing, from the command palette                                     |
-| **Review selection**    | Reviews only the selected text                                           |
-| Right-click a selection | **Review selection** in the context menu                                 |
-| Right-click a note      | **Review note** in the file explorer's context menu                      |
-| **Review** in the panel | Reviews the note the panel is bound to, without going back to the editor |
-| `ai-editor:review`      | From the terminal — see [The command line](command-line.md)              |
+| How                        | What it does                                                             |
+| -------------------------- | ------------------------------------------------------------------------ |
+| **Review** on the rail     | Reviews the whole active note                                            |
+| **Review current note**    | Same thing, from the command palette                                     |
+| **Review selection**       | Reviews only the selected text                                           |
+| Right-click a selection    | **Review selection** in the context menu                                 |
+| Right-click a note         | **Review note** in the file explorer's context menu                      |
+| **Review** in the panel    | Reviews the note the panel is bound to, without going back to the editor |
+| `editor-ai-daemons:review` | From the terminal — see [The command line](command-line.md)              |
 
 None of the commands ships a default hotkey. Assign your own in **Settings → Hotkeys**.
 

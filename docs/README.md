@@ -4,7 +4,7 @@ nav_order: 1
 permalink: /
 ---
 
-# AI Editor
+# Editor AI Daemons
 
 AI editing, reviewing and QA **inside the Obsidian editor** — not a chat sidebar. Configurable AI personas ("Editors") and groups of them ("Panels") highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
@@ -29,24 +29,24 @@ Nothing runs on its own, and nothing is written without a diff. Desktop only. Br
 
 ## The guide
 
-| Page                                            | What it covers                                                   |
-| ----------------------------------------------- | ---------------------------------------------------------------- |
-| [Install and quick start](install.md)           | Requirements, install routes, the setup wizard, what gets seeded |
-| [Set up a backend](backends.md)                 | Providers, models, thinking modes, timeouts, test connection     |
-| [Review a note](usage.md)                       | The rail, findings, cards, keyboard triage, bulk operations      |
-| [Create and tune editors](editors.md)           | Personas, prompts, context, capabilities, the voice profile      |
-| [Run actions on a selection](actions.md)        | Built-in verbs, inline diffs, custom actions                     |
-| [Work with panels](panels.md)                   | Charters, scorecards, partial failures                           |
-| [Margin comments](margin-comments.md)           | Parked questions answered in the background                      |
-| [Binding rules](rules.md)                       | Per-folder, per-tag, per-note-type routing and kill switches     |
-| [Daemon mode](daemon-mode.md)                   | Automatic refreshes, and what they cost                          |
-| [CLI backends](cli-backends.md)                 | Claude Code and Codex, and their security model                  |
-| [The command line](command-line.md)             | `ai-editor:review`, `ai-editor:status`, `ai-editor:cancel`       |
-| [Move settings between vaults](transfer.md)     | Export, import, what never travels                               |
-| [Privacy and security](privacy-and-security.md) | What is sent, what is excluded, where keys live                  |
-| [Configuration reference](configuration.md)     | Every setting, its default, every command                        |
-| [Tips and best practices](tips.md)              | Getting good results without burning tokens                      |
-| [Troubleshooting](troubleshooting.md)           | Timeouts, CORS, unusable answers, unanchored findings            |
+| Page                                            | What it covers                                                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [Install and quick start](install.md)           | Requirements, install routes, the setup wizard, what gets seeded                   |
+| [Set up a backend](backends.md)                 | Providers, models, thinking modes, timeouts, test connection                       |
+| [Review a note](usage.md)                       | The rail, findings, cards, keyboard triage, bulk operations                        |
+| [Create and tune editors](editors.md)           | Personas, prompts, context, capabilities, the voice profile                        |
+| [Run actions on a selection](actions.md)        | Built-in verbs, inline diffs, custom actions                                       |
+| [Work with panels](panels.md)                   | Charters, scorecards, partial failures                                             |
+| [Margin comments](margin-comments.md)           | Parked questions answered in the background                                        |
+| [Binding rules](rules.md)                       | Per-folder, per-tag, per-note-type routing and kill switches                       |
+| [Daemon mode](daemon-mode.md)                   | Automatic refreshes, and what they cost                                            |
+| [CLI backends](cli-backends.md)                 | Claude Code and Codex, and their security model                                    |
+| [The command line](command-line.md)             | `editor-ai-daemons:review`, `editor-ai-daemons:status`, `editor-ai-daemons:cancel` |
+| [Move settings between vaults](transfer.md)     | Export, import, what never travels                                                 |
+| [Privacy and security](privacy-and-security.md) | What is sent, what is excluded, where keys live                                    |
+| [Configuration reference](configuration.md)     | Every setting, its default, every command                                          |
+| [Tips and best practices](tips.md)              | Getting good results without burning tokens                                        |
+| [Troubleshooting](troubleshooting.md)           | Timeouts, CORS, unusable answers, unanchored findings                              |
 
 ## About
 

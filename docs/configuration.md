@@ -7,7 +7,7 @@ nav_order: 80
 
 Every setting, where it lives, and what it defaults to. Settings are stored in this plugin's `data.json` inside your vault — see [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
-**Settings → AI Editor** has seven tabs: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
+**Settings → Editor AI Daemons** has seven tabs: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
 
 ## Behavior tab
 
@@ -35,12 +35,12 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 
 ### Privacy exclusions
 
-| Setting                         | Type   | Default | What it does                                        |
-| ------------------------------- | ------ | ------- | --------------------------------------------------- |
-| **Excluded folders**            | list   | empty   | Notes under these folders never leave the vault     |
-| **Excluded tags**               | list   | empty   | Notes carrying these tags never leave the vault     |
-| **Respect frontmatter opt-out** | toggle | `on`    | Notes with `ai_editor: false` are excluded entirely |
-| **Strip frontmatter**           | toggle | `off`   | Remove frontmatter from every note sent to backends |
+| Setting                         | Type   | Default | What it does                                                |
+| ------------------------------- | ------ | ------- | ----------------------------------------------------------- |
+| **Excluded folders**            | list   | empty   | Notes under these folders never leave the vault             |
+| **Excluded tags**               | list   | empty   | Notes carrying these tags never leave the vault             |
+| **Respect frontmatter opt-out** | toggle | `on`    | Notes with `editor_ai_daemons: false` are excluded entirely |
+| **Strip frontmatter**           | toggle | `off`   | Remove frontmatter from every note sent to backends         |
 
 Up to 200 folders and 200 tags.
 

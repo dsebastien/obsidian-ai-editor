@@ -23,13 +23,13 @@ Findings quote your text **verbatim**. A quote that cannot be located exactly, o
 
 ## Privacy exclusions are absolute
 
-**Settings → AI Editor → Behavior → Privacy exclusions.** Three ways to exclude a note:
+**Settings → Editor AI Daemons → Behavior → Privacy exclusions.** Three ways to exclude a note:
 
-| Mechanism       | How                                                |
-| --------------- | -------------------------------------------------- |
-| **Folder**      | Add the folder path to **Excluded folders**        |
-| **Tag**         | Add the tag (without `#`) to **Excluded tags**     |
-| **Frontmatter** | Put `ai_editor: false` in the note (on by default) |
+| Mechanism       | How                                                        |
+| --------------- | ---------------------------------------------------------- |
+| **Folder**      | Add the folder path to **Excluded folders**                |
+| **Tag**         | Add the tag (without `#`) to **Excluded tags**             |
+| **Frontmatter** | Put `editor_ai_daemons: false` in the note (on by default) |
 
 An excluded note is never sent to any backend — **not as the review target, not as attached linked context, and not through an explicit wikilink reference from another prompt**. Excluded notes are dropped from every source before their content is read.
 

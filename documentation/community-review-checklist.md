@@ -4,6 +4,8 @@ Swept 2026-07-30 against Obsidian's [plugin guidelines](https://docs.obsidian.md
 
 Every verdict below carries the command that produced it. Re-run them before submitting: the catalog changes, and so does the rule set.
 
+**Updated 2026-07-31**: the § 0 naming blocker is resolved — the plugin is now `editor-ai-daemons` / "Editor AI Daemons", re-verified free against the live catalog. Nothing else in the sweep changed.
+
 | Verdict         | Meaning                                                              |
 | --------------- | -------------------------------------------------------------------- |
 | **PASS**        | Verified compliant.                                                  |
@@ -14,41 +16,48 @@ Every verdict below carries the command that produced it. Re-run them before sub
 
 ## 0. Blocker first
 
-### The plugin `id` **and** `name` are already taken in the catalog — **DECIDE**
+### The catalog name collision — **RESOLVED 2026-07-31**
+
+**The blocker was**: `id` `ai-editor` and `name` "AI Editor" are both already published in the community catalog by another author (`buszk/obsidian-ai-editor`). A duplicate `id` is refused outright; a duplicate display name is refused or challenged by the reviewer. The catalog also pins the slug from the **first** submission, and the `id` is locked forever once accepted — so this had to be settled before the first submission, not after.
+
+**Sébastien's decision (2026-07-31)**: rename the plugin to `editor-ai-daemons` / "Editor AI Daemons". Nothing had shipped (`manifest.json` still says `0.0.0`), so the `id` moved at zero user cost. Two facts were checked first: `editor-ai-daemons` is free in the catalog, and no recent plugin uses an `obsidian-` `id` prefix, so dropping the prefix costs nothing in discoverability.
+
+**The GitHub repository name does NOT change.** It stays `dsebastien/obsidian-ai-editor`. Only the plugin's identity moved; every repo URL (README, funding, support links, `docs/_config.yml` `baseurl`, issue links, the OpenRouter `http-referer` attribution header) is untouched. The catalog gates the manifest `id`, not the repo name.
+
+Availability re-verified on 2026-07-31, against the live catalog (6 210 entries):
 
 ```bash
-curl -s https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json \
-  | jq '.[] | select(.id=="ai-editor")'
+curl -s -o /tmp/cp.json https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json
+jq 'length' /tmp/cp.json                                                    # 6210
+jq -r '.[] | select(.id=="editor-ai-daemons")' /tmp/cp.json                 # (empty — id free)
+jq -r '.[] | select(.name|ascii_downcase=="editor ai daemons")' /tmp/cp.json # (empty — name free)
+jq -r '.[] | select(.id|test("daemon"))         | .id' /tmp/cp.json         # (empty)
+jq -r '.[] | select(.name|ascii_downcase|test("daemon")) | .name' /tmp/cp.json # (empty)
+jq -r '.[] | select(.id=="ai-editor") | "\(.id) — \(.name) — \(.repo)"' /tmp/cp.json
+# ai-editor — AI Editor — buszk/obsidian-ai-editor   (the entry that forced the rename)
 ```
 
-```json
-{
-    "id": "ai-editor",
-    "name": "AI Editor",
-    "author": "buszk",
-    "description": "Elevate your workflow with customizable LLM actions.",
-    "repo": "buszk/obsidian-ai-editor"
-}
-```
+No catalog entry has "daemon" anywhere in its `id` or `name` — the new identity collides with nothing, not even partially.
 
-All three collide: the `id`, the `name`, and the repo basename (`buszk/obsidian-ai-editor` vs `dsebastien/obsidian-ai-editor`). A duplicate `id` is refused by the catalog outright; a duplicate display name is refused or challenged by the reviewer.
+The rename landed in three commits and touched:
 
-**This has to be resolved before the first release, not after.** `manifest.json` still says `0.0.0` and nothing has ever shipped, so the `id` is free to change today. After acceptance it is locked forever: changing it later breaks every installed user's settings path and keyboard shortcuts (AGENTS.md § "Draft vs accepted timing for `id`"). There is also a sticky-draft-slug trap — the catalog remembers the slug from the **first** submission and rejects a later manifest that disagrees with it, so submitting once under `ai-editor` and renaming afterwards is the expensive path.
+| Surface                   | From                                       | To                                                 |
+| ------------------------- | ------------------------------------------ | -------------------------------------------------- |
+| `manifest.json` `id`      | `ai-editor`                                | `editor-ai-daemons`                                |
+| `manifest.json` `name`    | AI Editor                                  | Editor AI Daemons                                  |
+| `package.json` `name`     | `ai-editor`                                | `editor-ai-daemons`                                |
+| CSS class prefix          | `ai-editor-*`                              | `editor-ai-daemons-*`                              |
+| CLI subcommands           | `ai-editor:review` / `:cancel` / `:status` | `editor-ai-daemons:review` / `:cancel` / `:status` |
+| Review panel view type    | `ai-editor-review`                         | `editor-ai-daemons-review`                         |
+| Context-menu section id   | `ai-editor`                                | `editor-ai-daemons`                                |
+| Settings export marker    | `ai-editor-settings`                       | `editor-ai-daemons-settings`                       |
+| Frontmatter opt-out key   | `ai_editor: false`                         | `editor_ai_daemons: false`                         |
+| Plugin folder             | `.obsidian/plugins/ai-editor/`             | `.obsidian/plugins/editor-ai-daemons/`             |
+| User-visible notices/copy | "AI Editor: …"                             | "Editor AI Daemons: …"                             |
 
-Checked as free at the time of this sweep (id **and** display name, same source):
+`description`, `author`, `authorUrl`, `fundingUrl`, `isDesktopOnly` and `minAppVersion` were deliberately left alone; the description carries no "Obsidian" and still passes the catalog rules (§ 1). Command ids were checked and needed nothing — none of them embeds the plugin id, because Obsidian namespaces them at registration.
 
-| Candidate `id`    | Candidate `name` |
-| ----------------- | ---------------- |
-| `editorial`       | Editorial        |
-| `editorial-board` | Editorial Board  |
-| `ai-editors`      | AI Editors       |
-| `editor-panel`    | Editor Panel     |
-| `copy-desk`       | Copy Desk        |
-| `ai-critique`     | Critique         |
-
-(`red-pen` / "Red Pen" is taken.)
-
-The rename touches `manifest.json` (`id`, `name`), `package.json` (`name`), the CLI command prefix `ai-editor:*`, every `ai-editor-` CSS class, the `ai_editor` frontmatter key, the docs, and `docs/_config.yml`. Non-trivial but purely mechanical — and cheapest now.
+Verified after the rename: `dist/styles.css` contains **zero** `ai-editor` occurrences, with 327 rule bodies and 219 unique class selectors — both identical to the pre-rename build, and the selector set matches exactly once the prefix is normalised. Gates green: `bun run format`, `bun run validate` (tsc + eslint `--max-warnings 0` + 2 258 specs), `bun run build`.
 
 Nothing else in this document is a blocker.
 
@@ -58,14 +67,14 @@ Nothing else in this document is a blocker.
 
 | Item                                          | Verdict         | Evidence                                                                                                                             |
 | --------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `id` free of the word "obsidian"              | **PASS**        | `"id": "ai-editor"`.                                                                                                                 |
-| `id` uniqueness                               | **DECIDE**      | See § 0.                                                                                                                             |
-| `name` free of "Obsidian"                     | **PASS**        | `"name": "AI Editor"`.                                                                                                               |
-| `name` not all-uppercase                      | **PASS**        | "Editor" is lowercase past the initial. Acronym-chain check does not fire.                                                           |
+| `id` free of the word "obsidian"              | **PASS**        | `"id": "editor-ai-daemons"`.                                                                                                         |
+| `id` uniqueness                               | **PASS**        | Renamed 2026-07-31. Re-verified against the live catalog — see § 0.                                                                  |
+| `name` free of "Obsidian"                     | **PASS**        | `"name": "Editor AI Daemons"`.                                                                                                       |
+| `name` not all-uppercase                      | **PASS**        | "Editor" and "Daemons" are lowercase past the initial. Acronym-chain check does not fire on the single "AI".                         |
 | `description` free of "Obsidian"              | **PASS**        | "Review, edit, and draft notes collaboratively with configurable AI editors and panels."                                             |
 | `description` does not start with the name    | **PASS**        | Starts on "Review".                                                                                                                  |
 | `description` ends with `.`/`!`/`?`           | **PASS**        | Ends with `.`.                                                                                                                       |
-| Manifest ↔ `package.json` consistency         | **PASS**        | `name`/`id` both `ai-editor`; `version` both `0.0.0`; `description` byte-identical.                                                  |
+| Manifest ↔ `package.json` consistency         | **PASS**        | `name`/`id` both `editor-ai-daemons`; `version` both `0.0.0`; `description` byte-identical.                                          |
 | Required manifest fields present              | **PASS**        | `id`, `name`, `version`, `minAppVersion`, `description`, `isDesktopOnly`, plus `author`, `authorUrl`, `fundingUrl`.                  |
 | `obsidianmd/validate-manifest`                | **PASS**        | `bun run lint` → 0 problems.                                                                                                         |
 | `minAppVersion` ≤ latest public release       | **PASS**        | `1.8.7` vs `latestVersion: 1.13.4` in `desktop-releases.json` (fetched 2026-07-30). Not a Catalyst-only version.                     |
@@ -94,7 +103,7 @@ Only `registerCliHandler` is used, and it is runtime-guarded rather than gated b
 if (Platform.isDesktop && requireApiVersion('1.12.2')) { … }
 ```
 
-So a user on 1.8.7 gets the whole plugin minus the `ai-editor:*` terminal commands, which is what `README.md` and `docs/install.md` say. The `obsidian` dev dependency is pinned to `1.12.3` — a public release, never `latest`, never a Catalyst build.
+So a user on 1.8.7 gets the whole plugin minus the `editor-ai-daemons:*` terminal commands, which is what `README.md` and `docs/install.md` say. The `obsidian` dev dependency is pinned to `1.12.3` — a public release, never `latest`, never a Catalyst build.
 
 ### `versions.json` is empty on purpose
 
@@ -189,13 +198,13 @@ The other 30 were the rule not knowing this plugin's vocabulary. Rather than man
 | Option        | Entries                                                                                                                                                                                                    | Why                                                                                                                                                                                                                                                       |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `brands`      | `Obsidian`, `Obsidian Sync`, `Obsidian Publish`, `iCloud`, `iOS`, `macOS`, `Windows`, `Linux`, `Android`, `GitHub`, `GitHub Sponsors`, `Git`, `YouTube`, `Markdown`, `JavaScript`, `TypeScript`, `Node.js` | The plugin's default brand list is **replaced**, not merged (`options?.brands ?? DEFAULT_BRANDS`), so everything relied on must be restated.                                                                                                              |
-| `brands`      | `AI Editor`, `Anthropic`, `Azure OpenAI`, `Claude`, `Claude Code`, `Codex`, `Knowii`, `LM Studio`, `Ollama`, `OpenAI`, `OpenRouter`                                                                        | Product names this plugin's copy uses. A new brand is reported until it is added — loud, which is the point.                                                                                                                                              |
+| `brands`      | `Editor AI Daemons`, `Anthropic`, `Azure OpenAI`, `Claude`, `Claude Code`, `Codex`, `Knowii`, `LM Studio`, `Ollama`, `OpenAI`, `OpenRouter`                                                                | Product names this plugin's copy uses. A new brand is reported until it is added — loud, which is the point.                                                                                                                                              |
 | `ignoreWords` | `Actions`, `Backends`, `Default`, `Disable`, `Editors`, `Inject`, `None`, `Test`                                                                                                                           | Literal UI labels quoted inside prose ("Select **Test connection** again", "leaving it on **None**"). Lowercasing them would name a control that does not exist.                                                                                          |
 | `ignoreWords` | `api-version`                                                                                                                                                                                              | Azure's literal query-parameter name. The rule would render it `API-version`, which Azure rejects.                                                                                                                                                        |
 | `ignoreWords` | `Enter`, `Esc`                                                                                                                                                                                             | Key names ("Enter to accept · Esc to reject").                                                                                                                                                                                                            |
 | `ignoreWords` | `PATH`                                                                                                                                                                                                     | The environment variable, named in the CLI-backend security copy.                                                                                                                                                                                         |
 | `ignoreRegex` | `^e\.g\. `                                                                                                                                                                                                 | Input placeholders are sentence fragments; the rule would capitalise them into "E.g.".                                                                                                                                                                    |
-| `ignoreRegex` | `ai_editor`                                                                                                                                                                                                | Frontmatter key. The rule reads `ai` as the AI acronym and proposes `AI_editor`.                                                                                                                                                                          |
+| `ignoreRegex` | `editor_ai_daemons`                                                                                                                                                                                        | Frontmatter key. The rule reads `ai` as the AI acronym and proposes `AI_editor`.                                                                                                                                                                          |
 | `ignoreRegex` | `Personal Knowledge Management`                                                                                                                                                                            | The newsletter line in `support-links.ts` / `whats-new-view.ts`, which are kept **byte-identical** with `obsidian-plugin-template` across all 22 repos. Excluded in config so the source files do not have to carry a disable comment the template lacks. |
 
 `ignoreWords` is only consulted for tokens **after** the first in a sentence, which is why the two label-opening strings were reworded rather than added to the list.
@@ -318,14 +327,14 @@ Reviews are never automatic (Business Rules #1); even daemon mode only re-dispat
 
 ## 9. Styling
 
-| Item                                     | Verdict         | Evidence                                                                                                                                                                               |
-| ---------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No hardcoded styling                     | **PASS (note)** | Nine literal colour values in `src/styles.src.css`, all justified. See below. Verified against **`dist/styles.css`** too — see the global-selector check in § 10.                      |
-| `obsidianmd/no-static-styles-assignment` | **PASS**        | Clean — no literal style assignments on DOM elements.                                                                                                                                  |
-| No `!important`                          | **PASS**        | `grep -n "!important" src/styles.src.css` → one match, inside a comment.                                                                                                               |
-| Theme tokens                             | **PASS**        | All 34 custom properties used were verified against Obsidian's own `app.css` during the M9 theming pass (history 2026-07-30). Radius and shadow come from `--radius-*` / `--shadow-*`. |
-| No global styles                         | **PASS**        | Every selector in `dist/styles.css` is `ai-editor-*`, `.support-header-margin` or the compound `.modal.ai-editor-*`. Enforced by the § 10 command, not by reading the source file.     |
-| Reduced motion                           | **PASS**        | One blanket `prefers-reduced-motion` block scoped to the plugin's class prefix, last in the file, no `!important`.                                                                     |
+| Item                                     | Verdict         | Evidence                                                                                                                                                                                           |
+| ---------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No hardcoded styling                     | **PASS (note)** | Nine literal colour values in `src/styles.src.css`, all justified. See below. Verified against **`dist/styles.css`** too — see the global-selector check in § 10.                                  |
+| `obsidianmd/no-static-styles-assignment` | **PASS**        | Clean — no literal style assignments on DOM elements.                                                                                                                                              |
+| No `!important`                          | **PASS**        | `grep -n "!important" src/styles.src.css` → one match, inside a comment.                                                                                                                           |
+| Theme tokens                             | **PASS**        | All 34 custom properties used were verified against Obsidian's own `app.css` during the M9 theming pass (history 2026-07-30). Radius and shadow come from `--radius-*` / `--shadow-*`.             |
+| No global styles                         | **PASS**        | Every selector in `dist/styles.css` is `editor-ai-daemons-*`, `.support-header-margin` or the compound `.modal.editor-ai-daemons-*`. Enforced by the § 10 command, not by reading the source file. |
+| Reduced motion                           | **PASS**        | One blanket `prefers-reduced-motion` block scoped to the plugin's class prefix, last in the file, no `!important`.                                                                                 |
 
 The nine literals:
 
@@ -368,8 +377,8 @@ bun run build
 
 # No global selectors in the artefact a reviewer downloads. Must print
 # nothing but this plugin's own non-prefixed classes.
-grep -oE '(^|[}])\.[a-zA-Z0-9_-]+' dist/styles.css | sed 's/^}//' | sort -u | grep -v '^\.ai-editor'
-# → .modal   (only ever as the compound `.modal.ai-editor-*`)
+grep -oE '(^|[}])\.[a-zA-Z0-9_-]+' dist/styles.css | sed 's/^}//' | sort -u | grep -v '^\.editor-ai-daemons'
+# → .modal   (only ever as the compound `.modal.editor-ai-daemons-*`)
 ```
 
 ---
@@ -386,4 +395,4 @@ grep -oE '(^|[}])\.[a-zA-Z0-9_-]+' dist/styles.css | sed 's/^}//' | sort -u | gr
 
 ## The One Thing
 
-Rename the plugin `id` and `name` before the first release — `ai-editor` / "AI Editor" is already published in the catalog by another author, and the `id` becomes unchangeable the moment this one is accepted.
+Submit the plugin: the naming blocker is gone (`editor-ai-daemons` / "Editor AI Daemons", re-verified free on 2026-07-31), so the "Before submitting" list above is now the only thing between this repo and the catalog.

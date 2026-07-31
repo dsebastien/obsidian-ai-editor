@@ -11,7 +11,7 @@ nav_order: 95
 
 Slow local models are the usual cause. A 7B model on CPU, or any model with thinking enabled, can legitimately take many minutes on a long note.
 
-1. **Raise the timeout.** **Settings → AI Editor → Behavior → Runs → Request timeout (seconds)**. Default 600, maximum 3600.
+1. **Raise the timeout.** **Settings → Editor AI Daemons → Behavior → Runs → Request timeout (seconds)**. Default 600, maximum 3600.
 2. **Turn thinking off** while you diagnose. **Backends → your backend → Thinking**. A model reasoning silently for minutes is indistinguishable from a hang, which is why it defaults to off.
 3. **Review a selection instead of the whole note** to see whether size is the problem.
 4. **Lower the context budget** or turn off **Include linked notes** on the editors involved. Fewer characters, faster answer.
@@ -70,12 +70,12 @@ Dismiss it, or run the review again for a fresh look at the text as it now reads
 
 Hover the panel's **Review** button — the tooltip says which of these it is.
 
-| Reason                   | Fix                                                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| **No note open**         | Open a markdown note                                                                                 |
-| **Excluded**             | The note matches a [privacy exclusion](privacy-and-security.md) — folder, tag, or `ai_editor: false` |
-| **Rule-disabled**        | A [binding rule](rules.md) switched the plugin off for it. The message names the rule                |
-| **No editor can review** | Every editor is disabled, has no usable backend, or has review capability off                        |
+| Reason                   | Fix                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **No note open**         | Open a markdown note                                                                                         |
+| **Excluded**             | The note matches a [privacy exclusion](privacy-and-security.md) — folder, tag, or `editor_ai_daemons: false` |
+| **Rule-disabled**        | A [binding rule](rules.md) switched the plugin off for it. The message names the rule                        |
+| **No editor can review** | Every editor is disabled, has no usable backend, or has review capability off                                |
 
 A rule-disabled note has no rail, no menu items and no commands either — that is what the kill switch means.
 
@@ -161,7 +161,7 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 ## Commands are missing from the palette
 
-- **`ai-editor:*` CLI subcommands** need Obsidian 1.12.2 or newer.
+- **`editor-ai-daemons:*` CLI subcommands** need Obsidian 1.12.2 or newer.
 - **Per-action and per-editor commands** are generated from your settings and disappear when the binding does.
 - **Triage commands** only appear when there is something to triage.
 - **Nothing at all for this note**: a [binding rule](rules.md) has switched the plugin off for it.

@@ -1,4 +1,4 @@
-# AI Editor
+# Editor AI Daemons
 
 An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself** — not a chat sidebar, but configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
@@ -36,7 +36,7 @@ This is the part to read before installing, not after.
 
 - **Nothing runs automatically.** Every backend request is triggered by an explicit action of yours — Review, an action verb, a push-back, a comment, a health check. The one opt-in exception is **daemon mode**: a settings toggle, off by default, that lets your editors refresh their recommendations after you pause editing. Turning it on _is_ the explicit action, and its settings copy states the cost plainly.
 - **Nothing is written without a diff.** Every AI-proposed change is a suggestion until you accept it, and it is only applied while the target text still matches exactly what the suggestion was computed against.
-- **Excluded notes are never sent anywhere.** Exclude by folder, by tag, or with `ai_editor: false` in a note's frontmatter. An excluded note is never the review target, never attached as linked context, and never followed through a wikilink from another prompt.
+- **Excluded notes are never sent anywhere.** Exclude by folder, by tag, or with `editor_ai_daemons: false` in a note's frontmatter. An excluded note is never the review target, never attached as linked context, and never followed through a wikilink from another prompt.
 - **What actually leaves your vault**, for a hosted API backend: the note's text (or the selection), the persona prompt and voice profile, and any vault notes you explicitly attached — nothing else. Run **Preview what will be sent** to see the exact assembly, character counts included, before spending anything.
 - **API keys live in this plugin's `data.json`, inside your vault.** If the vault syncs — Obsidian Sync, iCloud, git, Syncthing — the keys travel with it. Use minimal-scope keys and rotate them if the vault ever leaks. Keys and prompts are redacted from logs and error reports, and exported settings never contain a key.
 - **Margin comments never touch your notes.** They live in one file in the plugin's own data folder, never next to a note and never in its frontmatter.
@@ -59,7 +59,7 @@ On top of that, **two separate consents**, both revocable, both recording _which
 
 ## Installation
 
-Requires Obsidian **1.8.7** or newer, on **desktop** (Windows, macOS, Linux). The `ai-editor:*` command-line integration additionally needs Obsidian 1.12.2.
+Requires Obsidian **1.8.7** or newer, on **desktop** (Windows, macOS, Linux). The `editor-ai-daemons:*` command-line integration additionally needs Obsidian 1.12.2.
 
 ### Community plugins
 
@@ -67,13 +67,13 @@ Once the plugin is available in the community catalog:
 
 1. In Obsidian, go to **Settings → Community plugins**.
 2. Disable **Restricted mode** if it is enabled.
-3. Select **Browse**, search for **AI Editor**, install it, then enable it.
+3. Select **Browse**, search for **Editor AI Daemons**, install it, then enable it.
 
 ### Manual installation
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/dsebastien/obsidian-ai-editor/releases).
-2. Copy them into `<Vault>/.obsidian/plugins/ai-editor/`.
-3. Reload Obsidian and enable **AI Editor** in **Settings → Community plugins**.
+2. Copy them into `<Vault>/.obsidian/plugins/editor-ai-daemons/`.
+3. Reload Obsidian and enable **Editor AI Daemons** in **Settings → Community plugins**.
 
 ### BRAT (bleeding edge)
 
@@ -82,11 +82,11 @@ Once the plugin is available in the community catalog:
 1. Install **Obsidian42 - BRAT** from **Settings → Community plugins → Browse** and enable it.
 2. Run **BRAT: Add a beta plugin for testing** from the command palette.
 3. Paste `https://github.com/dsebastien/obsidian-ai-editor`.
-4. Enable **AI Editor** in **Settings → Community plugins**.
+4. Enable **Editor AI Daemons** in **Settings → Community plugins**.
 
 ## Quick start
 
-The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → AI Editor → Behavior → Setup** or the **Run setup wizard** command.
+The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → Editor AI Daemons → Behavior → Setup** or the **Run setup wizard** command.
 
 1. **Add a backend** — pick a provider, paste a key, name a model. Select **Test connection**: it sends one small real request through the same path a review takes, so a green light means reviews will actually work.
 2. **Choose your editors** — six are seeded and enabled; turn off the ones you do not want paying for.
@@ -94,7 +94,7 @@ The **setup wizard** opens by itself the first time the plugin loads and walks y
 4. **Decide when editors run** — summoned only (the default), or daemon mode.
 5. Open a note and run **Review current note**.
 
-Prefer doing it by hand? **Settings → AI Editor → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.
+Prefer doing it by hand? **Settings → Editor AI Daemons → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.
 
 ## Documentation
 
@@ -110,7 +110,7 @@ Full user guide: **<https://dsebastien.github.io/obsidian-ai-editor/>**
 - [Binding rules](docs/rules.md) — per-folder, per-tag, per-note-type routing and kill switches
 - [Daemon mode](docs/daemon-mode.md)
 - [CLI backends](docs/cli-backends.md) — Claude Code and Codex, and their security model
-- [The command line](docs/command-line.md) — `ai-editor:review`, `ai-editor:status`, `ai-editor:cancel`
+- [The command line](docs/command-line.md) — `editor-ai-daemons:review`, `editor-ai-daemons:status`, `editor-ai-daemons:cancel`
 - [Move settings between vaults](docs/transfer.md)
 - [Privacy and security](docs/privacy-and-security.md)
 - [Configuration reference](docs/configuration.md) — every setting, its default, what it does

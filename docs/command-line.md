@@ -8,16 +8,16 @@ nav_order: 12
 The plugin registers three subcommands with Obsidian's own CLI, so a review can be driven from a terminal, a script, or an agent.
 
 ```bash
-obsidian ai-editor:review --file "Some Note" --format text
-obsidian ai-editor:status --file "Some Note" --format text
-obsidian ai-editor:cancel --file "Some Note"
+obsidian editor-ai-daemons:review --file "Some Note" --format text
+obsidian editor-ai-daemons:status --file "Some Note" --format text
+obsidian editor-ai-daemons:cancel --file "Some Note"
 ```
 
 **Requires Obsidian 1.12.2 or newer**, on desktop. Below that version the subcommands simply are not registered and everything else about the plugin still works.
 
 Not to be confused with [CLI backends](cli-backends.md), which are the other direction: an AI agent running on your machine _as_ a backend.
 
-## `ai-editor:review`
+## `editor-ai-daemons:review`
 
 _Review a note with the configured AI editors._
 
@@ -85,7 +85,7 @@ Errors are typed so a script can branch on them, and the messages are status-onl
 | `backend-error`      | The run failed                                                            |
 | `timeout`            | The run timed out                                                         |
 
-## `ai-editor:status`
+## `editor-ai-daemons:status`
 
 _Show the state of the AI review run for a note._ Read-only: it starts nothing and spends nothing.
 
@@ -102,7 +102,7 @@ Run in progress (2 running, 1 done) — 4 findings so far
 
 or `Run settled (3 done) — 7 findings`, or `No run for Some Note.md.` when nothing is tracked. The JSON document carries `run.settled`, one entry per editor with its status and (redacted) error, the findings in the same shape as `review`, and the per-editor summaries.
 
-## `ai-editor:cancel`
+## `editor-ai-daemons:cancel`
 
 _Cancel the in-flight AI review of a note._
 
@@ -116,7 +116,7 @@ JSON only. `{"ok":true,"file":"…","cancelled":true}` when something was cancel
 
 - Every subcommand **always answers with parseable output**, including on failure. Nothing throws through the CLI surface.
 - `--format text` is for humans and greps; `--format json` is for programs. The finding line format is identical between `review` and `status`.
-- A CLI review of an **open** note behaves as a real review of that note: cancel it with `ai-editor:cancel`, or from the rail.
+- A CLI review of an **open** note behaves as a real review of that note: cancel it with `editor-ai-daemons:cancel`, or from the rail.
 - Batch use: prefer notes that are **not** open. Runs on open notes stay in memory so their highlights keep working.
 
 ## Next
