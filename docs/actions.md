@@ -7,7 +7,7 @@ nav_order: 6
 
 An **action** is a verb you run on selected text. Nine ship with the plugin, and you can add your own.
 
-Each action is bound to one editor (or, for review-class actions, a panel) in **Settings → Editor AI Daemons → Actions**. The starter pack binds sensible defaults, so the selection menu works out of the box.
+Each action is bound to one editor (or, for review-class actions, a panel) in **Settings → AI Editor → Actions**. The starter pack binds sensible defaults, so the selection menu works out of the box.
 
 ## The built-in verbs
 
@@ -44,7 +44,7 @@ Accept is a single undo step, and only applies while the selected text is unchan
 
 ## Custom actions
 
-**Settings → Editor AI Daemons → Actions → Add custom action** gives you your own verb.
+**Settings → AI Editor → Actions → Add custom action** gives you your own verb.
 
 1. **Name** — what appears in the menu and the palette.
 2. **Instruction** — typed, and/or vault notes appended to it, with **Follow links** if those notes link out to more.

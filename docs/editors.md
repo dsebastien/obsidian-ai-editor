@@ -7,7 +7,7 @@ nav_order: 5
 
 An **editor** is an AI persona: a name, a colour, and a prompt saying what it cares about. Six ship with the plugin and every one of them is editable, renameable and deletable — they are examples, not fixtures.
 
-**Settings → Editor AI Daemons → Editors → Add editor**, or select an existing one to open the same dialog.
+**Settings → AI Editor → Editors → Add editor**, or select an existing one to open the same dialog.
 
 ## The fields
 
@@ -69,7 +69,7 @@ An extra block appended to the editor's system prompt.
 
 ## The voice profile
 
-**Settings → Editor AI Daemons → Voice & style** holds one global profile: direct text and/or vault notes, resolved fresh at run time like every other prompt source. It is prepended to every editor's run unless that editor turns **Inject voice profile** off.
+**Settings → AI Editor → Voice & style** holds one global profile: direct text and/or vault notes, resolved fresh at run time like every other prompt source. It is prepended to every editor's run unless that editor turns **Inject voice profile** off.
 
 **Follow links** defaults to **on** here, unlike everywhere else: the motivating case is a `My Voice Profile` note that links out to your style notes, and following those links is the point.
 

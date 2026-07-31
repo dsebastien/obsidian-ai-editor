@@ -4,7 +4,7 @@ nav_order: 1
 permalink: /
 ---
 
-# Editor AI Daemons
+# AI Editor
 
 AI editing, reviewing and QA **inside the Obsidian editor** — not a chat sidebar. Configurable AI personas ("Editors") and groups of them ("Panels") highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 

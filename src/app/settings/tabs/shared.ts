@@ -30,6 +30,6 @@ export function commit(
             }
         })
         .catch(() => {
-            new Notice('Editor AI Daemons: failed to save settings.')
+            new Notice('AI Editor: failed to save settings.')
         })
 }

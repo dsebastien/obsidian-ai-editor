@@ -1,4 +1,4 @@
-# Editor AI Daemons
+# AI Editor
 
 An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself** — not a chat sidebar, but configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
@@ -67,13 +67,13 @@ Once the plugin is available in the community catalog:
 
 1. In Obsidian, go to **Settings → Community plugins**.
 2. Disable **Restricted mode** if it is enabled.
-3. Select **Browse**, search for **Editor AI Daemons**, install it, then enable it.
+3. Select **Browse**, search for **AI Editor**, install it, then enable it.
 
 ### Manual installation
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/dsebastien/obsidian-ai-editor/releases).
 2. Copy them into `<Vault>/.obsidian/plugins/editor-ai-daemons/`.
-3. Reload Obsidian and enable **Editor AI Daemons** in **Settings → Community plugins**.
+3. Reload Obsidian and enable **AI Editor** in **Settings → Community plugins**.
 
 ### BRAT (bleeding edge)
 
@@ -82,11 +82,11 @@ Once the plugin is available in the community catalog:
 1. Install **Obsidian42 - BRAT** from **Settings → Community plugins → Browse** and enable it.
 2. Run **BRAT: Add a beta plugin for testing** from the command palette.
 3. Paste `https://github.com/dsebastien/obsidian-ai-editor`.
-4. Enable **Editor AI Daemons** in **Settings → Community plugins**.
+4. Enable **AI Editor** in **Settings → Community plugins**.
 
 ## Quick start
 
-The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → Editor AI Daemons → Behavior → Setup** or the **Run setup wizard** command.
+The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → AI Editor → Behavior → Setup** or the **Run setup wizard** command.
 
 1. **Add a backend** — pick a provider, paste a key, name a model. Select **Test connection**: it sends one small real request through the same path a review takes, so a green light means reviews will actually work.
 2. **Choose your editors** — six are seeded and enabled; turn off the ones you do not want paying for.
@@ -94,7 +94,7 @@ The **setup wizard** opens by itself the first time the plugin loads and walks y
 4. **Decide when editors run** — summoned only (the default), or daemon mode.
 5. Open a note and run **Review current note**.
 
-Prefer doing it by hand? **Settings → Editor AI Daemons → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.
+Prefer doing it by hand? **Settings → AI Editor → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.
 
 ## Documentation
 

@@ -7,7 +7,7 @@ nav_order: 80
 
 Every setting, where it lives, and what it defaults to. Settings are stored in this plugin's `data.json` inside your vault — see [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
-**Settings → Editor AI Daemons** has seven tabs: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
+**Settings → AI Editor** has seven tabs: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
 
 ## Behavior tab
 

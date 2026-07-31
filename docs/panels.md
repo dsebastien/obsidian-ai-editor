@@ -9,7 +9,7 @@ A **panel** is a group of editors that review together and are then summed up. I
 
 ## Compose one
 
-**Settings → Editor AI Daemons → Panels → Add panel**:
+**Settings → AI Editor → Panels → Add panel**:
 
 | Field                          | What it does                                                      |
 | ------------------------------ | ----------------------------------------------------------------- |

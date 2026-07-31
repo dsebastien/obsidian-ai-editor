@@ -7,7 +7,7 @@ nav_order: 10
 
 By default nothing runs on its own: reviews start when you ask for one. **Daemon mode** changes that for the notes you edit — your editors watch your edits and refresh their recommendations after you pause.
 
-**Settings → Editor AI Daemons → Behavior → Daemon → Daemon mode.** Off by default.
+**Settings → AI Editor → Behavior → Daemon → Daemon mode.** Off by default.
 
 ## Cost first
 

@@ -23,7 +23,7 @@ Findings quote your text **verbatim**. A quote that cannot be located exactly, o
 
 ## Privacy exclusions are absolute
 
-**Settings → Editor AI Daemons → Behavior → Privacy exclusions.** Three ways to exclude a note:
+**Settings → AI Editor → Behavior → Privacy exclusions.** Three ways to exclude a note:
 
 | Mechanism       | How                                                        |
 | --------------- | ---------------------------------------------------------- |

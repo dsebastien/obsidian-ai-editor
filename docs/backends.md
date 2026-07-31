@@ -7,7 +7,7 @@ nav_order: 3
 
 A **backend** is where the thinking happens. You can configure as many as you like and point different editors at different ones — a cheap fast model for the Concision Editor, a stronger one for the Devil's Advocate.
 
-Everything below lives in **Settings → Editor AI Daemons → Backends**.
+Everything below lives in **Settings → AI Editor → Backends**.
 
 ## Two families
 
@@ -18,7 +18,7 @@ Both families are resolved through the same code path, so anything that can run 
 
 ## Add an API backend
 
-1. **Settings → Editor AI Daemons → Backends → Add backend**, pick the provider, select **Add**.
+1. **Settings → AI Editor → Backends → Add backend**, pick the provider, select **Add**.
 2. Fill in the fields the provider needs (below).
 3. Select **Add backend** to save.
 4. Set it as the **Global default backend** at the top of the tab — editors inherit it unless they override it — or assign it per editor.
@@ -101,7 +101,7 @@ Either way, **an editor's findings appear when that editor finishes**, not one a
 
 ## Timeouts, concurrency, budget
 
-These are global and live in **Settings → Editor AI Daemons → Behavior**, not on the backend:
+These are global and live in **Settings → AI Editor → Behavior**, not on the backend:
 
 - **Request timeout (seconds)** — how long one editor's API request may take, connection to last byte. Default **600** (10 minutes), range 30–3600. Slow local models legitimately need minutes.
 - **Max concurrent requests** — how many backend requests run in parallel across the whole plugin. Default **3**, range 1–10.

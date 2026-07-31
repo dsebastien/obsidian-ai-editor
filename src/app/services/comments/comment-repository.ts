@@ -777,7 +777,7 @@ export function commentStoreLoadNotice(report: CommentStoreLoadReport): string |
     }
     if (report.status === 'recovered') {
         const count = report.comments
-        return `Editor AI Daemons: the last save of the margin comments was interrupted. ${count} ${
+        return `AI Editor: the last save of the margin comments was interrupted. ${count} ${
             count === 1 ? 'comment was' : 'comments were'
         } recovered.`
     }
@@ -786,10 +786,10 @@ export function commentStoreLoadNotice(report: CommentStoreLoadReport): string |
             ? 'The file could not be preserved, so comments will not be saved this session.'
             : `The previous file was kept at ${report.backupPath}.`
     if (report.status === 'unreadable') {
-        return `Editor AI Daemons: the margin comment store could not be read. ${preserved}`
+        return `AI Editor: the margin comment store could not be read. ${preserved}`
     }
     const count = report.dropped.length
-    return `Editor AI Daemons: ${count} margin comment ${count === 1 ? 'entry was' : 'entries were'} invalid and could not be loaded. ${preserved}`
+    return `AI Editor: ${count} margin comment ${count === 1 ? 'entry was' : 'entries were'} invalid and could not be loaded. ${preserved}`
 }
 
 /** Count of comments a load report says survived (for logs). */

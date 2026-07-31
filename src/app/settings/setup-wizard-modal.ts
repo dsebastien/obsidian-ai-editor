@@ -145,13 +145,13 @@ export class SetupWizardModal extends Modal {
                 Object.assign(settings, applied)
             })
         } catch {
-            new Notice('Editor AI Daemons: could not save the setup. Nothing was changed.')
+            new Notice('AI Editor: could not save the setup. Nothing was changed.')
             return
         }
         this.committed = true
         this.close()
         this.onFinished()
-        new Notice('Editor AI Daemons is set up.')
+        new Notice('AI Editor is set up.')
     }
 
     // -- Rendering ------------------------------------------------------------

@@ -389,7 +389,7 @@ export class ImportSettingsModal extends Modal {
         try {
             await this.commitPlan(plan)
         } catch {
-            new Notice('Editor AI Daemons: failed to save the imported settings.')
+            new Notice('AI Editor: failed to save the imported settings.')
             this.setImportEnabled(true)
             return
         }

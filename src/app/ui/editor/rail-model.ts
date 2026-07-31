@@ -202,7 +202,7 @@ const COMPACT_BUTTON_GLYPHS: Readonly<Record<'review' | 'cancel', string>> = {
  * Names the real palette entry — `Open review panel`, not the review command.
  */
 export const NARROW_PANEL_HINT =
-    'narrow pane — run "Editor AI Daemons: Open review panel" for the full list'
+    'narrow pane — run "AI Editor: Open review panel" for the full list'
 
 const BADGE_MAX = 99
 

@@ -100,7 +100,7 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
 
         const tabBar = containerEl.createDiv({
             cls: 'editor-ai-daemons-settings-tabbar',
-            attr: { 'role': 'tablist', 'aria-label': 'Editor AI Daemons settings sections' }
+            attr: { 'role': 'tablist', 'aria-label': 'AI Editor settings sections' }
         })
         const activeIndex = Math.max(
             0,

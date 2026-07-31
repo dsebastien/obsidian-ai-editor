@@ -1,6 +1,6 @@
 # Architecture
 
-High-level structure of the Editor AI Daemons plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/editor-ai-daemons-v1-implementation-plan.md` for the roadmap.
+High-level structure of the AI Editor plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/editor-ai-daemons-v1-implementation-plan.md` for the roadmap.
 
 ## Layers
 

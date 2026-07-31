@@ -777,9 +777,7 @@ export class ReviewController {
                 new Notice('This note is excluded from AI review by your privacy settings.')
                 return
             case 'rule-disabled':
-                new Notice(
-                    `Editor AI Daemons is turned off for this note by the rule ${result.ruleLabel}.`
-                )
+                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
@@ -1055,9 +1053,7 @@ export class ReviewController {
                 new Notice('This note is excluded from AI actions by your privacy settings.')
                 return
             case 'rule-disabled':
-                new Notice(
-                    `Editor AI Daemons is turned off for this note by the rule ${result.ruleLabel}.`
-                )
+                new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
                 return
             case 'needs-confirmation':
                 new SizeConfirmModal(
@@ -1129,7 +1125,7 @@ export class ReviewController {
             // accepting the question would spend a backend request on an
             // answer that dies at quit, having promised the opposite.
             new Notice(
-                'Editor AI Daemons: margin comments cannot be saved this session, so new ones are not accepted. See the comment store warning from startup.'
+                'AI Editor: margin comments cannot be saved this session, so new ones are not accepted. See the comment store warning from startup.'
             )
             return
         }
@@ -2363,7 +2359,7 @@ export class ReviewController {
         }
         if (registry.isReadOnly()) {
             new Notice(
-                'Editor AI Daemons: margin comments cannot be saved this session, so a retry would not be recorded.'
+                'AI Editor: margin comments cannot be saved this session, so a retry would not be recorded.'
             )
             return
         }
@@ -2644,9 +2640,7 @@ export class ReviewController {
                 new Notice(`${start.notePath} is excluded from AI review.`)
                 return false
             case 'rule-disabled':
-                new Notice(
-                    `Editor AI Daemons is turned off for that note by the rule ${start.ruleLabel}.`
-                )
+                new Notice(`AI Editor is turned off for that note by the rule ${start.ruleLabel}.`)
                 return false
             case 'no-editor':
                 new Notice(

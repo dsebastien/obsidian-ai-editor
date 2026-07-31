@@ -7,7 +7,7 @@ import type { OskNoteType, OskNoteTypeMapping } from '../domain/rules/note-type'
  * decision made with that list lives in `domain/rules/note-type.ts`, pure and
  * spec-covered.
  *
- * Nothing in Editor AI Daemons depends on the Starter Kit being installed. When the
+ * Nothing in AI Editor depends on the Starter Kit being installed. When the
  * plugin is absent, disabled, or exposes a shape this adapter does not
  * recognize, `readOskNoteTypes` returns `[]` and note-type resolution falls
  * back to the `type/<x>` tag convention — the whole feature degrades to "rules

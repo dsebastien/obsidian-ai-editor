@@ -435,7 +435,7 @@ export function renderChipList(containerEl: HTMLElement, options: ChipListOption
                     // The facade rejects schema-invalid values (e.g. an
                     // over-long entry): keep the previous list and tell the
                     // user instead of persisting data the load path would wipe.
-                    new Notice('Editor AI Daemons: value rejected — failed to save settings.')
+                    new Notice('AI Editor: value rejected — failed to save settings.')
                     render()
                 })
         }

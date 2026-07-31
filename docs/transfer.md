@@ -5,7 +5,7 @@ nav_order: 13
 
 # Move settings between vaults
 
-The editors, panels, actions, rules and voice profile you build are portable. **Settings → Editor AI Daemons → Behavior → Import & export.**
+The editors, panels, actions, rules and voice profile you build are portable. **Settings → AI Editor → Behavior → Import & export.**
 
 ## Export
 

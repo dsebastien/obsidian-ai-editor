@@ -12,7 +12,7 @@ import type { BackendHealthResult } from '../services/backends/health-check'
 
 /** Modal title: the step's own name, so the title bar tracks progress. */
 const STEP_TITLES: Record<SetupWizardStepId, string> = {
-    welcome: 'Welcome to Editor AI Daemons',
+    welcome: 'Welcome to AI Editor',
     backend: 'Connect an AI backend',
     editors: 'Choose your editors',
     voice: 'Teach the editors your voice',
@@ -42,7 +42,7 @@ const STEP_COUNT_WORD = STEP_COUNT_WORDS[SETUP_STEP_COUNT] ?? String(SETUP_STEP_
 /** Body paragraphs of a step, in order. */
 const STEP_BODIES: Record<SetupWizardStepId, readonly string[]> = {
     welcome: [
-        'Editor AI Daemons reviews the note you are writing with editors you configure — personas with their own instructions, each reporting findings you accept or dismiss one by one. It also rewrites selections and continues your text, always as a suggestion you approve first.',
+        'AI Editor reviews the note you are writing with editors you configure — personas with their own instructions, each reporting findings you accept or dismiss one by one. It also rewrites selections and continues your text, always as a suggestion you approve first.',
         'Nothing is ever sent to an AI backend without an explicit action from you, and nothing is ever written into a note without your confirmation.',
         `This wizard takes ${STEP_COUNT_WORD} short steps. You can leave any of them empty and change everything later in the settings.`
     ],
@@ -51,7 +51,7 @@ const STEP_BODIES: Record<SetupWizardStepId, readonly string[]> = {
         'You can skip this step and add a backend later in the Backends tab.'
     ],
     editors: [
-        'Editor AI Daemons ships with six editors, each looking at a different aspect of your writing. Every enabled editor runs on every review, and each one is a separate request to your backend — so start with two or three and add more once you know which ones earn their keep.',
+        'AI Editor ships with six editors, each looking at a different aspect of your writing. Every enabled editor runs on every review, and each one is a separate request to your backend — so start with two or three and add more once you know which ones earn their keep.',
         'All of them are fully editable in the Editors tab: their instructions are just text.'
     ],
     voice: [
@@ -188,9 +188,9 @@ export function setupSummaryLines(outcome: SetupOutcome, canReview: boolean): re
  * user will actually read, so it is named first and by prefix.
  */
 export const SETUP_POINTERS: readonly string[] = [
-    'Open a note and run the command “Editor AI Daemons: Review current note”, or select Review in the rail at the right edge of the editor.',
-    'The review panel (“Editor AI Daemons: Open review panel”) lists every finding, and its Review button starts a review for the note you are on.',
-    'Run “Editor AI Daemons: Preview what will be sent” before your first paid review to see exactly what leaves your vault.',
-    'Type “Editor AI Daemons” in the command palette to see everything the plugin can do.',
-    'Every setting, including this wizard, lives in Settings → Editor AI Daemons.'
+    'Open a note and run the command “AI Editor: Review current note”, or select Review in the rail at the right edge of the editor.',
+    'The review panel (“AI Editor: Open review panel”) lists every finding, and its Review button starts a review for the note you are on.',
+    'Run “AI Editor: Preview what will be sent” before your first paid review to see exactly what leaves your vault.',
+    'Type “AI Editor” in the command palette to see everything the plugin can do.',
+    'Every setting, including this wizard, lives in Settings → AI Editor.'
 ]

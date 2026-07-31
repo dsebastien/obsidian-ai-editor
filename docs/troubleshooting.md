@@ -11,7 +11,7 @@ nav_order: 95
 
 Slow local models are the usual cause. A 7B model on CPU, or any model with thinking enabled, can legitimately take many minutes on a long note.
 
-1. **Raise the timeout.** **Settings → Editor AI Daemons → Behavior → Runs → Request timeout (seconds)**. Default 600, maximum 3600.
+1. **Raise the timeout.** **Settings → AI Editor → Behavior → Runs → Request timeout (seconds)**. Default 600, maximum 3600.
 2. **Turn thinking off** while you diagnose. **Backends → your backend → Thinking**. A model reasoning silently for minutes is indistinguishable from a hang, which is why it defaults to off.
 3. **Review a selection instead of the whole note** to see whether size is the problem.
 4. **Lower the context budget** or turn off **Include linked notes** on the editors involved. Fewer characters, faster answer.
