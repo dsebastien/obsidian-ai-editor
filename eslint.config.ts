@@ -147,7 +147,7 @@ export default defineConfig([
                         // and an executable usually has none.
                         '^[/~]',
                         // Frontmatter key — lowercase is the contract
-                        'ai_editor',
+                        'editor_ai_daemons',
                         // Fleet-wide template copy, kept byte-identical
                         'Personal Knowledge Management'
                     ]

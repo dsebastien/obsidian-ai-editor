@@ -326,7 +326,7 @@ describe('shapeRunOutput', () => {
         const output = shapeRunOutput('Notes/Test.md', run, [])
         expect(output.ok).toBe(false)
         expect(output.error?.code).toBe('backend-error')
-        expect(output.error?.message).toContain('ai-editor:status')
+        expect(output.error?.message).toContain('editor-ai-daemons:status')
         expect(output.error?.message).not.toContain('cancelled')
         expect(output.skips).toEqual([{ editor: 'Hater', reason: 'retrying' }])
     })

@@ -10,7 +10,7 @@ import {
 } from './cli-shared'
 
 /**
- * Pure core of the `ai-editor:status` CLI subcommand (design doc
+ * Pure core of the `editor-ai-daemons:status` CLI subcommand (design doc
  * "Interaction surfaces" §4). Obsidian-free by design: file resolution and
  * run lookup are injected as `StatusCliDeps`, so the whole report — both
  * output formats included — is unit-testable. The Obsidian glue
@@ -19,13 +19,13 @@ import {
  *
  * Contract:
  * - Reports the current run for a note WITHOUT running anything: an
- *   external agent polls `ai-editor:status` while a long `ai-editor:review`
+ *   external agent polls `editor-ai-daemons:status` while a long `editor-ai-daemons:review`
  *   (or a UI-started run) is in flight, and reads the same document after
- *   settle or after `ai-editor:cancel` (cancel never discards the run).
+ *   settle or after `editor-ai-daemons:cancel` (cancel never discards the run).
  * - `run: null` (still `ok: true`) when no run is tracked for the note —
  *   absence of a run is an answer, not an error.
  * - Findings are shaped by the exact same `shapeFindings` as
- *   `ai-editor:review`, so the two subcommands stay in lockstep by
+ *   `editor-ai-daemons:review`, so the two subcommands stay in lockstep by
  *   construction; `summaryByEditor` likewise.
  * - Per-editor `error` entries already passed the run's redaction seam
  *   (Business Rules #12) before reaching `EditorRunState`; the handler
@@ -37,7 +37,7 @@ import {
 // Command metadata (consumed by the registration glue)
 // ---------------------------------------------------------------------------
 
-export const STATUS_CLI_COMMAND = 'ai-editor:status'
+export const STATUS_CLI_COMMAND = 'editor-ai-daemons:status'
 
 export const STATUS_CLI_DESCRIPTION = 'Show the state of the AI review run for a note'
 
@@ -77,7 +77,7 @@ export interface StatusCliRun {
     /** Whether every editor stream has reached a terminal state. */
     readonly settled: boolean
     readonly editors: readonly StatusCliEditor[]
-    /** Same shape as the `ai-editor:review` output (`cli-shared.ts`). */
+    /** Same shape as the `editor-ai-daemons:review` output (`cli-shared.ts`). */
     readonly findings: readonly CliFinding[]
     readonly summaryByEditor: Readonly<Record<string, string>>
 }
@@ -170,7 +170,7 @@ export function formatStatusHeadline(run: StatusCliRun): string {
 
 /**
  * Text rendering: a single status headline followed by one line per finding
- * (same line format as `ai-editor:review --format text`); `No run for …`
+ * (same line format as `editor-ai-daemons:review --format text`); `No run for …`
  * when nothing is tracked; a single `Error (code): …` line on failure.
  */
 export function formatStatusText(output: StatusCliOutput): string {
@@ -196,7 +196,7 @@ function render(output: StatusCliOutput, format: CliFormat): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Handles one `ai-editor:status` invocation: parse the flags, resolve the
+ * Handles one `editor-ai-daemons:status` invocation: parse the flags, resolve the
  * note, look up its run, and render the report in the requested format.
  * Never throws — every outcome renders as parseable output.
  */

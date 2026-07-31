@@ -17,8 +17,8 @@ import type { RunController } from '../services/orchestration/run-controller'
 import { createNoteResolver } from './resolve-note-path'
 
 /**
- * Obsidian glue for the run-inspection CLI subcommands (`ai-editor:cancel`,
- * `ai-editor:status`; design doc "Interaction surfaces" §4): binds the pure
+ * Obsidian glue for the run-inspection CLI subcommands (`editor-ai-daemons:cancel`,
+ * `editor-ai-daemons:status`; design doc "Interaction surfaces" §4): binds the pure
  * handlers to the live vault and the shared `RunController`, and registers
  * them.
  *
@@ -30,7 +30,7 @@ import { createNoteResolver } from './resolve-note-path'
  *
  * These handlers only READ the controller state (plus `cancelRun`, which
  * flips run state but never discards it): cancelling from the CLI leaves
- * the findings inspectable via `ai-editor:status` and the review UI.
+ * the findings inspectable via `editor-ai-daemons:status` and the review UI.
  */
 export function registerCancelCli(input: { plugin: Plugin; runController: RunController }): void {
     const { plugin, runController } = input
@@ -49,9 +49,9 @@ export function registerCancelCli(input: { plugin: Plugin; runController: RunCon
 }
 
 /**
- * Registers `ai-editor:status` — the read-only poll surface for external
+ * Registers `editor-ai-daemons:status` — the read-only poll surface for external
  * agents: reports the current run for a note (settled state, per-editor
- * states, findings shaped exactly like `ai-editor:review` output) without
+ * states, findings shaped exactly like `editor-ai-daemons:review` output) without
  * running anything. Same caller contract as above.
  */
 export function registerStatusCli(input: { plugin: Plugin; runController: RunController }): void {

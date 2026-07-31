@@ -3,10 +3,10 @@ import type { Severity } from '../../domain/operations/contract'
 import type { EditorRunState, RunHandle } from '../orchestration/run-controller'
 
 /**
- * Shared machinery for the `ai-editor:*` CLI subcommands (design doc
+ * Shared machinery for the `editor-ai-daemons:*` CLI subcommands (design doc
  * "Interaction surfaces" §4). The review, cancel, and status handlers must
- * stay in lockstep — a finding printed by `ai-editor:status` has the exact
- * same shape as one printed by `ai-editor:review` — so the common flag
+ * stay in lockstep — a finding printed by `editor-ai-daemons:status` has the exact
+ * same shape as one printed by `editor-ai-daemons:review` — so the common flag
  * parsing, finding/summary shaping, and text rendering live here instead of
  * being duplicated per subcommand. Obsidian-free by design, like every pure
  * CLI core in this directory.

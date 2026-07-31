@@ -142,7 +142,7 @@ interface Harness {
 function setup(): Harness {
     const repository = new MarginCommentRepository({
         storage: new MemoryStorage(),
-        storePath: 'plugins/ai-editor/comments.json',
+        storePath: 'plugins/editor-ai-daemons/comments.json',
         setTimer: () => 0,
         clearTimer: () => undefined,
         saveDelayMs: 10_000

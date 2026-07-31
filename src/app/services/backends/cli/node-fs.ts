@@ -67,7 +67,7 @@ export type CreateRunDir = () => Promise<RunDirHandle>
  * Creates the per-run directory in the OS temp location.
  *
  * Deliberately NOT the vault, and deliberately not the plugin's own data
- * folder either: `.obsidian/plugins/ai-editor/` lives inside the vault, so
+ * folder either: `.obsidian/plugins/editor-ai-daemons/` lives inside the vault, so
  * anything an agent writes there is a file the user's sync engine replicates
  * and their vault search finds. A CLI agent that decides to scribble a
  * scratch file has to land it somewhere that is neither of those, and it has

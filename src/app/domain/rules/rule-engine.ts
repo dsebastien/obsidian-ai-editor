@@ -164,7 +164,7 @@ function scalarText(value: unknown): string | null {
  *
  * `expected === null` is a presence check: the key must hold something
  * meaningful — `null`, `undefined`, `false`, blank strings and empty arrays do
- * not count (`ai_editor: false` must not satisfy "has ai_editor"), while a
+ * not count (`editor_ai_daemons: false` must not satisfy "has editor_ai_daemons"), while a
  * nested map does.
  *
  * Otherwise the value is compared case-insensitively as text; values with no

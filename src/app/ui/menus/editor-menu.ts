@@ -4,7 +4,7 @@ import type { PluginSettingsV1 } from '../../domain/settings/settings-schema'
 import { resolveActions } from '../../services/actions/action-resolution'
 import type { ReviewController } from '../review-controller'
 import {
-    AI_EDITOR_MENU_SECTION,
+    PLUGIN_MENU_SECTION,
     actionMenuIcon,
     actionMenuTitle,
     editorMenuEntries
@@ -48,7 +48,7 @@ export function registerEditorMenu(
                             menuItem
                                 .setTitle(actionMenuTitle(action))
                                 .setIcon(actionMenuIcon(action.verbClass))
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     // Selection-capture contract (design §1):
                                     // the range + hash are read synchronously
@@ -63,7 +63,7 @@ export function registerEditorMenu(
                             menuItem
                                 .setTitle('Review selection')
                                 .setIcon('message-circle')
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     // Selection-capture contract (design §1):
                                     // the range is read synchronously in this
@@ -77,7 +77,7 @@ export function registerEditorMenu(
                             menuItem
                                 .setTitle('Ask for comments…')
                                 .setIcon('message-square-plus')
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     // Selection-capture contract (design §1):
                                     // the range is read synchronously in this
@@ -91,7 +91,7 @@ export function registerEditorMenu(
                             menuItem
                                 .setTitle('Ask an editor…')
                                 .setIcon('message-circle-question')
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     // Selection + capture-time hash are read
                                     // synchronously in this callback; the

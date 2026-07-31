@@ -575,7 +575,7 @@ describe('assembleContext — excluded review target (Business Rules #7)', () =>
                 ...baseInput,
                 behavior: behavior(),
                 vault: vaultOf({
-                    [NOTE_PATH]: { content: 'body', frontmatter: { ai_editor: false } }
+                    [NOTE_PATH]: { content: 'body', frontmatter: { editor_ai_daemons: false } }
                 }),
                 notePath: NOTE_PATH
             })
@@ -618,7 +618,7 @@ describe('assembleContext — exclusions (Business Rules #7)', () => {
     test('excluded notes are dropped from prompt refs and linked notes too', async () => {
         const vault = vaultOf({
             'Tagged.md': { content: 'tagged', tags: ['secret'] },
-            'Flagged.md': { content: 'flagged', frontmatter: { ai_editor: false } },
+            'Flagged.md': { content: 'flagged', frontmatter: { editor_ai_daemons: false } },
             'Fine.md': { content: 'fine' },
             [NOTE_PATH]: { content: 'body', links: ['Flagged.md', 'Fine.md'] }
         })

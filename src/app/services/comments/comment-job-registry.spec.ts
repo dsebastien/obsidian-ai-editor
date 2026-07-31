@@ -11,7 +11,7 @@ import { MarginCommentRepository } from './comment-repository'
 import type { CommentStorageAdapter } from './comment-repository'
 
 const NOTE = 'Notes/Test.md'
-const STORE_PATH = 'plugins/ai-editor/comments.json'
+const STORE_PATH = 'plugins/editor-ai-daemons/comments.json'
 
 class MemoryStorage implements CommentStorageAdapter {
     readonly files = new Map<string, string>()

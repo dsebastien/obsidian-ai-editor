@@ -17,7 +17,7 @@ import {
 } from './cli-shared'
 
 /**
- * Pure core of the `ai-editor:review` CLI subcommand (design doc
+ * Pure core of the `editor-ai-daemons:review` CLI subcommand (design doc
  * "Interaction surfaces" §4). Obsidian-free by design: the vault, the
  * settings, and the review pipeline are injected as `ReviewCliDeps`, so arg
  * parsing, every typed error code, and both output formats are fully
@@ -44,7 +44,7 @@ import {
 // Command metadata (consumed by the registration glue)
 // ---------------------------------------------------------------------------
 
-export const REVIEW_CLI_COMMAND = 'ai-editor:review'
+export const REVIEW_CLI_COMMAND = 'editor-ai-daemons:review'
 
 export const REVIEW_CLI_DESCRIPTION = 'Review a note with the configured AI editors'
 
@@ -83,7 +83,7 @@ export type ReviewCliErrorCode =
     | 'timeout'
 
 /**
- * The finding shape is shared with `ai-editor:status` (`cli-shared.ts`) so
+ * The finding shape is shared with `editor-ai-daemons:status` (`cli-shared.ts`) so
  * both subcommands report byte-identical finding documents.
  */
 export type ReviewCliFinding = CliFinding
@@ -94,7 +94,7 @@ export type ReviewCliFinding = CliFinding
  * started are reported as `backend-error`, `timeout`, or `cancelled`; an
  * editor whose per-editor retry is still in flight when the one-shot output
  * is shaped is reported as `retrying` (read its outcome via
- * `ai-editor:status`).
+ * `editor-ai-daemons:status`).
  */
 export interface ReviewCliSkip {
     readonly editor: string
@@ -372,7 +372,7 @@ function toCliSkips(skips: readonly EditorSkip[]): ReviewCliSkip[] {
  * un-resolve), while a per-editor retry started from the rail/panel of an
  * open note flips that editor back to pending/running. Such an editor is
  * reported as a `retrying` skip — never silently dropped — and its final
- * findings stay readable via `ai-editor:status`.
+ * findings stay readable via `editor-ai-daemons:status`.
  */
 export function shapeRunOutput(
     file: string,
@@ -419,7 +419,7 @@ export function shapeRunOutput(
                   .map((state) => `${state.editorName}: ${state.error?.message ?? 'failed'}`)
                   .join('; ')
             : retrying
-              ? 'A retry is still in flight — read the final result with ai-editor:status'
+              ? 'A retry is still in flight — read the final result with editor-ai-daemons:status'
               : 'The run was cancelled before any editor completed'
     return {
         ok: false,
@@ -579,7 +579,7 @@ function render(output: ReviewCliOutput, format: ReviewCliFormat): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Handles one `ai-editor:review` invocation end to end: parse args, resolve
+ * Handles one `editor-ai-daemons:review` invocation end to end: parse args, resolve
  * and read the note, narrow to the requested editors, dispatch through the
  * injected review pipeline, wait for settle, and render the result in the
  * requested format. Never throws — every failure renders as a typed error

@@ -110,8 +110,8 @@ describe('shapeStatusRun', () => {
     })
 
     it('shapes findings byte-identically to the review output', () => {
-        // Lockstep guarantee: an agent that parsed `ai-editor:review`
-        // findings must be able to parse `ai-editor:status` findings with
+        // Lockstep guarantee: an agent that parsed `editor-ai-daemons:review`
+        // findings must be able to parse `editor-ai-daemons:status` findings with
         // the same code — both go through the shared shaping.
         const run = new FakeRunHandle(
             [makeState({ summary: 'Solid draft' })],
@@ -338,7 +338,7 @@ describe('handleStatusCli', () => {
     })
 
     it('declares the command metadata with file required', () => {
-        expect(STATUS_CLI_COMMAND).toBe('ai-editor:status')
+        expect(STATUS_CLI_COMMAND).toBe('editor-ai-daemons:status')
         expect(STATUS_CLI_DESCRIPTION.length).toBeGreaterThan(0)
         expect(Object.keys(STATUS_CLI_FLAGS)).toEqual(['file', 'format'])
         expect(STATUS_CLI_FLAGS['file']?.required).toBe(true)

@@ -292,7 +292,7 @@ export interface RunHandle {
     /**
      * Whether the run still has backend work in flight — every editor plus the
      * panel's aggregation step. This is what the busy surfaces gate on (Cancel
-     * command, `ai-editor cancel`, the rail's Cancel/spinner, the side-panel
+     * command, `editor-ai-daemons cancel`, the rail's Cancel/spinner, the side-panel
      * Review button, the daemon's dispatch probe): during aggregation the
      * editors are all terminal, so `isSettled()` alone would hide Cancel,
      * report `already-settled`, and let a new run cancel-replace a scorecard

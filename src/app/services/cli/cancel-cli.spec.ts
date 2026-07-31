@@ -111,7 +111,7 @@ describe('handleCancelCli', () => {
     })
 
     it('declares the command metadata with file required', () => {
-        expect(CANCEL_CLI_COMMAND).toBe('ai-editor:cancel')
+        expect(CANCEL_CLI_COMMAND).toBe('editor-ai-daemons:cancel')
         expect(CANCEL_CLI_DESCRIPTION.length).toBeGreaterThan(0)
         expect(Object.keys(CANCEL_CLI_FLAGS)).toEqual(['file'])
         expect(CANCEL_CLI_FLAGS['file']?.required).toBe(true)

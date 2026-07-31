@@ -2,7 +2,7 @@ import { normalizePath } from 'obsidian'
 import type { App } from 'obsidian'
 
 /**
- * Shared `--file` resolution for every `ai-editor:*` CLI subcommand: accepts
+ * Shared `--file` resolution for every `editor-ai-daemons:*` CLI subcommand: accepts
  * a vault-relative path (with or without `.md`) or plain link text, markdown
  * notes only — same tolerance as wikilink resolution, so `--file "My Note"`
  * works like `[[My Note]]`. One implementation on purpose: review, cancel,

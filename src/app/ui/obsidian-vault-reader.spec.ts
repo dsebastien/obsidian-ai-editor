@@ -212,7 +212,7 @@ describe('ObsidianVaultReader.getNoteMetadata', () => {
     test('returns merged tags and a frontmatter copy', () => {
         const cache = {
             tags: [{ tag: '#inline' }],
-            frontmatter: { tags: ['fm'], ai_editor: false, title: 'X' }
+            frontmatter: { tags: ['fm'], editor_ai_daemons: false, title: 'X' }
         } as unknown as CachedMetadata
         const reader = new ObsidianVaultReader(
             fakeApp([{ path: 'Note.md', extension: 'md', cache }])
@@ -220,7 +220,7 @@ describe('ObsidianVaultReader.getNoteMetadata', () => {
         const metadata = reader.getNoteMetadata('Note.md')
         expect(metadata).not.toBeNull()
         expect(metadata?.tags).toEqual(['inline', 'fm'])
-        expect(metadata?.frontmatter['ai_editor']).toBe(false)
+        expect(metadata?.frontmatter['editor_ai_daemons']).toBe(false)
         expect(metadata?.frontmatter['title']).toBe('X')
     })
 

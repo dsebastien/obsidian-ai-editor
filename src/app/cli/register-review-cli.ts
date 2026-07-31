@@ -14,7 +14,7 @@ import type { ReviewController } from '../ui/review-controller'
 import { createNoteResolver } from './resolve-note-path'
 
 /**
- * Obsidian glue for the `ai-editor:review` CLI subcommand (design doc
+ * Obsidian glue for the `editor-ai-daemons:review` CLI subcommand (design doc
  * "Interaction surfaces" §4): binds the pure `handleReviewCli` core to the
  * live vault and the shared review pipeline, and registers the handler.
  *

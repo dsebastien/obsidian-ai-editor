@@ -293,7 +293,7 @@ export const behaviorSettingsSchema = z.object({
     /**
      * Upper bound for one editor's backend request (connect + full stream),
      * in seconds. Applies to API reviews from any entry point (UI and the
-     * `ai-editor:review` CLI alike). The default is laptop-realistic: slow
+     * `editor-ai-daemons:review` CLI alike). The default is laptop-realistic: slow
      * local models (Ollama on CPU) legitimately stream for many minutes.
      */
     requestTimeoutSeconds: z.number().int().min(30).max(3_600).default(600),
@@ -315,7 +315,7 @@ export const behaviorSettingsSchema = z.object({
     daemonIdleSeconds: z.number().int().min(5).max(600).default(30),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
-    /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */
+    /** Frontmatter flag that opts a note out entirely: `editor_ai_daemons: false`. */
     respectFrontmatterOptOut: z.boolean().default(true),
     /**
      * Removes the leading frontmatter block from the reviewed note, from every

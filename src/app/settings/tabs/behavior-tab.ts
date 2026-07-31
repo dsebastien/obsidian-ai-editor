@@ -184,7 +184,7 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
     })
     new Setting(containerEl)
         .setName('Respect frontmatter opt-out')
-        .setDesc('Notes with ai_editor: false in their frontmatter are excluded entirely.')
+        .setDesc('Notes with editor_ai_daemons: false in their frontmatter are excluded entirely.')
         .addToggle((toggle) => {
             toggle.setValue(settings.behavior.respectFrontmatterOptOut)
             toggle.onChange((value) => {

@@ -23,7 +23,7 @@ import type { NoteMetadata } from './vault-reader.intf'
  * - Tag: excluded when any note tag equals an excluded tag or is nested
  *   under it (`private` excludes `private/journal`). `#` and case are
  *   ignored on both sides.
- * - Frontmatter: excluded when `ai_editor` is strictly `false` and the
+ * - Frontmatter: excluded when `editor_ai_daemons` is strictly `false` and the
  *   opt-out flag is respected (default). Truthy or absent values never
  *   exclude.
  *
@@ -61,7 +61,7 @@ export function isExcluded(
         }
     }
 
-    if (behavior.respectFrontmatterOptOut && metadata.frontmatter['ai_editor'] === false) {
+    if (behavior.respectFrontmatterOptOut && metadata.frontmatter['editor_ai_daemons'] === false) {
         return true
     }
 

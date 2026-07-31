@@ -13,7 +13,7 @@ import type { CommentStorageAdapter } from './comment-repository'
 
 // A deliberately NON-default config folder: the store path is derived from
 // the plugin's own directory, never from a hardcoded `.obsidian`.
-const PLUGIN_DIR = 'my-config/plugins/ai-editor'
+const PLUGIN_DIR = 'my-config/plugins/editor-ai-daemons'
 const STORE_PATH = `${PLUGIN_DIR}/comments.json`
 const TEMP_PATH = `${STORE_PATH}.tmp`
 

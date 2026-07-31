@@ -3,7 +3,7 @@ import type { CliFlagSpec } from './cli-shared'
 import { parseFileFlag } from './cli-shared'
 
 /**
- * Pure core of the `ai-editor:cancel` CLI subcommand (design doc
+ * Pure core of the `editor-ai-daemons:cancel` CLI subcommand (design doc
  * "Interaction surfaces" §4). Obsidian-free by design: file resolution and
  * run lookup are injected as `CancelCliDeps`, so the whole decision table is
  * unit-testable. The Obsidian glue (`cli/register-run-cli.ts`) binds the
@@ -13,7 +13,7 @@ import { parseFileFlag } from './cli-shared'
  * Contract:
  * - Cancels the unsettled run for the note, when there is one. Cancelling
  *   NEVER discards the run: the findings collected so far stay inspectable
- *   through `ai-editor:status` and the review UI (rail/panel/highlights).
+ *   through `editor-ai-daemons:status` and the review UI (rail/panel/highlights).
  *   Discard is a UI lifecycle concern (file closed/deleted), not a cancel
  *   side effect.
  * - Reports honestly when there was nothing to cancel: `cancelled: false`
@@ -29,7 +29,7 @@ import { parseFileFlag } from './cli-shared'
 // Command metadata (consumed by the registration glue)
 // ---------------------------------------------------------------------------
 
-export const CANCEL_CLI_COMMAND = 'ai-editor:cancel'
+export const CANCEL_CLI_COMMAND = 'editor-ai-daemons:cancel'
 
 export const CANCEL_CLI_DESCRIPTION = 'Cancel the in-flight AI review of a note'
 
@@ -96,7 +96,7 @@ export interface CancelCliDeps {
 // ---------------------------------------------------------------------------
 
 /**
- * Handles one `ai-editor:cancel` invocation: parse the `file` flag, resolve
+ * Handles one `editor-ai-daemons:cancel` invocation: parse the `file` flag, resolve
  * the note, look up its run, and cancel it iff it has not settled. Never
  * throws — every outcome renders as one parseable JSON document.
  */

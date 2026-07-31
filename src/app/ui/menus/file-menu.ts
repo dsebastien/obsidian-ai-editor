@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 import type { ReviewController } from '../review-controller'
-import { AI_EDITOR_MENU_SECTION, fileMenuItems } from './menu-model'
+import { PLUGIN_MENU_SECTION, fileMenuItems } from './menu-model'
 
 /**
  * File context menu (design doc "Interaction surfaces" §2): a single
@@ -29,7 +29,7 @@ export function registerFileMenu(plugin: Plugin, controller: ReviewController): 
                             menuItem
                                 .setTitle('Review note')
                                 .setIcon('message-circle')
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     void controller.reviewFile(file.path)
                                 })
@@ -40,7 +40,7 @@ export function registerFileMenu(plugin: Plugin, controller: ReviewController): 
                             menuItem
                                 .setTitle('Open review panel')
                                 .setIcon('bot')
-                                .setSection(AI_EDITOR_MENU_SECTION)
+                                .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {
                                     void controller.activateSidePanel()
                                 })

@@ -15,7 +15,7 @@ import { actionDisplayLabel } from '../entity-label'
  */
 
 /** `MenuItem.setSection` value grouping every Editor AI Daemons item together. */
-export const AI_EDITOR_MENU_SECTION = 'ai-editor'
+export const PLUGIN_MENU_SECTION = 'editor-ai-daemons'
 
 // ---------------------------------------------------------------------------
 // Editor context menu (right-click in the editor) — design §1
