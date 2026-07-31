@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { App } from 'obsidian'
 import { isStarterKitAvailable, normalizeOskNoteType, readOskNoteTypes } from './osk-note-types'
-import { STARTER_KIT_PLUGIN_ID } from './osk-note-types'
+import { STARTER_KIT_PLUGIN_IDS } from './osk-note-types'
 
 /**
  * The adapter only touches `app.plugins.plugins[<id>].api.listNoteTypes`, so a
@@ -9,7 +9,7 @@ import { STARTER_KIT_PLUGIN_ID } from './osk-note-types'
  */
 function fakeApp(api: unknown): App {
     return {
-        plugins: { plugins: { [STARTER_KIT_PLUGIN_ID]: { api } } }
+        plugins: { plugins: { [STARTER_KIT_PLUGIN_IDS[0]]: { api } } }
     } as unknown as App
 }
 
@@ -105,5 +105,31 @@ describe('readOskNoteTypes', () => {
                 })
             )
         ).toEqual([])
+    })
+})
+
+describe('plugin id probing', () => {
+    const api = { listNoteTypes: () => [{ name: 'Personal Notes', mappings: [] }] }
+
+    it('finds the Starter Kit under its manifest id', () => {
+        const app = { plugins: { plugins: { 'obsidian-starter-kit': { api } } } } as unknown as App
+        expect(isStarterKitAvailable(app)).toBe(true)
+        expect(readOskNoteTypes(app).map((t) => t.name)).toEqual(['Personal Notes'])
+    })
+
+    it('also finds it under the folder-shaped id', () => {
+        // The vault folder is `obsidian-starter-kit-plugin` while the manifest
+        // id is `obsidian-starter-kit`; probing only the folder spelling was
+        // the bug that reported "not detected" in a vault that had it enabled.
+        const app = {
+            plugins: { plugins: { 'obsidian-starter-kit-plugin': { api } } }
+        } as unknown as App
+        expect(isStarterKitAvailable(app)).toBe(true)
+    })
+
+    it('stays unavailable when neither id is present', () => {
+        const app = { plugins: { plugins: { 'some-other-plugin': { api } } } } as unknown as App
+        expect(isStarterKitAvailable(app)).toBe(false)
+        expect(readOskNoteTypes(app)).toEqual([])
     })
 })

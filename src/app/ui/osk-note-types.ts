@@ -21,8 +21,21 @@ import type { OskNoteType, OskNoteTypeMapping } from '../domain/rules/note-type'
  * `note-type.ts` module doc).
  */
 
-/** Community-plugin id of the Obsidian Starter Kit plugin. */
-export const STARTER_KIT_PLUGIN_ID = 'obsidian-starter-kit-plugin'
+/**
+ * Plugin ids the Obsidian Starter Kit is known to register under, most
+ * current first.
+ *
+ * The FOLDER it installs into is `obsidian-starter-kit-plugin`, but the id in
+ * its manifest — the key `app.plugins.plugins` is actually keyed by — is
+ * `obsidian-starter-kit`. Probing the folder name found nothing in a vault
+ * where the Starter Kit was installed and enabled, and the Rules tab then told
+ * the user it was "not detected" while it sat right there. Both are probed so
+ * neither spelling can reintroduce that.
+ */
+export const STARTER_KIT_PLUGIN_IDS = [
+    'obsidian-starter-kit',
+    'obsidian-starter-kit-plugin'
+] as const
 
 /** The one method this adapter needs from the Starter Kit's API object. */
 interface StarterKitApiLike {
@@ -48,9 +61,14 @@ function unwrap(result: unknown): unknown {
 function getStarterKitApi(app: App): StarterKitApiLike | null {
     // `app.plugins` is not part of the public typings; guarded structurally.
     const plugins = (app as unknown as { plugins?: { plugins?: Record<string, unknown> } }).plugins
-    const plugin = plugins?.plugins?.[STARTER_KIT_PLUGIN_ID] as { api?: unknown } | undefined
-    const api = plugin?.api as StarterKitApiLike | undefined
-    return api && typeof api.listNoteTypes === 'function' ? api : null
+    for (const id of STARTER_KIT_PLUGIN_IDS) {
+        const plugin = plugins?.plugins?.[id] as { api?: unknown } | undefined
+        const api = plugin?.api as StarterKitApiLike | undefined
+        if (api && typeof api.listNoteTypes === 'function') {
+            return api
+        }
+    }
+    return null
 }
 
 /** Whether the Starter Kit is installed, enabled, and exposing its API. */
