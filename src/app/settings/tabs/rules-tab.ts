@@ -53,12 +53,15 @@ export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void 
         cls: 'editor-ai-daemons-tab-intro',
         text: 'Notes no rule matches are reviewed by every enabled editor, which is also what happens when there are no rules at all.'
     })
-    containerEl.createEl('p', {
-        cls: 'editor-ai-daemons-tab-intro',
-        text: isStarterKitAvailable(ctx.app)
-            ? `Obsidian Starter Kit detected — “OSK note type” lists its ${readOskNoteTypes(ctx.app).length} types to pick from. A note also matches by its type/… tag, so rules keep working if the Starter Kit is ever disabled.`
-            : 'Obsidian Starter Kit not detected, so “OSK note type” has no list to offer: type the type/… tag spelling instead (for example “permanent_note”). Enable the Starter Kit to pick from its types by name.'
-    })
+    // Only mentioned when it is there. Telling a user who does not run the
+    // Starter Kit that it was "not detected" advertises a match type they
+    // cannot use and reads as a warning about something being wrong.
+    if (isStarterKitAvailable(ctx.app)) {
+        containerEl.createEl('p', {
+            cls: 'editor-ai-daemons-tab-intro',
+            text: `Obsidian Starter Kit detected — “OSK note type” lists its ${readOskNoteTypes(ctx.app).length} types to pick from. A note also matches by its type/… tag, so rules keep working if the Starter Kit is ever disabled.`
+        })
+    }
 
     if (settings.rules.length === 0) {
         containerEl.createEl('p', {
@@ -124,6 +127,7 @@ function renderRuleRow(
     row.setClass('editor-ai-daemons-rule-row')
     row.setName(`Rule ${index + 1}`)
     row.setDesc(ruleSummary(settings, rule))
+    const starterKitAvailable = isStarterKitAvailable(ctx.app)
 
     row.addToggle((toggle) => {
         toggle.setValue(rule.enabled)
@@ -136,6 +140,18 @@ function renderRuleRow(
     })
     row.addDropdown((dropdown) => {
         for (const [matchType, label] of Object.entries(MATCH_TYPE_LABELS)) {
+            // Without the Starter Kit there is no registry to match against,
+            // so the option is not offered — except on a rule already set to
+            // it (a rule written when the Starter Kit was enabled, or brought
+            // in by an import), where hiding it would leave the dropdown
+            // showing "Folder" while the rule matched note types.
+            if (
+                matchType === 'osk-note-type' &&
+                !starterKitAvailable &&
+                rule.match.matchType !== 'osk-note-type'
+            ) {
+                continue
+            }
             dropdown.addOption(matchType, label)
         }
         dropdown.setValue(rule.match.matchType)
