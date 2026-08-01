@@ -14,10 +14,15 @@
 
 /**
  * How much room the pane gives the editor chrome:
- * - `wide` — full rail (labeled Review/Cancel button) + floating cards;
- * - `narrow` — compact rail (icon-only, tooltips carry everything) and cards
- *   clamped into the pane; the side panel is the real fallback surface and the
- *   compact rail's tooltip says so.
+ * - `wide` — full-density rail + floating cards;
+ * - `narrow` — DENSE rail (smaller type, tighter rows, a shorter name budget)
+ *   and cards clamped into the pane; the side panel is the real fallback
+ *   surface and the compact rail's button tooltip says so.
+ *
+ * `narrow` used to mean icon-only on the rail. It no longer does (2026-08-01):
+ * every editor row keeps its name as text in both modes — a rail whose names
+ * live in tooltips cannot be read at a glance, which is the only reason the
+ * rail exists. Only the density changes.
  */
 export type PaneLayoutMode = 'wide' | 'narrow'
 

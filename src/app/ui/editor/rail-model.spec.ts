@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'bun:test'
 import {
     DAEMON_ARMED_TITLE,
+    DAEMON_LABEL,
+    NAME_ELLIPSIS,
+    NAME_MAX_CHARS,
+    NAME_MAX_CHARS_COMPACT,
     NARROW_PANEL_HINT,
     buildRailViewModel,
     chipClickAction,
-    railErrorReason
+    editorRing,
+    panelRing,
+    railErrorReason,
+    railMotion,
+    truncateName
 } from './rail-model'
-import type { RailEditorState, RailEditorStatus, RailPanelState, RailState } from './rail-model'
+import type {
+    RailEditorState,
+    RailEditorStatus,
+    RailMotionState,
+    RailPanelState,
+    RailState,
+    RailViewModel
+} from './rail-model'
 
 function editor(overrides: Partial<RailEditorState> = {}): RailEditorState {
     return {
@@ -46,11 +61,6 @@ describe('buildRailViewModel', () => {
             expect(vm.button.disabled).toBe(true)
             expect(vm.dots).toEqual([])
         })
-
-        it('shows the label as text in a wide pane', () => {
-            expect(buildRailViewModel(state()).button.text).toBe('Review')
-            expect(buildRailViewModel(state({ running: true })).button.text).toBe('Cancel')
-        })
     })
 
     describe('narrow pane (compact form)', () => {
@@ -61,18 +71,44 @@ describe('buildRailViewModel', () => {
             expect(vm.button.tooltip).toBe(vm.button.ariaLabel)
         })
 
-        it('replaces the button label with a glyph, keeping the semantics', () => {
+        it('keeps the button LABELLED in a narrow pane', () => {
+            // The compact form used to swap the label for a glyph. Every row
+            // next to it now carries a name, so a lone glyph button was the
+            // one unreadable control on a rail otherwise made of words.
             const review = buildRailViewModel(state({ narrow: true }))
             expect(review.compact).toBe(true)
             expect(review.button.label).toBe('Review')
             expect(review.button.action).toBe('review')
-            expect(review.button.text).not.toBe('Review')
-            expect(review.button.text.length).toBeGreaterThan(0)
 
             const cancel = buildRailViewModel(state({ narrow: true, running: true }))
             expect(cancel.button.label).toBe('Cancel')
-            expect(cancel.button.text).not.toBe('Cancel')
-            expect(cancel.button.text).not.toBe(review.button.text)
+            expect(cancel.button.action).toBe('cancel')
+        })
+
+        it('keeps every editor name visible, only shorter', () => {
+            // The whole point of the redesign: a narrow pane makes the rail
+            // denser, it never hides the names.
+            const long = editor({ name: 'Ruthlessly Concise Structural Editor' })
+            const wide = buildRailViewModel(state({ editors: [long] }))
+            const narrow = buildRailViewModel(state({ narrow: true, editors: [long] }))
+
+            expect(wide.dots[0]?.displayName.length).toBeGreaterThan(
+                narrow.dots[0]?.displayName.length ?? 0
+            )
+            expect(narrow.dots[0]?.displayName.length).toBeGreaterThan(0)
+            expect(narrow.dots[0]?.displayName).toStartWith('Ruthlessly')
+            // The full name is never lost: it is the accessible name.
+            expect(narrow.dots[0]?.ariaLabel).toContain(long.name)
+            expect(narrow.dots[0]?.name).toBe(long.name)
+        })
+
+        it('drops the daemon word but never its state', () => {
+            const wide = buildRailViewModel(state({ daemonMode: true })).daemon
+            const narrow = buildRailViewModel(state({ narrow: true, daemonMode: true })).daemon
+            expect(wide.label).toBe(DAEMON_LABEL)
+            expect(narrow.label).toBeNull()
+            expect(narrow.text).toBe(wide.text)
+            expect(narrow.ariaLabel).toBe(wide.ariaLabel)
         })
 
         it('nudges towards the side panel in the button tooltip only', () => {
@@ -100,6 +136,31 @@ describe('buildRailViewModel', () => {
             expect(buildRailViewModel(state({ narrow: true, editors: [] })).button.disabled).toBe(
                 true
             )
+        })
+    })
+
+    describe('rows', () => {
+        it('shows every editor name as text, not only as a tooltip', () => {
+            const vm = buildRailViewModel(
+                state({
+                    editors: [
+                        editor({ id: 'a', name: 'Hater' }),
+                        editor({ id: 'b', name: 'Beginner' })
+                    ]
+                })
+            )
+            expect(vm.dots.map((dot) => dot.displayName)).toEqual(['Hater', 'Beginner'])
+            expect(vm.dots.every((dot) => dot.displayName === dot.name)).toBeTrue()
+        })
+
+        it('bounds an absurd name rather than letting it size the rail', () => {
+            const name = 'A'.repeat(400)
+            const vm = buildRailViewModel(state({ editors: [editor({ name })] }))
+            expect(vm.dots[0]?.displayName.length).toBe(NAME_MAX_CHARS)
+            expect(vm.dots[0]?.displayName).toEndWith(NAME_ELLIPSIS)
+            // Truncated visibly, never in the accessible name (WCAG 2.5.3:
+            // the visible text stays a prefix of the accessible name).
+            expect(vm.dots[0]?.ariaLabel).toContain(name)
         })
     })
 
@@ -259,6 +320,213 @@ describe('buildRailViewModel', () => {
             expect(daemon.enabled).toBe(false)
             expect(daemon.armed).toBe(false)
         })
+    })
+})
+
+describe('truncateName', () => {
+    it('leaves a name that fits untouched', () => {
+        expect(truncateName('Hater', 28)).toBe('Hater')
+        expect(truncateName('12345', 5)).toBe('12345')
+    })
+
+    it('cuts to the budget INCLUDING the ellipsis', () => {
+        expect(truncateName('123456789', 5)).toBe(`1234${NAME_ELLIPSIS}`)
+        expect(truncateName('123456789', 5).length).toBe(5)
+    })
+
+    it('never leaves a space dangling before the ellipsis', () => {
+        expect(truncateName('Concision Editor', 11)).toBe(`Concision${NAME_ELLIPSIS}`)
+    })
+
+    it('degrades to the ellipsis alone rather than to an empty row', () => {
+        expect(truncateName('Hater', 1)).toBe(NAME_ELLIPSIS)
+        expect(truncateName('Hater', 0)).toBe(NAME_ELLIPSIS)
+        expect(truncateName('Hater', -3)).toBe(NAME_ELLIPSIS)
+    })
+
+    it('gives a narrow pane a smaller budget than a wide one', () => {
+        expect(NAME_MAX_CHARS_COMPACT).toBeLessThan(NAME_MAX_CHARS)
+        // Both still leave room for a real name, not an acronym.
+        expect(NAME_MAX_CHARS_COMPACT).toBeGreaterThan(8)
+    })
+})
+
+describe('ring mapping', () => {
+    it('maps every editor status to exactly one ring', () => {
+        expect(editorRing('idle')).toBe('idle')
+        expect(editorRing('pending')).toBe('pending')
+        expect(editorRing('running')).toBe('busy')
+        expect(editorRing('transforming')).toBe('busy')
+        expect(editorRing('done')).toBe('done')
+        expect(editorRing('error')).toBe('error')
+        expect(editorRing('cancelled')).toBe('muted')
+    })
+
+    it('maps every scorecard status to the same ring vocabulary', () => {
+        expect(panelRing('waiting')).toBe('pending')
+        expect(panelRing('running')).toBe('busy')
+        expect(panelRing('ready')).toBe('done')
+        expect(panelRing('failed')).toBe('error')
+        expect(panelRing('cancelled')).toBe('muted')
+        expect(panelRing('skipped')).toBe('muted')
+        expect(panelRing('unavailable')).toBe('muted')
+    })
+
+    it('is what the row view models carry', () => {
+        const vm = buildRailViewModel(
+            state({
+                editors: [editor({ status: 'running' })],
+                panel: {
+                    name: 'Pre-publish review',
+                    color: 'var(--color-pink)',
+                    status: 'waiting',
+                    memberIds: ['editor-1']
+                }
+            })
+        )
+        expect(vm.dots[0]?.ring).toBe('busy')
+        expect(vm.panel?.ring).toBe('pending')
+        expect(vm.panel?.displayName).toBe('Pre-publish review')
+    })
+})
+
+describe('railMotion', () => {
+    function view(overrides: Partial<RailState> = {}): RailViewModel {
+        return buildRailViewModel(state(overrides))
+    }
+
+    function advance(previous: RailMotionState | null, overrides: Partial<RailState> = {}) {
+        return railMotion(previous, view(overrides))
+    }
+
+    it('plays nothing on the very first render of a rail with no run', () => {
+        const { cues } = advance(null)
+        expect(cues).toEqual({ stagger: false, bumped: [], settled: [], panelSettled: false })
+    })
+
+    it('staggers the rows in when a run starts', () => {
+        const first = advance(null)
+        const second = railMotion(first.state, view({ runKey: 'snap-1', running: true }))
+        expect(second.cues.stagger).toBeTrue()
+    })
+
+    it('does not re-stagger on every render inside one run', () => {
+        const start = railMotion(null, view({ runKey: 'snap-1', running: true }))
+        const streaming = railMotion(
+            start.state,
+            view({
+                runKey: 'snap-1',
+                running: true,
+                editors: [editor({ status: 'running', findingCount: 1 })]
+            })
+        )
+        expect(streaming.cues.stagger).toBeFalse()
+    })
+
+    it('staggers again for the NEXT run', () => {
+        const first = railMotion(null, view({ runKey: 'snap-1', running: true }))
+        const second = railMotion(first.state, view({ runKey: 'snap-2', running: true }))
+        expect(second.cues.stagger).toBeTrue()
+    })
+
+    it('bumps a count badge that changed value', () => {
+        const two = railMotion(
+            null,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running', findingCount: 2 })] })
+        )
+        const three = railMotion(
+            two.state,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running', findingCount: 3 })] })
+        )
+        expect(three.cues.bumped).toEqual(['editor-1'])
+    })
+
+    it('does not bump a badge that did not change, nor one that went away', () => {
+        const two = railMotion(
+            null,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running', findingCount: 2 })] })
+        )
+        const same = railMotion(
+            two.state,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'done', findingCount: 2 })] })
+        )
+        expect(same.cues.bumped).toEqual([])
+        const gone = railMotion(
+            two.state,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'idle', findingCount: 0 })] })
+        )
+        expect(gone.cues.bumped).toEqual([])
+    })
+
+    it('never bumps a row that is appearing for the first time', () => {
+        const first = railMotion(null, view({ runKey: 'snap-1', editors: [editor({ id: 'a' })] }))
+        const added = railMotion(
+            first.state,
+            view({
+                runKey: 'snap-1',
+                editors: [editor({ id: 'a' }), editor({ id: 'b', status: 'done', findingCount: 4 })]
+            })
+        )
+        expect(added.cues.bumped).toEqual([])
+    })
+
+    it('reports an editor settling out of flight', () => {
+        const running = railMotion(
+            null,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running' })] })
+        )
+        for (const status of ['done', 'error', 'cancelled'] as const) {
+            const settled = railMotion(
+                running.state,
+                view({ runKey: 'snap-1', editors: [editor({ status })] })
+            )
+            expect(settled.cues.settled).toEqual(['editor-1'])
+        }
+    })
+
+    it('does not report a run being dropped as everyone settling', () => {
+        // Every editor back to `idle` is the run going away, not seven
+        // editors finishing at once.
+        const running = railMotion(
+            null,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running' })] })
+        )
+        const dropped = railMotion(running.state, view({ editors: [editor({ status: 'idle' })] }))
+        expect(dropped.cues.settled).toEqual([])
+    })
+
+    it('suppresses per-row cues while the whole list is animating in', () => {
+        const before = railMotion(
+            null,
+            view({ runKey: 'snap-1', editors: [editor({ status: 'running', findingCount: 2 })] })
+        )
+        const newRun = railMotion(
+            before.state,
+            view({ runKey: 'snap-2', editors: [editor({ status: 'done', findingCount: 9 })] })
+        )
+        expect(newRun.cues).toEqual({
+            stagger: true,
+            bumped: [],
+            settled: [],
+            panelSettled: false
+        })
+    })
+
+    it('reports the panel settling, once', () => {
+        const panel = (status: RailPanelState['status']): Partial<RailState> => ({
+            runKey: 'snap-1',
+            panel: {
+                name: 'Pre-publish review',
+                color: 'var(--color-pink)',
+                status,
+                memberIds: ['editor-1']
+            }
+        })
+        const running = railMotion(null, view(panel('running')))
+        const ready = railMotion(running.state, view(panel('ready')))
+        expect(ready.cues.panelSettled).toBeTrue()
+        const again = railMotion(ready.state, view(panel('ready')))
+        expect(again.cues.panelSettled).toBeFalse()
     })
 })
 

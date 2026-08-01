@@ -40,9 +40,9 @@ export interface RailEditorState {
 /**
  * The panel this run IS, when it is one (plan M6). Business Rules #11: a panel
  * must be visually distinguishable from an editor in every surface — on the
- * rail it is ONE ringed chip that owns its members, while the members stay
- * their own solid dots inside it. A panel weighs its members; it does not
- * absorb them, and neither does the rail.
+ * rail it is ONE row with a HOLLOW identity core that owns its members, while
+ * the members keep their own names and their own filled cores under it. A
+ * panel weighs its members; it does not absorb them, and neither does the rail.
  */
 export interface RailPanelState {
     readonly name: string
@@ -76,21 +76,32 @@ export interface RailState {
      */
     readonly daemonArmed?: boolean
     /**
-     * Narrow pane (plan M4 adaptive layout): the rail drops the button label
-     * and shrinks, so the tooltips carry everything the text said. Driven by
-     * the pane `ResizeObserver` through `nextLayoutMode` (layout-mode.ts).
+     * Narrow pane (plan M4 adaptive layout): the rail gets DENSER — smaller
+     * type, tighter spacing, a shorter name budget. It does NOT go icon-only:
+     * an editor's name is the one thing the rail exists to show, and a rail
+     * whose names live in tooltips is a rail nobody can read at a glance
+     * (Sébastien, 2026-08-01). Driven by the pane `ResizeObserver` through
+     * `nextLayoutMode` (layout-mode.ts).
      */
     readonly narrow?: boolean
+    /**
+     * Identity of the run currently projected, or undefined when there is no
+     * run. Purely a MOTION key: `railMotion` staggers the rows in when it
+     * changes, so a new run animates and the dozens of re-renders inside one
+     * run do not. Fed from the run's snapshot id — a retry reuses the
+     * snapshot, so retrying one editor does not re-stagger the whole rail.
+     */
+    readonly runKey?: string
 }
 
 export interface RailButtonViewModel {
-    /** Semantic label — what the button does, regardless of layout. */
-    readonly label: 'Review' | 'Cancel'
     /**
-     * What the button actually shows: the label when the pane is wide, a
-     * glyph when it is narrow (the accessible name stays `ariaLabel`).
+     * What the button says — and it says it in BOTH layouts. The compact form
+     * used to swap the label for a glyph; now that every row next to it
+     * carries a name, a lone glyph button was the only unreadable control on
+     * a rail otherwise made of words.
      */
-    readonly text: string
+    readonly label: 'Review' | 'Cancel'
     readonly action: 'review' | 'cancel'
     /** Accessible name: what the control IS, identical in both layouts. */
     readonly ariaLabel: string
@@ -99,10 +110,76 @@ export interface RailButtonViewModel {
     readonly disabled: boolean
 }
 
+/**
+ * What the ring around a row's identity core says about that row's work.
+ * Deliberately smaller than the status vocabulary it is derived from: the ring
+ * is a 16–20px shape, so it can carry "is something happening" and "did it end
+ * badly", not seven distinct meanings. The full status is in the accessible
+ * name, which is where precision belongs.
+ *
+ * - `idle` — nothing has run: the faintest ring there is;
+ * - `pending` — queued behind the concurrency budget: dashed, static;
+ * - `busy` — a request is in flight: an animated arc sweep in the persona
+ *   colour (`running` and `transforming` both land here — the tooltip is what
+ *   distinguishes them);
+ * - `done` — settled with a result: a solid persona ring;
+ * - `error` — the attempt failed: the ring in the error colour;
+ * - `muted` — cancelled, skipped or unavailable: the ring in the muted colour.
+ */
+export type RailRingKind = 'idle' | 'pending' | 'busy' | 'done' | 'error' | 'muted'
+
+/** Status → ring for an editor row. */
+export function editorRing(status: RailEditorStatus): RailRingKind {
+    switch (status) {
+        case 'idle':
+            return 'idle'
+        case 'pending':
+            return 'pending'
+        case 'running':
+        case 'transforming':
+            return 'busy'
+        case 'done':
+            return 'done'
+        case 'error':
+            return 'error'
+        case 'cancelled':
+            return 'muted'
+    }
+}
+
+/** Scorecard status → ring for the panel row. Same vocabulary, same shapes. */
+export function panelRing(status: ScorecardStatusKind): RailRingKind {
+    switch (status) {
+        case 'waiting':
+            return 'pending'
+        case 'running':
+            return 'busy'
+        case 'ready':
+            return 'done'
+        case 'failed':
+            return 'error'
+        case 'cancelled':
+        case 'skipped':
+        case 'unavailable':
+            return 'muted'
+    }
+}
+
 export interface RailDotViewModel {
     readonly editorId: string
     readonly color: string
     readonly status: RailEditorStatus
+    /** Which ring the row draws around its identity core. */
+    readonly ring: RailRingKind
+    /** The editor's full name — the accessible name is built from it. */
+    readonly name: string
+    /**
+     * The name as the row RENDERS it: hard-capped in characters so one absurd
+     * persona name cannot decide the rail's width before CSS gets a say. CSS
+     * still ellipsises what does not fit the capped box; this is the bound
+     * that makes the layout predictable rather than the one users usually see.
+     */
+    readonly displayName: string
     /** Count badge text, or null when no badge should render. */
     readonly badge: string | null
     readonly ariaLabel: string
@@ -125,7 +202,11 @@ export interface RailDotViewModel {
 /** The panel chip: one entity, ringed, carrying the scorecard's state. */
 export interface RailPanelViewModel {
     readonly name: string
+    /** The name as the row renders it (same character cap as an editor's). */
+    readonly displayName: string
     readonly status: ScorecardStatusKind
+    /** Which ring the row draws — same vocabulary as an editor's. */
+    readonly ring: RailRingKind
     /** The verdict label, once the scorecard exists; null otherwise. */
     readonly badge: string | null
     readonly color: string
@@ -150,8 +231,13 @@ export interface RailViewModel {
      * the pulse while this note's refresh is counting down.
      */
     readonly daemon: RailDaemonViewModel
-    /** True in the narrow-pane form (icon-only, tighter spacing). */
+    /**
+     * True in the narrow-pane form: denser type, tighter spacing, a shorter
+     * name budget. Never icon-only — see {@link RailState.narrow}.
+     */
     readonly compact: boolean
+    /** Motion key of the projected run; null when no run is bound. */
+    readonly runKey: string | null
 }
 
 /**
@@ -193,13 +279,23 @@ export interface RailDaemonViewModel {
     readonly enabled: boolean
     /** A refresh is counting down for this note (pulse, `enabled` implied). */
     readonly armed: boolean
-    /** What the control shows: a glyph, identical in both layouts. */
+    /** The state glyph — hollow ring off, filled disc on. Both layouts. */
     readonly text: string
+    /**
+     * The word next to the glyph in a wide pane. Null in a narrow one, where
+     * the rail's width is spent on the editor names instead — the toggle is a
+     * mode indicator, not one of the rows the redesign is about, and its
+     * `aria-pressed` + accessible name carry the state either way.
+     */
+    readonly label: string | null
     /** Accessible name: the state, since `aria-pressed` carries on/off. */
     readonly ariaLabel: string
     /** Tooltip: the state plus what clicking does, and the cost when off. */
     readonly tooltip: string
 }
+
+/** The word shown next to the daemon glyph in a wide pane. */
+export const DAEMON_LABEL = 'Daemon'
 
 /** Tooltip/aria text of the daemon armed indicator. */
 export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after you pause editing'
@@ -209,12 +305,18 @@ export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after y
  * where it is a warning about what the click will start, rather than in the
  * ON state where it would nag about a decision already made.
  */
-export function buildDaemonViewModel(enabled: boolean, armed: boolean): RailDaemonViewModel {
+export function buildDaemonViewModel(
+    enabled: boolean,
+    armed: boolean,
+    compact = false
+): RailDaemonViewModel {
+    const label = compact ? null : DAEMON_LABEL
     if (!enabled) {
         return {
             enabled: false,
             armed: false,
             text: '◌',
+            label,
             ariaLabel: 'Daemon mode off',
             tooltip:
                 'Daemon mode is off — editors run only when you summon them. Turn it on to refresh reviews automatically after you pause; every refresh calls your backends.'
@@ -224,6 +326,7 @@ export function buildDaemonViewModel(enabled: boolean, armed: boolean): RailDaem
         enabled: true,
         armed,
         text: '◉',
+        label,
         ariaLabel: armed ? 'Daemon mode on, refresh armed' : 'Daemon mode on',
         tooltip: armed
             ? `${DAEMON_ARMED_TITLE}. Click to turn daemon mode off.`
@@ -232,13 +335,35 @@ export function buildDaemonViewModel(enabled: boolean, armed: boolean): RailDaem
 }
 
 /**
- * Glyphs the compact button falls back to. Text glyphs on purpose: the rail
- * is Obsidian-free DOM (no `setIcon`) and must not use innerHTML — same
- * reasoning as the retry chip's `↻`.
+ * Character budget for a row's visible name, wide pane and narrow pane.
+ *
+ * This is a BOUND, not the usual truncation: the rail's width is capped in
+ * CSS and `text-overflow: ellipsis` does the everyday shortening against real
+ * glyph widths, which no pure function can know. What CSS cannot do is stop a
+ * 400-character persona name from being laid out at all, so the model hands
+ * the DOM something already bounded and the full name rides the tooltip and
+ * the accessible name (WCAG 2.5.3: the visible text is a prefix of the name).
  */
-const COMPACT_BUTTON_GLYPHS: Readonly<Record<'review' | 'cancel', string>> = {
-    review: '▶',
-    cancel: '■'
+export const NAME_MAX_CHARS = 28
+export const NAME_MAX_CHARS_COMPACT = 18
+
+/** The one ellipsis character used when a name is cut. */
+export const NAME_ELLIPSIS = '…'
+
+/**
+ * Cuts `name` to at most `maxChars` characters INCLUDING the ellipsis, with
+ * any whitespace left dangling before the ellipsis removed (`"Concision "` →
+ * `"Concision…"`, never `"Concision …"`). A non-positive budget yields the
+ * ellipsis alone rather than an empty row.
+ */
+export function truncateName(name: string, maxChars: number): string {
+    if (name.length <= maxChars) {
+        return name
+    }
+    if (maxChars <= 1) {
+        return NAME_ELLIPSIS
+    }
+    return `${name.slice(0, maxChars - 1).trimEnd()}${NAME_ELLIPSIS}`
 }
 
 /**
@@ -316,12 +441,15 @@ function isRetryable(status: RailEditorStatus): boolean {
     return status === 'error' || status === 'cancelled'
 }
 
-function buildDot(editor: RailEditorState, member: boolean): RailDotViewModel {
+function buildDot(editor: RailEditorState, member: boolean, nameBudget: number): RailDotViewModel {
     const label = `${editor.name} — ${statusLabel(editor)}`
     return {
         editorId: editor.id,
         color: editor.color,
         status: editor.status,
+        ring: editorRing(editor.status),
+        name: editor.name,
+        displayName: truncateName(editor.name, nameBudget),
         badge: formatBadge(editor.findingCount),
         ariaLabel: label,
         title: label,
@@ -345,7 +473,7 @@ const PANEL_STATUS_LABELS: Readonly<Record<ScorecardStatusKind, string>> = {
     unavailable: 'no scorecard — this panel has no aggregation backend'
 }
 
-function buildPanel(panel: RailPanelState): RailPanelViewModel {
+function buildPanel(panel: RailPanelState, nameBudget: number): RailPanelViewModel {
     // "(panel)" is in the NAME, not only in the shape: a ring is a visual
     // distinction, and a screen reader has no ring (Business Rules #11 has to
     // hold in the accessibility tree too). One author for the marker —
@@ -364,7 +492,9 @@ function buildPanel(panel: RailPanelState): RailPanelViewModel {
             : `${marked} — ${panel.verdictLabel}, ${PANEL_STATUS_LABELS[panel.status]}`
     return {
         name: panel.name,
+        displayName: truncateName(panel.name, nameBudget),
         status: panel.status,
+        ring: panelRing(panel.status),
         badge: panel.verdictLabel ?? null,
         color: panel.color,
         ariaLabel: label,
@@ -391,15 +521,126 @@ export function buildRailViewModel(state: RailState): RailViewModel {
           }
     const button: RailButtonViewModel = {
         ...base,
-        text: compact ? COMPACT_BUTTON_GLYPHS[base.action] : base.label,
         tooltip: compact ? `${base.ariaLabel} (${NARROW_PANEL_HINT})` : base.ariaLabel
     }
     const memberIds = new Set(state.panel?.memberIds ?? [])
+    const nameBudget = compact ? NAME_MAX_CHARS_COMPACT : NAME_MAX_CHARS
     return {
         button,
-        dots: state.editors.map((editor) => buildDot(editor, memberIds.has(editor.id))),
-        panel: state.panel === undefined ? null : buildPanel(state.panel),
-        daemon: buildDaemonViewModel(state.daemonMode === true, state.daemonArmed === true),
-        compact
+        dots: state.editors.map((editor) => buildDot(editor, memberIds.has(editor.id), nameBudget)),
+        panel: state.panel === undefined ? null : buildPanel(state.panel, nameBudget),
+        daemon: buildDaemonViewModel(
+            state.daemonMode === true,
+            state.daemonArmed === true,
+            compact
+        ),
+        compact,
+        runKey: state.runKey ?? null
     }
+}
+
+/* --- Motion cues ---------------------------------------------------------
+   Animation is a diff, not a state: "the badge went from 2 to 3" and "that
+   editor just settled" are not readable from one view model, and the rail
+   rebuilds its DOM on every event — so an entrance animation written into the
+   stylesheet alone would replay on every streamed finding. The comparison is
+   pure and lives here; `rail.ts` only carries the previous snapshot forward
+   and turns the cues into classes. */
+
+const IN_FLIGHT_STATUSES: ReadonlySet<RailEditorStatus> = new Set<RailEditorStatus>([
+    'pending',
+    'running',
+    'transforming'
+])
+
+const TERMINAL_STATUSES: ReadonlySet<RailEditorStatus> = new Set<RailEditorStatus>([
+    'done',
+    'error',
+    'cancelled'
+])
+
+const PANEL_IN_FLIGHT: ReadonlySet<ScorecardStatusKind> = new Set<ScorecardStatusKind>([
+    'waiting',
+    'running'
+])
+
+/** What the previous render showed, kept so the next one can diff against it. */
+export interface RailMotionState {
+    readonly runKey: string | null
+    /** editor id → badge text (`''` when the row showed no badge). */
+    readonly badges: Readonly<Record<string, string>>
+    readonly statuses: Readonly<Record<string, RailEditorStatus>>
+    readonly panelStatus: ScorecardStatusKind | null
+}
+
+/** One-shot animations this render should play. */
+export interface RailMotionCues {
+    /** The whole list animates in, staggered: a new run just started. */
+    readonly stagger: boolean
+    /** Editor ids whose count badge changed value since the last render. */
+    readonly bumped: readonly string[]
+    /** Editor ids that went from in-flight to a terminal status. */
+    readonly settled: readonly string[]
+    /** The panel's aggregation just reached a terminal status. */
+    readonly panelSettled: boolean
+}
+
+const NO_CUES: RailMotionCues = { stagger: false, bumped: [], settled: [], panelSettled: false }
+
+/**
+ * Diffs one render against the previous one.
+ *
+ * Rules that are decisions rather than mechanics:
+ * - a stagger SUPPRESSES the per-row cues. A run starting sets every row to
+ *   pending at once; bumping and settling on top of the entrance would be
+ *   three animations describing one event.
+ * - a row appearing for the first time never bumps. Its badge "changed" from
+ *   nothing, which is what the entrance already says.
+ * - `idle` is neither in-flight nor terminal, so a run being dropped (every
+ *   editor back to idle) is not reported as everyone settling at once.
+ */
+export function railMotion(
+    previous: RailMotionState | null,
+    viewModel: RailViewModel
+): { readonly state: RailMotionState; readonly cues: RailMotionCues } {
+    const badges: Record<string, string> = {}
+    const statuses: Record<string, RailEditorStatus> = {}
+    for (const dot of viewModel.dots) {
+        badges[dot.editorId] = dot.badge ?? ''
+        statuses[dot.editorId] = dot.status
+    }
+    const state: RailMotionState = {
+        runKey: viewModel.runKey,
+        badges,
+        statuses,
+        panelStatus: viewModel.panel?.status ?? null
+    }
+    const stagger =
+        viewModel.runKey !== null && (previous === null || previous.runKey !== viewModel.runKey)
+    if (stagger || previous === null) {
+        return { state, cues: stagger ? { ...NO_CUES, stagger: true } : NO_CUES }
+    }
+    const bumped: string[] = []
+    const settled: string[] = []
+    for (const dot of viewModel.dots) {
+        const wasBadge = previous.badges[dot.editorId]
+        if (wasBadge !== undefined && wasBadge !== (dot.badge ?? '') && dot.badge !== null) {
+            bumped.push(dot.editorId)
+        }
+        const wasStatus = previous.statuses[dot.editorId]
+        if (
+            wasStatus !== undefined &&
+            IN_FLIGHT_STATUSES.has(wasStatus) &&
+            TERMINAL_STATUSES.has(dot.status)
+        ) {
+            settled.push(dot.editorId)
+        }
+    }
+    const panelStatus = viewModel.panel?.status ?? null
+    const panelSettled =
+        previous.panelStatus !== null &&
+        PANEL_IN_FLIGHT.has(previous.panelStatus) &&
+        panelStatus !== null &&
+        !PANEL_IN_FLIGHT.has(panelStatus)
+    return { state, cues: { stagger: false, bumped, settled, panelSettled } }
 }
