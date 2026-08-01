@@ -1780,6 +1780,53 @@
     height: var(--icon-xs, 14px);
 }
 
+/* Per-editor finding stepping (section header, src/app/ui/panel-finding-nav.ts).
+   Deliberately the rail's vocabulary rather than a second one: round icon
+   buttons the size of the retry affordance, around the same count pill the rail
+   puts at the end of an editor row. The panel and the rail are two views of one
+   run, so a control that does the same thing in both must look the same in
+   both. Rendered only when the editor has two or more revealable findings, and
+   never disabled — stepping wraps, so both directions always lead somewhere. */
+.editor-ai-daemons-panel-nav {
+    @apply flex shrink-0 items-center gap-1;
+}
+
+.editor-ai-daemons-panel-nav-button {
+    @apply flex shrink-0 cursor-pointer items-center justify-center rounded-full p-0;
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.editor-ai-daemons-panel-nav-button:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.editor-ai-daemons-panel-nav-button .svg-icon {
+    width: var(--icon-xs, 14px);
+    height: var(--icon-xs, 14px);
+}
+
+/* "2 of 5". Tabular figures so the pill does not jitter as the position walks
+   past a wider digit. Decorative (aria-hidden): the group around it is named
+   with the position spelled out. */
+.editor-ai-daemons-panel-nav-count {
+    @apply shrink-0 rounded-full text-center whitespace-nowrap;
+    box-sizing: border-box;
+    min-width: 17px;
+    padding: 0 5px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: 10px;
+    line-height: 15px;
+    font-variant-numeric: tabular-nums;
+}
+
 .editor-ai-daemons-panel-verdict {
     @apply rounded-full px-2 py-0.5 text-xs font-medium;
     border: 1px solid var(--background-modifier-border);

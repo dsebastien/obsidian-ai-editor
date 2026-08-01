@@ -1,5 +1,6 @@
 import { ItemView, setIcon } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
+import type { NavigationDirection } from '../commands/finding-navigation'
 import type { FindingId } from '../domain/ids'
 import type { Severity } from '../domain/operations/contract'
 import type { TrackedFinding } from '../services/orchestration/finding-store'
@@ -12,6 +13,7 @@ import { undecoratedNoticeText } from './editor/decoration-budget'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
+import { sectionNavigationView } from './panel-finding-nav'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
 import { buildScorecardView, scorecardMemberName } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
@@ -62,6 +64,21 @@ export interface SidePanelBinding {
     /** Advances the lens: all → warnings and suggestions → warnings only. */
     readonly cycleSeverityFilter: () => void
     readonly revealFinding: (findingId: FindingId) => void
+    /**
+     * The file's shared triage cursor — the finding the palette's next/prev,
+     * the decoration layer's current ring and this panel all consider current.
+     *
+     * A THUNK, not a value: stepping moves the cursor through a coalesced
+     * refresh, and a captured id would leave every section's counter reporting
+     * the position the state was pushed at.
+     */
+    readonly currentFindingId: () => string | null
+    /**
+     * Steps the shared triage cursor through ONE editor's revealable findings
+     * and reveals the target — the section header's previous/next pair. Same
+     * engine as the rail's chip cycling, with a direction and wrap-around.
+     */
+    readonly stepEditorFinding: (editorId: string, direction: NavigationDirection) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly retryEditor: (editorId: string) => void
     /** Ask one completed editor for MORE findings, keeping the ones it made. */
@@ -724,6 +741,20 @@ export class ReviewSidePanelView extends ItemView {
         // way to ask who wrote it (Business Rules #11, plan M9).
         section.setAttribute('aria-label', memberSectionName(state.editorName, panelName))
 
+        const live = state.findingIds
+            .map((id) => binding.run.findings.get(id))
+            .filter((finding): finding is TrackedFinding => finding !== null)
+            .filter((finding) => finding.status === 'open' || finding.status === 'preview')
+        // The severity lens governs the LIST (and the bulk buttons and the
+        // header's stepper below it); the section's status line above keeps
+        // reporting what the editor found.
+        const findings = live.filter((finding) =>
+            passesSeverityFilter(binding.severityFilter, finding.raw.severity)
+        )
+        const hidden = live.length - findings.length
+        const anchored = findings.filter((finding) => finding.anchor !== null)
+        const unanchored = findings.filter((finding) => finding.anchor === null)
+
         const header = section.createDiv({ cls: 'editor-ai-daemons-panel-section-header' })
         const dot = header.createSpan({ cls: 'editor-ai-daemons-panel-dot' })
         if (color.length > 0) {
@@ -752,6 +783,7 @@ export class ReviewSidePanelView extends ItemView {
                 binding.retryEditor(state.editorId)
             })
         }
+        this.renderSectionNavigation(header, binding, state, findings)
 
         if (state.error !== null) {
             section.createDiv({
@@ -763,19 +795,6 @@ export class ReviewSidePanelView extends ItemView {
         if (state.summary !== null && state.summary.length > 0) {
             section.createDiv({ cls: 'editor-ai-daemons-panel-summary', text: state.summary })
         }
-
-        const live = state.findingIds
-            .map((id) => binding.run.findings.get(id))
-            .filter((finding): finding is TrackedFinding => finding !== null)
-            .filter((finding) => finding.status === 'open' || finding.status === 'preview')
-        // The severity lens governs the LIST (and the bulk buttons below it);
-        // the section's status line above keeps reporting what the editor found.
-        const findings = live.filter((finding) =>
-            passesSeverityFilter(binding.severityFilter, finding.raw.severity)
-        )
-        const hidden = live.length - findings.length
-        const anchored = findings.filter((finding) => finding.anchor !== null)
-        const unanchored = findings.filter((finding) => finding.anchor === null)
 
         if (live.length === 0 && state.status === 'done') {
             section.createDiv({ cls: 'editor-ai-daemons-panel-none', text: 'Nothing to report.' })
@@ -803,6 +822,72 @@ export class ReviewSidePanelView extends ItemView {
                 this.renderFinding(orphanList, binding, finding, false)
             }
         }
+    }
+
+    /**
+     * Per-editor finding navigation in the section header: previous/next over
+     * THIS editor's revealable findings, with the position between them.
+     *
+     * Every decision (whether the pair renders, the counter, the accessible
+     * names) comes from `sectionNavigationView`, over the very findings the
+     * section lists — so the header can never promise a step the list below it
+     * does not have. Stepping goes through the shared triage cursor, which is
+     * what keeps the palette's next/prev, the rail and this pair pointed at the
+     * same current finding.
+     *
+     * Neither button is ever disabled: stepping wraps, so from any position
+     * both directions have somewhere to go. The pair is absent instead of dead
+     * when there is nothing to step through.
+     */
+    private renderSectionNavigation(
+        header: HTMLElement,
+        binding: SidePanelBinding,
+        state: EditorRunState,
+        findings: readonly TrackedFinding[]
+    ): void {
+        const view = sectionNavigationView(
+            findings,
+            state.editorId,
+            state.editorName,
+            binding.currentFindingId()
+        )
+        if (!view.visible) {
+            return
+        }
+        const nav = header.createDiv({ cls: 'editor-ai-daemons-panel-nav' })
+        // A pair of arrows around a number is three unrelated elements read as
+        // one run; `role=group` gives them a boundary and can carry a name (a
+        // plain div cannot) — the same fix the scorecard member rows use.
+        nav.setAttribute('role', 'group')
+        nav.setAttribute('aria-label', view.groupAriaLabel)
+        this.addNavButton(nav, 'chevron-left', view.previousAriaLabel, () => {
+            binding.stepEditorFinding(state.editorId, 'prev')
+        })
+        // Decorative: the group's accessible name already says the position,
+        // and the rail marks its count badges the same way.
+        nav.createSpan({
+            cls: 'editor-ai-daemons-panel-nav-count',
+            text: view.positionText
+        }).setAttribute('aria-hidden', 'true')
+        this.addNavButton(nav, 'chevron-right', view.nextAriaLabel, () => {
+            binding.stepEditorFinding(state.editorId, 'next')
+        })
+    }
+
+    private addNavButton(
+        nav: HTMLElement,
+        icon: string,
+        ariaLabel: string,
+        onClick: () => void
+    ): void {
+        const button = nav.createEl('button', {
+            cls: 'editor-ai-daemons-panel-nav-button',
+            attr: { type: 'button' }
+        })
+        setIcon(button, icon)
+        button.setAttribute('aria-label', ariaLabel)
+        button.title = ariaLabel
+        button.addEventListener('click', onClick)
     }
 
     /**

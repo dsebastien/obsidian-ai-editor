@@ -248,6 +248,18 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Preview on a note in an excluded folder: the command is now in the palette and the modal says nothing would be sent, pointing at the Behavior tab. A kill-switch rule still removes the command entirely.
 - Double-click the panel Review button fast on a cold Ollama: the second click is refused with a Notice instead of starting a second run.
 - Open the AI Editor Review panel on a kill-switched note: the body states the refusal, not "Select Review to start one".
+
+## Per-editor stepping in the panel (section header)
+
+- Review a note with one editor reporting 3+ anchored findings: its section header shows `‹ — of 3 ›`. Select **›** three times: 1 of 3, 2 of 3, 3 of 3, each scrolling to the finding, ringing it and opening its card. A fourth press wraps to 1 of 3; **‹** from there wraps back to 3 of 3.
+- An editor with exactly one revealable finding, and one with none, show no arrows at all — not a greyed-out pair.
+- Step to 2 of 3 in the panel, then run `Next finding` from the palette: it continues to 3 of 3 rather than restarting, and the panel's counter follows. Do the reverse (palette first, then the panel arrow) — same agreement.
+- Two editors on one note: step in editor A, then look at editor B's section — B reads `— of n` (its own findings, none current). Press **›** in B: it lands on B's first finding at or after where you are in the note, and A's counter goes back to `— of n`.
+- Set the severity filter to warnings only: the counters and the arrows count only the findings still listed. An editor left with one visible finding loses its arrows.
+- Dismiss the current finding from its card, then press **›** in the same section: it lands on the next remaining one, not back at the first, and the counter closes up (`2 of 2`).
+- Edit inside a highlighted span so the finding goes stale: it drops out of the counter and cannot be stepped onto.
+- Tab through the panel: both arrows are reachable, show the focus ring, and fire on Enter and Space. With a screen reader, the pair announces as "Concision Editor: finding 2 of 3" and the buttons as "Previous/Next finding from Concision Editor".
+- Narrow the sidebar until the header wraps: the arrows and the count stay on one line together and nothing clips.
 - Run the setup wizard, paste a base URL with a trailing space, finish: the Backends tab shows it trimmed and reviews reach the endpoint.
 - In the wizard, fill a provider and a key but no model, select Next: it refuses and asks for a model.
 

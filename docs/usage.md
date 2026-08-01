@@ -90,6 +90,8 @@ Each step scrolls to the finding, rings it as the current one, and opens its car
 
 Click any finding to jump to it and briefly select its span in the editor.
 
+**Stepping through one editor's findings.** A section whose editor has two or more findings you can jump to carries a **‹ 2 of 5 ›** control in its header. The arrows walk that editor's findings in document order and wrap around at both ends; the number says where you are, so you can tell when you have been round the loop. Each step scrolls to the finding, rings it as the current one and opens its card — exactly what **Next finding** does, and it moves the same cursor: the palette, the rail and the panel always agree on which finding is current. Findings hidden by the severity filter, dismissed, or whose quote could not be located are not counted and not stepped onto; a section with fewer than two left shows no arrows.
+
 The panel's **Review** button works on the note you are on, or the last one you were on if your focus is inside the panel. While a run is in flight it reads "Reviewing…" and refuses to start a second one — cancel from the rail or the **Cancel review or action** command. When the button is unavailable, hover it: the tooltip says why (no note open, note excluded by your privacy settings, a rule switched the plugin off for it, or no editor can review).
 
 The **status bar** shows the number of open findings for the active note, and disappears when there are none.

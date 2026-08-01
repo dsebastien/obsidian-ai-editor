@@ -1882,6 +1882,42 @@ export class ReviewController {
     }
 
     /**
+     * Per-editor stepping from the side panel's section header: the SAME
+     * engine as the palette's next/prev and the rail's chip cycling
+     * (`triageStep`), narrowed to one editor's revealable findings and given a
+     * direction — so all three agree on order, on wrap-around and on what
+     * "revealable" means.
+     *
+     * The cursor is the file's shared one, so a step here is the step the
+     * palette would have made and the decoration layer rings the same finding.
+     * When the cursor sits on ANOTHER editor's finding it is not in this
+     * editor's ordered set, and `triageStep` falls back position-based —
+     * `next` lands on this editor's first finding at or after where the user
+     * is in the document, which is what "next, from here" means.
+     *
+     * `path` comes from the binding the panel was RENDERED for (like every
+     * other panel callback): a step must never move the cursor of a different
+     * note than the one whose counter the user just read.
+     */
+    private stepEditorFinding(
+        path: string,
+        editorId: string,
+        direction: NavigationDirection
+    ): void {
+        const context = this.runContextFor(path)
+        if (!context || this.disposed) {
+            return
+        }
+        const { run } = context
+        const ordered = navigableEditorFindings(this.visibleFindings(path, run), editorId)
+        const target = triageStep(ordered, this.liveTriageMemory(path, run), direction)
+        if (!target) {
+            return
+        }
+        this.moveTriageCursor(path, run, target)
+    }
+
+    /**
      * The file's triage cursor with its position re-read from the remembered
      * finding's LIVE anchor. The cursor store holds a raw offset that nothing
      * remaps (only anchors travel through `applyTextChanges`), and that offset
@@ -2536,6 +2572,13 @@ export class ReviewController {
             },
             revealFinding: (findingId: FindingId): void => {
                 void this.revealFinding(path, findingId)
+            },
+            // Read live at render time (like `isBusy` above): a step moves the
+            // cursor through a coalesced refresh, and a captured id would
+            // freeze every section counter at the pushed state.
+            currentFindingId: (): string | null => this.triageCursors.get(path, run)?.id ?? null,
+            stepEditorFinding: (editorId: string, direction: NavigationDirection): void => {
+                this.stepEditorFinding(path, editorId, direction)
             },
             retryEditor: (editorId: string): void => {
                 this.retryEditor(path, editorId)
