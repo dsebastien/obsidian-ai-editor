@@ -162,6 +162,12 @@ export function registerReviewCommands(
         }
     })
 
+    // The panel it reveals is titled "AI Editor Review" (`side-panel.ts`). The
+    // command NAME cannot repeat that: Obsidian already prefixes every entry
+    // with the plugin name, so the palette reads "AI Editor: Open review
+    // panel" — spelling the panel out here would render "AI Editor: Open the
+    // AI Editor Review panel" and trips the catalog rule against the plugin
+    // name in a command name (AGENTS.md).
     plugin.addCommand({
         id: 'open-review-panel',
         name: 'Open review panel',

@@ -189,7 +189,7 @@ export function setupSummaryLines(outcome: SetupOutcome, canReview: boolean): re
  */
 export const SETUP_POINTERS: readonly string[] = [
     'Open a note and run the command “AI Editor: Review current note”, or select Review in the rail at the right edge of the editor.',
-    'The review panel (“AI Editor: Open review panel”) lists every finding, and its Review button starts a review for the note you are on.',
+    'The AI Editor Review panel (“AI Editor: Open review panel”) lists every finding, and its Review button starts a review for the note you are on.',
     'Run “AI Editor: Preview what will be sent” before your first paid review to see exactly what leaves your vault.',
     'Type “AI Editor” in the command palette to see everything the plugin can do.',
     'Every setting, including this wizard, lives in Settings → AI Editor.'

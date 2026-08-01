@@ -38,7 +38,7 @@ Every markdown editor gets a small card in its top-right corner: the [daemon](da
 - A [panel](panels.md) is one row with a **hollow** centre where an editor's is filled, its name carries "(panel)", and its members are bracketed beneath it.
 - The daemon toggle pulses while a refresh is armed for this note.
 
-In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [side panel](#the-side-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
+In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [AI Editor Review panel](#the-ai-editor-review-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
 
 If your operating system is set to reduce motion, nothing on the rail animates and every state is still told apart by shape: dashed, arc, solid, error, muted.
 
@@ -48,7 +48,7 @@ A finding highlights the **exact span it quotes**, tinted with its editor's colo
 
 Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its suggestion was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again.
 
-Severities are **warning**, **suggestion** and **info**. In the side panel each carries a shaped glyph, not just a colour.
+Severities are **warning**, **suggestion** and **info**. In the AI Editor Review panel each carries a shaped glyph, not just a colour.
 
 On a note with an extreme number of findings, only the first 2000 in document order are highlighted in the text (plus whatever you are currently on). Every finding stays in the list and stays actionable; the panel says how many are listed but not highlighted.
 
@@ -78,9 +78,9 @@ Every command below works from the palette or from a hotkey you assign.
 
 Each step scrolls to the finding, rings it as the current one, and opens its card. **Escape** closes an open card while keeping your place in the loop; pressing it again leaves triage and the ring disappears. When nothing is left, the ring and card disappear on their own.
 
-## The side panel
+## The AI Editor Review panel
 
-**Open review panel** puts the panel in the sidebar. It shows:
+**Open review panel** puts it in the sidebar, under the tab **AI Editor Review**. It shows:
 
 - a header naming the note it is bound to, with its own **Review** button and an **Ask for comments** button;
 - one section per editor: status, verdict, summary, and its findings;
@@ -119,7 +119,7 @@ Bulk operations respect the severity filter: they never touch a finding you cann
 
 ## Severity filter
 
-**Cycle severity filter** (or the **Show** button at the top of the side panel) narrows what you look at:
+**Cycle severity filter** (or the **Show** button at the top of the AI Editor Review panel) narrows what you look at:
 
 `All severities` → `Warnings and suggestions` → `Warnings only` → back to all.
 

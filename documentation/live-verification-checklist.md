@@ -76,7 +76,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Readable line length ON: the column sits in the empty margin and the text does not shift when the first comment lands. Turn it OFF: the editor is padded once and the cards never overlap the prose. Toggle it back and forth — the column must not flicker between the two.
 - Two comments on the same line: one "2 comments" chip that expands to both cards and collapses again.
 - Edit away the text a comment was about: the card moves into the collapsed group at the top, its quote is shown, and Retry is not offered.
-- **Delete** asks first and never comes back; **Resolve** removes the card from the margin but the comment is still listed in the review panel.
+- **Delete** asks first and never comes back; **Resolve** removes the card from the margin but the comment is still listed in the AI Editor Review panel.
 - Narrow the pane below ~700px: the column disappears and the comments are still in the panel; `Toggle the margin comment column` says where they went.
 - Restart Obsidian with a job in flight: the card comes back as "Interrupted" with Retry, and Retry re-anchors against the note as it reads now.
 - Popout window and two panes on the same note: each pane renders its own column and each follows its own scroll.
@@ -205,7 +205,8 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 
 ## The panel can start a review (GitHub issue #16)
 
-- Open the review panel with no note open: the header says "No note", the button is disabled, its tooltip says to open a note.
+- Run `AI Editor: Open review panel`: the leaf's tab reads **AI Editor Review** — not "AI review" — and a panel left open across a restart comes back under the same title (the view type id is unchanged).
+- Open the AI Editor Review panel with no note open: the header says "No note", the button is disabled, its tooltip says to open a note.
 - Open a note that was never reviewed: the header shows its name, the button is enabled, the body says "No review yet. Select Review to start one." Select it: the note is revealed, the review starts, the rail and the panel fill in together.
 - Click Review from the panel while focus is IN the panel (not the editor): it runs on the last active note, not on nothing.
 - While a run is in flight: the button reads "Reviewing…" with a spinner, is not clickable, and its tooltip says to cancel first. Cancel from the rail: the spinner stops and the button returns to "Review" without any interaction with the panel.
@@ -246,7 +247,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Run "Preview what will be sent" and pick a custom action from the Action picker: its instruction notes appear in the shown prompt for a "Report findings" action, and as a separate Instruction line with its size for a "Rewrite the selection" one. Copy: the transform case carries the instruction text, the review case does not (it is already in the prompt).
 - Preview on a note in an excluded folder: the command is now in the palette and the modal says nothing would be sent, pointing at the Behavior tab. A kill-switch rule still removes the command entirely.
 - Double-click the panel Review button fast on a cold Ollama: the second click is refused with a Notice instead of starting a second run.
-- Open the review panel on a kill-switched note: the body states the refusal, not "Select Review to start one".
+- Open the AI Editor Review panel on a kill-switched note: the body states the refusal, not "Select Review to start one".
 - Run the setup wizard, paste a base URL with a trailing space, finish: the Backends tab shows it trimmed and reviews reach the endpoint.
 - In the wizard, fill a provider and a key but no model, select Next: it refuses and asks for a model.
 

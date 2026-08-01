@@ -498,7 +498,7 @@ function buildPanel(panel: RailPanelState, nameBudget: number): RailPanelViewMod
         badge: panel.verdictLabel ?? null,
         color: panel.color,
         ariaLabel: label,
-        title: `${label}. Select to open the review panel.`,
+        title: `${label}. Select to open the AI Editor Review panel.`,
         groupLabel: marked
     }
 }

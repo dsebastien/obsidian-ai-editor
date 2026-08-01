@@ -596,7 +596,7 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
         // A ring is invisible to assistive tech; #11 has to hold there too.
         const vm = buildRailViewModel(withPanel())
         expect(vm.panel?.ariaLabel).toContain('Pre-publish review (panel)')
-        expect(vm.panel?.title).toContain('open the review panel')
+        expect(vm.panel?.title).toContain('open the AI Editor Review panel')
     })
 
     it('names the member GROUP as a panel too — the bracket is decoration', () => {

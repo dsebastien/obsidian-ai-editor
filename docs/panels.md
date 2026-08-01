@@ -37,7 +37,7 @@ The members review in parallel exactly like ordinary editors: same highlights, s
 
 ## The scorecard
 
-When the members settle, one more request writes the scorecard, and it appears at the top of the side panel:
+When the members settle, one more request writes the scorecard, and it appears at the top of the AI Editor Review panel:
 
 - an **overall verdict** with its reasoning;
 - a **verdict per member**, each with a one-line rationale;

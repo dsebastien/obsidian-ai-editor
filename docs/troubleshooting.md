@@ -131,7 +131,7 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 **The column is not showing.** In order of likelihood:
 
-- the pane is narrower than ~700px — the review panel is the surface below that;
+- the pane is narrower than ~700px — the AI Editor Review panel is the surface below that;
 - you are in **Reading view**, which has no column. The comments still exist and are still listed in the panel;
 - **Margin comment column** is off in the Behavior tab, or you hit **Toggle the margin comment column**.
 

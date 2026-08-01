@@ -188,7 +188,7 @@ None of them ships a default hotkey. Assign your own in **Settings → Hotkeys**
 | **Ask an editor**                                     | One editor, one freeform instruction                                      |
 | **Ask for comments**                                  | Parks a margin comment on the selection                                   |
 | **Preview what will be sent**                         | Read-only context preview; sends nothing                                  |
-| **Open review panel**                                 | Opens the review side panel                                               |
+| **Open review panel**                                 | Opens **AI Editor Review** in the sidebar                                 |
 | **Cancel review or action**                           | Cancels whatever is in flight for the note                                |
 | **Next finding** / **Previous finding**               | Keyboard triage stepping                                                  |
 | **Accept current finding**                            | Applies the replacement, moves to the next                                |

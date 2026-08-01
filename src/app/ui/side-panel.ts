@@ -187,8 +187,16 @@ export class ReviewSidePanelView extends ItemView {
         return REVIEW_PANEL_VIEW_TYPE
     }
 
+    /**
+     * The leaf's tab title, and what `Open review panel` reveals. "AI Editor
+     * Review" rather than "AI review": the plugin is called AI Editor
+     * everywhere else, and a tab named after something else reads as a
+     * different feature. The view TYPE id above is untouched — it is a
+     * registered identifier no user sees, and changing it orphans open leaves.
+     */
     getDisplayText(): string {
-        return 'AI review'
+        // eslint-disable-next-line obsidianmd/ui/sentence-case -- reason: proper noun. "AI Editor" is the plugin's name (manifest.json), so the tab title is a name, not a sentence — the same exemption the plugin name itself gets.
+        return 'AI Editor Review'
     }
 
     override getIcon(): string {

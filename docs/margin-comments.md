@@ -13,7 +13,7 @@ Select some text, then use any of:
 
 - the **Ask for comments** command;
 - **Ask for comments…** in the selection's right-click menu;
-- the **Ask for comments** button at the top of the review panel.
+- the **Ask for comments** button at the top of the AI Editor Review panel.
 
 A dialog opens on the editor set in **Settings → AI Editor → Behavior → Default comment editor** (change it per comment) and asks for your question.
 
@@ -41,10 +41,10 @@ Long answers truncate with an in-place expansion, so opening one does not move t
 
 ### Where the column appears
 
-- It needs room: **panes of roughly 700px and wider**. Below that, the review panel is the surface.
+- It needs room: **panes of roughly 700px and wider**. Below that, the AI Editor Review panel is the surface.
 - With **Readable line length** on (Obsidian's default) the column drops into the empty right margin and **your text does not move at all**. With it off, the editor is padded once so the cards never sit on top of your prose.
-- **In Reading view there is no column.** The comments still exist and are still listed in the review panel; switch back to Live Preview or Source mode to see them beside the text.
-- Turn the whole column off with **Toggle the margin comment column** or **Settings → AI Editor → Behavior → Margin comment column**. The comments then live in the review panel only — the toggle is a view preference, not a deletion.
+- **In Reading view there is no column.** The comments still exist and are still listed in the AI Editor Review panel; switch back to Live Preview or Source mode to see them beside the text.
+- Turn the whole column off with **Toggle the margin comment column** or **Settings → AI Editor → Behavior → Margin comment column**. The comments then live in the AI Editor Review panel only — the toggle is a view preference, not a deletion.
 
 ## When the text changes
 
