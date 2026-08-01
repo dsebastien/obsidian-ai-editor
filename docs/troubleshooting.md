@@ -36,7 +36,7 @@ Requests are made from Obsidian's renderer, which is a browser context. The brow
 
 **Symptom:** _"The endpoint answered, but not in a usable shape — the model ignored the requested structure. Try a stronger model."_ Or, for an agent: _"The tool ran and answered, but not with the structured result the plugin needs."_
 
-Every backend must return a structured result: findings with verbatim quotes, a critique, an optional suggestion, a severity. A "mostly right" payload is still a failure — a partially-parsed suggestion applied to your note would be worse than none.
+Every backend must return a structured result: findings with verbatim quotes, a critique, optional structured edits, a severity. A malformed envelope is still a failure — but a single malformed finding inside a valid review no longer fails the run: its proposal is removed (the card says so) or the finding is dropped, and the panel counts the loss.
 
 - **Use a stronger model.** Small local models routinely wrap JSON in prose or invent fields. This is the single most common cause.
 - **Check you are on a chat/instruct model**, not a base completion model.
@@ -44,7 +44,7 @@ Every backend must return a structured result: findings with verbatim quotes, a 
 - **Simplify the request** while diagnosing: one editor, a short selection, thinking off.
 - **Suspect your extra request body** if you set one — a wrong `response_format` or a routing preference sending you to a different model will do this.
 
-The response is also refused if it exceeds the safety bounds: more than 200 findings, a quote over 2000 characters, a critique or suggestion over 10000, a replacement over 100000.
+The response is also refused if the envelope exceeds the safety bounds: more than 200 findings, or a replacement over 100000 characters. Per-finding bound violations (an oversized quote or critique, an invalid edit) degrade just that finding instead.
 
 ## Findings appear under "Not anchored"
 
@@ -62,7 +62,7 @@ You can still dismiss an unanchored finding; you cannot accept it.
 
 ## A finding went stale
 
-Dashed and dimmed: you edited inside the highlighted span, so the suggestion no longer matches the text it was computed against. Accepting it would apply a replacement to something else.
+Dashed and dimmed: you edited inside the highlighted span, so the proposal no longer matches the text it was computed against. Accepting it would apply its edits to something else.
 
 Dismiss it, or run the review again for a fresh look at the text as it now reads.
 

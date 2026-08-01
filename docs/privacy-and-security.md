@@ -81,7 +81,7 @@ A CLI backend runs a program on your machine with your note on its standard inpu
 
 ## Bounds on what a backend can do to you
 
-A backend's answer is untrusted input and is bounded before anything touches your note: at most 200 findings per result, quotes up to 2000 characters, critiques and suggestions up to 10000, replacements up to 100000. An oversized or malformed response is refused as invalid output rather than partially applied. A CLI backend's output is additionally capped at 8 MB.
+A backend's answer is untrusted input and is bounded before anything touches your note: at most 200 findings per result, 10 edits per finding, quotes up to 2000 characters, critiques and edit texts up to 10000, replacements up to 100000. A malformed response envelope is refused as invalid output rather than partially applied; a single malformed finding inside a valid review is degraded instead — its proposal is removed (the critique is kept, marked) or the finding is dropped, and the panel reports exactly what was lost. A CLI backend's output is additionally capped at 8 MB.
 
 ## Next
 

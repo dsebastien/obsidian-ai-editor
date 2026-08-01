@@ -45,7 +45,13 @@ If the note is **open in a markdown view**, the snapshot comes from the live edi
             "severity": "suggestion",
             "quote": "in order to",
             "critique": "…",
-            "suggestion": "to",
+            "edits": [
+                {
+                    "op": "replace",
+                    "text": "to",
+                    "anchor": { "from": 412, "to": 423, "state": "anchored" }
+                }
+            ],
             "anchor": { "from": 412, "to": 423, "state": "anchored" }
         }
     ],
@@ -63,7 +69,7 @@ If the note is **open in a markdown view**, the snapshot comes from the live edi
 One line per finding:
 
 ```
-[suggestion] Concision Editor 412-423: "in order to" — Three words doing one word's work -> to
+[suggestion] Concision Editor 412-423: "in order to" — Three words doing one word's work -> [replace] to
 Skipped Fact Checker: no model configured
 ```
 

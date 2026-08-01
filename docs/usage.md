@@ -46,7 +46,7 @@ If your operating system is set to reduce motion, nothing on the rail animates a
 
 A finding highlights the **exact span it quotes**, tinted with its editor's colour and carrying a per-editor edge style, so two editors are never distinguished by colour alone. Hovering one names the editor, its panel if it has one, the severity, and whether it is stale.
 
-Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its suggestion was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again.
+Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its proposal was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again.
 
 Severities are **warning**, **suggestion** and **info**. In the AI Editor Review panel each carries a shaped glyph, not just a colour.
 
@@ -60,7 +60,7 @@ Click a highlight to open a floating card:
 - an old/new preview with **Accept** and **Dismiss** when the editor proposed a replacement;
 - a reply box for [pushing back](#pushing-back-on-a-finding).
 
-Overlapping findings stack in one card, innermost first. **Accept** applies the replacement as a single undoable edit — and only if the text still matches exactly what the suggestion was computed against; otherwise the finding is stale and must be re-reviewed. Escape, clicking away, scrolling, or editing closes the card.
+Overlapping findings stack in one card, innermost first. A proposal is one or more labelled edits — **Replace**, **Insert above**, **Insert below**, **Delete** — each previewed in its own shape: an insertion shows only what is added (your text stays), a delete shows only what goes. **Accept** applies the whole proposal as a single undoable edit — all of it or none, and only while the text still matches exactly what it was computed against; otherwise the finding is stale and must be re-reviewed. A proposal the plugin could not validate is removed and the card says so — you still get the critique, never a wrong write. Escape, clicking away, scrolling, or editing closes the card.
 
 Opening a card deliberately does **not** move focus: triage is driven from the keyboard and stealing focus would break the loop that opened the card.
 
@@ -103,7 +103,7 @@ The **status bar** shows the number of open findings for the active note, and di
 Every card has a reply box. Type your objection — _"I disagree, this repetition is intentional"_ — and press Enter or select **Send**. The message goes to the same editor that raised the finding, which answers one of two ways:
 
 - **It withdraws the finding** — the finding is dismissed for you and the notice says why.
-- **It holds its position** — the reply joins the card's thread, and if the exchange sharpened its point, the critique and the suggested replacement are updated in place. A revised suggestion is re-checked against your text, so it only applies while the span is unchanged.
+- **It holds its position** — the reply joins the card's thread, and if the exchange sharpened its point, the critique and the proposed edits are updated in place. A revised proposal is re-anchored against your text as it reads now, so it only applies while its targets are unchanged.
 
 A reply is a normal AI request: it takes a turn in the concurrency queue and obeys your request timeout. Closing the card does **not** cancel it — the answer lands on the finding and a notice tells you it arrived. **Cancel review or action** does cancel it.
 
@@ -115,7 +115,7 @@ Threads are capped at six exchanges per finding and last for the session only: n
 
 ## Bulk operations
 
-- **Accept all (n)** in an editor's panel section applies every non-conflicting suggestion of that editor at once, as **one** undoable edit. Two suggestions covering the same span cannot both apply: the first wins, the other is reported as skipped so you can re-review that span. Suggestions whose text changed in the meantime are skipped too. A notice always says what was applied and what was skipped.
+- **Accept all (n)** in an editor's panel section applies every non-conflicting proposal of that editor at once, as **one** undoable edit. Each finding's proposal applies whole or not at all. Two proposals covering the same span cannot both apply: the first wins, the other is reported as skipped so you can re-review that span. Proposals whose text changed in the meantime are skipped too. A notice always says what was applied and what was skipped.
 - **Dismiss all (m)** clears that editor's findings for the note. It never touches your text.
 - The palette carries the same per editor — **Accept all from &lt;Editor&gt;**, **Dismiss all from &lt;Editor&gt;** — plus **Accept all non-conflicting findings** for every editor of the note at once.
 
