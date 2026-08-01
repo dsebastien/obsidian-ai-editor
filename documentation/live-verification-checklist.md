@@ -324,7 +324,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Break the aggregation backend, then generate more: the scorecard block says it could not be written AND the previous scorecard is still readable.
 - Screen reader on the rail's panel chip: the name includes the verdict ("Pre-publish Review (panel) — Needs work, scorecard ready"). Narrow the pane until the badge disappears: the tooltip still carries the verdict.
 - Open a finding card from a panel member: the section reads "<Editor> — member of <Panel> (panel)" and shows the accent rail.
-- `ai-editor:review --file <note>` on a note a rule binds to a panel, with the note NOT open: the JSON carries `panel` with the verdict and the fixes; `--format text` prints the `Panel …` / `Member …` / `Fix …` lines under the findings.
+- `editor-ai-daemons:review --file <note>` on a note a rule binds to a panel, with the note NOT open: the JSON carries `panel` with the verdict and the fixes; `--format text` prints the `Panel …` / `Member …` / `Fix …` lines under the findings.
 - Preview "what will be sent" on that same note: the summary lists "Panel charter (…)" and the system prompt contains the `<charter-note …>` blocks.
 - Run **Generate more findings from every finished editor**: a notice states how many editors were asked.
 
