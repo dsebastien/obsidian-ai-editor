@@ -3223,7 +3223,12 @@ export class ReviewController {
             daemonMode: this.deps.getSettings().behavior.daemonMode,
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
-            narrow
+            narrow,
+            // Motion key only (rail-model `railMotion`): the rows stagger in
+            // when it changes. The snapshot id IS the run identity — a retry
+            // reuses the snapshot, so retrying one editor does not replay the
+            // whole rail's entrance.
+            ...(pluginDisabled || run === null ? {} : { runKey: run.snapshot.id })
         })
         this.dispatchDecorations(glue, pluginDisabled ? null : run)
         if (disabledJustNow) {
