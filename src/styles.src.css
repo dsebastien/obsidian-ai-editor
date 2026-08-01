@@ -722,9 +722,51 @@
 /* ========================================
    PERSONA RAIL (src/app/ui/editor/rail.ts,
    mounted by src/app/ui/review-controller.ts)
-   Persistent chrome over the editor: Review/
-   Cancel button + one dot per editor persona.
+   Persistent chrome over the editor: a small
+   card holding the daemon toggle, the Review/
+   Cancel button and ONE NAMED ROW PER EDITOR.
    Positioned inside the view's contentEl.
+
+   Redesigned 2026-08-01 (Sébastien: "the rail
+   is ugly, daemon names should always be
+   visible, need animations and busy
+   indicators with rings"). Three decisions
+   the rest of this section follows:
+
+   1. NAMES, NEVER TOOLTIPS. Every row shows
+      its editor's name as text. A narrow pane
+      makes the rail denser (smaller type,
+      tighter rows, ellipsis) — it never makes
+      it icon-only. The tooltip still carries
+      the full name and the live status.
+   2. RING = STATUS, CORE = IDENTITY. The
+      outer ring says what the editor is doing
+      (dashed queued, sweeping busy, solid
+      done, error/muted when it ended badly);
+      the inner core says WHAT it is — filled
+      for an editor, hollow for a panel
+      (Business Rules #11). Two nested
+      elements so a busy panel can never end
+      up looking like a busy editor.
+   3. ONE DENSITY SCALE. Every size below
+      reads a custom property declared on the
+      rail root; the compact form re-declares
+      those properties and nothing else. That
+      keeps every rule SINGLE-CLASS, which is
+      what lets the blanket reduced-motion
+      block at the foot of this file (0,1,0)
+      win over the animated rules here.
+
+   Cost to the note: the rail floats over the
+   text. It is capped in width (a share of the
+   pane, so it cannot swallow the column) and
+   its list is capped in height, and with
+   Obsidian's readable line length on it lands
+   in the right margin of a roomy pane. In a
+   narrow pane it does overlap the first
+   lines, which is why the compact button's
+   tooltip points at the side panel — that is
+   the reading surface there, not this.
    ======================================== */
 
 /* Anchor for the absolutely-positioned rail (added to view.contentEl) */
@@ -732,11 +774,15 @@
     position: relative;
 }
 
+/* The percentage cap resolves against the host (the view's contentEl), so the
+   rail is always a share of the PANE rather than a fixed slab that happens to
+   fit one window size. */
 .editor-ai-daemons-rail-wrapper {
     @apply absolute;
     top: 8px;
-    right: 18px;
+    right: 16px;
     z-index: var(--layer-popover, 30);
+    max-width: min(16rem, 38%);
 }
 
 /* Narrow pane (plan M4 adaptive layout): hug the edge — in a ~500px pane every
@@ -745,181 +791,392 @@
 .editor-ai-daemons-rail-wrapper-compact {
     top: 4px;
     right: 6px;
+    max-width: min(11.5rem, 52%);
 }
 
 .editor-ai-daemons-hidden {
     display: none;
 }
 
+/* --- The card ------------------------------------------------------------
+   Opaque on purpose: a translucent panel lets the note's text ghost through
+   its own labels, which is worse for BOTH the rail and the note than a small
+   honest card that covers a little. */
+
 .editor-ai-daemons-rail {
-    @apply flex flex-col items-center gap-2 p-1.5;
-    border-radius: var(--radius-s);
+    /* The one density scale (see decision 3). */
+    --editor-ai-daemons-rail-pad: 8px;
+    --editor-ai-daemons-rail-gap: 8px;
+    --editor-ai-daemons-rail-row-gap: 2px;
+    --editor-ai-daemons-rail-ring-size: 20px;
+    --editor-ai-daemons-rail-core-size: 10px;
+    --editor-ai-daemons-rail-font: var(--font-ui-smaller, 12px);
+    --editor-ai-daemons-rail-font-strong: var(--font-ui-small, 13px);
+    --editor-ai-daemons-rail-badge-font: 10px;
+    /* Set by .editor-ai-daemons-rail-list-enter, read by every row. */
+    --editor-ai-daemons-rail-stagger: 0ms;
+
+    @apply flex flex-col;
+    gap: var(--editor-ai-daemons-rail-gap);
+    padding: var(--editor-ai-daemons-rail-pad);
+    border-radius: var(--radius-m, 8px);
     border: 1px solid var(--background-modifier-border);
-    background-color: color-mix(in srgb, var(--background-primary) 85%, transparent);
+    background-color: var(--background-primary);
+    box-shadow: var(--shadow-s, 0 2px 8px rgb(0 0 0 / 12%));
+    color: var(--text-normal);
+    /* Mount only: the root element outlives every re-render (rail.ts replaces
+       children, never the root), so this plays once when the rail appears. */
+    animation: editor-ai-daemons-rail-in 200ms ease-out;
 }
 
-.editor-ai-daemons-rail-button {
-    @apply cursor-pointer px-2 py-1 text-xs;
+/* Narrow pane: ONLY the scale changes. Same rules, same shapes, less room. */
+.editor-ai-daemons-rail-compact {
+    --editor-ai-daemons-rail-pad: 5px;
+    --editor-ai-daemons-rail-gap: 5px;
+    --editor-ai-daemons-rail-row-gap: 1px;
+    --editor-ai-daemons-rail-ring-size: 15px;
+    --editor-ai-daemons-rail-core-size: 8px;
+    --editor-ai-daemons-rail-font: var(--font-ui-smaller, 11px);
+    --editor-ai-daemons-rail-font-strong: var(--font-ui-smaller, 12px);
+    --editor-ai-daemons-rail-badge-font: 9px;
+}
+
+/* --- Head: the mode, then the primary action ----------------------------- */
+
+.editor-ai-daemons-rail-head {
+    @apply flex flex-col gap-1;
+}
+
+/* Daemon toggle — above the Review button, per Sébastien: the mode you are in
+   is context for the button underneath it, not a footnote after the editors.
+   Deliberately quieter than Review: it is the mode Review runs in, not a
+   second call to action, so it reads as a status light you can press. */
+.editor-ai-daemons-rail-daemon {
+    @apply flex cursor-pointer items-center justify-center gap-1.5 leading-none;
+    padding: 2px 6px;
     border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--interactive-normal);
+    border: 1px solid transparent;
+    background-color: transparent;
     box-shadow: none;
-    color: var(--text-normal);
+    color: var(--text-faint);
+    font-size: var(--editor-ai-daemons-rail-font);
+    transition:
+        color 120ms ease,
+        border-color 120ms ease,
+        background-color 120ms ease;
+}
+
+.editor-ai-daemons-rail-daemon:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-rail-daemon-glyph {
+    @apply leading-none;
+    font-size: 1em;
+}
+
+.editor-ai-daemons-rail-daemon-label {
+    @apply truncate;
+}
+
+/* On: the accent carries the state, and the border keeps it legible for
+   anyone who cannot use the color difference (the aria-label and aria-pressed
+   say it too, and the glyph goes from hollow to filled). */
+.editor-ai-daemons-rail-daemon-on {
+    border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+    color: var(--interactive-accent);
+}
+
+/* Armed: a refresh is counting down for this note. The pulse rides the
+   toggle rather than a second dot — one control, one place to look. */
+.editor-ai-daemons-rail-daemon-armed {
+    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
+}
+
+/* The primary action. Filled accent, full width of the card: the hierarchy is
+   carried by weight, not by position, so moving the toggle above it costs
+   nothing. */
+.editor-ai-daemons-rail-button {
+    @apply w-full cursor-pointer font-medium;
+    padding: 4px 10px;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background-color: var(--interactive-accent);
+    box-shadow: none;
+    color: var(--text-on-accent);
+    font-size: var(--editor-ai-daemons-rail-font-strong);
+    line-height: 1.4;
+    transition:
+        background-color 120ms ease,
+        opacity 120ms ease;
 }
 
 .editor-ai-daemons-rail-button:hover {
-    background-color: var(--interactive-hover);
+    background-color: var(--interactive-accent-hover, var(--interactive-accent));
 }
 
 .editor-ai-daemons-rail-button:disabled {
     @apply cursor-not-allowed opacity-50;
 }
 
+/* Cancel is still the primary control while a run is in flight, but it
+   destroys work — so it keeps the size and loses the accent fill. Declared
+   after the base hover so it wins at equal specificity. */
 .editor-ai-daemons-rail-button-cancel {
+    border-color: color-mix(in srgb, var(--text-error) 55%, transparent);
+    background-color: var(--background-primary);
     color: var(--text-error);
 }
 
-.editor-ai-daemons-rail-dots {
-    @apply flex flex-col items-center gap-1.5;
-}
-
-/* One editor chip: status dot + optional retry button (failed/cancelled). */
-.editor-ai-daemons-rail-chip {
-    @apply flex flex-col items-center gap-0.5;
-}
-
-/* --- Panel group (plan M6, Business Rules #11) ----------------------------
-   A panel run is ONE entity on the rail: a ringed chip that owns its member
-   dots. Editors are SOLID dots, panels are RINGED — the distinction has to
-   survive at 16px, so it is shape, never colour alone. The bracket around the
-   group says the members belong to it without absorbing them. */
-
-.editor-ai-daemons-rail-panel {
-    @apply flex flex-col items-center gap-1.5 py-1;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    border-right: none;
-}
-
-.editor-ai-daemons-rail-panel-chip {
-    @apply relative cursor-pointer rounded-full p-0;
-    width: 16px;
-    height: 16px;
-    /* Hollow on purpose: the ring IS the panel signature. */
-    background-color: transparent;
-    border: 3px solid var(--editor-ai-daemons-editor-color, var(--text-accent));
-    box-shadow: none;
-}
-
-.editor-ai-daemons-rail-panel-chip:hover {
+.editor-ai-daemons-rail-button-cancel:hover {
     background-color: var(--background-modifier-hover);
 }
 
-.editor-ai-daemons-rail-panel-waiting,
-.editor-ai-daemons-rail-panel-skipped,
-.editor-ai-daemons-rail-panel-unavailable,
-.editor-ai-daemons-rail-panel-cancelled {
-    @apply opacity-60;
+/* --- The list of editors ------------------------------------------------- */
+
+/* `:not(:empty)` so a note with no enabled editor does not show a stray rule
+   under the button. The height cap keeps a dozen editors from turning the
+   rail into a column down the side of the note; it scrolls instead. */
+.editor-ai-daemons-rail-list {
+    @apply flex flex-col overflow-y-auto;
+    gap: var(--editor-ai-daemons-rail-row-gap);
+    max-height: 45vh;
 }
 
-/* A ring that is actively producing a scorecard must not look identical to a
-   finished one — the rail is what the user watches while waiting. Same
-   vocabulary as the editor dots: slow pulse while queued, fast while working.
-   Motion is switched off wholesale at the foot of this file — no per-animation
-   opt-in to forget (see "REDUCED MOTION"). */
-.editor-ai-daemons-rail-panel-waiting {
-    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
+.editor-ai-daemons-rail-list:not(:empty) {
+    padding-top: var(--editor-ai-daemons-rail-gap);
+    border-top: 1px solid var(--background-modifier-border);
 }
 
-.editor-ai-daemons-rail-panel-running {
-    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
+/* A row and the retry button that sometimes sits beside it. Siblings, never
+   nested: a button inside a button is invalid and unreachable by keyboard. */
+.editor-ai-daemons-rail-slot {
+    @apply flex items-center gap-1;
+    /* The stagger is opt-in per render: rail.ts adds the enter class to the
+       LIST when a new run starts, which sets the two custom properties below.
+       Without it the name resolves to `none` and nothing animates — which is
+       what makes a rail that rebuilds on every streamed finding sit still. */
+    animation-name: var(--editor-ai-daemons-rail-enter-name, none);
+    animation-duration: 240ms;
+    animation-timing-function: ease-out;
+    animation-fill-mode: backwards;
+    animation-delay: calc(
+        var(--editor-ai-daemons-rail-index, 0) * var(--editor-ai-daemons-rail-stagger, 0ms)
+    );
 }
 
-.editor-ai-daemons-rail-panel-failed {
-    border-color: var(--text-error);
+.editor-ai-daemons-rail-list-enter {
+    --editor-ai-daemons-rail-enter-name: editor-ai-daemons-rail-row-in;
+    --editor-ai-daemons-rail-stagger: 45ms;
 }
 
-.editor-ai-daemons-rail-panel-badge {
-    @apply absolute rounded-full px-1 leading-tight whitespace-nowrap;
-    top: -7px;
-    left: 18px;
-    font-size: 9px;
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-primary);
+.editor-ai-daemons-rail-row {
+    @apply flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left;
+    padding: 3px 5px;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background-color: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: var(--editor-ai-daemons-rail-font);
+    line-height: 1.35;
+    transition:
+        background-color 120ms ease,
+        color 120ms ease;
+}
+
+.editor-ai-daemons-rail-row:hover {
+    background-color: var(--background-modifier-hover);
     color: var(--text-normal);
 }
 
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-panel-chip {
-    width: 12px;
-    height: 12px;
-    border-width: 2px;
+/* The panel owns its members, so its row reads as the heading of the group
+   below it. The `(panel)` marker is in the accessible name; the hollow core
+   and this weight are the at-a-glance half of Business Rules #11. */
+.editor-ai-daemons-rail-row-panel {
+    @apply font-medium;
+    color: var(--text-normal);
 }
 
-/* The verdict label has no room next to a 12px chip; the tooltip carries it. */
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-panel-badge {
-    @apply hidden;
+/* One editor settling: a soft wash of its own persona colour, once. The ring
+   has already switched to its terminal shape, so nothing depends on this. */
+.editor-ai-daemons-rail-row-settled {
+    animation: editor-ai-daemons-rail-settle 520ms ease-out;
+}
+
+.editor-ai-daemons-rail-name {
+    @apply min-w-0 flex-1 truncate;
+}
+
+/* --- Panel group (plan M6, Business Rules #11) ----------------------------
+   A panel run is ONE entity on the rail: a row with a HOLLOW core that owns
+   its member rows. The bracket says the members belong to it without absorbing
+   them — they keep their own names, colours and status rings. */
+
+.editor-ai-daemons-rail-group {
+    @apply flex flex-col;
+    gap: var(--editor-ai-daemons-rail-row-gap);
+}
+
+.editor-ai-daemons-rail-members {
+    @apply flex flex-col;
+    gap: var(--editor-ai-daemons-rail-row-gap);
+    /* Lines the bracket up under the centre of the panel row's ring. */
+    margin-left: calc(5px + var(--editor-ai-daemons-rail-ring-size) / 2);
+    padding-left: 8px;
+    border-left: 1px solid var(--background-modifier-border);
+}
+
+/* --- Status ring + identity core ----------------------------------------
+   Technique: a BORDER arc, not a conic-gradient sweep and not an SVG.
+   - at 15–20px a 2px border is the one ring shape that renders crisply in
+     both themes: it is a single antialiased stroke the compositor already
+     draws, where a masked conic gradient bands visibly at this radius and
+     needs a `mask` fallback chain to be safe in Electron;
+   - it takes `var(--editor-ai-daemons-editor-color)` directly, so the persona
+     colour needs no plumbing and the shape needs no per-size geometry — the
+     compact scale is one custom property away;
+   - an SVG arc would need `createElementNS` and a hand-tuned dasharray per
+     size, in a file that is deliberately Obsidian-free plain DOM.
+   It is also exactly what the side panel's Review spinner already does, so
+   the plugin has ONE spinner idiom (`editor-ai-daemons-spin`).
+
+   REDUCED MOTION: the blanket block at the foot of this file collapses the
+   sweep's duration, which lands the ring on its final frame — a full turn,
+   i.e. the same asymmetric arc it started at. That is deliberate: a busy ring
+   is ¾ faint + ¼ solid, so it stays visibly different from pending (dashed,
+   uniform), done (solid, uniform) and error (solid, error colour) WITHOUT
+   moving. Nothing here reads as busy only because it spins. */
+
+.editor-ai-daemons-rail-ring {
+    @apply relative flex shrink-0 items-center justify-center rounded-full;
+    box-sizing: border-box;
+    width: var(--editor-ai-daemons-rail-ring-size);
+    height: var(--editor-ai-daemons-rail-ring-size);
+    border: 2px solid transparent;
+}
+
+.editor-ai-daemons-rail-core {
+    @apply rounded-full;
+    box-sizing: border-box;
+    width: var(--editor-ai-daemons-rail-core-size);
+    height: var(--editor-ai-daemons-rail-core-size);
+    background-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
+}
+
+/* A panel's core is HOLLOW — the distinction Business Rules #11 asks for, on
+   the element that carries identity rather than on the one carrying status. */
+.editor-ai-daemons-rail-core-hollow {
+    border: 2px solid var(--editor-ai-daemons-editor-color, var(--text-accent));
+    background-color: transparent;
+}
+
+.editor-ai-daemons-rail-ring-idle {
+    border-color: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-editor-color, var(--text-accent)) 22%,
+        transparent
+    );
+    opacity: 0.75;
+}
+
+/* Waiting for a concurrency permit: dashed and static — visibly not yet
+   started, and distinct from the sweep of an active request. */
+.editor-ai-daemons-rail-ring-pending {
+    border-style: dashed;
+    border-color: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-editor-color, var(--text-accent)) 60%,
+        transparent
+    );
+}
+
+.editor-ai-daemons-rail-ring-busy {
+    border-color: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-editor-color, var(--text-accent)) 18%,
+        transparent
+    );
+    border-top-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
+    animation: editor-ai-daemons-spin 0.9s linear infinite;
+}
+
+.editor-ai-daemons-rail-ring-done {
+    border-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
+}
+
+/* Error and cancelled dim the core as well as recolouring the ring, so the
+   two terminal failures differ from `done` by brightness and not only by hue;
+   the retry button beside the row and the accessible name carry the rest. */
+.editor-ai-daemons-rail-ring-error {
+    border-color: var(--text-error);
+}
+
+.editor-ai-daemons-rail-ring-muted {
+    border-color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.editor-ai-daemons-rail-ring-error .editor-ai-daemons-rail-core {
+    opacity: 0.45;
+}
+
+.editor-ai-daemons-rail-ring-muted .editor-ai-daemons-rail-core {
+    opacity: 0.4;
+}
+
+.editor-ai-daemons-rail-ring-idle .editor-ai-daemons-rail-core {
+    opacity: 0.55;
+}
+
+/* --- Badges: the finding count, and the panel's verdict ------------------- */
+
+.editor-ai-daemons-rail-badge {
+    @apply shrink-0 rounded-full text-center whitespace-nowrap;
+    box-sizing: border-box;
+    min-width: 17px;
+    padding: 0 5px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: var(--editor-ai-daemons-rail-badge-font);
+    line-height: 15px;
+}
+
+/* A verdict is words, not a number: let it take a little room and ellipsise
+   rather than pushing the name out of the row. */
+.editor-ai-daemons-rail-verdict {
+    @apply max-w-[7rem] truncate;
+}
+
+/* The count changed while findings streamed in. One shot, added by rail.ts
+   only when the value actually differs from the previous render. */
+.editor-ai-daemons-rail-badge-bump {
+    animation: editor-ai-daemons-rail-bump 280ms ease-out;
 }
 
 .editor-ai-daemons-rail-retry {
-    @apply cursor-pointer rounded-full p-0;
-    width: 16px;
-    height: 16px;
-    font-size: 11px;
-    line-height: 1;
+    @apply shrink-0 cursor-pointer rounded-full p-0;
+    width: 18px;
+    height: 18px;
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
-    color: var(--text-muted);
     box-shadow: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1;
 }
 
 .editor-ai-daemons-rail-retry:hover {
+    background-color: var(--background-modifier-hover);
     color: var(--text-normal);
-    background-color: var(--interactive-hover);
 }
 
-.editor-ai-daemons-rail-dot {
-    @apply relative cursor-pointer rounded-full p-0;
-    width: 16px;
-    height: 16px;
-    border: 2px solid transparent;
-    background-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
-    box-shadow: none;
-}
-
-.editor-ai-daemons-rail-dot:hover {
-    border-color: var(--text-normal);
-}
-
-.editor-ai-daemons-rail-dot-idle {
-    @apply opacity-60;
-}
-
-/* Waiting for a concurrency permit: dimmed with a slow pulse — visibly
-   alive but distinct from the fast pulse of an active review. */
-.editor-ai-daemons-rail-dot-pending {
-    @apply opacity-60;
-    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
-}
-
-.editor-ai-daemons-rail-dot-running {
-    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
-}
-
-/* A transform/generate action in flight on this editor: same liveliness as
-   an active review (the chip tooltip says "transforming"). */
-.editor-ai-daemons-rail-dot-transforming {
-    animation: editor-ai-daemons-pulse 1.2s ease-in-out infinite;
-}
-
-.editor-ai-daemons-rail-dot-error {
-    border-color: var(--text-error);
-    opacity: 0.7;
-}
-
-.editor-ai-daemons-rail-dot-cancelled {
-    border-color: var(--text-muted);
-    opacity: 0.6;
-}
+/* --- Keyframes -----------------------------------------------------------
+   All of these END on the resting style, so the blanket reduced-motion block
+   (which collapses durations rather than removing animations) lands every one
+   of them on its final frame instead of freezing a half-played state. */
 
 @keyframes editor-ai-daemons-pulse {
     0%,
@@ -931,100 +1188,54 @@
     }
 }
 
-/* Daemon armed indicator: a tiny pulsing dot under the editor chips —
-   deliberately subtle (tooltip carries the explanation, no layout churn). */
-/* Daemon toggle — above the Review button, present in both states.
-   Deliberately quieter than Review: it is the mode Review runs in, not a
-   second call to action, so it reads as a status light you can press. */
-.editor-ai-daemons-rail-daemon {
-    @apply mb-1 flex cursor-pointer items-center justify-center rounded-full p-0 leading-none;
-    width: 18px;
-    height: 18px;
-    margin-inline: auto;
-    font-size: 10px;
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-primary);
-    box-shadow: none;
-    color: var(--text-faint);
+@keyframes editor-ai-daemons-rail-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
-.editor-ai-daemons-rail-daemon:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-muted);
+@keyframes editor-ai-daemons-rail-row-in {
+    from {
+        opacity: 0;
+        transform: translateX(8px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
-/* On: the accent carries the state, and the border keeps it legible for
-   anyone who cannot use the color difference (the aria-label says it too). */
-.editor-ai-daemons-rail-daemon-on {
-    border-color: var(--interactive-accent);
-    color: var(--interactive-accent);
+@keyframes editor-ai-daemons-rail-bump {
+    0% {
+        transform: scale(1);
+    }
+    35% {
+        transform: scale(1.3);
+        border-color: var(--interactive-accent);
+        color: var(--text-normal);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
-/* Armed: a refresh is counting down for this note. The pulse rides the
-   toggle rather than a second dot — one control, one place to look. */
-.editor-ai-daemons-rail-daemon-armed {
-    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
+@keyframes editor-ai-daemons-rail-settle {
+    from {
+        background-color: color-mix(
+            in srgb,
+            var(--editor-ai-daemons-editor-color, var(--text-accent)) 26%,
+            transparent
+        );
+    }
+    to {
+        background-color: transparent;
+    }
 }
-
-.editor-ai-daemons-rail-badge {
-    @apply absolute rounded-full px-1 leading-tight;
-    top: -7px;
-    right: -9px;
-    font-size: 9px;
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-primary);
-    color: var(--text-normal);
-}
-
-/* ----------------------------------------
-   Compact rail (narrow panes, plan M4)
-   The button loses its label for a glyph
-   (the tooltip carries the wording plus the
-   nudge towards the side panel) and every
-   control shrinks — the rail stays a
-   launcher, the side panel is where a narrow
-   pane's findings are read.
-   ---------------------------------------- */
-
-.editor-ai-daemons-rail-compact {
-    @apply gap-1.5 p-1;
-}
-
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-button {
-    @apply px-1 py-0 text-xs;
-    width: 20px;
-    height: 20px;
-    line-height: 1;
-}
-
-/* Narrow pane: the toggle shrinks with everything else. Its glyph already
-   carries the state, and the tooltip carries the wording. */
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-daemon {
-    width: 14px;
-    height: 14px;
-    font-size: 8px;
-}
-
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-dots {
-    @apply gap-1;
-}
-
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-dot,
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-retry {
-    width: 12px;
-    height: 12px;
-}
-
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-retry {
-    font-size: 9px;
-}
-
-.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-badge {
-    top: -6px;
-    right: -7px;
-    font-size: 8px;
-}
-
 /* ========================================
    FINDING HIGHLIGHTS (CM6 mark decorations,
    src/app/ui/editor/finding-decorations.ts)
@@ -2013,18 +2224,31 @@
 
    Nothing depends on motion to convey state:
    a pulsing rail dot is also dimmed, the
-   review spinner sits next to the word
-   "Reviewing…", and the chip-click emphasis
-   keeps its stronger static tint. Durations
-   are collapsed rather than removed so an
+   rail's busy ring is an asymmetric arc that
+   stays asymmetric standing still, the review
+   spinner sits next to the word "Reviewing…",
+   and the chip-click emphasis keeps its
+   stronger static tint. Durations are
+   collapsed rather than removed so an
    animation that ENDS on a different style
    than it starts still lands on its final
    frame.
+
+   `animation-delay` is collapsed too, and it
+   has to be: a staggered entrance (the rail's
+   rows) uses `animation-fill-mode: backwards`,
+   which holds the element at the FIRST frame
+   — opacity 0 — for the whole delay. Killing
+   the duration alone would leave those rows
+   invisible for as long as the stagger, i.e.
+   reduced motion would hide content instead
+   of calming it.
    ======================================== */
 
 @media (prefers-reduced-motion: reduce) {
     [class*='editor-ai-daemons-'] {
         animation-duration: 1ms;
+        animation-delay: 0ms;
         animation-iteration-count: 1;
         transition-duration: 1ms;
         scroll-behavior: auto;
