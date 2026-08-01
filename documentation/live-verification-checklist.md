@@ -9,6 +9,21 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## Operation contract v2 — structured edits (issues #17/#22, 2026-08-01)
+
+Status: **nothing verified.** The contract change shipped with 2378 tests green, and the v2 review schema was probed successfully against a live local `qwen3:4b` (6/6 valid results, correct ops chosen, no prose leaked into edit text) — but no UI surface of it has ever been seen in a running vault.
+
+- A review produces findings whose card shows the proposal as LABELLED edits: **Replace** renders old struck + new, **Insert above/below** renders ONLY the inserted text (the quoted line must visibly not be struck), **Delete** renders only the struck text.
+- Accepting an **insert-before** proposal adds the text above the quoted line and the quoted line SURVIVES — this is the #17 data-loss regression check, the single most important item here.
+- Accepting a multi-edit finding applies every edit in one go, and ONE Ctrl+Z restores all of them together.
+- A finding whose proposal was stripped by validation shows the italic "could not be validated" marker, offers no Accept, and the editor's panel section carries the salvage line ("n proposals could not be validated…" / "n malformed findings were discarded").
+- Bulk **Accept all** with a mix of single- and multi-edit findings: overlapping proposals skip WHOLE findings, the Notice counts match, one undo restores the batch.
+- A push-back reply that revises the proposal updates the card's edit previews in place; after editing the note so a revision cannot anchor, the revision shows as display-only rather than applying anywhere.
+- The CLI (`editor-ai-daemons:review --format json`) emits `edits` arrays per finding; `--format text` prints `[op] text` segments.
+- Old margin-comment answers saved before v2 (free-text suggestions) still load: their findings appear critique-only, nothing errors.
+
+---
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.
