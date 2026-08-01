@@ -27,16 +27,20 @@ Notes above your **Size warning threshold** (default 8000 words) ask for confirm
 
 ## The persona rail
 
-Every markdown editor gets a rail in its top-right corner: a **Review** / **Cancel** button and one dot per enabled editor.
+Every markdown editor gets a small card in its top-right corner: the [daemon](daemon-mode.md) toggle, a **Review** / **Cancel** button, and one named row per enabled editor.
 
-- Dots pulse while their editor works and carry a live finding-count badge.
-- Hover a dot for its name and status — "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)".
-- **Click a dot** to cycle through that editor's findings; its highlights flash briefly so you can see where they are.
+- **Every editor is named on its row.** Nothing about the rail needs a hover to tell you who is who.
+- Each row draws a **ring** around a dot in the editor's colour, and the ring says what that editor is doing: dashed while it waits its turn, a sweeping arc while it works, a solid ring when it lands, the error colour when it fails, a muted one when it is cancelled.
+- A live **finding count** sits at the end of the row and ticks up while findings stream in.
+- Hover a row for the full name and the exact status — "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)".
+- **Click a row** to cycle through that editor's findings; its highlights flash briefly so you can see where they are.
 - An editor that failed gets a **Retry** affordance right there.
-- A [panel](panels.md) appears as one ringed chip with its members bracketed beneath it.
-- A small pulsing dot at the bottom of the rail means a [daemon](daemon-mode.md) refresh is armed for this note.
+- A [panel](panels.md) is one row with a **hollow** centre where an editor's is filled, its name carries "(panel)", and its members are bracketed beneath it.
+- The daemon toggle pulses while a refresh is armed for this note.
 
-In a narrow pane the rail collapses; the [side panel](#the-side-panel) is the full-size surface.
+In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [side panel](#the-side-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
+
+If your operating system is set to reduce motion, nothing on the rail animates and every state is still told apart by shape: dashed, arc, solid, error, muted.
 
 ## Findings in the text
 
@@ -133,7 +137,7 @@ When an editor has finished, its panel section gets a **Generate more (n)** butt
 
 ## Retrying a failed editor
 
-An editor that ended in error or was cancelled gets a **Retry** affordance on its rail chip and in its panel section. Retry **replaces** that editor's findings, which is why it is not offered to an editor that merely came back empty.
+An editor that ended in error or was cancelled gets a **Retry** affordance on its rail row and in its panel section. Retry **replaces** that editor's findings, which is why it is not offered to an editor that merely came back empty.
 
 ## See what would be sent
 

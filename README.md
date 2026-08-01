@@ -18,7 +18,7 @@ You write. When you want a second opinion, you summon your editors. They read th
 
 ## The screens, in words
 
-**The persona rail.** Every markdown editor gets a small rail in its top-right corner: a **Review** button and one coloured dot per enabled editor. Dots pulse while their editor is working and carry a live finding count. Hover one and it names itself and its state — "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel appears there as one ringed chip with its members bracketed underneath it.
+**The persona rail.** Every markdown editor gets a small card in its top-right corner: a **Review** button and one named row per enabled editor. Each row draws a ring in that editor's colour around its dot, and the ring says what it is doing — dashed while it waits its turn, a sweeping arc while it works, solid when it lands, the error colour when it fails — next to a live finding count. Hover a row for the exact state: "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel is one row with a hollow centre, its name carrying "(panel)", with its members bracketed underneath it.
 
 **Findings in the text.** Each finding tints the exact span it quotes in its editor's colour, with a per-editor edge style underneath so the two are never told apart by colour alone. Keep typing: highlights follow your edits. Edit _inside_ a highlighted span and the finding goes stale — dashed and dimmed — because its suggestion no longer matches your text.
 

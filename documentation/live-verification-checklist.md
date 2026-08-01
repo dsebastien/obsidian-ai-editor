@@ -9,6 +9,44 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## Persona rail redesign (2026-08-01)
+
+The rail went from a stack of coloured dots to a card of named rows with status rings and one-shot animations. Nothing below is verifiable without eyes on a running vault.
+
+**Names and truncation**
+
+- Every editor row shows its NAME as text, in a wide pane and in a narrow one. Nothing about the rail should ever require a hover to know who is who.
+- Rename an editor to something long ("Ruthlessly Concise Structural Editor"): the row ellipsises, the rail does NOT grow past roughly a third of the pane, and the tooltip still reads the full name plus the live status.
+- Enable a dozen editors: the list scrolls inside the card instead of running down the side of the note, and the Review button stays visible above it.
+- Readable line length ON, wide pane: the rail sits in the right margin and covers no text. Narrow the pane to ~450px: it overlaps the first lines — confirm the note is still usable and that the Review tooltip points at **Open review panel**.
+- Drag the split slowly across ~500px: the rail flips between the two densities once each way (hysteresis), without flicker and without the names ever disappearing.
+
+**Rings**
+
+- Start a run and watch one row: dashed ring while queued → sweeping arc in the persona colour while running → solid persona ring when it lands. The sweep must be smooth and round at both densities, not a lumpy polygon.
+- Force a failure (bad API key, or pull the network mid-run): the ring goes to the error colour, the core dims, and the retry glyph appears beside the row. Cancel a run: muted ring, same retry.
+- Run a transform (Humanize) on a selection: that editor's ring sweeps and the tooltip says "transforming".
+- Panel run: the panel's row has a HOLLOW core, its members have filled ones, and the bracket groups them. At arm's length, tell the panel row from a member row without reading — then confirm the tooltip and screen reader both say `(panel)`.
+
+**Motion**
+
+- Press Review: the rows animate in staggered, once. While findings stream, the rows must sit still — no re-entrance on every finding.
+- Watch a count badge climb 1 → 2 → 3: it bumps on each change and does nothing on a render where the number did not change.
+- Watch a row settle: one soft wash of its persona colour, once, then still.
+- Retry ONE editor inside a finished run: only that row reacts. The whole list must not re-stagger.
+- Turn daemon mode on and pause on a changed note: the toggle pulses while armed, and nothing else on the rail pulses.
+
+**Reduced motion (the one most likely to be broken)**
+
+- Turn on the OS "reduce motion" setting, then press Review: every row must be VISIBLE immediately. This is the regression to hunt — a staggered entrance holds rows at opacity 0 for the delay, and reduced motion now zeroes the delay as well as the duration.
+- With reduce-motion on, compare a queued, a running, a done, a failed and a cancelled row side by side: all five must be distinguishable standing still (dashed / asymmetric arc / solid / error colour / muted).
+
+**Themes and keyboard**
+
+- Light and dark, then Border and Minimal: the card takes the theme's radius and shadow, the accent Review button uses the theme's accent, and no colour looks hardcoded. Try a theme that restyles buttons heavily — the rail must not end up with a theme's button shadow on every row.
+- Tab through the rail: the daemon toggle, Review, every row, every retry button take focus with a visible ring. No focus ring is swallowed by the rail's own `box-shadow: none` rules.
+- Screen reader over the rail: the list announces "Editors", each row announces its editor and its status, a panel row announces `(panel)` and its verdict, and the ring/badge spans are silent.
+
 ## Theming, reduced motion and accessibility sweep (v1 sweep stage I, slice 1 — M9)
 
 - Switch to Border and to Minimal, light and dark: cards, chips, the rail, the margin column and every dialog take the theme's corner radius, and the margin card's shadow matches the finding card's.

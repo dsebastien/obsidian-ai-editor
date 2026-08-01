@@ -14,7 +14,7 @@ An **editor** is an AI persona: a name, a colour, and a prompt saying what it ca
 | Field                         | What it does                                                                                 |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | **Name**                      | Shown on the rail, in cards, menus and commands                                              |
-| **Color**                     | The tint of this editor's highlights and its rail dot                                        |
+| **Color**                     | The tint of this editor's highlights, and of its dot and status ring on the rail             |
 | **Persona prompt**            | Direct prompt text                                                                           |
 | **Prompt notes**              | Ordered vault notes appended to the prompt, resolved fresh at every run                      |
 | **Follow links**              | Also inline the notes those prompt notes link to (one hop)                                   |

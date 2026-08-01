@@ -14,7 +14,7 @@ A **panel** is a group of editors that review together and are then summed up. I
 | Field                          | What it does                                                      |
 | ------------------------------ | ----------------------------------------------------------------- |
 | **Name**                       | Shown everywhere, always followed by "(panel)"                    |
-| **Color**                      | The panel's ring on the rail                                      |
+| **Color**                      | The panel's identity ring on the rail                             |
 | **Members**                    | 1 to 20 editors, toggled on                                       |
 | **Charter**                    | The shared brief — text and/or vault notes, with **Follow links** |
 | **Aggregation backend**        | Which backend writes the summary                                  |
@@ -50,7 +50,7 @@ The aggregation input is compacted and fitted to the context budget round-robin 
 
 ## When something fails
 
-- **A member fails.** The panel completes with the members that did run, names the missing one, and says the summary did not see it. Retry that member from its section or its rail chip and the scorecard is rewritten.
+- **A member fails.** The panel completes with the members that did run, names the missing one, and says the summary did not see it. Retry that member from its section or its rail row and the scorecard is rewritten.
 - **The summary itself fails.** Every member's findings are still there. The block above them says what went wrong and that the reviews below are unaffected.
 - **Nothing is silently dropped.** A panel never quietly reports fewer opinions than it gathered.
 
@@ -63,7 +63,7 @@ A finished member gets the same **Generate more (n)** button an ordinary editor 
 Panels are never distinguished by colour or shape alone:
 
 - the **name** always carries "(panel)" — in dropdowns, menus, commands, the rail, the scorecard and the panel sections;
-- on the rail a panel is a **ringed** chip where an editor is a solid dot, with its members bracketed underneath it;
+- on the rail a panel's row has a **hollow** centre where an editor's is filled, with its members bracketed underneath it (the ring around either one is its status, not its kind);
 - an editor is the unmarked default; only panels are marked.
 
 ## Panels from the command line
