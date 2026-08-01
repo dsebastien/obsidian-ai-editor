@@ -20,6 +20,13 @@ import type { RailDotViewModel, RailPanelViewModel, RailState } from './rail-mod
 export interface RailCallbacks {
     readonly onReview: () => void
     readonly onCancel: () => void
+    /**
+     * Flip daemon mode. Sébastien asked for it here, next to Review: it is a
+     * per-session decision, and the settings toggle and the palette command
+     * both remain. The control is a toggle button rather than a switch
+     * widget so the rail stays plain DOM (no Obsidian imports).
+     */
+    readonly onToggleDaemon: () => void
     readonly onEditorClick: (editorId: string) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly onRetry: (editorId: string) => void
@@ -90,6 +97,24 @@ export class PersonaRail {
         // Narrow pane: icon-only, tighter spacing (plan M4 adaptive layout).
         this.rootEl.classList.toggle('editor-ai-daemons-rail-compact', viewModel.compact)
 
+        // Above the Review button, per Sébastien: the mode you are in is
+        // context for the button underneath it, not a footnote after the
+        // editors. Present in BOTH states — a control that only appeared
+        // once daemon mode was on could never be the thing that turns it on.
+        const daemon = viewModel.daemon
+        const daemonEl = this.doc.createElement('button')
+        daemonEl.classList.add('editor-ai-daemons-rail-daemon')
+        daemonEl.type = 'button'
+        daemonEl.textContent = daemon.text
+        daemonEl.setAttribute('aria-pressed', String(daemon.enabled))
+        daemonEl.classList.toggle('editor-ai-daemons-rail-daemon-on', daemon.enabled)
+        daemonEl.classList.toggle('editor-ai-daemons-rail-daemon-armed', daemon.armed)
+        this.applyTooltip(daemonEl, daemon.tooltip, daemon.ariaLabel)
+        daemonEl.addEventListener('click', () => {
+            this.callbacks.onToggleDaemon()
+        })
+        this.rootEl.appendChild(daemonEl)
+
         const button = this.doc.createElement('button')
         button.classList.add('editor-ai-daemons-rail-button')
         if (viewModel.button.action === 'cancel') {
@@ -134,16 +159,6 @@ export class PersonaRail {
             dotsEl.appendChild(this.renderChip(dot))
         }
         this.rootEl.appendChild(dotsEl)
-
-        // Daemon armed indicator: one tiny pulsing dot with a tooltip —
-        // deliberately minimal, no layout churn (absent when not armed).
-        if (viewModel.daemon !== null) {
-            const daemonEl = this.doc.createElement('div')
-            daemonEl.classList.add('editor-ai-daemons-rail-daemon')
-            daemonEl.setAttribute('role', 'status')
-            this.applyTooltip(daemonEl, viewModel.daemon.title)
-            this.rootEl.appendChild(daemonEl)
-        }
     }
 
     /** Removes the rail from the DOM. The instance must not be reused. */

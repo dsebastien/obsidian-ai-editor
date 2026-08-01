@@ -220,15 +220,44 @@ describe('buildRailViewModel', () => {
         })
     })
 
-    describe('daemon indicator', () => {
-        it('is absent by default and when not armed', () => {
-            expect(buildRailViewModel(state()).daemon).toBeNull()
-            expect(buildRailViewModel(state({ daemonArmed: false })).daemon).toBeNull()
+    describe('daemon toggle', () => {
+        it('is present with daemon mode off — it is what turns it on', () => {
+            const daemon = buildRailViewModel(state()).daemon
+            expect(daemon.enabled).toBe(false)
+            expect(daemon.armed).toBe(false)
+            expect(daemon.ariaLabel).toBe('Daemon mode off')
         })
 
-        it('carries the tooltip text while a daemon refresh is armed', () => {
-            const vm = buildRailViewModel(state({ daemonArmed: true }))
-            expect(vm.daemon).toEqual({ title: DAEMON_ARMED_TITLE })
+        it('warns what the click starts while the mode is off', () => {
+            // The cost belongs on the OFF tooltip, where it describes what
+            // the next click begins — not on ON, where it would nag about a
+            // decision already made.
+            const daemon = buildRailViewModel(state()).daemon
+            expect(daemon.tooltip).toMatch(/calls your backends/i)
+        })
+
+        it('reports the mode as on without an armed refresh', () => {
+            const daemon = buildRailViewModel(state({ daemonMode: true })).daemon
+            expect(daemon.enabled).toBe(true)
+            expect(daemon.armed).toBe(false)
+            expect(daemon.ariaLabel).toBe('Daemon mode on')
+            expect(daemon.tooltip).toMatch(/Click to turn it off/i)
+        })
+
+        it('adds the armed state on the same control, not a second one', () => {
+            const daemon = buildRailViewModel(state({ daemonMode: true, daemonArmed: true })).daemon
+            expect(daemon.enabled).toBe(true)
+            expect(daemon.armed).toBe(true)
+            expect(daemon.ariaLabel).toBe('Daemon mode on, refresh armed')
+            expect(daemon.tooltip).toContain(DAEMON_ARMED_TITLE)
+        })
+
+        it('never reports armed while the mode is off', () => {
+            // `daemonArmed` is fed from the scheduler and the mode from
+            // settings; a stale arm must not render as a running countdown.
+            const daemon = buildRailViewModel(state({ daemonArmed: true })).daemon
+            expect(daemon.enabled).toBe(false)
+            expect(daemon.armed).toBe(false)
         })
     })
 })

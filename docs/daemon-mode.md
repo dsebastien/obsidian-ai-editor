@@ -9,7 +9,12 @@ By default nothing runs on its own: reviews start when you ask for one. **Daemon
 
 **Settings → AI Editor → Behavior → Daemon → Daemon mode.** Off by default.
 
-Because it is a mode you flip by situation — on while drafting something you want watched, off the rest of the day — there is also a command: **AI Editor: Toggle daemon mode**. It reports the new state, and on the way on it repeats what that state costs.
+Because it is a mode you flip by situation — on while drafting something you want watched, off the rest of the day — there are two faster ways in:
+
+- **The toggle above the Review button** in the [persona rail](usage.md#the-persona-rail). It shows the current mode (hollow = off, filled and accented = on) and pulses while a refresh is armed for the note you are on.
+- **The command AI Editor: Toggle daemon mode**, for a hotkey.
+
+Both report the new state, and on the way on they repeat what that state costs.
 
 ## Cost first
 
@@ -35,11 +40,11 @@ A refresh reuses the editors of the note's **previous review** — or every enab
 
 ## Seeing it
 
-While a refresh is armed for the note you are on, a small pulsing dot appears at the bottom of the [persona rail](usage.md#the-persona-rail). It is a reinforcement, not the only signal — with reduced motion enabled it is dimmed rather than animated.
+While a refresh is armed for the note you are on, the daemon toggle above the Review button pulses. It is the same control that turns the mode on and off, so the state and the switch are never in two places — and with reduced motion enabled it is dimmed rather than animated.
 
 ## Turning it off
 
-Flip the toggle, or run **AI Editor: Toggle daemon mode**. Anything already in flight finishes; nothing new is armed. The idle-delay field only appears while the mode is on, so the cost-sensitive toggle stays the single decision point.
+Flip it in the rail, in settings, or run **AI Editor: Toggle daemon mode**. Anything already in flight finishes; nothing new is armed. The idle-delay field only appears while the mode is on, so the cost-sensitive toggle stays the single decision point.
 
 ## Next
 

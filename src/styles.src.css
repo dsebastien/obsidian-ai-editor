@@ -933,12 +933,36 @@
 
 /* Daemon armed indicator: a tiny pulsing dot under the editor chips —
    deliberately subtle (tooltip carries the explanation, no layout churn). */
+/* Daemon toggle — above the Review button, present in both states.
+   Deliberately quieter than Review: it is the mode Review runs in, not a
+   second call to action, so it reads as a status light you can press. */
 .editor-ai-daemons-rail-daemon {
-    @apply rounded-full;
-    width: 6px;
-    height: 6px;
-    margin: 2px auto 0;
-    background-color: var(--text-faint);
+    @apply mb-1 flex cursor-pointer items-center justify-center rounded-full p-0 leading-none;
+    width: 18px;
+    height: 18px;
+    margin-inline: auto;
+    font-size: 10px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    box-shadow: none;
+    color: var(--text-faint);
+}
+
+.editor-ai-daemons-rail-daemon:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-muted);
+}
+
+/* On: the accent carries the state, and the border keeps it legible for
+   anyone who cannot use the color difference (the aria-label says it too). */
+.editor-ai-daemons-rail-daemon-on {
+    border-color: var(--interactive-accent);
+    color: var(--interactive-accent);
+}
+
+/* Armed: a refresh is counting down for this note. The pulse rides the
+   toggle rather than a second dot — one control, one place to look. */
+.editor-ai-daemons-rail-daemon-armed {
     animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
 }
 
@@ -971,6 +995,14 @@
     width: 20px;
     height: 20px;
     line-height: 1;
+}
+
+/* Narrow pane: the toggle shrinks with everything else. Its glyph already
+   carries the state, and the tooltip carries the wording. */
+.editor-ai-daemons-rail-compact .editor-ai-daemons-rail-daemon {
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
 }
 
 .editor-ai-daemons-rail-compact .editor-ai-daemons-rail-dots {

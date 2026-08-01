@@ -117,6 +117,10 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             app: this.app,
             plugin: this,
             getSettings: () => this.settings,
+            setDaemonMode: (enabled) =>
+                this.update((draft) => {
+                    draft.behavior.daemonMode = enabled
+                }),
             runController,
             transformController,
             setFindingCount: (count) => this.setFindingCount(count),

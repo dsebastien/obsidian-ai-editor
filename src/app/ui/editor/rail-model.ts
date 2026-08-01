@@ -63,9 +63,16 @@ export interface RailState {
     /** True while a review run is in flight (button shows Cancel). */
     readonly running: boolean
     /**
+     * Whether daemon mode is on at all (the global `behavior.daemonMode`
+     * setting). Drives the rail's daemon toggle, which is present in both
+     * states — a control that only appears once enabled cannot be the thing
+     * that enables it.
+     */
+    readonly daemonMode?: boolean
+    /**
      * True while daemon mode is on AND an automatic refresh is armed for
-     * this note (idle countdown running). Rendered as a subtle indicator —
-     * a small dot with a tooltip, no layout churn.
+     * this note (idle countdown running). Shown ON the toggle as a pulse,
+     * not as a second indicator: one control, one place to look.
      */
     readonly daemonArmed?: boolean
     /**
@@ -138,8 +145,11 @@ export interface RailViewModel {
     readonly dots: readonly RailDotViewModel[]
     /** Non-null when the run is a panel run: renders as ONE ringed chip. */
     readonly panel: RailPanelViewModel | null
-    /** Non-null while a daemon refresh is armed for this note. */
-    readonly daemon: { readonly title: string } | null
+    /**
+     * The daemon toggle, always present. `enabled` is the mode; `armed` adds
+     * the pulse while this note's refresh is counting down.
+     */
+    readonly daemon: RailDaemonViewModel
     /** True in the narrow-pane form (icon-only, tighter spacing). */
     readonly compact: boolean
 }
@@ -178,8 +188,48 @@ export function chipClickAction(
     return hasSummaryOrError ? 'open-panel' : 'none'
 }
 
+export interface RailDaemonViewModel {
+    /** Daemon mode itself — what the toggle's next click changes. */
+    readonly enabled: boolean
+    /** A refresh is counting down for this note (pulse, `enabled` implied). */
+    readonly armed: boolean
+    /** What the control shows: a glyph, identical in both layouts. */
+    readonly text: string
+    /** Accessible name: the state, since `aria-pressed` carries on/off. */
+    readonly ariaLabel: string
+    /** Tooltip: the state plus what clicking does, and the cost when off. */
+    readonly tooltip: string
+}
+
 /** Tooltip/aria text of the daemon armed indicator. */
 export const DAEMON_ARMED_TITLE = 'Daemon armed — the review refreshes after you pause editing'
+
+/**
+ * The daemon toggle's text. The cost sits in the tooltip of the OFF state,
+ * where it is a warning about what the click will start, rather than in the
+ * ON state where it would nag about a decision already made.
+ */
+export function buildDaemonViewModel(enabled: boolean, armed: boolean): RailDaemonViewModel {
+    if (!enabled) {
+        return {
+            enabled: false,
+            armed: false,
+            text: '◌',
+            ariaLabel: 'Daemon mode off',
+            tooltip:
+                'Daemon mode is off — editors run only when you summon them. Turn it on to refresh reviews automatically after you pause; every refresh calls your backends.'
+        }
+    }
+    return {
+        enabled: true,
+        armed,
+        text: '◉',
+        ariaLabel: armed ? 'Daemon mode on, refresh armed' : 'Daemon mode on',
+        tooltip: armed
+            ? `${DAEMON_ARMED_TITLE}. Click to turn daemon mode off.`
+            : 'Daemon mode is on — a changed note refreshes after you pause. Click to turn it off.'
+    }
+}
 
 /**
  * Glyphs the compact button falls back to. Text glyphs on purpose: the rail
@@ -349,7 +399,7 @@ export function buildRailViewModel(state: RailState): RailViewModel {
         button,
         dots: state.editors.map((editor) => buildDot(editor, memberIds.has(editor.id))),
         panel: state.panel === undefined ? null : buildPanel(state.panel),
-        daemon: state.daemonArmed === true ? { title: DAEMON_ARMED_TITLE } : null,
+        daemon: buildDaemonViewModel(state.daemonMode === true, state.daemonArmed === true),
         compact
     }
 }

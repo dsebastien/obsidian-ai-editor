@@ -20,6 +20,7 @@ import type {
     TriageMemory
 } from '../commands/finding-navigation'
 import { canCancelRun } from '../commands/command-gates'
+import { daemonToggleNotice } from '../commands/daemon-commands'
 import { TriageCursorStore } from '../commands/triage-cursor'
 import {
     bulkAcceptNotice,
@@ -287,6 +288,13 @@ export interface ReviewControllerDeps {
     /** Owning plugin, for lifecycle-managed event registration. */
     readonly plugin: Plugin
     readonly getSettings: () => PluginSettingsV1
+    /**
+     * Flips `behavior.daemonMode` from the rail's toggle. A narrow seam
+     * rather than the whole settings facade: this is the only setting any
+     * editor-surface control writes, and the controller has no business
+     * being able to write the rest.
+     */
+    readonly setDaemonMode?: (enabled: boolean) => Promise<void>
     readonly runController: RunController
     /** Transform/generate runs (one per file); shares the request gate. */
     readonly transformController: TransformController
@@ -1541,6 +1549,37 @@ export class ReviewController {
         }
         this.deps.runController.getRun(path)?.cancelRun()
         this.deps.transformController.getRun(path)?.cancel()
+    }
+
+    /**
+     * Flips daemon mode from the rail's toggle. The Notice is not optional
+     * chrome: this control sits next to Review, so a mis-click is plausible,
+     * and switching ON starts spending money on a timer the user did not
+     * type a number into (Business Rules #1). Saying what just changed is
+     * how that stays consented rather than merely permitted.
+     */
+    private toggleDaemonMode(): void {
+        const setDaemonMode = this.deps.setDaemonMode
+        if (!setDaemonMode) {
+            return
+        }
+        const settings = this.deps.getSettings()
+        const next = !settings.behavior.daemonMode
+        void setDaemonMode(next)
+            .then(() => {
+                if (this.disposed) {
+                    return
+                }
+                new Notice(
+                    daemonToggleNotice(next, this.deps.getSettings().behavior.daemonIdleSeconds)
+                )
+                this.scheduleRefresh()
+            })
+            .catch(() => {
+                if (!this.disposed) {
+                    new Notice('AI Editor: failed to change daemon mode.')
+                }
+            })
     }
 
     /**
@@ -2910,6 +2949,9 @@ export class ReviewController {
                 onCancel: (): void => {
                     this.cancelReview(view)
                 },
+                onToggleDaemon: (): void => {
+                    this.toggleDaemonMode()
+                },
                 onEditorClick: (editorId): void => {
                     this.handleChipClick(view, editorId)
                 },
@@ -3178,6 +3220,7 @@ export class ReviewController {
                 !pluginDisabled &&
                 ((run !== null && run.isBusy()) ||
                     (transformRun !== null && !transformRun.isSettled())),
+            daemonMode: this.deps.getSettings().behavior.daemonMode,
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
             narrow
