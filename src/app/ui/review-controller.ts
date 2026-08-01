@@ -2482,9 +2482,21 @@ export class ReviewController {
      * instead of opening a dialog that could not dispatch.
      */
     private openCommentModalForActiveNote(): void {
-        const view = this.deps.app.workspace.getActiveViewOfType(MarkdownView)
-        if (!view || view.getMode() === 'preview') {
-            new Notice('Open a note in edit mode and select the text to comment on.')
+        // NOT `getActiveViewOfType`: clicking a button inside the panel makes
+        // the PANEL the active view, so the live lookup returns null exactly
+        // when this runs and the user is told to open a note they already
+        // have open. Resolve the note the panel is bound to — the same sticky
+        // last-active path every other panel action uses.
+        const path = this.resolveActiveFilePath()
+        const view = path === null ? null : this.findMarkdownView(path)
+        if (!view) {
+            new Notice('Open a note to comment on.')
+            return
+        }
+        if (view.getMode() === 'preview') {
+            // Reading view has no editor and no selection. Source mode and
+            // Live Preview both report 'source' and are both fine.
+            new Notice('Switch the note to editing view to comment on a selection.')
             return
         }
         this.openCommentModal(view, view.editor)
