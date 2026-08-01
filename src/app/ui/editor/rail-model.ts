@@ -50,7 +50,12 @@ export interface RailPanelState {
     readonly color: string
     /** Where the scorecard stands, projected exactly like the side panel's. */
     readonly status: ScorecardStatusKind
-    /** The editors that are this panel's members, in run order. */
+    /**
+     * The editors that are this panel's members. MEMBERSHIP only: nothing
+     * reads an order out of this list — the rail renders the member rows in
+     * the order the editors themselves arrive in (settings order), so that
+     * one order governs the whole rail.
+     */
     readonly memberIds: readonly string[]
     /** Human label of the panel's overall verdict, once there is one. */
     readonly verdictLabel?: string
@@ -174,15 +179,32 @@ export interface RailDotViewModel {
     /** The editor's full name — the accessible name is built from it. */
     readonly name: string
     /**
-     * The name as the row RENDERS it: hard-capped in characters so one absurd
-     * persona name cannot decide the rail's width before CSS gets a say. CSS
-     * still ellipsises what does not fit the capped box; this is the bound
-     * that makes the layout predictable rather than the one users usually see.
+     * The name as the row RENDERS it. Normally the full name: CSS
+     * `text-overflow: ellipsis` does the everyday shortening and leaves this
+     * text intact. Only an absurd name is cut here, by the runaway guard
+     * ({@link NAME_MAX_CHARS}), so the rail's width can never be decided by a
+     * 400-character persona before CSS gets a say.
      */
     readonly displayName: string
+    /**
+     * What the editor is doing, as a phrase ("reviewing, 2 findings so far").
+     * The half of the accessible name after the name — exposed on its own so
+     * the live region can pair it with the FULL name rather than the row's
+     * visible one.
+     */
+    readonly statusText: string
+    /** Findings reported so far — the number {@link badge} caps at `99+`. */
+    readonly findingCount: number
     /** Count badge text, or null when no badge should render. */
     readonly badge: string | null
+    /**
+     * Accessible name. Opens on {@link displayName} — the row's VISIBLE text
+     * — so a speech-input user can say what they read (WCAG 2.5.3). The full
+     * name rides {@link title}, which is the only place the two differ, and
+     * only when the runaway-name guard fired.
+     */
     readonly ariaLabel: string
+    /** Hover tooltip: the FULL name plus the same status phrase. */
     readonly title: string
     /**
      * Accessible label for the retry affordance, or null when the editor is
@@ -204,6 +226,8 @@ export interface RailPanelViewModel {
     readonly name: string
     /** The name as the row renders it (same character cap as an editor's). */
     readonly displayName: string
+    /** Where the scorecard stands, as a phrase — see `RailDotViewModel`. */
+    readonly statusText: string
     readonly status: ScorecardStatusKind
     /** Which ring the row draws — same vocabulary as an editor's. */
     readonly ring: RailRingKind
@@ -337,15 +361,22 @@ export function buildDaemonViewModel(
 /**
  * Character budget for a row's visible name, wide pane and narrow pane.
  *
- * This is a BOUND, not the usual truncation: the rail's width is capped in
- * CSS and `text-overflow: ellipsis` does the everyday shortening against real
- * glyph widths, which no pure function can know. What CSS cannot do is stop a
- * 400-character persona name from being laid out at all, so the model hands
- * the DOM something already bounded and the full name rides the tooltip and
- * the accessible name (WCAG 2.5.3: the visible text is a prefix of the name).
+ * A RUNAWAY GUARD, not the everyday truncation. The rail's width is capped in
+ * CSS and `text-overflow: ellipsis` does the real shortening against glyph
+ * widths no pure function can know — and CSS truncation leaves the DOM text
+ * INTACT, which is what keeps the visible label complete. What CSS cannot do
+ * is stop a 400-character persona name from being laid out at all, so the
+ * model hands the DOM something already bounded.
+ *
+ * The budgets are therefore set far above any name a row can actually show:
+ * the hard cut here really does put an ellipsis into the text node, so it must
+ * fire only for absurd input, never as the shortening a user sees every day.
+ * When it does fire, the accessible name is rebuilt from the CUT name so the
+ * visible text stays the accessible name's leading run (WCAG 2.5.3) and the
+ * full name rides the tooltip.
  */
-export const NAME_MAX_CHARS = 28
-export const NAME_MAX_CHARS_COMPACT = 18
+export const NAME_MAX_CHARS = 64
+export const NAME_MAX_CHARS_COMPACT = 40
 
 /** The one ellipsis character used when a name is cut. */
 export const NAME_ELLIPSIS = '…'
@@ -355,15 +386,23 @@ export const NAME_ELLIPSIS = '…'
  * any whitespace left dangling before the ellipsis removed (`"Concision "` →
  * `"Concision…"`, never `"Concision …"`). A non-positive budget yields the
  * ellipsis alone rather than an empty row.
+ *
+ * Counted in CODE POINTS, not UTF-16 units: persona names are free-form user
+ * settings, and slicing an astral character (an emoji) in half leaves a lone
+ * surrogate that renders as U+FFFD right where the ellipsis belongs.
  */
 export function truncateName(name: string, maxChars: number): string {
-    if (name.length <= maxChars) {
+    const points = [...name]
+    if (points.length <= maxChars) {
         return name
     }
     if (maxChars <= 1) {
         return NAME_ELLIPSIS
     }
-    return `${name.slice(0, maxChars - 1).trimEnd()}${NAME_ELLIPSIS}`
+    return `${points
+        .slice(0, maxChars - 1)
+        .join('')
+        .trimEnd()}${NAME_ELLIPSIS}`
 }
 
 /**
@@ -442,17 +481,24 @@ function isRetryable(status: RailEditorStatus): boolean {
 }
 
 function buildDot(editor: RailEditorState, member: boolean, nameBudget: number): RailDotViewModel {
-    const label = `${editor.name} — ${statusLabel(editor)}`
+    const statusText = statusLabel(editor)
+    const displayName = truncateName(editor.name, nameBudget)
     return {
         editorId: editor.id,
         color: editor.color,
         status: editor.status,
         ring: editorRing(editor.status),
         name: editor.name,
-        displayName: truncateName(editor.name, nameBudget),
+        displayName,
+        statusText,
+        findingCount: editor.findingCount,
         badge: formatBadge(editor.findingCount),
-        ariaLabel: label,
-        title: label,
+        // The accessible name is built from the VISIBLE text, not from the
+        // full name: a hard cut puts an ellipsis in the text node, and a
+        // visible label absent from the accessible name is exactly the
+        // failure WCAG 2.5.3 is about. The full name is one hover away.
+        ariaLabel: `${displayName} — ${statusText}`,
+        title: `${editor.name} — ${statusText}`,
         retryAriaLabel: isRetryable(editor.status) ? `Retry ${editor.name}` : null,
         member
     }
@@ -479,26 +525,29 @@ function buildPanel(panel: RailPanelState, nameBudget: number): RailPanelViewMod
     // hold in the accessibility tree too). One author for the marker —
     // `entityName` (ui/entity-label.ts).
     const marked = entityName('panel', panel.name)
-    // The verdict goes in the NAME, not only in the badge. The badge is
-    // `aria-hidden` (it would otherwise be announced twice) and it is hidden
-    // entirely in compact mode — so a verdict that lived only there would be
-    // unreachable for a screen reader and invisible in a narrow pane, and the
-    // chip's only visible text would be absent from its accessible name
-    // (WCAG 2.5.3). The editor dots fold their finding count in for the same
-    // reason; this chip was copying the pattern without its precondition.
-    const label =
+    const displayName = truncateName(panel.name, nameBudget)
+    // The verdict goes in the NAME, not only in the badge: the badge is
+    // `aria-hidden` (it would otherwise be announced twice), so a verdict
+    // living only there would be unreachable for a screen reader, and the
+    // row's only visible text beyond the name would be absent from its
+    // accessible name (WCAG 2.5.3). The editor rows fold their finding count
+    // in for the same reason.
+    const statusText =
         panel.verdictLabel === undefined
-            ? `${marked} — ${PANEL_STATUS_LABELS[panel.status]}`
-            : `${marked} — ${panel.verdictLabel}, ${PANEL_STATUS_LABELS[panel.status]}`
+            ? PANEL_STATUS_LABELS[panel.status]
+            : `${panel.verdictLabel}, ${PANEL_STATUS_LABELS[panel.status]}`
     return {
         name: panel.name,
-        displayName: truncateName(panel.name, nameBudget),
+        displayName,
+        statusText,
         status: panel.status,
         ring: panelRing(panel.status),
         badge: panel.verdictLabel ?? null,
         color: panel.color,
-        ariaLabel: label,
-        title: `${label}. Select to open the AI Editor Review panel.`,
+        // Same rule as an editor row: the accessible name opens on the
+        // visible text, the tooltip carries the full name.
+        ariaLabel: `${entityName('panel', displayName)} — ${statusText}`,
+        title: `${marked} — ${statusText}. Select to open the AI Editor Review panel.`,
         groupLabel: marked
     }
 }
@@ -643,4 +692,55 @@ export function railMotion(
         panelStatus !== null &&
         !PANEL_IN_FLIGHT.has(panelStatus)
     return { state, cues: { stagger: false, bumped, settled, panelSettled } }
+}
+
+/**
+ * What the rail's live region should say about this render, or null when the
+ * render says nothing new.
+ *
+ * The rail is the primary progress surface for a run, and everything it knows
+ * is PULL-ONLY: a row's accessible name is precise, but only for someone who
+ * navigates back to that row — which is not a plan while findings stream in.
+ * This is the half that gets pushed.
+ *
+ * Deliberately COARSE. It speaks only at the transitions {@link railMotion}
+ * already reports — a run starting, one editor settling, the panel's scorecard
+ * settling — never per streamed finding, and adds one closing sentence when
+ * the last editor has landed. It uses the FULL name (the live region has no
+ * width to run out of), unlike the rows' accessible names.
+ */
+export function railAnnouncement(viewModel: RailViewModel, cues: RailMotionCues): string | null {
+    if (cues.stagger) {
+        const count = viewModel.dots.length
+        return `Review started, ${count === 1 ? '1 editor' : `${count} editors`}.`
+    }
+    const parts: string[] = []
+    for (const editorId of cues.settled) {
+        const dot = viewModel.dots.find((candidate) => candidate.editorId === editorId)
+        if (dot !== undefined) {
+            parts.push(`${dot.name} — ${dot.statusText}.`)
+        }
+    }
+    if (cues.panelSettled && viewModel.panel !== null) {
+        const panel = viewModel.panel
+        parts.push(`${entityName('panel', panel.name)} — ${panel.statusText}.`)
+    }
+    if (parts.length === 0) {
+        return null
+    }
+    const finished =
+        viewModel.dots.length > 0 &&
+        viewModel.dots.every((dot) => TERMINAL_STATUSES.has(dot.status))
+    if (finished) {
+        const total = viewModel.dots.reduce((sum, dot) => sum + dot.findingCount, 0)
+        const failed = viewModel.dots.filter((dot) => dot.status === 'error').length
+        parts.push(
+            failed === 0
+                ? `Review finished, ${findingsLabel(total)}.`
+                : `Review finished, ${findingsLabel(total)}, ${
+                      failed === 1 ? '1 editor failed' : `${failed} editors failed`
+                  }.`
+        )
+    }
+    return parts.join(' ')
 }

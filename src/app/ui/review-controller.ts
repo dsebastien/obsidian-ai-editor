@@ -148,6 +148,27 @@ function editorViewOf(view: MarkdownView): EditorView | null {
     return cm instanceof EditorView ? cm : null
 }
 
+/**
+ * An element's CONTENT box width — the same box a default `ResizeObserver`
+ * reports through `contentRect`, so the synchronous layout-mode seed and the
+ * observer that takes over from it measure the same thing. `clientWidth`
+ * alone is the PADDING box, which disagrees on any theme that pads
+ * `.view-content`.
+ *
+ * Falls back to `clientWidth` when the element has no window to compute
+ * styles from (a detached or hidden leaf), which `nextLayoutMode` already
+ * treats as "keep the current mode" when it reports 0.
+ */
+function contentBoxWidth(el: HTMLElement): number {
+    const style = el.ownerDocument.defaultView?.getComputedStyle(el)
+    if (!style) {
+        return el.clientWidth
+    }
+    const horizontalPadding =
+        (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0)
+    return Math.max(0, el.clientWidth - horizontalPadding)
+}
+
 // ---------------------------------------------------------------------------
 // Size-warning confirmation (window.confirm is forbidden — see AGENTS.md)
 // ---------------------------------------------------------------------------
@@ -3082,7 +3103,7 @@ export class ReviewController {
             // First measurement, so a pane that is ALREADY narrow never
             // renders the wide rail for a frame. A pane being measured while
             // hidden reports 0 and keeps the default (see `nextLayoutMode`).
-            layout: nextLayoutMode(view.contentEl.clientWidth, 'wide'),
+            layout: nextLayoutMode(contentBoxWidth(view.contentEl), 'wide'),
             paneObserver: null,
             marginColumn: null,
             marginPlacement: 'hidden',
@@ -3171,7 +3192,15 @@ export class ReviewController {
 
     /**
      * Watches the markdown view content for width changes (plan M4 adaptive
-     * layout). The observer comes from the view's OWN window so panes in
+     * layout). Fed with the CONTENT box, which is what `contentBoxWidth`
+     * seeds the glue with — a `clientWidth` seed (content + padding) would
+     * disagree with this observer on any theme that pads `.view-content`, and
+     * a pane sitting just above the threshold would mount wide and flip to
+     * narrow on the observer's first callback: exactly the mount flash the
+     * synchronous seed exists to prevent, and hysteresis cannot help because
+     * it happens before the user resizes anything.
+     *
+     * The observer comes from the view's OWN window so panes in
      * popout windows are observed by their own document's implementation.
      * Only a mode CHANGE schedules work — dragging a split fires this per
      * frame, and the layout mode has hysteresis around the threshold.

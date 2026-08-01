@@ -5,6 +5,15 @@ import type { ReviewController } from '../ui/review-controller'
 import { canCancelRun, canReviewSelection } from './command-gates'
 
 /**
+ * The palette name of the command that opens the side panel. Exported so the
+ * places that POINT AT it (the rail's narrow-pane hint) can be checked against
+ * the real entry by the compiler instead of by a comment — renaming the
+ * command here would otherwise leave the hint naming a palette entry that no
+ * longer exists.
+ */
+export const OPEN_REVIEW_PANEL_COMMAND_NAME = 'Open review panel'
+
+/**
  * Static palette commands (design doc "Interaction surfaces" §3). All are
  * pure user intents delegated to the `ReviewController` (Business Rules #1 —
  * nothing runs without an explicit user action), gated by the pure predicates
@@ -170,7 +179,7 @@ export function registerReviewCommands(
     // name in a command name (AGENTS.md).
     plugin.addCommand({
         id: 'open-review-panel',
-        name: 'Open review panel',
+        name: OPEN_REVIEW_PANEL_COMMAND_NAME,
         callback: (): void => {
             void controller.activateSidePanel()
         }

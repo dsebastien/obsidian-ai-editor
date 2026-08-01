@@ -18,8 +18,10 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Every editor row shows its NAME as text, in a wide pane and in a narrow one. Nothing about the rail should ever require a hover to know who is who.
 - Rename an editor to something long ("Ruthlessly Concise Structural Editor"): the row ellipsises, the rail does NOT grow past roughly a third of the pane, and the tooltip still reads the full name plus the live status.
 - Enable a dozen editors: the list scrolls inside the card instead of running down the side of the note, and the Review button stays visible above it.
-- Readable line length ON, wide pane: the rail sits in the right margin and covers no text. Narrow the pane to ~450px: it overlaps the first lines — confirm the note is still usable and that the Review tooltip points at **Open review panel**.
+- Then **split down** (a stacked split, so the pane is roughly half the window tall) with those dozen editors still enabled: the card must not be taller than its pane, must not spill past it, and the list must still scroll to the last row. The height cap is a share of the pane, not of the viewport — this is the case that catches a regression back to `vh`.
+- Readable line length ON: the rail only truly clears the text column from roughly **1000px of pane** (short persona name) to **1250px** (a long one). Check three widths — a maximised window, a ~890px pane (1440px window, both sidebars open) and ~450px — and confirm what the note looks like in each. It overlaps the tail of the top few lines in the middle band; that is the accepted trade (the names are the point of the rail), so what is being verified is that the note stays usable and that the Review tooltip points at **Open review panel**.
 - Drag the split slowly across ~500px: the rail flips between the two densities once each way (hysteresis), without flicker and without the names ever disappearing.
+- Open a note in a pane whose theme pads `.view-content`, sized just above the threshold: the rail must come up in ONE density and stay there — no wide-then-narrow flip on the first frame.
 
 **Rings**
 
@@ -28,24 +30,30 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Run a transform (Humanize) on a selection: that editor's ring sweeps and the tooltip says "transforming".
 - Panel run: the panel's row has a HOLLOW core, its members have filled ones, and the bracket groups them. At arm's length, tell the panel row from a member row without reading — then confirm the tooltip and screen reader both say `(panel)`.
 
-**Motion**
+**Motion** (all of these depend on the rail RECONCILING its rows rather than rebuilding them — the specs pin the reconciliation, only eyes can confirm the animation)
 
 - Press Review: the rows animate in staggered, once. While findings stream, the rows must sit still — no re-entrance on every finding.
+- Watch a busy ring during heavy streaming (several editors, many findings): the arc must sweep **continuously**, completing full turns. A ring that stutters or resets to the top every few dozen milliseconds means the element is being recreated per render.
 - Watch a count badge climb 1 → 2 → 3: it bumps on each change and does nothing on a render where the number did not change.
-- Watch a row settle: one soft wash of its persona colour, once, then still.
+- Watch a row settle **while another editor is still streaming**: one soft wash of its persona colour, played to the end, not cut short by the next finding arriving.
 - Retry ONE editor inside a finished run: only that row reacts. The whole list must not re-stagger.
 - Turn daemon mode on and pause on a changed note: the toggle pulses while armed, and nothing else on the rail pulses.
 
 **Reduced motion (the one most likely to be broken)**
 
 - Turn on the OS "reduce motion" setting, then press Review: every row must be VISIBLE immediately. This is the regression to hunt — a staggered entrance holds rows at opacity 0 for the delay, and reduced motion now zeroes the delay as well as the duration.
-- With reduce-motion on, compare a queued, a running, a done, a failed and a cancelled row side by side: all five must be distinguishable standing still (dashed / asymmetric arc / solid / error colour / muted).
+- With reduce-motion on, compare a queued, a running, a done, a failed and a cancelled row side by side: all five must be distinguishable standing still (dashed / asymmetric arc / solid thin / solid thick + error colour / dotted + muted).
+- With reduce-motion on, put an **armed** daemon toggle next to an on-but-idle one: they must still look different. The pulse collapses onto its resting frame there, so the solid accent border and the ring around it are the whole signal.
+- Set a persona colour to a red close to `--text-error`, and another to a grey close to `--text-muted`. A done ring must still be tellable from an error one and from a cancelled one — that is what the border thickness and the dotted style are for.
 
 **Themes and keyboard**
 
 - Light and dark, then Border and Minimal: the card takes the theme's radius and shadow, the accent Review button uses the theme's accent, and no colour looks hardcoded. Try a theme that restyles buttons heavily — the rail must not end up with a theme's button shadow on every row.
-- Tab through the rail: the daemon toggle, Review, every row, every retry button take focus with a visible ring. No focus ring is swallowed by the rail's own `box-shadow: none` rules.
+- Tab through the rail: the daemon toggle, Review, every row, every retry button take focus with a visible ring, and the ring is drawn **all the way round** — the list is a scroll container, so a ring sliced down its left/right edges means the padding that makes room for it was lost.
+- The one that tabbing alone cannot show: focus **Review**, press Enter, and keep your hands off the keyboard while the run streams. Focus must stay on the button (now reading Cancel) for the whole run, so Enter cancels. Then, in a finished run with two failed editors, retry the first one from its retry button: focus must still be in the rail afterwards, not back at the top of the document.
 - Screen reader over the rail: the list announces "Editors", each row announces its editor and its status, a panel row announces `(panel)` and its verdict, and the ring/badge spans are silent.
+- Screen reader, hands off, during a run: pressing Review must be **announced** ("Review started, N editors"), then one line per editor as it lands, then a closing line. Nothing per streamed finding — if it chatters, the live region is being fed too finely.
+- Pointer targets: the retry button looks 18px but must be pressable from ~3px outside its circle, and no two rail controls' targets may overlap.
 
 ## Theming, reduced motion and accessibility sweep (v1 sweep stage I, slice 1 — M9)
 

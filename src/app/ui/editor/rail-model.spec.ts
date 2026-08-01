@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { OPEN_REVIEW_PANEL_COMMAND_NAME } from '../../commands/review-commands'
 import {
     DAEMON_ARMED_TITLE,
     DAEMON_LABEL,
@@ -10,6 +11,7 @@ import {
     chipClickAction,
     editorRing,
     panelRing,
+    railAnnouncement,
     railErrorReason,
     railMotion,
     truncateName
@@ -87,8 +89,9 @@ describe('buildRailViewModel', () => {
 
         it('keeps every editor name visible, only shorter', () => {
             // The whole point of the redesign: a narrow pane makes the rail
-            // denser, it never hides the names.
-            const long = editor({ name: 'Ruthlessly Concise Structural Editor' })
+            // denser, it never hides the names. Both budgets are runaway
+            // guards, so it takes an absurd name to see them differ at all.
+            const long = editor({ name: `Ruthlessly ${'very '.repeat(10)}concise editor` })
             const wide = buildRailViewModel(state({ editors: [long] }))
             const narrow = buildRailViewModel(state({ narrow: true, editors: [long] }))
 
@@ -97,9 +100,21 @@ describe('buildRailViewModel', () => {
             )
             expect(narrow.dots[0]?.displayName.length).toBeGreaterThan(0)
             expect(narrow.dots[0]?.displayName).toStartWith('Ruthlessly')
-            // The full name is never lost: it is the accessible name.
-            expect(narrow.dots[0]?.ariaLabel).toContain(long.name)
+            // The full name is never lost: it is the hover title.
+            expect(narrow.dots[0]?.title).toContain(long.name)
             expect(narrow.dots[0]?.name).toBe(long.name)
+        })
+
+        it('leaves an ordinary long name untouched in BOTH densities', () => {
+            // The character budgets exist to stop a 400-character name from
+            // being laid out, not to shorten real ones — CSS ellipsis does
+            // that, and it leaves the DOM text (and so the visible label)
+            // complete.
+            const long = editor({ name: 'Ruthlessly Concise Structural Editor' })
+            for (const narrow of [false, true]) {
+                const vm = buildRailViewModel(state({ narrow, editors: [long] }))
+                expect(vm.dots[0]?.displayName).toBe(long.name)
+            }
         })
 
         it('drops the daemon word but never its state', () => {
@@ -122,9 +137,11 @@ describe('buildRailViewModel', () => {
         })
 
         it('points the hint at a command that exists', () => {
-            // The palette entry is "Open review panel" (review-commands.ts) —
-            // following the hint must open the panel, not start a review.
-            expect(NARROW_PANEL_HINT).toContain('Open review panel')
+            // Asserted against the constant the command is REGISTERED with,
+            // not against a copy of the literal: renaming the palette entry
+            // must break this test rather than silently leave the hint
+            // naming an entry that is gone.
+            expect(NARROW_PANEL_HINT).toContain(OPEN_REVIEW_PANEL_COMMAND_NAME)
         })
 
         it('keeps the disabled rule and the chips unchanged', () => {
@@ -158,9 +175,40 @@ describe('buildRailViewModel', () => {
             const vm = buildRailViewModel(state({ editors: [editor({ name })] }))
             expect(vm.dots[0]?.displayName.length).toBe(NAME_MAX_CHARS)
             expect(vm.dots[0]?.displayName).toEndWith(NAME_ELLIPSIS)
-            // Truncated visibly, never in the accessible name (WCAG 2.5.3:
-            // the visible text stays a prefix of the accessible name).
-            expect(vm.dots[0]?.ariaLabel).toContain(name)
+            // The full name is still reachable — on hover, not in the name.
+            expect(vm.dots[0]?.title).toContain(name)
+        })
+
+        it('keeps the visible text the LEADING RUN of the accessible name', () => {
+            // WCAG 2.5.3, stated as the relation that actually has to hold:
+            // whatever the row shows opens its accessible name, ellipsis and
+            // all. Building the name from the full string instead would put a
+            // `…` on screen that a speech-input user cannot say.
+            for (const name of ['Hater', 'A'.repeat(400)]) {
+                for (const narrow of [false, true]) {
+                    const dot = buildRailViewModel(state({ narrow, editors: [editor({ name })] }))
+                        .dots[0]
+                    expect(dot?.ariaLabel).toStartWith(dot?.displayName ?? '')
+                }
+            }
+        })
+
+        it('holds the same relation for the panel row', () => {
+            for (const name of ['Pre-publish review', 'P'.repeat(400)]) {
+                const panel = buildRailViewModel(
+                    state({
+                        panel: {
+                            name,
+                            color: 'var(--color-pink)',
+                            status: 'ready',
+                            memberIds: [],
+                            verdictLabel: 'Needs work'
+                        }
+                    })
+                ).panel
+                expect(panel?.ariaLabel).toStartWith(panel?.displayName ?? '')
+                expect(panel?.title).toContain(name)
+            }
         })
     })
 
@@ -266,18 +314,20 @@ describe('buildRailViewModel', () => {
     })
 
     describe('railErrorReason', () => {
-        it('maps operation error codes to short human reasons', () => {
-            expect(railErrorReason('timeout')).toBe('timeout')
-            expect(railErrorReason('network')).toBe('network')
-            expect(railErrorReason('auth')).toBe('authentication')
+        it('spells codes out rather than leaking the wire spelling', () => {
+            // The decision, not the table: what reaches a tooltip is prose.
             expect(railErrorReason('rate-limit')).toBe('rate limit')
+            expect(railErrorReason('auth')).toBe('authentication')
             expect(railErrorReason('invalid-output')).toBe('invalid output')
         })
 
-        it('returns undefined for codes with no useful short form', () => {
+        it('returns undefined for anything it has no short form for', () => {
+            // Including the two that have a code but no useful phrase: the
+            // label reads "failed" rather than "failed (unknown)".
             expect(railErrorReason('unknown')).toBeUndefined()
             expect(railErrorReason('cancelled')).toBeUndefined()
             expect(railErrorReason('')).toBeUndefined()
+            expect(railErrorReason('some-future-code')).toBeUndefined()
         })
     })
 
@@ -346,30 +396,58 @@ describe('truncateName', () => {
 
     it('gives a narrow pane a smaller budget than a wide one', () => {
         expect(NAME_MAX_CHARS_COMPACT).toBeLessThan(NAME_MAX_CHARS)
-        // Both still leave room for a real name, not an acronym.
-        expect(NAME_MAX_CHARS_COMPACT).toBeGreaterThan(8)
+        // Both are RUNAWAY guards, not the everyday shortening: they have to
+        // sit above any name CSS ellipsis would ever be asked to handle, or
+        // the hard cut (which really does put a `…` in the text node) starts
+        // firing on ordinary persona names.
+        expect(NAME_MAX_CHARS_COMPACT).toBeGreaterThan(36)
+    })
+
+    it('never cuts an emoji in half', () => {
+        // Persona names are free-form user settings. Slicing UTF-16 units
+        // leaves a lone surrogate right before the ellipsis, which renders as
+        // U+FFFD — in the one path added to make an absurd name safe.
+        const cut = truncateName('👍'.repeat(30), 6)
+        expect(cut).toBe(`${'👍'.repeat(5)}${NAME_ELLIPSIS}`)
+        expect([...cut]).toHaveLength(6)
+        // No high surrogate left without its pair.
+        expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cut)).toBeFalse()
+    })
+
+    it('measures the budget in code points, not UTF-16 units', () => {
+        // 20 emoji are 40 UTF-16 units: a length-based guard would truncate a
+        // name that fits.
+        expect(truncateName('👍'.repeat(20), 28)).toBe('👍'.repeat(20))
     })
 })
 
 describe('ring mapping', () => {
-    it('maps every editor status to exactly one ring', () => {
-        expect(editorRing('idle')).toBe('idle')
-        expect(editorRing('pending')).toBe('pending')
+    // The switches are exhaustive over closed unions, so the compiler already
+    // guarantees "every status maps to a ring". What is worth pinning is where
+    // the mapping deliberately LOSES information: the ring is a 16-20px shape
+    // and cannot carry seven meanings, so several statuses collapse onto one.
+    it('collapses both in-flight editor statuses onto one busy ring', () => {
+        expect(editorRing('running')).toBe(editorRing('transforming'))
         expect(editorRing('running')).toBe('busy')
-        expect(editorRing('transforming')).toBe('busy')
-        expect(editorRing('done')).toBe('done')
-        expect(editorRing('error')).toBe('error')
-        expect(editorRing('cancelled')).toBe('muted')
     })
 
-    it('maps every scorecard status to the same ring vocabulary', () => {
-        expect(panelRing('waiting')).toBe('pending')
-        expect(panelRing('running')).toBe('busy')
-        expect(panelRing('ready')).toBe('done')
-        expect(panelRing('failed')).toBe('error')
-        expect(panelRing('cancelled')).toBe('muted')
-        expect(panelRing('skipped')).toBe('muted')
-        expect(panelRing('unavailable')).toBe('muted')
+    it('separates the three terminal editor outcomes', () => {
+        const terminal = [editorRing('done'), editorRing('error'), editorRing('cancelled')]
+        expect(new Set(terminal).size).toBe(3)
+    })
+
+    it('collapses every non-outcome scorecard status onto one muted ring', () => {
+        // Cancelled, skipped and unavailable are three reasons for the same
+        // thing — there is no scorecard — and the row says which in its name.
+        const muted = (['cancelled', 'skipped', 'unavailable'] as const).map(panelRing)
+        expect(new Set(muted)).toEqual(new Set(['muted']))
+    })
+
+    it('gives the panel the SAME vocabulary as an editor, not a second one', () => {
+        expect(panelRing('waiting')).toBe(editorRing('pending'))
+        expect(panelRing('running')).toBe(editorRing('running'))
+        expect(panelRing('ready')).toBe(editorRing('done'))
+        expect(panelRing('failed')).toBe(editorRing('error'))
     })
 
     it('is what the row view models carry', () => {
@@ -530,6 +608,88 @@ describe('railMotion', () => {
     })
 })
 
+describe('railAnnouncement', () => {
+    function view(overrides: Partial<RailState> = {}): RailViewModel {
+        return buildRailViewModel(state(overrides))
+    }
+    const silent = { stagger: false, bumped: [], settled: [], panelSettled: false } as const
+
+    it('says nothing on a render that reports no transition', () => {
+        // The rail re-renders on every streamed finding. A live region that
+        // narrated those would be unusable, so it speaks only at the
+        // transitions `railMotion` reports.
+        expect(railAnnouncement(view(), silent)).toBeNull()
+        expect(railAnnouncement(view(), { ...silent, bumped: ['editor-1'] })).toBeNull()
+    })
+
+    it('confirms a run started, and how many editors are in it', () => {
+        const message = railAnnouncement(
+            view({ editors: [editor({ id: 'a' }), editor({ id: 'b' })] }),
+            { ...silent, stagger: true }
+        )
+        expect(message).toBe('Review started, 2 editors.')
+        expect(railAnnouncement(view(), { ...silent, stagger: true })).toBe(
+            'Review started, 1 editor.'
+        )
+    })
+
+    it('reports each editor as it settles, by its FULL name', () => {
+        // The rows' accessible names open on their visible (possibly cut)
+        // text; the live region has no width to run out of.
+        const name = 'A'.repeat(400)
+        const message = railAnnouncement(
+            view({ editors: [editor({ name, status: 'running' }), editor({ id: 'b' })] }),
+            { ...silent, settled: ['editor-1'] }
+        )
+        expect(message).toContain(name)
+        expect(message).toContain('reviewing')
+    })
+
+    it('closes with the run total once every editor has landed', () => {
+        const message = railAnnouncement(
+            view({
+                editors: [
+                    editor({ id: 'a', name: 'Hater', status: 'done', findingCount: 4 }),
+                    editor({ id: 'b', name: 'Beginner', status: 'error' })
+                ]
+            }),
+            { ...silent, settled: ['b'] }
+        )
+        expect(message).toBe('Beginner — failed. Review finished, 4 findings, 1 editor failed.')
+    })
+
+    it('does not close the run while an editor is still in flight', () => {
+        const message = railAnnouncement(
+            view({
+                editors: [
+                    editor({ id: 'a', name: 'Hater', status: 'done', findingCount: 4 }),
+                    editor({ id: 'b', name: 'Beginner', status: 'running' })
+                ]
+            }),
+            { ...silent, settled: ['a'] }
+        )
+        expect(message).toBe('Hater — 4 findings.')
+    })
+
+    it('names the panel as a panel when its scorecard settles', () => {
+        const message = railAnnouncement(
+            view({
+                editors: [editor({ status: 'running' })],
+                panel: {
+                    name: 'Pre-publish review',
+                    color: 'var(--color-pink)',
+                    status: 'ready',
+                    memberIds: ['editor-1'],
+                    verdictLabel: 'Needs work'
+                }
+            }),
+            { ...silent, panelSettled: true }
+        )
+        expect(message).toContain('Pre-publish review (panel)')
+        expect(message).toContain('Needs work')
+    })
+})
+
 describe('chipClickAction', () => {
     const inFlight: RailEditorStatus[] = ['pending', 'running', 'transforming']
 
@@ -608,9 +768,8 @@ describe('buildRailViewModel panel entity (Business Rules #11)', () => {
     })
 
     it('carries the verdict in the accessible name too, not only in the badge', () => {
-        // The badge is aria-hidden and disappears in compact mode, so a
-        // verdict living only there reaches nobody in a narrow pane and no
-        // screen reader anywhere (WCAG 2.5.3 — the chip's only visible text).
+        // The badge is aria-hidden (it would otherwise be announced twice),
+        // so a verdict living only there reaches no screen reader at all.
         const vm = buildRailViewModel(withPanel())
         expect(vm.panel?.ariaLabel).toContain('Needs work')
         expect(vm.panel?.title).toContain('Needs work')

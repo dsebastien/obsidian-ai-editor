@@ -757,16 +757,24 @@
       block at the foot of this file (0,1,0)
       win over the animated rules here.
 
-   Cost to the note: the rail floats over the
-   text. It is capped in width (a share of the
-   pane, so it cannot swallow the column) and
-   its list is capped in height, and with
-   Obsidian's readable line length on it lands
-   in the right margin of a roomy pane. In a
-   narrow pane it does overlap the first
-   lines, which is why the compact button's
-   tooltip points at the side panel — that is
-   the reading surface there, not this.
+   Cost to the note, stated honestly: the rail
+   floats over the text. It is capped in width
+   and in height as a share of the PANE, so it
+   can never swallow the column or outgrow the
+   pane it belongs to — but it is NOT kept out
+   of the text. With readable line length on
+   (700px default) the text column ends at
+   `pane/2 + 350`, so the rail clears it only
+   from roughly 1000px of pane for a short
+   persona name and ~1250px for a long one. In
+   everything narrower it covers the tail of
+   the top few lines. That is a deliberate
+   trade — the names are the point of the rail
+   (2026-08-01) and shrinking it into the
+   gutter would put them back in tooltips —
+   and it is why the compact button's tooltip
+   points at the side panel, which is the
+   reading surface in a narrow pane.
    ======================================== */
 
 /* Anchor for the absolutely-positioned rail (added to view.contentEl) */
@@ -774,15 +782,21 @@
     position: relative;
 }
 
-/* The percentage cap resolves against the host (the view's contentEl), so the
-   rail is always a share of the PANE rather than a fixed slab that happens to
-   fit one window size. */
+/* Both caps resolve against the host (the view's contentEl), so the rail is
+   always a share of the PANE rather than a fixed slab that happens to fit one
+   window size. The HEIGHT cap has to live here rather than on the list: this
+   is the absolutely-positioned box, so it is the only descendant whose
+   percentages resolve against the host's definite height. A viewport cap
+   (`vh`) would let a stacked split render a rail taller than the pane holding
+   it, with the overflowing rows unreachable — the element that scrolls would
+   be the one being clipped. */
 .editor-ai-daemons-rail-wrapper {
-    @apply absolute;
+    @apply absolute flex flex-col;
     top: 8px;
     right: 16px;
     z-index: var(--layer-popover, 30);
     max-width: min(16rem, 38%);
+    max-height: calc(100% - 16px);
 }
 
 /* Narrow pane (plan M4 adaptive layout): hug the edge — in a ~500px pane every
@@ -792,6 +806,7 @@
     top: 4px;
     right: 6px;
     max-width: min(11.5rem, 52%);
+    max-height: calc(100% - 8px);
 }
 
 .editor-ai-daemons-hidden {
@@ -813,10 +828,12 @@
     --editor-ai-daemons-rail-font: var(--font-ui-smaller, 12px);
     --editor-ai-daemons-rail-font-strong: var(--font-ui-small, 13px);
     --editor-ai-daemons-rail-badge-font: 10px;
-    /* Set by .editor-ai-daemons-rail-list-enter, read by every row. */
-    --editor-ai-daemons-rail-stagger: 0ms;
+    /* How much room the panel's verdict pill may take from the name. */
+    --editor-ai-daemons-rail-verdict-max: 7rem;
 
-    @apply flex flex-col;
+    /* `min-h-0` so the card can shrink inside the wrapper's pane-relative
+       height cap instead of overflowing it — the list is what gives way. */
+    @apply flex min-h-0 flex-col;
     gap: var(--editor-ai-daemons-rail-gap);
     padding: var(--editor-ai-daemons-rail-pad);
     border-radius: var(--radius-m, 8px);
@@ -839,12 +856,27 @@
     --editor-ai-daemons-rail-font: var(--font-ui-smaller, 11px);
     --editor-ai-daemons-rail-font-strong: var(--font-ui-smaller, 12px);
     --editor-ai-daemons-rail-badge-font: 9px;
+    /* The name is `flex-1 min-w-0` and the verdict is `shrink-0`, so on a
+       card capped at `min(11.5rem, 52%)` a two-word verdict would eat a third
+       of the row and the NAME — the thing the rail exists to show — would be
+       the only element giving way. Cap the pill instead; it ellipsises, and
+       the verdict is in the row's accessible name and tooltip either way. */
+    --editor-ai-daemons-rail-verdict-max: 4rem;
 }
 
-/* --- Head: the mode, then the primary action ----------------------------- */
+/* The rail's live region (role=status). Visually hidden, never removed: run
+   progress is otherwise pull-only, which is no use to a screen-reader user
+   during exactly the period they cannot see the rail. */
+.editor-ai-daemons-rail-status {
+    @apply sr-only;
+}
+
+/* --- Head: the mode, then the primary action -----------------------------
+   `gap-1.5` (6px), not `gap-1`: two adjacent targets under 24px need at least
+   that much clearance for the WCAG 2.5.8 spacing exception. */
 
 .editor-ai-daemons-rail-head {
-    @apply flex flex-col gap-1;
+    @apply flex flex-col gap-1.5;
 }
 
 /* Daemon toggle — above the Review button, per Sébastien: the mode you are in
@@ -854,6 +886,9 @@
 .editor-ai-daemons-rail-daemon {
     @apply flex cursor-pointer items-center justify-center gap-1.5 leading-none;
     padding: 2px 6px;
+    /* WCAG 2.5.8: 12px of text plus 2px padding is an 18px target. The
+       minimum is 24, and the glyph stays the size it looks. */
+    min-height: 24px;
     border-radius: var(--radius-s);
     border: 1px solid transparent;
     background-color: transparent;
@@ -889,8 +924,22 @@
 }
 
 /* Armed: a refresh is counting down for this note. The pulse rides the
-   toggle rather than a second dot — one control, one place to look. */
+   toggle rather than a second dot — one control, one place to look.
+
+   The tint and the solid border come FIRST and are the actual signal: the
+   blanket reduced-motion block collapses the pulse onto its resting frame
+   (opacity 1), so a state carried by the animation alone would be invisible
+   to anyone who asked the OS not to animate things — the exact failure the
+   "motion is a reinforcement, never the signal" contract exists to prevent.
+   The pulse is what is left on top. */
 .editor-ai-daemons-rail-daemon-armed {
+    /* A ring rather than a fill: `-daemon-on` already paints the glyph in the
+       accent, so a tinted background would need a `color-mix` whose
+       no-color-mix fallback is a SOLID accent block behind accent text. The
+       ring reads as "heavier than on" at any support level, and it costs no
+       layout (box-shadow, not a wider border). */
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
     animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
 }
 
@@ -937,11 +986,23 @@
 
 /* `:not(:empty)` so a note with no enabled editor does not show a stray rule
    under the button. The height cap keeps a dozen editors from turning the
-   rail into a column down the side of the note; it scrolls instead. */
+   rail into a column down the side of the note; it scrolls instead. `45vh` is
+   an upper bound only — the binding one is the wrapper's pane-relative
+   `max-height`, which this shrinks inside (`min-h-0`).
+
+   The padding is for FOCUS RINGS, not for looks. A non-visible `overflow-y`
+   forces `overflow-x` to compute to `auto` (CSS Overflow 3), so this box
+   clips ink overflow on both axes — and Obsidian's only focus indicator is an
+   outward `box-shadow: 0 0 0 3px`. Without 3px of room inside the scrollport
+   a focused row's ring is sliced down its left and right edges. `overflow-x`
+   is then pinned to `hidden` so the entrance animation's 8px slide cannot
+   flash a horizontal scrollbar across the bottom of the card. */
 .editor-ai-daemons-rail-list {
-    @apply flex flex-col overflow-y-auto;
+    @apply flex min-h-0 flex-col overflow-x-hidden overflow-y-auto;
     gap: var(--editor-ai-daemons-rail-row-gap);
     max-height: 45vh;
+    padding: 3px;
+    margin-inline: -3px;
 }
 
 .editor-ai-daemons-rail-list:not(:empty) {
@@ -950,30 +1011,28 @@
 }
 
 /* A row and the retry button that sometimes sits beside it. Siblings, never
-   nested: a button inside a button is invalid and unreachable by keyboard. */
+   nested: a button inside a button is invalid and unreachable by keyboard.
+   `gap-1.5` (6px) rather than `gap-1`: the retry button is deliberately
+   smaller than the WCAG 2.5.8 minimum, so it needs the spacing exception. */
 .editor-ai-daemons-rail-slot {
-    @apply flex items-center gap-1;
-    /* The stagger is opt-in per render: rail.ts adds the enter class to the
-       LIST when a new run starts, which sets the two custom properties below.
-       Without it the name resolves to `none` and nothing animates — which is
-       what makes a rail that rebuilds on every streamed finding sit still. */
-    animation-name: var(--editor-ai-daemons-rail-enter-name, none);
-    animation-duration: 240ms;
-    animation-timing-function: ease-out;
-    animation-fill-mode: backwards;
-    animation-delay: calc(
-        var(--editor-ai-daemons-rail-index, 0) * var(--editor-ai-daemons-rail-stagger, 0ms)
-    );
+    @apply flex items-center gap-1.5;
 }
 
-.editor-ai-daemons-rail-list-enter {
-    --editor-ai-daemons-rail-enter-name: editor-ai-daemons-rail-row-in;
-    --editor-ai-daemons-rail-stagger: 45ms;
+/* The staggered entrance, opt-in per render: rail.ts adds this class to each
+   slot when a new run starts and takes it off again on `animationend`, so it
+   plays exactly once and a render mid-animation cannot abort it. The rows
+   survive re-renders now, which is why the class is the whole trigger. */
+.editor-ai-daemons-rail-slot-enter {
+    animation: editor-ai-daemons-rail-row-in 240ms ease-out backwards;
+    animation-delay: calc(var(--editor-ai-daemons-rail-index, 0) * 45ms);
 }
 
 .editor-ai-daemons-rail-row {
     @apply flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left;
     padding: 3px 5px;
+    /* WCAG 2.5.8. A wide row already clears this (20px ring + padding), a
+       compact one lands at ~23px without it. */
+    min-height: 24px;
     border-radius: var(--radius-s);
     border: 1px solid transparent;
     background-color: transparent;
@@ -1102,18 +1161,23 @@
     animation: editor-ai-daemons-spin 0.9s linear infinite;
 }
 
+/* The three TERMINAL rings differ by SHAPE, not only by hue (WCAG 1.4.1).
+   Hue alone could not carry them: the persona colour is user-configurable, so
+   a red persona collapses `done` into `error` and a grey one collapses it
+   into `muted`. Solid-thin / solid-thick / dotted survives that, and survives
+   a colourblind reader, standing still. The dimmed core, the retry button
+   beside the row and the accessible name are the reinforcement. */
 .editor-ai-daemons-rail-ring-done {
     border-color: var(--editor-ai-daemons-editor-color, var(--text-accent));
 }
 
-/* Error and cancelled dim the core as well as recolouring the ring, so the
-   two terminal failures differ from `done` by brightness and not only by hue;
-   the retry button beside the row and the accessible name carry the rest. */
 .editor-ai-daemons-rail-ring-error {
+    border-width: 3px;
     border-color: var(--text-error);
 }
 
 .editor-ai-daemons-rail-ring-muted {
+    border-style: dotted;
     border-color: var(--text-muted);
     opacity: 0.8;
 }
@@ -1144,10 +1208,18 @@
     line-height: 15px;
 }
 
+/* A count is a number that grows while findings stream in: tabular figures so
+   9 → 10 → 99+ does not shift the row's layout under the pointer. */
+.editor-ai-daemons-rail-count {
+    font-variant-numeric: tabular-nums;
+}
+
 /* A verdict is words, not a number: let it take a little room and ellipsise
-   rather than pushing the name out of the row. */
+   rather than pushing the name out of the row. The budget is a custom
+   property because the compact scale halves it (see the compact block). */
 .editor-ai-daemons-rail-verdict {
-    @apply max-w-[7rem] truncate;
+    @apply truncate;
+    max-width: var(--editor-ai-daemons-rail-verdict-max, 7rem);
 }
 
 /* The count changed while findings streamed in. One shot, added by rail.ts
@@ -1156,8 +1228,13 @@
     animation: editor-ai-daemons-rail-bump 280ms ease-out;
 }
 
+/* The recovery affordance: it only ever appears after something already went
+   wrong, and it is the smallest thing on the rail. The circle stays 18px
+   (bigger would shout next to a row that is only 24px tall) and the ::before
+   grows the POINTER TARGET to the WCAG 2.5.8 minimum of 24×24 without moving
+   anything. */
 .editor-ai-daemons-rail-retry {
-    @apply shrink-0 cursor-pointer rounded-full p-0;
+    @apply relative shrink-0 cursor-pointer rounded-full p-0;
     width: 18px;
     height: 18px;
     border: 1px solid var(--background-modifier-border);
@@ -1166,6 +1243,13 @@
     color: var(--text-muted);
     font-size: 11px;
     line-height: 1;
+}
+
+.editor-ai-daemons-rail-retry::before {
+    @apply absolute;
+    content: '';
+    inset: -3px;
+    border-radius: inherit;
 }
 
 .editor-ai-daemons-rail-retry:hover {
