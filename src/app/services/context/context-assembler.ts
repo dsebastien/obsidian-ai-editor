@@ -35,7 +35,7 @@ export type { AttachmentReason } from './context-budget'
 
 /**
  * Upper bound on followed links attached PER referenced note when a prompt
- * source has `followLinks` on (plan §0 "Live-testing feedback #2"): depth 1,
+ * source has `followLinks` on (Configuration.md § Settings tabs): depth 1,
  * deterministic link order, stop at the cap.
  */
 export const FOLLOWED_LINKS_CAP = 20

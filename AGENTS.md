@@ -38,11 +38,13 @@ Three locations, do not mix them:
 
 ### Session-start checklist
 
-Before making any change, read these in order:
+**v1 is feature-complete and unshipped.** There is no plan to execute; there is a shipped plugin, a canonical description of it, and a backlog in GitHub. Read in this order:
 
 1. `documentation/Business Rules.md` — mandatory invariants (see below).
-2. Active plans under `documentation/plans/` — what the current direction is, and the execution-status table at the top of the v1 plan for what was last done.
-3. Relevant sections of `node_modules/obsidian/obsidian.d.ts` whenever you are about to use an Obsidian API you have not recently used. Do not guess API shapes; they change between versions.
+2. `documentation/Architecture.md` — how the code is structured and what each part guarantees. With `documentation/Domain Model.md` (entities) and `documentation/Configuration.md` (settings as the user sees them), these three describe what the plugin DOES; they win over anything else when they disagree.
+3. Only then, and only when you need the WHY: `documentation/plans/ai-editor-v1-implementation-plan.md` — vision, the product decisions locked with Sébastien, the design sketch, the risk register, and §0 for the current state and what is left for Sébastien personally. `documentation/plans/interaction-surfaces-design.md` is the shipped spec of the menu / command / CLI surface. Both are reference documents, not work queues.
+4. What is still open: **GitHub issues** (the backlog, including the bugs from live testing) and `documentation/live-verification-checklist.md` (every check that needs a human in a running vault). `documentation/community-review-checklist.md` is the submission gate.
+5. Relevant sections of `node_modules/obsidian/obsidian.d.ts` whenever you are about to use an Obsidian API you have not recently used. Do not guess API shapes; they change between versions.
 
 ### Definition of done
 
@@ -52,7 +54,7 @@ A change is only "done" when **all** of the following hold:
 - `bun run lint` passes with zero warnings (the repo is configured with `--max-warnings 0`).
 - `bun test` passes; new logic has new `.spec.ts` coverage next to the file it tests.
 - `bun run build` completes without errors.
-- If a plan in `documentation/plans/` drove the work, it has been updated or closed — the plan's execution-status table is the record of what was done and why.
+- The decision behind the change is recorded where a future agent would look for it: `Architecture.md` for structure and behaviour, `Domain Model.md` for entities, `Business Rules.md` for a new invariant, `Configuration.md` for anything the user configures. **Do not append a development log to `documentation/plans/`** — the plans are reference documents (vision, locked decisions, rejected alternatives), and a per-change narrative there is re-read forever at cost by every future agent.
 - Any user-visible change to behavior, commands, or settings is reflected in `README.md` and/or `docs/`.
 
 You **cannot** self-verify UI behavior — Obsidian is a GUI app and agents do not have a live vault. State explicitly in your final message when a change requires manual runtime verification and what to check. Do not claim a UI feature "works" based solely on a passing build.
@@ -83,9 +85,11 @@ You **cannot** self-verify UI behavior — Obsidian is a GUI app and agents do n
 - Whenever making plans, focus on actionable information
 - **Clarity over grammar**: Always prioritize clarity and conciseness over perfect grammar. Terse, clear documentation is better than verbose, grammatically perfect text
 
-Decisions, progress and open questions are recorded in the plan's execution-status
-table (`documentation/plans/`), not in a separate chronological log. Manual checks that
-need a running Obsidian vault go in `documentation/live-verification-checklist.md`.
+Decisions go into the canonical documents that own the subject (`Architecture.md`,
+`Domain Model.md`, `Business Rules.md`, `Configuration.md`) — once, where they are
+looked for. Open work goes into GitHub issues. Manual checks that need a running
+Obsidian vault go in `documentation/live-verification-checklist.md`. There is no
+chronological log, and nothing should re-create one.
 
 ### Business Rules Compliance
 

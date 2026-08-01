@@ -136,7 +136,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.registerReviewPanelView(reviewController)
         reviewController.initialize()
 
-        // Daemon mode (plan §0, Business Rule #1 carve-out — the settings
+        // Daemon mode (Business Rule #1 carve-out — the settings
         // toggle IS the explicit user action): pure scheduler behind
         // per-file timers; edits arrive via the controller's canonical-view
         // update listener, run state via its refresh cycle, config via the

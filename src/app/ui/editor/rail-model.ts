@@ -210,7 +210,7 @@ export interface RailDotViewModel {
      * Accessible label for the retry affordance, or null when the editor is
      * not retryable. Only editors whose run attempt ended in failure
      * (`error`) or was cancelled get one — retry re-runs exactly that editor
-     * inside the existing run (plan §0 "Slow & thinking models" piece 1).
+     * inside the existing run (Architecture.md § Run lifecycle beyond the first pass).
      */
     readonly retryAriaLabel: string | null
     /**
@@ -265,7 +265,7 @@ export interface RailViewModel {
 }
 
 /**
- * What clicking an editor chip does (plan §0 "Live-testing feedback #3"):
+ * What clicking an editor chip does (Architecture.md § Triage surfaces):
  * - `cycle-findings` — reveal the first / next revealable finding of that
  *   editor (with the ~2 s highlight emphasis);
  * - `open-panel` — nothing to reveal inline, but the editor has a summary or

@@ -1,5 +1,6 @@
 /**
- * Daemon-mode scheduler core (plan §0 "Daemon mode", decisions locked
+ * Daemon-mode scheduler core (Architecture.md § Run lifecycle beyond the first
+ * pass; Business Rule #1 carve-out, decided
  * 2026-07-29): the pure state machine deciding WHEN a file's review should be
  * refreshed automatically. Time is always passed in explicitly and no timers
  * are owned here — the Obsidian glue (`ui/daemon-controller.ts`) feeds events

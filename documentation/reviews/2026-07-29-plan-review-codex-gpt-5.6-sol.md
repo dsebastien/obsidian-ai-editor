@@ -1,6 +1,8 @@
 # Adversarial plan review — codex (gpt-5.6-sol, xhigh), 2026-07-29
 
 > Reviewer: `codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh --sandbox read-only` against `documentation/plans/ai-editor-v1-implementation-plan.md` @ f69e9e2. Verbatim output below.
+>
+> **Historical record — every finding was adopted and shipped** (the adopted list is plan §4c). The deep links below point at line numbers in that file as it stood at f69e9e2; the file has since been rewritten and the line numbers no longer resolve. Read it as the review of the plan at that commit, not of the plugin as it is now.
 
 Verdict: do not begin M1 from this plan. It is a strong product vision, but the proposed core contracts cannot safely implement several promised surfaces, and M0 does not de-risk the hardest integration points.
 

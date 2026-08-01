@@ -257,7 +257,7 @@ export interface StartReviewInput {
      * is started. The daemon passes "a run for this file is now unsettled":
      * `startRun` cancels the file's previous run, so without this guard a
      * daemon dispatch racing a user summon during the awaits would cancel
-     * the user's explicit run (plan §0 daemon row — summon always wins).
+     * the user's explicit run (Architecture.md § Run lifecycle — summon always wins).
      */
     readonly abortWhen?: () => boolean
 }

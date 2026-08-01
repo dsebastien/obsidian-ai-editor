@@ -9,6 +9,24 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## End-to-end review flow (the M2 baseline — start here)
+
+Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.
+
+- The plugin loads in a live vault with no console errors.
+- `Review current note` runs on a test note and findings land.
+- Highlights render in **Live Preview AND Source mode** — and a side-by-side comparison of the two has never been done.
+- The rail shows status and counts for every participating editor.
+- The side panel lists the findings, and clicking one jumps to its span.
+- The finding card opens on a highlight click.
+- Accept applies the edit AND undoes cleanly in ONE undo step.
+- Dismiss clears the highlight.
+- Cancel works mid-run.
+- An excluded note refuses the review with a refusal message.
+- The size warning fires on an oversized note.
+- Multi-pane edge cases: two panes on one file (type in each, run a replace-all in the pane that does NOT have focus, Accept from either pane), and the same in a popout window.
+- At least one real API provider (Anthropic / OpenAI / OpenRouter / Azure) configured end to end, not just Ollama.
+
 ## Persona rail redesign (2026-08-01)
 
 - Daemon toggle, three states side by side: **off** (faint, hollow glyph), **on** (green border, green tint, filled glyph, a slow breath), **armed** (solid green border + ring, a faster and wider pulse). All three must be tellable apart at a glance.

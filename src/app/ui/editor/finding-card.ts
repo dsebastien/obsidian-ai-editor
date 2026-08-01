@@ -111,7 +111,7 @@ export interface FindingLookup {
 }
 
 /**
- * Programmatic card control (keyboard triage card-on-jump, plan §0 stage D
+ * Programmatic card control (keyboard triage card-on-jump, Architecture.md § Triage
  * slice 1): a finding id opens the card on that finding's highlight — the
  * same card a click would open, anchored at the span's coordinates — and
  * `null` closes any open card. Dispatched by the review controller after a

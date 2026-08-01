@@ -66,7 +66,7 @@ export interface EditorScopedSourceFinding extends NavigationSourceFinding {
 
 /**
  * The revealable findings of ONE editor, ordered by document position — the
- * chip-click cycle set (plan §0 "Live-testing feedback #3"). Same
+ * chip-click cycle set (Architecture.md § Triage surfaces). Same
  * revealability rules as `navigableFindings`, narrowed to the chip's editor.
  */
 export function navigableEditorFindings(
@@ -114,7 +114,7 @@ export function rebaseTriageMemory(
 }
 
 /**
- * THE memory-based stepping engine (plan §0 stage D slice 1) shared by chip
+ * THE memory-based stepping engine (Architecture.md § Triage surfaces) shared by chip
  * cycling (`cycleFinding`), the `next-finding`/`prev-finding` triage
  * commands, and the accept/dismiss auto-advance:
  *

@@ -33,7 +33,7 @@ import { rawFindingSchema } from '../operations/contract'
 
 /**
  * Bumped whenever the persisted shape changes. There are no users yet, so
- * there are no migrations (plan §0 no-users policy) — the field ships anyway
+ * there are no migrations (the no-users policy, plan §0) — the field ships anyway
  * because after release a migration hook needs somewhere to read the version
  * from, and adding it later would mean guessing at unversioned files.
  *

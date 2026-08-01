@@ -300,7 +300,7 @@ export const behaviorSettingsSchema = z.object({
     /** Total context budget per run, in characters (proxy for tokens). */
     contextBudgetChars: z.number().int().min(1_000).max(2_000_000).default(200_000),
     /**
-     * Daemon mode (plan §0, decisions locked 2026-07-29): editors watch file
+     * Daemon mode (Business Rule #1 carve-out, Architecture.md § Run lifecycle): editors watch file
      * edits and automatically re-dispatch a review after the user pauses
      * editing a reviewable note whose text actually changed since its last
      * run. Explicit carve-out to Business Rule #1: enabling this toggle IS

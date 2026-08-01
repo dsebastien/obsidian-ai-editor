@@ -314,7 +314,7 @@ export interface RunHandle {
      * applied after the retry started — never a guessed position (Business
      * Rules #3/#4).
      *
-     * Decision (plan §0 "Slow & thinking models" piece 1): a retry REPLACES
+     * Decision (Architecture.md § Run lifecycle beyond the first pass): a retry REPLACES
      * the editor's previous findings — they came from a failed or partial
      * attempt, so keeping them would mix two generations of critique over
      * one document. All of the editor's findings (terminal ones included —

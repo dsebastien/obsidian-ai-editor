@@ -2,7 +2,7 @@ import { deleteKeysUnder } from '../domain/path-scope'
 import type { TriageMemory } from './finding-navigation'
 
 /**
- * Per-file triage cursor state (plan §0 stage D slice 1, design M4 keyboard
+ * Per-file triage cursor state (Architecture.md § Triage surfaces, design M4 keyboard
  * triage). One cursor per file: the finding the triage commands consider
  * "current". Pure in-memory bookkeeping — the stepping decisions live in
  * `finding-navigation.ts` (`triageStep`/`triageCurrent`); the controller

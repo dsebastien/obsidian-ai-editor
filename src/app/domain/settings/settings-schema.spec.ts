@@ -39,7 +39,7 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
     })
 
     it('defaults follow-links ON for the voice profile and OFF everywhere else', () => {
-        // Plan §0 "Live-testing feedback #2": the voice profile is the
+        // Configuration.md § Settings tabs (follow links): the voice profile is the
         // motivating case for following referenced-note links; editor
         // prompts, panel charters, and custom instructions stay opt-in.
         expect(DEFAULT_PLUGIN_SETTINGS.voiceProfile.followLinks).toEqual(true)

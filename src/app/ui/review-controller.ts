@@ -345,7 +345,7 @@ interface ViewGlue {
     /** RunId of the currently presented preview ('' = none presented). */
     transformPreviewKey: string
     /**
-     * Chip-click cycle memory (plan §0 "Live-testing feedback #3"): the
+     * Chip-click cycle memory (Architecture.md § Triage surfaces): the
      * finding the last chip click on `editorId` revealed, so the next click
      * steps to the one after it (wrap-around). Cleared on note switch and on
      * run change; a remembered finding that left the cycle set restarts the
@@ -1506,7 +1506,7 @@ export class ReviewController {
      * Daemon refresh entry (`DaemonReviewPort`): the SAME `startReview`
      * pipeline as every other surface (exclusions, size guard, editor/backend
      * resolution, concurrency gate all apply), with the daemon-specific
-     * contract on top (plan §0 daemon row):
+     * contract on top (Architecture.md § Run lifecycle beyond the first pass):
      * - whole-note scope — a live selection must never narrow an automatic
      *   refresh;
      * - `editorIds` re-dispatches the note's previous run's editor set (null
@@ -1767,7 +1767,7 @@ export class ReviewController {
         }
     }
 
-    // -- Rail chip click (plan §0 "Live-testing feedback #3") -----------------
+    // -- Rail chip click (Architecture.md § Triage surfaces) ------------------
 
     /**
      * Chip-click dispatch: the pure decision lives in `chipClickAction`, the

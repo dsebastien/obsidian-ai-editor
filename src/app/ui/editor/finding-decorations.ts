@@ -113,7 +113,7 @@ export const markStaleEffect = StateEffect.define<readonly string[]>()
 
 /**
  * Emphasizes ONE editor's marks in place (the ~2 s rail-chip click flash —
- * plan §0 "Live-testing feedback #3"): the given editor's marks gain the
+ * Architecture.md § Triage surfaces): the given editor's marks gain the
  * `editor-ai-daemons-finding-emphasized` class, every other mark loses it. `null`
  * clears the emphasis everywhere. A full `setFindingsEffect` rebuild also
  * resets emphasis (specs never carry it), so a note switch or run change

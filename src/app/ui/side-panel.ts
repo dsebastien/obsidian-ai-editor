@@ -282,7 +282,7 @@ export class ReviewSidePanelView extends ItemView {
     /**
      * Scrolls the panel to one editor's section — the rail-chip click-through
      * for chips with nothing revealable inline but a summary/error to show
-     * (plan §0 "Live-testing feedback #3"). Instant scroll on purpose: no
+     * (Architecture.md § Triage surfaces). Instant scroll on purpose: no
      * smooth animation to be reduced-motion safe without a media query. A
      * no-op when the editor has no section (no run state yet).
      */
