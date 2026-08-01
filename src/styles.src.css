@@ -1782,19 +1782,24 @@
 
 /* Per-editor finding stepping (section header, src/app/ui/panel-finding-nav.ts).
    Deliberately the rail's vocabulary rather than a second one: round icon
-   buttons the size of the retry affordance, around the same count pill the rail
-   puts at the end of an editor row. The panel and the rail are two views of one
-   run, so a control that does the same thing in both must look the same in
-   both. Rendered only when the editor has two or more revealable findings, and
-   never disabled — stepping wraps, so both directions always lead somewhere. */
+   buttons around the same count pill the rail puts at the end of an editor row.
+   The panel and the rail are two views of one run, so a control that does the
+   same thing in both must look the same in both. Rendered only when the editor
+   has two or more revealable findings, and never disabled — stepping wraps, so
+   both directions always lead somewhere.
+
+   20 × 20, matching `.editor-ai-daemons-panel-retry` exactly: the two sit side
+   by side in the same header on a failed editor, so a 2px difference reads as a
+   mistake — and this is the plugin's most repeated control, which is the last
+   place to spend the WCAG 2.5.8 spacing exception's margin. */
 .editor-ai-daemons-panel-nav {
     @apply flex shrink-0 items-center gap-1;
 }
 
 .editor-ai-daemons-panel-nav-button {
     @apply flex shrink-0 cursor-pointer items-center justify-center rounded-full p-0;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
     color: var(--text-muted);
@@ -1813,17 +1818,20 @@
 
 /* "2 of 5". Tabular figures so the pill does not jitter as the position walks
    past a wider digit. Decorative (aria-hidden): the group around it is named
-   with the position spelled out. */
+   with the position spelled out, and the group carries the same sentence as a
+   tooltip so the "—" placeholder is explicable to a sighted user too.
+   18px + 1px border either side = the arrows' 20px, so the three sit on one
+   baseline. */
 .editor-ai-daemons-panel-nav-count {
     @apply shrink-0 rounded-full text-center whitespace-nowrap;
     box-sizing: border-box;
-    min-width: 17px;
+    min-width: 20px;
     padding: 0 5px;
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
     color: var(--text-muted);
     font-size: 10px;
-    line-height: 15px;
+    line-height: 18px;
     font-variant-numeric: tabular-nums;
 }
 
@@ -1959,6 +1967,19 @@
 .editor-ai-daemons-panel-finding.is-clickable:hover,
 .editor-ai-daemons-panel-finding.is-clickable:focus-visible {
     border-color: var(--background-modifier-border);
+    background-color: var(--background-modifier-hover);
+}
+
+/* The row the triage cursor is on — the same finding the editor rings and the
+   header counts as "2 of 5". Without it the counter names a position with
+   nothing in the panel at that position, and the panel is where findings are
+   READ. Deliberately a left accent bar plus a tint, not a border colour: hover
+   and focus already own the border, and a state must not be mistakable for a
+   pointer passing over. Colour is never alone (WCAG 1.4.1) — the bar is a
+   shape, and `aria-current` carries the same fact. */
+.editor-ai-daemons-panel-finding.is-current {
+    border-color: var(--background-modifier-border);
+    border-left: 3px solid var(--text-accent);
     background-color: var(--background-modifier-hover);
 }
 
@@ -2200,6 +2221,15 @@
    nothing can leave the editor padded. */
 .editor-ai-daemons-margin-reserved .cm-scroller {
     padding-right: var(--editor-ai-daemons-margin-reserve, 0);
+}
+
+/* The panel's live region (role=status). Visually hidden and OUTSIDE the
+   subtree every render empties, for the same reason as the rail's: stepping is
+   otherwise pull-only — the counter is `aria-hidden` and a group's changing
+   `aria-label` announces nothing — so a screen-reader user pressing an arrow
+   would be told nothing about where they landed. */
+.editor-ai-daemons-panel-live {
+    @apply sr-only;
 }
 
 /* "Ask for comments" next to the panel's Review button (plan §5.5 / M8). */

@@ -410,6 +410,26 @@ interface RequestedSelection {
     readonly capturedHash?: string
 }
 
+/**
+ * How ONE triage step differs from the default, for the surface that asked
+ * for it. Everything else about a step — the cursor move, the refresh, the
+ * ring, the scroll — is identical by construction (see `moveTriageCursor`).
+ */
+interface TriageRevealOptions {
+    /**
+     * Open the landed-on finding's card. True for read-and-judge gestures
+     * (palette triage, the panel's arrows); false for the rail chip, which is
+     * a glance across an editor's findings.
+     */
+    readonly openCard?: boolean
+    /**
+     * Move the keyboard into the note. False only for the panel's stepper —
+     * its button is what the user will press again, and taking focus away
+     * would make a repeat-use control single-use for anyone not on a mouse.
+     */
+    readonly focusEditor?: boolean
+}
+
 export class ReviewController {
     private readonly deps: ReviewControllerDeps
     private readonly vaultReader: ObsidianVaultReader
@@ -1773,12 +1793,23 @@ export class ReviewController {
             case 'cycle-findings': {
                 const last = glue.chipCycle?.editorId === editorId ? glue.chipCycle.findingId : null
                 const target = cycleFinding(revealable, last)
-                if (!target) {
+                if (!target || !run) {
                     return
                 }
                 glue.chipCycle = { editorId, findingId: target.id }
                 this.emphasizeEditor(glue, editorId)
-                void this.revealFinding(path, asFindingId(target.id))
+                // Through the SHARED cursor, like the palette and the panel:
+                // the chip keeps its own cycling memory (the contract is that
+                // the first click reveals the FIRST finding, wherever the
+                // cursor sits), but where it lands becomes current — so the
+                // ring, the panel's counter and the next palette step all
+                // agree with what the chip just showed. Without this the
+                // decoration layer would keep ringing a finding the user is
+                // no longer looking at.
+                //
+                // No card: a chip click is a glance across an editor's
+                // findings, not the read-and-judge gesture triage is.
+                this.moveTriageCursor(path, run, target, { openCard: false })
                 return
             }
             case 'open-panel':
@@ -1898,6 +1929,12 @@ export class ReviewController {
      * `path` comes from the binding the panel was RENDERED for (like every
      * other panel callback): a step must never move the cursor of a different
      * note than the one whose counter the user just read.
+     *
+     * The note is NOT focused. This is the one stepping surface whose control
+     * lives outside the editor and is meant to be pressed repeatedly, so
+     * pulling focus into the note would cost a keyboard user the arrow after
+     * every single step. The panel keeps the keyboard; the scroll, the ring
+     * and the card all still happen.
      */
     private stepEditorFinding(
         path: string,
@@ -1914,7 +1951,7 @@ export class ReviewController {
         if (!target) {
             return
         }
-        this.moveTriageCursor(path, run, target)
+        this.moveTriageCursor(path, run, target, { focusEditor: false })
     }
 
     /**
@@ -1941,12 +1978,23 @@ export class ReviewController {
      * position is the eviction fallback), refresh so the decoration layer
      * rings the new current finding, reveal it through the exact side-panel
      * path, then open its card at the revealed span (card-on-jump).
+     *
+     * THE one place the cursor moves, so every surface that steps — the
+     * palette, the panel's arrows, the rail's chip cycling, the accept/dismiss
+     * auto-advance — leaves the same finding current. The options say how the
+     * caller's own gesture differs, and nothing else.
      */
-    private moveTriageCursor(path: string, run: RunHandle, target: NavigationTarget): void {
+    private moveTriageCursor(
+        path: string,
+        run: RunHandle,
+        target: NavigationTarget,
+        options: TriageRevealOptions = {}
+    ): void {
+        const { openCard = true, focusEditor = true } = options
         this.triageCursors.set(path, run, { id: target.id, from: target.from })
         this.scheduleRefresh()
-        void this.revealFinding(path, asFindingId(target.id)).then((view) => {
-            if (view && !this.disposed) {
+        void this.revealFinding(path, asFindingId(target.id), focusEditor).then((view) => {
+            if (openCard && view && !this.disposed) {
                 editorViewOf(view)?.dispatch({ effects: showFindingCardEffect.of(target.id) })
             }
         })
@@ -3986,14 +4034,15 @@ export class ReviewController {
      */
     private async revealFinding(
         filePath: string,
-        findingId: FindingId
+        findingId: FindingId,
+        focusEditor = true
     ): Promise<MarkdownView | null> {
         const run = this.deps.runController.getRun(filePath)
         const finding = run?.findings.get(findingId) ?? null
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {
             return null
         }
-        return this.revealRange(filePath, finding.anchor.from, finding.anchor.to)
+        return this.revealRange(filePath, finding.anchor.from, finding.anchor.to, focusEditor)
     }
 
     /**
@@ -4003,11 +4052,18 @@ export class ReviewController {
      *
      * Returns the view it landed in (`null` when nothing was revealed) so
      * triage stepping can chain the card open onto it.
+     *
+     * `focusEditor` defaults to true — every caller that acts FROM the note
+     * wants the keyboard back in it. The one caller that passes false is the
+     * panel's stepper, whose control the user is standing on and will press
+     * again (see `stepEditorFinding`). The scroll and the selection happen
+     * either way; only who owns the keyboard differs.
      */
     private async revealRange(
         filePath: string,
         rangeFrom: number,
-        rangeTo: number
+        rangeTo: number,
+        focusEditor = true
     ): Promise<MarkdownView | null> {
         const view = await this.openMarkdownView(filePath)
         if (!view) {
@@ -4021,7 +4077,9 @@ export class ReviewController {
         const toPos = editor.offsetToPos(to)
         editor.setSelection(fromPos, toPos)
         editor.scrollIntoView({ from: fromPos, to: toPos }, true)
-        editor.focus()
+        if (focusEditor) {
+            editor.focus()
+        }
         // Brief selection: collapse after a moment, unless the user moved it.
         const timer = window.setTimeout(() => {
             this.pendingTimers.delete(timer)

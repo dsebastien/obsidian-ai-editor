@@ -13,7 +13,8 @@ import { undecoratedNoticeText } from './editor/decoration-budget'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
-import { sectionNavigationView } from './panel-finding-nav'
+import { orderRowsByPosition, sectionNavigationView } from './panel-finding-nav'
+import type { SectionNavigationView } from './panel-finding-nav'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
 import { buildScorecardView, scorecardMemberName } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
@@ -167,6 +168,20 @@ const SEVERITY_ICONS: Record<Severity, string> = {
 const CRITIQUE_EXCERPT_MAX = 220
 const QUOTE_EXCERPT_MAX = 120
 
+/**
+ * Identifies one section's previous/next button across a full rebuild.
+ *
+ * Every render starts with `contentEl.empty()`, so a control the user is
+ * standing on is destroyed and re-created on every state push — and the
+ * stepper is the plugin's first control MEANT to be pressed repeatedly.
+ * Without a stable identity, one Enter on "Next" would cost a keyboard user
+ * the whole traversal back through the header, the filter and the scorecard
+ * before they could press it again.
+ */
+function navFocusKey(editorId: string, direction: NavigationDirection): string {
+    return `${editorId}:${direction}`
+}
+
 function truncate(text: string, max: number): string {
     const collapsed = text.replace(/\s+/g, ' ').trim()
     return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed
@@ -193,6 +208,17 @@ export class ReviewSidePanelView extends ItemView {
     private readonly provider: SidePanelStateProvider
     private panelState: SidePanelState | null = null
     private unsubscribe: (() => void) | null = null
+    /**
+     * The panel's polite live region. Created OUTSIDE `contentEl` and never
+     * removed: `contentEl.empty()` would take it with the rest of the tree,
+     * and text written into a live region created in the same tick is
+     * routinely not announced at all.
+     */
+    private liveEl: HTMLElement | null = null
+    /** Which editor's stepper was last activated here — what to announce. */
+    private pendingStepEditorId: string | null = null
+    /** Set during a render when that editor's section was (re)built. */
+    private pendingAnnouncement: string | null = null
 
     constructor(leaf: WorkspaceLeaf, provider: SidePanelStateProvider) {
         super(leaf)
@@ -229,6 +255,10 @@ export class ReviewSidePanelView extends ItemView {
         this.unsubscribe?.()
         this.unsubscribe = null
         this.panelState = null
+        this.liveEl?.remove()
+        this.liveEl = null
+        this.pendingStepEditorId = null
+        this.pendingAnnouncement = null
         return Promise.resolve()
     }
 
@@ -265,9 +295,83 @@ export class ReviewSidePanelView extends ItemView {
         }
     }
 
+    /**
+     * Rebuilds the whole panel, keeping the two things a full rebuild would
+     * otherwise destroy: where the keyboard was, and what a screen reader
+     * still has to be told.
+     *
+     * The rebuild is deliberate (one state push, one tree — no diffing), but
+     * it means the control the user is standing on is a NEW element after
+     * every push. The stepper is pressed repeatedly by design, so its focus
+     * is captured before the tree goes and restored onto its replacement.
+     */
     private render(): void {
+        const focusKey = this.focusedNavKey()
+        this.contentEl.empty()
+        this.pendingAnnouncement = null
+        this.renderTree()
+        this.restoreNavFocus(focusKey)
+        this.flushAnnouncement()
+    }
+
+    /** The nav button the keyboard is on right now, or null. */
+    private focusedNavKey(): string | null {
+        const active = this.contentEl.ownerDocument.activeElement
+        if (!(active instanceof HTMLElement) || !this.contentEl.contains(active)) {
+            return null
+        }
+        return active.getAttribute('data-nav-step')
+    }
+
+    /**
+     * Puts the keyboard back on the equivalent button in the fresh tree.
+     * `preventScroll`: the step already scrolled the note to the finding, and
+     * the panel must not fight that with a scroll of its own.
+     */
+    private restoreNavFocus(key: string | null): void {
+        if (key === null) {
+            return
+        }
+        const button = this.contentEl.querySelector(`[data-nav-step="${CSS.escape(key)}"]`)
+        if (button instanceof HTMLElement) {
+            button.focus({ preventScroll: true })
+        }
+    }
+
+    /**
+     * Says where the step landed, once the section has been rebuilt with the
+     * new cursor.
+     *
+     * The visible counter is `aria-hidden` and the position otherwise lives
+     * only in the control group's `aria-label` — a static accessible name,
+     * which no screen reader announces when it changes. Without this, a
+     * screen-reader user pressing "Next" is told nothing at all about where
+     * they landed.
+     */
+    private flushAnnouncement(): void {
+        const text = this.pendingAnnouncement
+        if (text === null) {
+            return
+        }
+        this.pendingAnnouncement = null
+        this.pendingStepEditorId = null
+        this.liveRegion().setText(text)
+    }
+
+    private liveRegion(): HTMLElement {
+        let region = this.liveEl
+        if (region === null || !region.isConnected) {
+            region = this.containerEl.createDiv({ cls: 'editor-ai-daemons-panel-live' })
+            region.setAttribute('role', 'status')
+            region.setAttribute('aria-live', 'polite')
+            region.setAttribute('aria-atomic', 'true')
+            this.liveEl = region
+        }
+        return region
+    }
+
+    private renderTree(): void {
         const { contentEl } = this
-        contentEl.empty()
         const root = contentEl.createDiv({ cls: 'editor-ai-daemons-panel' })
 
         const state = this.panelState
@@ -752,8 +856,12 @@ export class ReviewSidePanelView extends ItemView {
             passesSeverityFilter(binding.severityFilter, finding.raw.severity)
         )
         const hidden = live.length - findings.length
-        const anchored = findings.filter((finding) => finding.anchor !== null)
+        // Document order, not arrival order: the header's counter numbers
+        // these rows by position in the note, so row N has to BE finding N
+        // (see `orderRowsByPosition`).
+        const anchored = orderRowsByPosition(findings.filter((finding) => finding.anchor !== null))
         const unanchored = findings.filter((finding) => finding.anchor === null)
+        const currentFindingId = binding.currentFindingId()
 
         const header = section.createDiv({ cls: 'editor-ai-daemons-panel-section-header' })
         const dot = header.createSpan({ cls: 'editor-ai-daemons-panel-dot' })
@@ -783,7 +891,7 @@ export class ReviewSidePanelView extends ItemView {
                 binding.retryEditor(state.editorId)
             })
         }
-        this.renderSectionNavigation(header, binding, state, findings)
+        this.renderSectionNavigation(header, binding, state, findings, currentFindingId)
 
         if (state.error !== null) {
             section.createDiv({
@@ -813,13 +921,15 @@ export class ReviewSidePanelView extends ItemView {
 
         const list = section.createDiv({ cls: 'editor-ai-daemons-panel-findings' })
         for (const finding of anchored) {
-            this.renderFinding(list, binding, finding, true)
+            this.renderFinding(list, binding, finding, true, currentFindingId)
         }
         if (unanchored.length > 0) {
             section.createDiv({ cls: 'editor-ai-daemons-panel-subheader', text: 'Not anchored' })
             const orphanList = section.createDiv({ cls: 'editor-ai-daemons-panel-findings' })
             for (const finding of unanchored) {
-                this.renderFinding(orphanList, binding, finding, false)
+                // An unanchored finding is never steppable, so it can never be
+                // the cursor — passing the id would be dead weight.
+                this.renderFinding(orphanList, binding, finding, false, null)
             }
         }
     }
@@ -838,21 +948,31 @@ export class ReviewSidePanelView extends ItemView {
      * Neither button is ever disabled: stepping wraps, so from any position
      * both directions have somewhere to go. The pair is absent instead of dead
      * when there is nothing to step through.
+     *
+     * Two things make it usable without a pointer. Each button carries a
+     * `data-nav-step` identity so `render` can put the keyboard back on it
+     * after the rebuild a step triggers, and a step queues the group's name
+     * for the live region — the visible counter is `aria-hidden` and a
+     * changing `aria-label` announces nothing.
      */
     private renderSectionNavigation(
         header: HTMLElement,
         binding: SidePanelBinding,
         state: EditorRunState,
-        findings: readonly TrackedFinding[]
+        findings: readonly TrackedFinding[],
+        currentFindingId: string | null
     ): void {
         const view = sectionNavigationView(
             findings,
             state.editorId,
             state.editorName,
-            binding.currentFindingId()
+            currentFindingId
         )
         if (!view.visible) {
             return
+        }
+        if (this.pendingStepEditorId === state.editorId) {
+            this.pendingAnnouncement = view.groupAriaLabel
         }
         const nav = header.createDiv({ cls: 'editor-ai-daemons-panel-nav' })
         // A pair of arrows around a number is three unrelated elements read as
@@ -860,7 +980,11 @@ export class ReviewSidePanelView extends ItemView {
         // plain div cannot) — the same fix the scorecard member rows use.
         nav.setAttribute('role', 'group')
         nav.setAttribute('aria-label', view.groupAriaLabel)
-        this.addNavButton(nav, 'chevron-left', view.previousAriaLabel, () => {
+        // The pill is an em dash before the first step, and a bare "—" with no
+        // way to ask what it means is the sighted mirror of an unlabelled
+        // control. The tooltip says the same sentence the group's name does.
+        nav.title = view.groupAriaLabel
+        this.addNavButton(nav, 'chevron-left', view, state.editorId, 'prev', () => {
             binding.stepEditorFinding(state.editorId, 'prev')
         })
         // Decorative: the group's accessible name already says the position,
@@ -869,7 +993,7 @@ export class ReviewSidePanelView extends ItemView {
             cls: 'editor-ai-daemons-panel-nav-count',
             text: view.positionText
         }).setAttribute('aria-hidden', 'true')
-        this.addNavButton(nav, 'chevron-right', view.nextAriaLabel, () => {
+        this.addNavButton(nav, 'chevron-right', view, state.editorId, 'next', () => {
             binding.stepEditorFinding(state.editorId, 'next')
         })
     }
@@ -877,17 +1001,25 @@ export class ReviewSidePanelView extends ItemView {
     private addNavButton(
         nav: HTMLElement,
         icon: string,
-        ariaLabel: string,
-        onClick: () => void
+        view: SectionNavigationView,
+        editorId: string,
+        direction: NavigationDirection,
+        onStep: () => void
     ): void {
+        const ariaLabel = direction === 'next' ? view.nextAriaLabel : view.previousAriaLabel
         const button = nav.createEl('button', {
             cls: 'editor-ai-daemons-panel-nav-button',
-            attr: { type: 'button' }
+            attr: { 'type': 'button', 'data-nav-step': navFocusKey(editorId, direction) }
         })
         setIcon(button, icon)
         button.setAttribute('aria-label', ariaLabel)
         button.title = ariaLabel
-        button.addEventListener('click', onClick)
+        button.addEventListener('click', () => {
+            // Remembered BEFORE the step so the render it triggers knows whose
+            // position to announce. Cleared when that announcement is made.
+            this.pendingStepEditorId = editorId
+            onStep()
+        })
     }
 
     /**
@@ -978,18 +1110,32 @@ export class ReviewSidePanelView extends ItemView {
         button.addEventListener('click', onClick)
     }
 
+    /**
+     * One finding row. `currentFindingId` is the file's shared triage cursor:
+     * the row it names is marked, because otherwise "2 of 5" in the header
+     * points at nothing inside the panel — the ring exists only in the editor
+     * and on the rail, and the panel is where findings are read.
+     */
     private renderFinding(
         list: HTMLElement,
         binding: SidePanelBinding,
         finding: TrackedFinding,
-        clickable: boolean
+        clickable: boolean,
+        currentFindingId: string | null
     ): void {
         const stale = finding.anchor?.state === 'stale'
+        const current = !stale && finding.id === currentFindingId
         const item = list.createDiv({
             cls: `editor-ai-daemons-panel-finding${clickable && !stale ? ' is-clickable' : ''}${
                 stale ? ' is-stale' : ''
-            }`
+            }${current ? ' is-current' : ''}`
         })
+        if (current) {
+            // `aria-current` and not `aria-selected`: the row is not part of a
+            // selection widget, it is the one item in the set the rest of the
+            // plugin is currently pointed at.
+            item.setAttribute('aria-current', 'true')
+        }
         const iconEl = item.createSpan({
             cls: `editor-ai-daemons-panel-severity editor-ai-daemons-panel-severity-${finding.raw.severity}`
         })

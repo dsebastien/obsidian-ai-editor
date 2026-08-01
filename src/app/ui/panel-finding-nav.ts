@@ -22,6 +22,10 @@ import type { EditorScopedSourceFinding } from '../commands/finding-navigation'
  * off the SAME ordered list the stepper walks, never counted a second way —
  * a counter that can disagree with the stepper is worse than no counter.
  *
+ * That is also why {@link orderRowsByPosition} exists: the counter says
+ * "2 of 5" in document order, so the rows under it have to BE in document
+ * order, or the number points at a row the user has to hunt for.
+ *
  * ## Why controls appear only from two findings up
  *
  * One finding needs no navigation (the row below is the whole list) and zero
@@ -38,6 +42,39 @@ import type { EditorScopedSourceFinding } from '../commands/finding-navigation'
 
 /** Fewer revealable findings than this and the controls are not rendered. */
 export const MIN_NAVIGABLE_FINDINGS = 2
+
+/** Structural subset of a rendered row: enough to place it in the note. */
+export interface PositionedRow {
+    readonly id: string
+    readonly anchor: { readonly from: number; readonly to: number } | null
+}
+
+/**
+ * The section's rows in DOCUMENT order — the order the header's counter counts
+ * in (`navigableEditorFindings` sorts the same way: start, then end, then id
+ * as a stable tiebreak).
+ *
+ * A run hands its findings back in ARRIVAL order, and arrival order stops
+ * matching document order the moment "Generate more" appends a round whose
+ * findings sit earlier in the note. Left alone, the header would say
+ * "2 of 5" while the finding it points at was the last row in the list.
+ *
+ * Rows with no anchor have no position at all; they sink to the end in
+ * arrival order (`Array.prototype.sort` is stable) rather than being ordered
+ * against a number they do not have. The panel groups them separately anyway.
+ */
+export function orderRowsByPosition<T extends PositionedRow>(rows: readonly T[]): readonly T[] {
+    return [...rows].sort((left, right) => {
+        const a = left.anchor
+        const b = right.anchor
+        if (a === null || b === null) {
+            return a === b ? 0 : a === null ? 1 : -1
+        }
+        return (
+            a.from - b.from || a.to - b.to || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+        )
+    })
+}
 
 /**
  * Shown in place of the position when nothing in THIS editor's list is the

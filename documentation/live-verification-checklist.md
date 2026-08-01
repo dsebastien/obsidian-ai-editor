@@ -259,7 +259,12 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Dismiss the current finding from its card, then press **›** in the same section: it lands on the next remaining one, not back at the first, and the counter closes up (`2 of 2`).
 - Edit inside a highlighted span so the finding goes stale: it drops out of the counter and cannot be stepped onto.
 - Tab through the panel: both arrows are reachable, show the focus ring, and fire on Enter and Space. With a screen reader, the pair announces as "Concision Editor: finding 2 of 3" and the buttons as "Previous/Next finding from Concision Editor".
-- Narrow the sidebar until the header wraps: the arrows and the count stay on one line together and nothing clips.
+- **Press Enter on the › arrow five times without touching the mouse**: focus stays on that arrow through every step (the panel is fully rebuilt each time), the counter walks 1 → 2 → 3 → 1 → 2, and the note scrolls behind you. The keyboard must never end up in the editor.
+- With a screen reader on, do the same: each press is announced ("Concision Editor: finding 3 of 3") without moving focus. Nothing is announced when a step comes from the palette or the rail instead.
+- Look at the list under the header after a step: exactly one row carries the current marker (accent bar + tint), and it is the row the counter's number points at. Hover another row — hover must stay clearly distinct from the marker.
+- Use **Generate more** on an editor whose continuation reports findings EARLIER in the note, then step: the rows are in document order, so "2 of 5" is the second row from the top, not the last one.
+- Click a rail chip to cycle that editor's findings, then look at the panel: the counter and the marked row follow the chip, and the ring in the note is on the finding the chip just showed. Run `Next finding` from the palette afterwards: it continues from there.
+- Narrow the sidebar until the header wraps: the arrows and the count stay on one line together and nothing clips. The arrows are the same size as the retry button that appears on a failed editor next to them.
 - Run the setup wizard, paste a base URL with a trailing space, finish: the Backends tab shows it trimmed and reviews reach the endpoint.
 - In the wizard, fill a provider and a key but no model, select Next: it refuses and asks for a model.
 

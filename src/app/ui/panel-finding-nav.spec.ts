@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import type { EditorScopedSourceFinding } from '../commands/finding-navigation'
 import type { FindingStatus } from '../services/orchestration/finding-store'
-import { MIN_NAVIGABLE_FINDINGS, sectionNavigationView } from './panel-finding-nav'
+import {
+    MIN_NAVIGABLE_FINDINGS,
+    orderRowsByPosition,
+    sectionNavigationView
+} from './panel-finding-nav'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -148,6 +152,68 @@ describe('sectionNavigationView — position', () => {
         // The caller applies the severity lens before handing the list over,
         // so a filtered finding is neither counted nor steppable.
         expect(view([finding({ id: 'a', from: 10 }), finding({ id: 'b', from: 20 })]).total).toBe(2)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Row order — what the counter counts in
+// ---------------------------------------------------------------------------
+
+describe('orderRowsByPosition', () => {
+    it('puts arrival order into document order, so row N is finding N', () => {
+        // The continuation case: "Generate more" appends a round whose
+        // findings sit EARLIER in the note, so arrival order and document
+        // order disagree from that point on.
+        const arrival = [
+            finding({ id: 'first-round-a', from: 100 }),
+            finding({ id: 'first-round-b', from: 200 }),
+            finding({ id: 'continuation', from: 10 })
+        ]
+        expect(orderRowsByPosition(arrival).map((row) => row.id)).toEqual([
+            'continuation',
+            'first-round-a',
+            'first-round-b'
+        ])
+    })
+
+    it('agrees with the counter the header renders above the rows', () => {
+        const arrival = [
+            finding({ id: 'last', from: 30 }),
+            finding({ id: 'first', from: 10 }),
+            finding({ id: 'middle', from: 20 })
+        ]
+        const rows = orderRowsByPosition(arrival)
+        for (const [index, row] of rows.entries()) {
+            expect(view(arrival, row.id).positionText).toBe(`${index + 1} of 3`)
+        }
+    })
+
+    it('breaks ties on end, then id — the stepper’s comparator exactly', () => {
+        const same = [
+            { id: 'z', anchor: { from: 5, to: 9 } },
+            { id: 'a', anchor: { from: 5, to: 9 } },
+            { id: 'short', anchor: { from: 5, to: 6 } }
+        ]
+        expect(orderRowsByPosition(same).map((row) => row.id)).toEqual(['short', 'a', 'z'])
+    })
+
+    it('sinks unanchored rows to the end, keeping their arrival order', () => {
+        const mixed = [
+            { id: 'orphan-1', anchor: null },
+            { id: 'anchored', anchor: { from: 40, to: 44 } },
+            { id: 'orphan-2', anchor: null }
+        ]
+        expect(orderRowsByPosition(mixed).map((row) => row.id)).toEqual([
+            'anchored',
+            'orphan-1',
+            'orphan-2'
+        ])
+    })
+
+    it('does not mutate the list it was handed', () => {
+        const arrival = [finding({ id: 'b', from: 20 }), finding({ id: 'a', from: 10 })]
+        orderRowsByPosition(arrival)
+        expect(arrival.map((row) => row.id)).toEqual(['b', 'a'])
     })
 })
 
