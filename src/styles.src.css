@@ -915,12 +915,51 @@
     @apply truncate;
 }
 
-/* On: the accent carries the state, and the border keeps it legible for
-   anyone who cannot use the color difference (the aria-label and aria-pressed
-   say it too, and the glyph goes from hollow to filled). */
+/* On: GREEN, and breathing. Green rather than the accent because this is a
+   running/healthy state, and the accent is already the Review button sitting
+   directly beneath it — two accent-coloured controls stacked read as two
+   calls to action rather than a mode and its action.
+
+   The colour is never the only signal (the aria-label and aria-pressed say
+   it, and the glyph goes hollow → filled), which is what lets it be green at
+   all: --color-green is also the theme's success hue, so a user who cannot
+   use the hue loses nothing.
+
+   The breath is slow and low-amplitude on the SHADOW, not on opacity: the
+   label has to stay readable while it plays, and a control that dims its own
+   text every three seconds is a distraction rather than a sign of life. */
 .editor-ai-daemons-rail-daemon-on {
-    border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
-    color: var(--interactive-accent);
+    border-color: color-mix(in srgb, var(--color-green) 55%, transparent);
+    color: var(--color-green);
+    animation: editor-ai-daemons-daemon-breathe 3.2s ease-in-out infinite;
+}
+
+/* The tint is GUARDED, unlike the border. `--color-green` is a variable, so
+   the build cannot compute a fallback for a color-mix over it and emits the
+   solid colour instead — which for a background means a solid green block
+   behind green text. A solid green BORDER degrades harmlessly (it just reads
+   heavier); a solid green FILL does not, so the fill only exists where
+   color-mix does. Chromium has supported it since 111, so this is defence,
+   not a path Obsidian takes. */
+@supports (background-color: color-mix(in srgb, red 10%, transparent)) {
+    .editor-ai-daemons-rail-daemon-on {
+        background-color: color-mix(in srgb, var(--color-green) 12%, transparent);
+    }
+
+    .editor-ai-daemons-rail-daemon-on:hover {
+        background-color: color-mix(in srgb, var(--color-green) 22%, transparent);
+    }
+}
+
+.editor-ai-daemons-rail-daemon-on:hover {
+    color: var(--color-green);
+}
+
+/* The glyph carries the life too — a slow scale, so the "eye" of the toggle
+   reads as watching rather than as a static badge. Separate from the breath
+   so the two drift against each other instead of ticking in lockstep. */
+.editor-ai-daemons-rail-daemon-on .editor-ai-daemons-rail-daemon-glyph {
+    animation: editor-ai-daemons-daemon-glow 3.2s ease-in-out infinite;
 }
 
 /* Armed: a refresh is counting down for this note. The pulse rides the
@@ -938,9 +977,13 @@
        no-color-mix fallback is a SOLID accent block behind accent text. The
        ring reads as "heavier than on" at any support level, and it costs no
        layout (box-shadow, not a wider border). */
-    border-color: var(--interactive-accent);
-    box-shadow: 0 0 0 1px var(--interactive-accent);
-    animation: editor-ai-daemons-pulse 2.4s ease-in-out infinite;
+    border-color: var(--color-green);
+    box-shadow: 0 0 0 1px var(--color-green);
+    /* Faster and wider than the on-state breath: armed means something is
+       about to happen, and it has to be tellable from merely on at a glance.
+       The 100% frame keeps the ring, so the reduced-motion collapse lands on
+       the heavier border + ring that already distinguish armed from on. */
+    animation: editor-ai-daemons-daemon-armed 1.4s ease-in-out infinite;
 }
 
 /* The primary action. Filled accent, full width of the card: the hierarchy is
@@ -1269,6 +1312,45 @@
     }
     50% {
         opacity: 0.35;
+    }
+}
+
+/* Daemon "alive" keyframes. Both end on their resting frame so the blanket
+   reduced-motion collapse (duration 1ms, one iteration) lands on the static
+   state rather than mid-glow. */
+@keyframes editor-ai-daemons-daemon-breathe {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-green) 0%, transparent);
+    }
+    50% {
+        box-shadow: 0 0 7px 1px color-mix(in srgb, var(--color-green) 40%, transparent);
+    }
+}
+
+@keyframes editor-ai-daemons-daemon-glow {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.14);
+        opacity: 0.82;
+    }
+}
+
+@keyframes editor-ai-daemons-daemon-armed {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 1px var(--color-green),
+            0 0 0 0 color-mix(in srgb, var(--color-green) 0%, transparent);
+    }
+    50% {
+        box-shadow:
+            0 0 0 1px var(--color-green),
+            0 0 11px 3px color-mix(in srgb, var(--color-green) 55%, transparent);
     }
 }
 

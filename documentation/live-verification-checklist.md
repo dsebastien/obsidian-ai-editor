@@ -11,6 +11,10 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ## Persona rail redesign (2026-08-01)
 
+- Daemon toggle, three states side by side: **off** (faint, hollow glyph), **on** (green border, green tint, filled glyph, a slow breath), **armed** (solid green border + ring, a faster and wider pulse). All three must be tellable apart at a glance.
+- With reduce-motion on, the same three must still be tellable apart standing still — the breath and the pulse both collapse, so on-vs-armed rests on the border weight and the ring.
+- The green must read against a light theme AND a dark one, and the label must stay readable over the tint.
+
 The rail went from a stack of coloured dots to a card of named rows with status rings and one-shot animations. Nothing below is verifiable without eyes on a running vault.
 
 **Names and truncation**
