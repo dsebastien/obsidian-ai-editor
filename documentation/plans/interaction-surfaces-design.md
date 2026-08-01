@@ -1,6 +1,6 @@
-# Interaction Surfaces — shipped design record
+# Interaction Surfaces — design
 
-> Status: **SHIPPED.** Produced 2026-07-29 via research (Obsidian API typings, the obsidian-note-toolbar CLI pattern, this repo's contracts) plus adversarial critique, then built across six slices and amended to what actually shipped. It is kept as the spec of the menu / command / CLI surface and of what was rejected — not as work to do. The API facts below were true for typings 1.12.x and are the reason several things are shaped the way they are; re-verify them against `node_modules/obsidian/obsidian.d.ts` before relying on one.
+> Researched against (Obsidian API typings, the obsidian-note-toolbar CLI pattern, this repo's contracts) plus adversarial critique, then built across six slices and amended to what actually shipped. It is kept as the spec of the menu / command / CLI surface and of what was rejected — not as work to do. The API facts below were true for typings 1.12.x and are the reason several things are shaped the way they are; re-verify them against `node_modules/obsidian/obsidian.d.ts` before relying on one.
 
 ## Verified API facts (evidence-backed)
 
