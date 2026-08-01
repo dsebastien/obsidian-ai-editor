@@ -308,7 +308,7 @@ export function registerReviewCommands(
                     new Notice(
                         next
                             ? 'Margin comments are on. They appear beside the text when the pane is wide enough.'
-                            : 'Margin comments are off. They are still listed in the review panel.'
+                            : 'Margin comments are off. They are still listed in the AI Editor Review panel.'
                     )
                 })
         }

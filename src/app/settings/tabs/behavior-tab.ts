@@ -237,7 +237,8 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
     new Setting(containerEl)
         .setName('Margin comment column')
         .setDesc(
-            'Show margin comments next to the text they are about. Turn this off to keep them in the review panel only. Needs a wide enough pane; with readable line length on, the column uses the empty margin and the text does not move.'
+            // eslint-disable-next-line obsidianmd/ui/sentence-case -- reason: proper noun. "AI Editor Review" is the side panel's tab title (side-panel.ts `getDisplayText`), so naming the destination the toggle sends comments to is a name, not a capitalised sentence — the same exemption the tab title itself takes.
+            'Show margin comments next to the text they are about. Turn this off to keep them in the AI Editor Review panel only. Needs a wide enough pane; with readable line length on, the column uses the empty margin and the text does not move.'
         )
         .addToggle((toggle) => {
             toggle.setValue(settings.behavior.showMarginComments)
