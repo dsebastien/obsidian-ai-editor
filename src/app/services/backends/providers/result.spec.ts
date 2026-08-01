@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { extractJsonPayload, validateOperationResult } from './result'
-import { validPanelResult, validReviewResult, wrongSchemaResult } from './spec-fixtures'
+import { validPanelResult, validReviewResult } from './spec-fixtures'
 import { ProviderError } from './types'
 
 describe('extractJsonPayload', () => {
@@ -33,24 +33,25 @@ describe('extractJsonPayload', () => {
 
 describe('validateOperationResult', () => {
     it('accepts contract-conforming results and applies defaults', () => {
-        const result = validateOperationResult(validReviewResult())
+        const { result, salvage } = validateOperationResult(validReviewResult())
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.findings[0]?.evidence).toEqual([])
+            expect(result.findings[0]?.invalidProposal).toBe(false)
         }
-        expect(validateOperationResult(validPanelResult()).kind).toBe('aggregate-panel')
+        expect(salvage).toBeNull()
+        expect(validateOperationResult(validPanelResult()).result.kind).toBe('aggregate-panel')
     })
 
-    it('rejects wrong-schema payloads with issue paths, not payload content', () => {
+    it('reports non-review contract violations with issue paths, not payload content', () => {
+        // A non-review kind keeps v1's strict all-or-nothing semantics.
         try {
-            validateOperationResult(wrongSchemaResult())
+            validateOperationResult({ kind: 'thread-turn', reply: 42 })
             expect.unreachable()
         } catch (error) {
             expect(error).toBeInstanceOf(ProviderError)
             expect((error as ProviderError).code).toBe('invalid-output')
-            const message = (error as Error).message
-            expect(message).toContain('findings.0.quote')
-            expect(message).not.toContain('finding without the required quote')
+            expect((error as Error).message).toContain('reply')
         }
     })
 
@@ -62,8 +63,127 @@ describe('validateOperationResult', () => {
     })
 
     it('rejects a result whose kind is valid but whose body belongs to another kind', () => {
-        const crossKind = { ...validPanelResult(), kind: 'review' }
+        const crossKind = { ...validPanelResult(), kind: 'thread-turn' }
         expect(() => validateOperationResult(crossKind)).toThrow(ProviderError)
+    })
+})
+
+/**
+ * Per-finding salvage (contract v2 design §5): the ENVELOPE stays strict,
+ * each finding degrades individually — fail closed, never silently.
+ */
+describe('validateOperationResult — review salvage', () => {
+    const good = { quote: 'Hello world', critique: 'Generic opener' }
+
+    it('drops a finding whose observation core is invalid, and counts it', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [good, { critique: 'no quote at all' }, 'not even an object']
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings).toHaveLength(1)
+        expect(salvage).toEqual({ discardedFindings: 2, invalidProposals: 0 })
+    })
+
+    it('strips invalid edits but keeps the finding display-only with the marker', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [
+                { ...good, edits: [{ op: 'replace' }] }, // replace without text
+                { ...good, edits: [{ op: 'polish', text: 'x' }] } // unknown op
+            ]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings).toHaveLength(2)
+        for (const finding of result.findings) {
+            expect(finding.edits).toEqual([])
+            expect(finding.invalidProposal).toBe(true)
+        }
+        expect(salvage).toEqual({ discardedFindings: 0, invalidProposals: 2 })
+    })
+
+    it('an empty-text replace is invalid — a covert delete is not an edit', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [{ ...good, edits: [{ op: 'replace', text: '' }] }]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings[0]?.invalidProposal).toBe(true)
+        expect(salvage?.invalidProposals).toBe(1)
+    })
+
+    it('a findings field that is not an array is an envelope failure, never salvaged to empty', () => {
+        expect(() =>
+            validateOperationResult({ kind: 'review', findings: 'sk-live-SECRET' })
+        ).toThrow(ProviderError)
+        try {
+            validateOperationResult({ kind: 'review', findings: 'sk-live-SECRET' })
+        } catch (error) {
+            expect((error as Error).message).not.toContain('SECRET')
+        }
+    })
+
+    it('a delete without text is a VALID edit', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [{ ...good, edits: [{ op: 'delete' }] }]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings[0]?.edits).toEqual([{ op: 'delete' }])
+        expect(salvage).toBeNull()
+    })
+
+    it('a model that sets invalidProposal itself is read fail-closed: edits stripped', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [{ ...good, invalidProposal: true, edits: [{ op: 'replace', text: 'fine' }] }]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings[0]?.edits).toEqual([])
+        expect(result.findings[0]?.invalidProposal).toBe(true)
+        expect(salvage?.invalidProposals).toBe(1)
+    })
+
+    it('more than 10 edits invalidates the proposal, not the finding', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [
+                {
+                    ...good,
+                    edits: Array.from({ length: 11 }, () => ({ op: 'delete' }))
+                }
+            ]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings[0]?.edits).toEqual([])
+        expect(result.findings[0]?.invalidProposal).toBe(true)
+        expect(salvage?.invalidProposals).toBe(1)
+    })
+
+    it('clamps over-long edit hints like finding hints (tail/head)', () => {
+        const { result } = validateOperationResult({
+            kind: 'review',
+            findings: [
+                {
+                    ...good,
+                    edits: [
+                        {
+                            op: 'replace',
+                            quote: 'Hello',
+                            prefix: 'x'.repeat(300) + 'near',
+                            suffix: 'after' + 'y'.repeat(300),
+                            text: 'Hi'
+                        }
+                    ]
+                }
+            ]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        const edit = result.findings[0]?.edits[0]
+        expect(edit?.prefix?.length).toBe(200)
+        expect(edit?.prefix?.endsWith('near')).toBeTrue()
+        expect(edit?.suffix?.length).toBe(200)
+        expect(edit?.suffix?.startsWith('after')).toBeTrue()
     })
 })
 
@@ -71,7 +191,7 @@ describe('validateOperationResult — advisory field clamping', () => {
     it('clamps an over-long prefix to its tail and suffix to its head', () => {
         const longPrefix = 'x'.repeat(300) + 'near the quote'
         const longSuffix = 'right after' + 'y'.repeat(250)
-        const result = validateOperationResult({
+        const { result } = validateOperationResult({
             kind: 'review',
             findings: [
                 {
@@ -90,10 +210,14 @@ describe('validateOperationResult — advisory field clamping', () => {
         expect(finding.suffix!.startsWith('right after')).toBeTrue()
     })
 
-    it('still rejects structurally wrong findings', () => {
-        expect(() =>
-            validateOperationResult({ kind: 'review', findings: [{ prefix: 'x'.repeat(999) }] })
-        ).toThrow()
+    it('still discards structurally wrong findings (salvage, counted)', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [{ prefix: 'x'.repeat(999) }]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings).toHaveLength(0)
+        expect(salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
     })
 })
 
@@ -138,20 +262,30 @@ describe('validateOperationResult — a runaway response is bounded by the contr
             kind: 'review',
             findings: Array.from({ length: 201 }, (_, index) => finding(index))
         }
-        expect(validateOperationResult(at).kind).toBe('review')
+        expect(validateOperationResult(at).result.kind).toBe('review')
         expect(() => validateOperationResult(over)).toThrow(ProviderError)
     })
 
-    it('refuses an oversized quote, critique and suggestion', () => {
+    it('drops a finding with an oversized quote or critique (salvage), and strips an oversized edit text', () => {
         const oversized = (field: string, length: number): Record<string, unknown> => ({
             kind: 'review',
             findings: [{ ...finding(0), [field]: 'x'.repeat(length) }]
         })
-        expect(() => validateOperationResult(oversized('quote', 2_001))).toThrow(ProviderError)
-        expect(() => validateOperationResult(oversized('critique', 10_001))).toThrow(ProviderError)
-        expect(() => validateOperationResult(oversized('suggestion', 10_001))).toThrow(
-            ProviderError
-        )
+        // Core bounds: the finding is dropped, the run survives, the loss is counted.
+        for (const payload of [oversized('quote', 2_001), oversized('critique', 10_001)]) {
+            const { result, salvage } = validateOperationResult(payload)
+            if (result.kind !== 'review') throw new Error('wrong kind')
+            expect(result.findings).toHaveLength(0)
+            expect(salvage?.discardedFindings).toBe(1)
+        }
+        // Proposal bounds: the finding survives display-only.
+        const { result, salvage } = validateOperationResult({
+            kind: 'review',
+            findings: [{ ...finding(0), edits: [{ op: 'replace', text: 'x'.repeat(10_001) }] }]
+        })
+        if (result.kind !== 'review') throw new Error('wrong kind')
+        expect(result.findings[0]?.invalidProposal).toBe(true)
+        expect(salvage?.invalidProposals).toBe(1)
     })
 
     it('parses and refuses a ~1 MB payload without hanging', () => {

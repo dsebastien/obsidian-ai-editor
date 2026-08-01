@@ -2,8 +2,7 @@ import { z } from 'zod'
 import {
     insertAtResultSchema,
     panelResultSchema,
-    refineProposalResultSchema,
-    reviewResultSchema,
+    reviewResultWireSchema,
     threadTurnResultSchema,
     transformSelectionResultSchema,
     type OperationRequest
@@ -32,10 +31,11 @@ import {
 export type OutputStyle = 'json-object' | 'tool-input'
 
 const RESULT_SCHEMAS = {
-    'review': reviewResultSchema,
+    // The wire variant omits the plugin-internal salvage marker; validation
+    // still runs against the full `reviewResultSchema`.
+    'review': reviewResultWireSchema,
     'transform-selection': transformSelectionResultSchema,
     'insert-at': insertAtResultSchema,
-    'refine-proposal': refineProposalResultSchema,
     'thread-turn': threadTurnResultSchema,
     'aggregate-panel': panelResultSchema
 } as const
@@ -63,7 +63,13 @@ function kindRules(operation: OperationRequest): string[] {
                 'Each finding\'s "quote" MUST be copied character-for-character verbatim from the document text (raw markdown, including any markup). Never paraphrase, trim punctuation, or normalize whitespace inside a quote.',
                 'Keep quotes short and span-like (a phrase, sentence or line — not whole paragraphs).',
                 'When the quoted text occurs more than once, provide "prefix" and/or "suffix" (the exact adjacent text, up to 200 characters) and the 0-based "occurrence" index to disambiguate.',
-                'Provide "suggestion" only when proposing a concrete replacement for the quoted span; the suggestion replaces the quote exactly.',
+                '"critique" explains the problem TO THE USER. It is never written into the document.',
+                'Propose concrete changes in "edits". Each edit is applied mechanically, exactly as given — so "text" must contain ONLY document content, never advice, never commentary, never phrases like "you should" or "consider adding".',
+                'Edit operations: "replace" replaces the edit\'s target with "text"; "insert-before" inserts "text" immediately before the target, leaving the target untouched; "insert-after" inserts "text" immediately after the target; "delete" removes the target ("text" not needed). Never use "replace" to add content around text that should stay — use an insert operation.',
+                'An edit\'s target is its own verbatim "quote" (with the same disambiguation hints as findings); omit the edit\'s "quote" to target the finding\'s quoted span.',
+                'Example — add a missing caveat above a quoted line WITHOUT touching the line: {"op": "insert-before", "text": "Note: requires v2 or later.\\n\\n"}.',
+                'Accepting a finding applies ALL of its edits at once. Changes the user should be able to take independently belong in separate findings.',
+                'A finding may have no edits at all when you have no concrete change to propose — the critique alone is valuable.',
                 'Use "summary" for note-level remarks that do not anchor to a specific span. Do not invent findings to fill space — an empty findings array is a valid result.'
             ]
             if (operation.alreadyReported !== undefined) {
@@ -87,16 +93,12 @@ function kindRules(operation: OperationRequest): string[] {
                 '"insertion" is inserted verbatim between the before and after parts — write it to flow naturally with both sides.',
                 "Match the document's language, tone and markdown conventions."
             ]
-        case 'refine-proposal':
-            return [
-                '"suggestion" must be a complete revised replacement for the quoted text, refining the previous suggestion according to the instruction — not a diff or commentary.'
-            ]
         case 'thread-turn':
             return [
                 "Reply to the user's message in the context of the finding and prior turns.",
-                'Set "concede" to true ONLY when the push-back convinced you the finding does not hold — you are withdrawing it, and "reply" says why in one or two sentences. A withdrawn finding is dismissed, so do not also send a revised critique or suggestion.',
-                'Otherwise hold your position: keep "concede" false, and use "revisedCritique" and/or "revisedSuggestion" when the exchange sharpened what you are asking for. Omit both when nothing changed.',
-                '"revisedSuggestion" must be a complete replacement for the quoted text, not a diff or commentary.'
+                'Set "concede" to true ONLY when the push-back convinced you the finding does not hold — you are withdrawing it, and "reply" says why in one or two sentences. A withdrawn finding is dismissed, so do not also send a revised critique or edits.',
+                'Otherwise hold your position: keep "concede" false, and use "revisedCritique" and/or "revisedEdits" when the exchange sharpened what you are asking for. Omit both when nothing changed.',
+                '"revisedEdits" REPLACES your earlier proposal wholesale. Each edit is applied mechanically: "text" contains ONLY document content, never commentary. Operations: "replace" replaces the edit\'s target with "text"; "insert-before"/"insert-after" insert "text" around the target, leaving it untouched; "delete" removes it. An edit\'s target is its own verbatim "quote" from the document; omit it to target the quoted text of this finding.'
             ]
         case 'aggregate-panel':
             return [
@@ -168,13 +170,6 @@ function payload(operation: OperationRequest): string {
             }
             return parts.join('\n\n')
         }
-        case 'refine-proposal':
-            return [
-                'Refine your previous suggestion for the quoted text according to the instruction.',
-                tag('quoted-text', operation.quote),
-                tag('previous-suggestion', operation.previousSuggestion),
-                tag('instruction', operation.instruction)
-            ].join('\n\n')
         case 'thread-turn': {
             const history = operation.history
                 .map((turn) =>

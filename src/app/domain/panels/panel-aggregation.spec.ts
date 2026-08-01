@@ -2,10 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import { rawFindingSchema, type RawFinding } from '../operations/contract'
 import {
     AGGREGATION_CRITIQUE_MAX,
+    AGGREGATION_EDIT_TEXT_MAX,
     AGGREGATION_FINDINGS_PER_MEMBER,
     AGGREGATION_MAX_MEMBERS,
     AGGREGATION_MIN_FINDINGS_BUDGET,
-    AGGREGATION_SUGGESTION_MAX,
     AGGREGATION_SUMMARY_MAX,
     panelFindingsBudget,
     planPanelAggregation,
@@ -130,7 +130,7 @@ describe('planPanelAggregation compaction', () => {
         suffix: ' after',
         occurrence: 2,
         critique: 'c'.repeat(AGGREGATION_CRITIQUE_MAX + 50),
-        suggestion: 's'.repeat(AGGREGATION_SUGGESTION_MAX + 50),
+        edits: [{ op: 'replace', text: 's'.repeat(AGGREGATION_EDIT_TEXT_MAX + 50) }],
         rationale: 'because',
         confidence: 0.9,
         severity: 'warning',
@@ -153,7 +153,7 @@ describe('planPanelAggregation compaction', () => {
         // Weighting survives.
         expect(sent?.severity).toBe('warning')
         expect(sent?.critique.length).toBe(AGGREGATION_CRITIQUE_MAX + 1) // + the ellipsis
-        expect(sent?.suggestion?.length).toBe(AGGREGATION_SUGGESTION_MAX + 1)
+        expect(sent?.edits[0]?.text?.length).toBe(AGGREGATION_EDIT_TEXT_MAX + 1)
     })
 
     it('never truncates a quote — the top-fix pointer resolves by it', () => {

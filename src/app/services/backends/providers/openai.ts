@@ -1,7 +1,10 @@
-import type { OperationResult } from '../../../domain/operations/contract'
 import type { ApiBackend } from '../../../domain/settings/settings-schema'
 import { buildUserMessage, resultJsonSchema } from './prompt'
-import { extractJsonPayload, validateOperationResult } from './result'
+import {
+    extractJsonPayload,
+    validateOperationResult,
+    type ValidatedOperationResult
+} from './result'
 import {
     ProviderError,
     redactSecret,
@@ -191,7 +194,7 @@ export const openAiAdapter: ProviderAdapter = {
         }
     },
 
-    parseBufferedResponse(raw: unknown): OperationResult {
+    parseBufferedResponse(raw: unknown): ValidatedOperationResult {
         return validateOperationResult(extractJsonPayload(chatCompletionContent(raw, 'OpenAI')))
     },
 

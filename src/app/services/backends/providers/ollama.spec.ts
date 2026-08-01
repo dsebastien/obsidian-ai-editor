@@ -95,7 +95,10 @@ describe('ollamaAdapter.buildRequest', () => {
 
 describe('ollamaAdapter.parseBufferedResponse', () => {
     it('parses a valid review result', () => {
-        const result = ollamaAdapter.parseBufferedResponse(chatResponse(validReviewResult()))
+        const { result, salvage } = ollamaAdapter.parseBufferedResponse(
+            chatResponse(validReviewResult())
+        )
+        expect(salvage).toBeNull()
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.summary).toBe('Solid draft overall')
@@ -103,7 +106,7 @@ describe('ollamaAdapter.parseBufferedResponse', () => {
     })
 
     it('parses a valid aggregate-panel result', () => {
-        const result = ollamaAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
+        const { result } = ollamaAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
         expect(result.kind).toBe('aggregate-panel')
     })
 
@@ -117,7 +120,7 @@ describe('ollamaAdapter.parseBufferedResponse', () => {
             },
             done: true
         }
-        const result = ollamaAdapter.parseBufferedResponse(raw)
+        const { result } = ollamaAdapter.parseBufferedResponse(raw)
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.summary).toBe('Solid draft overall')
@@ -131,13 +134,15 @@ describe('ollamaAdapter.parseBufferedResponse', () => {
         expect(() => ollamaAdapter.parseBufferedResponse(raw)).toThrow(ProviderError)
     })
 
-    it('throws invalid-output on schema-violating content', () => {
-        try {
-            ollamaAdapter.parseBufferedResponse(chatResponse(wrongSchemaResult()))
-            expect.unreachable()
-        } catch (error) {
-            expect((error as ProviderError).code).toBe('invalid-output')
+    it('salvages a schema-violating finding instead of failing the review', () => {
+        const { result, salvage } = ollamaAdapter.parseBufferedResponse(
+            chatResponse(wrongSchemaResult())
+        )
+        if (result.kind !== 'review') {
+            throw new Error('expected a review result')
         }
+        expect(result.findings).toEqual([])
+        expect(salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
     })
 
     it('throws invalid-output on malformed envelopes and non-JSON content', () => {

@@ -2091,12 +2091,16 @@ export class ReviewController {
         if (!outcome.ok) {
             // Same stale race the card handles by re-rendering; a command
             // has no card to refresh, so say why nothing happened.
-            new Notice('The text changed since this suggestion was made.')
+            new Notice('The proposal no longer applies — the text changed since it was made.')
             this.scheduleRefresh()
             return
         }
         editorView.dispatch({
-            changes: { from: outcome.from, to: outcome.to, insert: outcome.insert },
+            changes: outcome.changes.map((change) => ({
+                from: change.from,
+                to: change.to,
+                insert: change.insert
+            })),
             effects: removeFindingsEffect.of([context.current.id]),
             annotations: isolateHistory.of('full')
         })
@@ -2308,17 +2312,22 @@ export class ReviewController {
             this.bulkCandidates(context.path, context.run, editorId),
             currentText
         )
-        const applied = plan.edits.filter(
-            (edit) => context.run.findings.accept(asFindingId(edit.findingId), currentText).ok
+        // All-or-nothing per finding (contract v2, design §4): the store
+        // re-verifies each finding's FULL edit plan; an accepted finding
+        // contributes all its changes to the one transaction.
+        const applied = plan.findings.filter(
+            (finding) => context.run.findings.accept(asFindingId(finding.findingId), currentText).ok
         )
         if (applied.length > 0) {
             editorView.dispatch({
-                changes: applied.map((edit) => ({
-                    from: edit.from,
-                    to: edit.to,
-                    insert: edit.insert
-                })),
-                effects: removeFindingsEffect.of(applied.map((edit) => edit.findingId)),
+                changes: applied.flatMap((finding) =>
+                    finding.changes.map((change) => ({
+                        from: change.from,
+                        to: change.to,
+                        insert: change.insert
+                    }))
+                ),
+                effects: removeFindingsEffect.of(applied.map((finding) => finding.findingId)),
                 annotations: isolateHistory.of('full')
             })
         }
@@ -2732,7 +2741,15 @@ export class ReviewController {
             severity: finding.raw.severity,
             critique: finding.raw.critique,
             quote: finding.anchoredText ?? finding.raw.quote,
-            suggestion: finding.raw.suggestion ?? null,
+            // Per-op preview data (contract v2): each edit shows the text it
+            // targets — its own anchored text, falling back to its quote,
+            // falling back to the finding's span for own-quote-less edits.
+            edits: finding.edits.map((edit) => ({
+                op: edit.op,
+                target: edit.anchoredText ?? finding.anchoredText ?? finding.raw.quote,
+                text: edit.text
+            })),
+            invalidProposal: finding.raw.invalidProposal,
             acceptable: run.findings.isActionable(id),
             thread: finding.thread,
             threadTurn: finding.threadTurn
@@ -2869,12 +2886,9 @@ export class ReviewController {
             this.scheduleRefresh()
             return { ok: false }
         }
-        const { anchor, raw } = result.finding
-        if (anchor === null || typeof raw.suggestion !== 'string') {
-            // Unreachable after a successful accept; guarded for type safety.
-            return { ok: false }
-        }
-        return { ok: true, from: anchor.from, to: anchor.to, insert: raw.suggestion }
+        // The store verified every edit against the live text and returned
+        // the full change set — ONE dispatch, one undo step (design §4).
+        return { ok: true, changes: result.changes }
     }
 
     /** Dismiss: terminal status; the refresh cycle drops its decoration. */

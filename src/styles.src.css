@@ -408,10 +408,27 @@
     overflow-wrap: anywhere;
 }
 
-/* Plain two-block old/new suggestion preview (no word-level diff yet) */
+/* Per-op edit preview (contract v2): one block per edit, labelled with its
+   operation so an insertion is visibly not a replace before Accept. */
 .editor-ai-daemons-finding-card-diff {
     @apply flex flex-col gap-1 p-2 text-sm;
     border-radius: var(--radius-s);
+    background-color: var(--background-secondary);
+}
+
+/* The operation label ("Insert above", "Replace", …) heading one edit. */
+.editor-ai-daemons-finding-card-diff-op {
+    @apply text-xs font-medium uppercase tracking-wide;
+    color: var(--text-muted);
+}
+
+/* Salvage marker: the proposal failed validation and was removed (fail
+   closed, design §5) — the critique stands, Accept is not offered. */
+.editor-ai-daemons-finding-card-invalid-proposal {
+    @apply m-0 p-2 text-xs italic;
+    border-radius: var(--radius-s);
+    border-left: 2px solid var(--text-error);
+    color: var(--text-muted);
     background-color: var(--background-secondary);
 }
 
@@ -2022,6 +2039,13 @@
 .editor-ai-daemons-panel-error {
     @apply text-xs;
     color: var(--text-error);
+    overflow-wrap: anywhere;
+}
+
+/* Salvage report line: validation losses are stated, never silent. */
+.editor-ai-daemons-panel-salvage {
+    @apply text-xs italic;
+    color: var(--text-muted);
     overflow-wrap: anywhere;
 }
 

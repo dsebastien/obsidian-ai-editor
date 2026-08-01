@@ -122,7 +122,6 @@ describe('resultJsonSchema', () => {
             'review',
             'transform-selection',
             'insert-at',
-            'refine-proposal',
             'thread-turn',
             'aggregate-panel'
         ] as const) {

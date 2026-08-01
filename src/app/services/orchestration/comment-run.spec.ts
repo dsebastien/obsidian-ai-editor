@@ -24,10 +24,12 @@ function finding(overrides: Partial<RawFinding> = {}): RawFinding {
     return {
         quote: 'The claim under review.',
         critique: 'Uncited.',
+        edits: [],
+        invalidProposal: false,
         severity: 'warning',
         evidence: [],
         ...overrides
-    } as RawFinding
+    }
 }
 
 function eventsExecutor(events: readonly OperationEvent[]) {

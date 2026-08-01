@@ -1,8 +1,5 @@
-import type {
-    OperationEvent,
-    OperationRequest,
-    OperationResult
-} from '../../domain/operations/contract'
+import type { ValidatedOperationResult } from './providers/result'
+import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
 import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings-schema'
 import { getProviderAdapter, ProviderError } from './providers'
 import type { HttpRequestDescriptor, ProviderAdapter } from './providers'
@@ -215,7 +212,13 @@ async function* executeBuffered(
     } catch {
         throw new ProviderError('invalid-output', 'Provider response is not valid JSON')
     }
-    yield { type: 'result', runId, result: adapter.parseBufferedResponse(raw) }
+    const validated = adapter.parseBufferedResponse(raw)
+    yield {
+        type: 'result',
+        runId,
+        result: validated.result,
+        ...(validated.salvage ? { salvage: validated.salvage } : {})
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +234,7 @@ async function* executeBuffered(
  */
 interface StreamAccumulator {
     push(event: SseEvent): boolean
-    finalize(): OperationResult
+    finalize(): ValidatedOperationResult
 }
 
 async function* executeStream(
@@ -301,7 +304,13 @@ async function* executeStream(
         // this as cancelled or timeout based on which flag tripped.
         throw new TransportError('cancelled', 'Run aborted')
     }
-    yield { type: 'result', runId, result: accumulator.finalize() }
+    const validated = accumulator.finalize()
+    yield {
+        type: 'result',
+        runId,
+        result: validated.result,
+        ...(validated.salvage ? { salvage: validated.salvage } : {})
+    }
 }
 
 /**
@@ -423,7 +432,7 @@ function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator
                     return false
             }
         },
-        finalize(): OperationResult {
+        finalize(): ValidatedOperationResult {
             const content = [...blocks.entries()]
                 .sort(([a], [b]) => a - b)
                 // Thinking blocks (extended thinking) carry no payload — drop
@@ -525,7 +534,7 @@ function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
             }
             return advanced
         },
-        finalize(): OperationResult {
+        finalize(): ValidatedOperationResult {
             const message: Record<string, unknown> = { content }
             if (refusal.length > 0) {
                 message['refusal'] = refusal

@@ -4,7 +4,7 @@ Design record for issues #17 (Accept data loss) and #22 (request/response contra
 
 ## The problem being solved
 
-v1's `rawFindingSchema.suggestion` was one free-text string that Accept applied verbatim over the anchored span. Nothing structurally separated "what I am telling you" from "what to write", and replacement was the only expressible operation — so a model that wanted to *add* something could only approximate it with a replace that silently deleted the quoted line (#17, found in live use: real data loss).
+v1's `rawFindingSchema.suggestion` was one free-text string that Accept applied verbatim over the anchored span. Nothing structurally separated "what I am telling you" from "what to write", and replacement was the only expressible operation — so a model that wanted to _add_ something could only approximate it with a replace that silently deleted the quoted line (#17, found in live use: real data loss).
 
 ## Locked decisions
 
@@ -34,7 +34,7 @@ edits: [
 
 An edit without `quote` applies to the finding's anchored span. An edit with `quote` anchors independently through the same matcher ladder (exact → normalized; ambiguous → not anchored; Business Rules #4 unchanged).
 
-Reasoning: the dominant case is one edit on the finding's own span — making every edit repeat the quote wastes tokens and gives a weak model a second chance to mis-quote. The finding's own `quote` keeps its v1 meaning: the span the observation is *about* (highlight, card, thread context).
+Reasoning: the dominant case is one edit on the finding's own span — making every edit repeat the quote wastes tokens and gives a weak model a second chance to mis-quote. The finding's own `quote` keeps its v1 meaning: the span the observation is _about_ (highlight, card, thread context).
 
 **Rejected — mandatory per-edit quotes**: uniform but pays duplication on ~90% of findings and regresses weak-model reliability.
 **Rejected — finding-span-only edits**: "fix here AND add a caveat there" would need two findings; multi-place proposals were an explicit #22 requirement.
@@ -57,8 +57,8 @@ Bulk accept-all: a finding participates fully or not at all; a finding whose spa
 
 - The result envelope (kind, findings array, summary) stays strict: malformed envelope is `invalid-output`, as in v1.
 - Each finding then validates individually:
-  - invalid `edits` (bad op, missing text, over cap) → edits dropped, finding kept **display-only** with a visible "proposal could not be validated" marker;
-  - invalid observation core (quote/critique) → finding dropped and **counted in a visible notice** — never silently.
+    - invalid `edits` (bad op, missing text, over cap) → edits dropped, finding kept **display-only** with a visible "proposal could not be validated" marker;
+    - invalid observation core (quote/critique) → finding dropped and **counted in a visible notice** — never silently.
 
 This is the fail-closed mechanism #17 required: an unsafe proposal degrades to critique, never to a wrong write. v1's all-or-nothing result validation would have turned the richer structure into a reliability regression (one bad edit killing a 20-finding review — feeding #18's failure mode).
 

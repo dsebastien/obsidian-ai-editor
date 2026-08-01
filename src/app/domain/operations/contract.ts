@@ -16,7 +16,7 @@ import { z } from 'zod'
  *   must not.
  */
 
-export const CONTRACT_VERSION = 1
+export const CONTRACT_VERSION = 2
 
 const QUOTE_MAX = 2_000
 const SHORT_TEXT_MAX = 10_000
@@ -47,6 +47,56 @@ export const evidenceSchema = z.object({
 })
 export type Evidence = z.infer<typeof evidenceSchema>
 
+/** The operations an edit can express (contract v2, design doc §1). */
+export const editOpSchema = z.enum(['replace', 'insert-before', 'insert-after', 'delete'])
+export type EditOp = z.infer<typeof editOpSchema>
+
+/** Max edits one finding may propose (design doc §1). */
+export const FINDING_EDITS_MAX = 10
+
+/**
+ * One mechanical change proposed by a finding (contract v2). The `text` is
+ * written into the note EXACTLY as given — the explanation lives in the
+ * finding's `critique`/`rationale`, which no accept path ever writes. This
+ * structural split is the fix for #17: prose can no longer masquerade as a
+ * replacement, and an addition no longer has to be approximated by a
+ * destructive replace.
+ *
+ * Targeting: `quote` (with the usual hints) anchors the edit independently;
+ * ABSENT, the edit targets the finding's own anchored span. Kept a flat
+ * object rather than a discriminated union so the wire schema stays compact
+ * on weak local models (design doc §3); the per-op `text` requirement is
+ * enforced by the refinement below, at the Zod boundary.
+ */
+export const rawEditSchema = z
+    .object({
+        op: editOpSchema,
+        /** Verbatim target span; omitted → the finding's own quoted span. */
+        quote: z.string().min(1).max(QUOTE_MAX).optional(),
+        /** Short text immediately before the target, for disambiguation. */
+        prefix: z.string().max(200).optional(),
+        /** Short text immediately after the target, for disambiguation. */
+        suffix: z.string().max(200).optional(),
+        /** 0-based occurrence index when the target appears multiple times. */
+        occurrence: z.number().int().min(0).max(1_000).optional(),
+        /**
+         * The content applied by the operation. Required and non-empty for
+         * `replace`/`insert-*` (a covert delete via empty replace is
+         * invalid); ignored for `delete`.
+         */
+        text: z.string().max(SHORT_TEXT_MAX).optional()
+    })
+    .superRefine((edit, ctx) => {
+        if (edit.op !== 'delete' && (edit.text === undefined || edit.text.length === 0)) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['text'],
+                message: `"text" is required for op "${edit.op}"`
+            })
+        }
+    })
+export type RawEdit = z.infer<typeof rawEditSchema>
+
 /**
  * One observation reported by an editor persona about a span of the
  * submitted snapshot.
@@ -62,8 +112,20 @@ export const rawFindingSchema = z.object({
     occurrence: z.number().int().min(0).max(1_000).optional(),
     /** The observation: what is wrong / noteworthy. */
     critique: z.string().min(1).max(SHORT_TEXT_MAX),
-    /** Proposed replacement text for the quoted span, when applicable. */
-    suggestion: z.string().max(SHORT_TEXT_MAX).optional(),
+    /**
+     * The proposed change, as mechanical edits (contract v2). Empty is valid
+     * and common — a critique-only finding is display-only. Accepting a
+     * finding applies ALL its edits or none (design doc §4).
+     */
+    edits: z.array(rawEditSchema).max(FINDING_EDITS_MAX).default([]),
+    /**
+     * Set by the plugin's salvage pass (`validateOperationResult`), never
+     * meaningfully by a model: the finding's proposed edits failed validation
+     * and were removed, so the card shows the critique with a "proposal could
+     * not be validated" marker instead of an Accept. A backend that sets it
+     * anyway is read the fail-closed way — its edits are stripped too.
+     */
+    invalidProposal: z.boolean().default(false),
     /** One-line rationale shown next to the diff. */
     rationale: z.string().max(1_000).optional(),
     severity: severitySchema.default('suggestion'),
@@ -148,15 +210,6 @@ export const insertAtRequestSchema = baseRequest.extend({
     instruction: z.string().max(SHORT_TEXT_MAX).optional()
 })
 
-/** Refine an existing proposal with a user instruction. */
-export const refineProposalRequestSchema = baseRequest.extend({
-    kind: z.literal('refine-proposal'),
-    findingId: z.string().min(1),
-    quote: z.string().min(1).max(QUOTE_MAX),
-    previousSuggestion: z.string().max(SHORT_TEXT_MAX),
-    instruction: z.string().min(1).max(SHORT_TEXT_MAX)
-})
-
 /** One turn of a per-finding push-back conversation. */
 export const threadTurnRequestSchema = baseRequest.extend({
     kind: z.literal('thread-turn'),
@@ -206,7 +259,6 @@ export const operationRequestSchema = z.discriminatedUnion('kind', [
     reviewRequestSchema,
     transformSelectionRequestSchema,
     insertAtRequestSchema,
-    refineProposalRequestSchema,
     threadTurnRequestSchema,
     aggregatePanelRequestSchema
 ])
@@ -214,7 +266,6 @@ export type OperationRequest = z.infer<typeof operationRequestSchema>
 export type ReviewRequest = z.infer<typeof reviewRequestSchema>
 export type TransformSelectionRequest = z.infer<typeof transformSelectionRequestSchema>
 export type InsertAtRequest = z.infer<typeof insertAtRequestSchema>
-export type RefineProposalRequest = z.infer<typeof refineProposalRequestSchema>
 export type ThreadTurnRequest = z.infer<typeof threadTurnRequestSchema>
 export type AggregatePanelRequest = z.infer<typeof aggregatePanelRequestSchema>
 
@@ -229,6 +280,16 @@ export const reviewResultSchema = z.object({
     summary: z.string().max(SHORT_TEXT_MAX).optional(),
     /** Only gate-style reviews return a verdict. */
     verdict: verdictSchema.optional()
+})
+
+/**
+ * Model-facing variant of the review result: identical, minus the salvage
+ * marker — `invalidProposal` belongs to the plugin's validation pass, not to
+ * the wire shape a model is asked to produce. Used by the prompt layer's
+ * schema derivation only; parsing always goes through `reviewResultSchema`.
+ */
+export const reviewResultWireSchema = reviewResultSchema.extend({
+    findings: z.array(rawFindingSchema.omit({ invalidProposal: true })).max(200)
 })
 
 export const transformSelectionResultSchema = z.object({
@@ -246,12 +307,6 @@ export const insertAtResultSchema = z.object({
     evidence: z.array(evidenceSchema).max(20).default([])
 })
 
-export const refineProposalResultSchema = z.object({
-    kind: z.literal('refine-proposal'),
-    suggestion: z.string().max(SHORT_TEXT_MAX),
-    rationale: z.string().max(1_000).optional()
-})
-
 export const threadTurnResultSchema = z.object({
     kind: z.literal('thread-turn'),
     /** What the editor says back; shown verbatim in the finding card's thread. */
@@ -260,8 +315,8 @@ export const threadTurnResultSchema = z.object({
      * True when the editor WITHDRAWS the finding: the push-back convinced it,
      * so the finding is auto-dismissed and `reply` is the withdrawal note.
      * Conceding and revising are mutually exclusive — a withdrawn finding has
-     * no suggestion left to apply, so `revisedSuggestion`/`revisedCritique`
-     * are ignored when this is true.
+     * no proposal left to apply, so `revisedEdits`/`revisedCritique` are
+     * ignored when this is true.
      */
     concede: z.boolean().default(false),
     /**
@@ -269,8 +324,13 @@ export const threadTurnResultSchema = z.object({
      * finding's critique in place (the thread carries the reasoning).
      */
     revisedCritique: z.string().max(SHORT_TEXT_MAX).optional(),
-    /** A thread turn may end with a revised suggestion for the finding. */
-    revisedSuggestion: z.string().max(SHORT_TEXT_MAX).optional()
+    /**
+     * A thread turn may end with a revised proposal for the finding — the
+     * same edit primitive findings use (contract v2), REPLACING the finding's
+     * edits wholesale. Re-anchored on arrival against the live text; an edit
+     * without its own quote targets the finding's span, as everywhere.
+     */
+    revisedEdits: z.array(rawEditSchema).max(FINDING_EDITS_MAX).optional()
 })
 export type ThreadTurnResult = z.infer<typeof threadTurnResultSchema>
 
@@ -344,7 +404,6 @@ export const operationResultSchema = z.discriminatedUnion('kind', [
     reviewResultSchema,
     transformSelectionResultSchema,
     insertAtResultSchema,
-    refineProposalResultSchema,
     threadTurnResultSchema,
     panelResultSchema
 ])
@@ -363,7 +422,21 @@ export type OperationResult = z.infer<typeof operationResultSchema>
 export type OperationEvent =
     | { readonly type: 'progress'; readonly runId: string; readonly message?: string }
     | { readonly type: 'finding'; readonly runId: string; readonly finding: RawFinding }
-    | { readonly type: 'result'; readonly runId: string; readonly result: OperationResult }
+    | {
+          readonly type: 'result'
+          readonly runId: string
+          readonly result: OperationResult
+          /**
+           * What the per-finding salvage pass removed from a review result
+           * (contract v2 design doc §5): findings dropped for an invalid
+           * observation core, and proposals stripped for invalid edits. The
+           * run layer reports it — degradation is visible, never silent.
+           */
+          readonly salvage?: {
+              readonly discardedFindings: number
+              readonly invalidProposals: number
+          }
+      }
     | {
           readonly type: 'error'
           readonly runId: string

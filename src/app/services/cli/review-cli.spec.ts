@@ -204,7 +204,7 @@ describe('selectEditors', () => {
 // ---------------------------------------------------------------------------
 
 describe('shapeRunOutput', () => {
-    it('shapes findings with editor names, severity, suggestion, and anchor', () => {
+    it('shapes findings with editor names, severity, edits, and anchor', () => {
         const run = new FakeRunHandle(
             [makeState()],
             [
@@ -229,11 +229,17 @@ describe('shapeRunOutput', () => {
             severity: 'warning',
             quote: 'Hello',
             critique: 'Too generic',
-            suggestion: 'Bonjour',
+            edits: [
+                {
+                    op: 'replace',
+                    text: 'Bonjour',
+                    anchor: { from: 0, to: 5, state: 'anchored' }
+                }
+            ],
             anchor: { from: 0, to: 5, state: 'anchored' }
         })
         expect(typeof first?.id).toBe('string')
-        expect(second).toMatchObject({ suggestion: null, anchor: null })
+        expect(second).toMatchObject({ edits: [], anchor: null })
     })
 
     it('collects note-level summaries per editor name', () => {
@@ -494,7 +500,9 @@ describe('formatTextOutput', () => {
             ]
         )
         const text = formatTextOutput(shapeRunOutput('Notes/Test.md', run, []))
-        expect(text).toBe('[suggestion] Hater 0-5: "Hello world" — Multi line critique -> Hi')
+        expect(text).toBe(
+            '[suggestion] Hater 0-5: "Hello world" — Multi line critique -> [replace] Hi'
+        )
     })
 
     it('labels unanchored findings and prints skip lines', () => {
@@ -748,7 +756,13 @@ describe('handleReviewCli', () => {
                     severity: 'suggestion',
                     quote: 'Hello',
                     critique: 'Weak opener',
-                    suggestion: 'Hi',
+                    edits: [
+                        {
+                            op: 'replace',
+                            text: 'Hi',
+                            anchor: { from: 0, to: 5, state: 'anchored' }
+                        }
+                    ],
                     anchor: { from: 0, to: 5, state: 'anchored' }
                 }
             ],

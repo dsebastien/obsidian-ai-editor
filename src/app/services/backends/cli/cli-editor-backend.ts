@@ -1,11 +1,11 @@
-import type {
-    OperationEvent,
-    OperationRequest,
-    OperationResult
-} from '../../../domain/operations/contract'
+import type { OperationEvent, OperationRequest } from '../../../domain/operations/contract'
 import type { BackendRef, CliBackend } from '../../../domain/settings/settings-schema'
 import { ProviderError } from '../providers'
-import { extractJsonPayload, validateOperationResult } from '../providers/result'
+import {
+    extractJsonPayload,
+    validateOperationResult,
+    type ValidatedOperationResult
+} from '../providers/result'
 import { spawnCliProcess } from './spawn'
 import type { CliProcessFailureCode, CliProcessOutcome, SpawnCliProcessInput } from './spawn'
 import { getCliToolAdapter } from './tools'
@@ -170,7 +170,7 @@ function messageForFailure(outcome: Extract<CliProcessOutcome, { ok: false }>): 
  * `ProviderError` is reused rather than re-declared so that a caller
  * inspecting the failure sees one error type across both families.
  */
-function toOperationResult(text: string): OperationResult {
+function toOperationResult(text: string): ValidatedOperationResult {
     return validateOperationResult(extractJsonPayload(text))
 }
 
@@ -262,7 +262,13 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                 }
                 return
             }
-            yield { type: 'result', runId, result: toOperationResult(envelope.text) }
+            const validated = toOperationResult(envelope.text)
+            yield {
+                type: 'result',
+                runId,
+                result: validated.result,
+                ...(validated.salvage ? { salvage: validated.salvage } : {})
+            }
         } catch (cause) {
             yield { type: 'error', runId, error: normalizeCliError(cause, adapter.displayName) }
         }

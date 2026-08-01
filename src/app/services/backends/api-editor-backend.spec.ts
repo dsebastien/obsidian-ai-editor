@@ -279,7 +279,9 @@ describe('createApiEditorExecutor — streaming', () => {
             throw new Error('expected review result')
         }
         expect(terminal.result.findings).toHaveLength(1)
-        expect(terminal.result.findings[0]?.suggestion).toBe('Bonjour world')
+        expect(terminal.result.findings[0]?.edits).toEqual([
+            { op: 'replace', text: 'Bonjour world' }
+        ])
 
         const sentBody = sentJsonBody(calls[0])
         expect(sentBody['stream']).toBe(true)

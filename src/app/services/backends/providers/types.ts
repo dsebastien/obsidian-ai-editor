@@ -1,4 +1,5 @@
-import type { OperationRequest, OperationResult } from '../../../domain/operations/contract'
+import type { OperationRequest } from '../../../domain/operations/contract'
+import type { ValidatedOperationResult } from './result'
 import type { ApiBackend } from '../../../domain/settings/settings-schema'
 
 /**
@@ -59,11 +60,12 @@ export interface ProviderAdapter {
     buildRequest(input: BuildRequestInput): HttpRequestDescriptor
     /**
      * Parses a buffered provider response body (already JSON-decoded by the
-     * transport) into a validated `OperationResult`. Throws `ProviderError`
-     * with code 'invalid-output' when the payload does not match the
-     * operation contract.
+     * transport) into a validated result (plus the review salvage report,
+     * when the pass removed anything). Throws `ProviderError` with code
+     * 'invalid-output' when the payload does not match the operation
+     * contract.
      */
-    parseBufferedResponse(raw: unknown): OperationResult
+    parseBufferedResponse(raw: unknown): ValidatedOperationResult
     capabilities(): ProviderCapabilities
 }
 

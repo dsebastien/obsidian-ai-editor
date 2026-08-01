@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { createSnapshot } from '../../domain/snapshot'
 import type {
     OperationEvent,
+    RawEdit,
     RawFinding,
     ThreadTurnRequest
 } from '../../domain/operations/contract'
@@ -21,7 +22,8 @@ function raw(overrides: Partial<RawFinding> = {}): RawFinding {
     return {
         quote: 'quick brown',
         critique: 'Too generic',
-        suggestion: 'swift auburn',
+        edits: [{ op: 'replace', text: 'swift auburn' }],
+        invalidProposal: false,
         severity: 'suggestion',
         evidence: [],
         ...overrides
@@ -48,7 +50,7 @@ async function runWithFinding(findings: RawFinding[] = [raw()]): Promise<RunHand
 
 function turnResult(
     runId: string,
-    payload: { reply: string; concede?: boolean; revisedSuggestion?: string }
+    payload: { reply: string; concede?: boolean; revisedEdits?: RawEdit[] }
 ): OperationEvent {
     return {
         type: 'result',
@@ -57,9 +59,7 @@ function turnResult(
             kind: 'thread-turn',
             reply: payload.reply,
             concede: payload.concede ?? false,
-            ...(payload.revisedSuggestion === undefined
-                ? {}
-                : { revisedSuggestion: payload.revisedSuggestion })
+            ...(payload.revisedEdits === undefined ? {} : { revisedEdits: payload.revisedEdits })
         }
     }
 }
@@ -83,7 +83,7 @@ describe('RunHandle.startThreadTurn request shape', () => {
             seen.push(request)
             yield turnResult(request.runId, {
                 reply: 'Holding',
-                revisedSuggestion: 'sharper wording'
+                revisedEdits: [{ op: 'replace', text: 'sharper wording' }]
             })
         }
 
@@ -172,7 +172,7 @@ describe('RunHandle.startThreadTurn outcomes', () => {
             execute: async function* (request) {
                 yield turnResult(request.runId, {
                     reply: 'Try this',
-                    revisedSuggestion: 'swift auburn fox'
+                    revisedEdits: [{ op: 'replace', text: 'swift auburn fox' }]
                 })
             }
         })
@@ -182,7 +182,7 @@ describe('RunHandle.startThreadTurn outcomes', () => {
         }
         expect(await start.settled).toEqual({ status: 'held', reply: 'Try this', revised: true })
         const finding = run.findings.get(id)
-        expect(finding?.raw.suggestion).toEqual('swift auburn fox')
+        expect(finding?.raw.edits).toEqual([{ op: 'replace', text: 'swift auburn fox' }])
         expect(finding?.threadTurn).toBeNull()
         expect(finding?.thread).toHaveLength(2)
     })
@@ -206,7 +206,7 @@ describe('RunHandle.startThreadTurn outcomes', () => {
             reply: 'Because it reads flat',
             revised: false
         })
-        expect(run.findings.get(id)?.raw.suggestion).toEqual('swift auburn')
+        expect(run.findings.get(id)?.raw.edits).toEqual([{ op: 'replace', text: 'swift auburn' }])
     })
 
     it('resolves conceded and dismisses the finding', async () => {

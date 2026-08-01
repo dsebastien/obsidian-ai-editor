@@ -9,6 +9,7 @@ import type {
     OperationEvent,
     OperationResult,
     PanelResult,
+    RawEdit,
     RawFinding,
     ReportedFinding,
     ReviewRequest,
@@ -16,6 +17,7 @@ import type {
     Verdict
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { rawFindingIdentity } from '../../domain/operations/finding-identity'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
 import { isPathUnder } from '../../domain/path-scope'
@@ -195,6 +197,13 @@ export interface StartThreadTurnInput {
      * document (never re-derived here: the run handle has no live buffer).
      */
     readonly quote: string
+    /**
+     * Live document accessor, read when the turn LANDS: a held turn's
+     * `revisedEdits` (contract v2) anchor against the text as it reads then.
+     * `null`/absent (note no longer open) degrades the revised proposal to
+     * display-only — never guessed against stale text (BR #3/#4).
+     */
+    readonly currentText?: () => string | null
     /** Secret redaction for error messages (Business Rules #12). */
     readonly redactError?: (message: string) => string
     readonly execute: ThreadExecutor
@@ -245,6 +254,15 @@ export interface EditorRunState {
      * second, optional pass timed out.
      */
     readonly continuationError: string | null
+    /**
+     * What the salvage pass removed from this editor's output across passes
+     * (contract v2 design §5): findings discarded for an invalid observation
+     * core, and proposals stripped for invalid edits. `null` = nothing.
+     */
+    readonly salvage: {
+        readonly discardedFindings: number
+        readonly invalidProposals: number
+    } | null
 }
 
 /** Handle over one review run (one snapshot, N editors). */
@@ -400,6 +418,65 @@ function createAnchorBase(text: string): AnchorBase {
     return { matcher: createQuoteMatcher(text), batches: [] }
 }
 
+/** The finding-level anchoring outcome an own-quote-less edit copies. */
+interface FindingAnchorOutcome {
+    readonly anchor: Anchor | null
+    readonly anchoredText: string | null
+    readonly matchStrategy: MatchStrategy | null
+}
+
+/**
+ * Resolves a proposal's raw edits into tracked edits (contract v2 design §2):
+ * an edit carrying its own `quote` anchors independently through the matcher
+ * ladder (then replays the same edit batches the finding's anchor replayed);
+ * an edit without one copies the finding's outcome. No matcher (no anchor
+ * base — terminal attempt) degrades to unanchored, never guesses (BR #4).
+ * Shared by review ingestion and the thread revision path so the two can
+ * never anchor the same shape differently.
+ */
+function resolveTrackedEdits(
+    edits: readonly RawEdit[],
+    matcher: QuoteMatcher | null,
+    batches: readonly (readonly TextChange[])[],
+    finding: FindingAnchorOutcome
+): TrackedEdit[] {
+    return edits.map((edit) => {
+        const text = edit.op === 'delete' ? '' : (edit.text ?? '')
+        if (edit.quote === undefined) {
+            return {
+                op: edit.op,
+                text,
+                anchor: finding.anchor,
+                anchoredText: finding.anchoredText,
+                matchStrategy: finding.matchStrategy
+            }
+        }
+        if (matcher === null) {
+            return { op: edit.op, text, anchor: null, anchoredText: null, matchStrategy: null }
+        }
+        const match = matcher.match(edit.quote, {
+            prefix: edit.prefix,
+            suffix: edit.suffix,
+            occurrence: edit.occurrence
+        })
+        if (match.status !== 'matched') {
+            return { op: edit.op, text, anchor: null, anchoredText: null, matchStrategy: null }
+        }
+        let anchor = createAnchor(match.match.from, match.match.to)
+        const anchoredText = matcher.text.slice(match.match.from, match.match.to)
+        for (const batch of batches) {
+            anchor = mapAnchorThroughChanges(anchor, batch)
+        }
+        return {
+            op: edit.op,
+            text,
+            anchor,
+            anchoredText,
+            matchStrategy: match.match.strategy
+        }
+    })
+}
+
 interface InternalEditorState {
     readonly editorId: string
     readonly editorName: string
@@ -413,6 +490,8 @@ interface InternalEditorState {
     verdict: Verdict | null
     lastProgress: string | null
     error: OperationErrorInfo | null
+    /** Salvage losses across this editor's passes (null = nothing removed). */
+    salvage: { discardedFindings: number; invalidProposals: number } | null
     /** True once a terminal event was processed; later events are discarded. */
     terminal: boolean
     /** Content keys of ingested findings, deduping stream vs result payloads. */
@@ -539,6 +618,7 @@ class ReviewRunHandle implements RunHandle {
                 verdict: null,
                 lastProgress: null,
                 error: null,
+                salvage: null,
                 terminal: false,
                 seenFindingKeys: new Set(),
                 releasePermit: null,
@@ -917,7 +997,11 @@ class ReviewRunHandle implements RunHandle {
                             )
                             continue
                         }
-                        resolution = this.landThreadOutcome(input.findingId, event.result)
+                        resolution = this.landThreadOutcome(
+                            input.findingId,
+                            event.result,
+                            input.currentText
+                        )
                     }
                 } catch (cause) {
                     if (resolution === null) {
@@ -940,10 +1024,30 @@ class ReviewRunHandle implements RunHandle {
 
     private landThreadOutcome(
         findingId: FindingId,
-        result: Extract<OperationResult, { kind: 'thread-turn' }>
+        result: Extract<OperationResult, { kind: 'thread-turn' }>,
+        currentText: (() => string | null) | undefined
     ): ThreadTurnResolution {
         const outcome = resolveThreadOutcome(result)
-        if (this.findings.completeThreadTurn(findingId, outcome) === null) {
+        // A revised proposal anchors against the LIVE text at landing time;
+        // no live text → the store degrades it to display-only (BR #3/#4).
+        let revisedTrackedEdits: readonly TrackedEdit[] | null = null
+        if (outcome.kind === 'hold' && outcome.revisedEdits !== null) {
+            const text = currentText?.() ?? null
+            const finding = this.findings.get(findingId)
+            if (text !== null && finding !== null) {
+                revisedTrackedEdits = resolveTrackedEdits(
+                    outcome.revisedEdits,
+                    createQuoteMatcher(text),
+                    [],
+                    {
+                        anchor: finding.anchor,
+                        anchoredText: finding.anchoredText,
+                        matchStrategy: finding.matchStrategy
+                    }
+                )
+            }
+        }
+        if (this.findings.completeThreadTurn(findingId, outcome, revisedTrackedEdits) === null) {
             return { status: 'discarded' }
         }
         if (outcome.kind === 'concede') {
@@ -952,7 +1056,7 @@ class ReviewRunHandle implements RunHandle {
         return {
             status: 'held',
             reply: outcome.reply,
-            revised: outcome.revisedSuggestion !== null || outcome.revisedCritique !== null
+            revised: outcome.revisedEdits !== null || outcome.revisedCritique !== null
         }
     }
 
@@ -1119,6 +1223,18 @@ class ReviewRunHandle implements RunHandle {
                 if (!state.continuing || event.result.verdict !== undefined) {
                     state.verdict = event.result.verdict ?? null
                 }
+                // Salvage report (contract v2 design §5): degradation must be
+                // visible. Accumulated, not overwritten — a continuation's
+                // losses add to the first pass's.
+                if (event.salvage) {
+                    state.salvage = {
+                        discardedFindings:
+                            (state.salvage?.discardedFindings ?? 0) +
+                            event.salvage.discardedFindings,
+                        invalidProposals:
+                            (state.salvage?.invalidProposals ?? 0) + event.salvage.invalidProposals
+                    }
+                }
                 this.terminate(state, 'done', null)
                 return
             case 'error':
@@ -1179,6 +1295,17 @@ class ReviewRunHandle implements RunHandle {
             }
         }
 
+        // Per-edit anchoring (contract v2): edits with their own quote anchor
+        // independently through the same ladder and the same batch replay;
+        // edits without one COPY the finding's anchoring outcome (the copies
+        // then remap independently). Unanchorable edits stay null — the
+        // all-or-nothing rule keeps the whole proposal display-only.
+        const edits = resolveTrackedEdits(raw.edits, base?.matcher ?? null, base?.batches ?? [], {
+            anchor,
+            anchoredText,
+            matchStrategy
+        })
+
         const id = asFindingId(generateId())
         state.findingIds.push(id)
         // `add` fires the store's onChange, which notifies subscribers.
@@ -1189,7 +1316,8 @@ class ReviewRunHandle implements RunHandle {
             raw,
             anchor,
             anchoredText,
-            matchStrategy
+            matchStrategy,
+            edits
         })
     }
 
@@ -1436,7 +1564,8 @@ function toPublicState(state: InternalEditorState): EditorRunState {
         lastProgress: state.lastProgress,
         error: state.error,
         continuing: state.continuing,
-        continuationError: state.continuationError
+        continuationError: state.continuationError,
+        salvage: state.salvage
     }
 }
 

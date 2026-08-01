@@ -900,6 +900,34 @@ export class ReviewSidePanelView extends ItemView {
             })
         }
 
+        // Salvage report (contract v2 design §5): what validation removed from
+        // this editor's output is said here, never silently absorbed.
+        if (state.salvage !== null) {
+            const parts: string[] = []
+            if (state.salvage.discardedFindings > 0) {
+                const count = state.salvage.discardedFindings
+                parts.push(
+                    count === 1
+                        ? '1 malformed finding was discarded'
+                        : `${count} malformed findings were discarded`
+                )
+            }
+            if (state.salvage.invalidProposals > 0) {
+                const count = state.salvage.invalidProposals
+                parts.push(
+                    count === 1
+                        ? '1 proposal could not be validated and was removed'
+                        : `${count} proposals could not be validated and were removed`
+                )
+            }
+            if (parts.length > 0) {
+                section.createDiv({
+                    cls: 'editor-ai-daemons-panel-salvage',
+                    text: `${parts.join('; ')}.`
+                })
+            }
+        }
+
         if (state.summary !== null && state.summary.length > 0) {
             section.createDiv({ cls: 'editor-ai-daemons-panel-summary', text: state.summary })
         }

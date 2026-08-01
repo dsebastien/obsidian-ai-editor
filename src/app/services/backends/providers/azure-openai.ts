@@ -1,7 +1,10 @@
-import type { OperationResult } from '../../../domain/operations/contract'
 import { chatCompletionContent } from './openai'
 import { buildUserMessage, resultJsonSchema } from './prompt'
-import { extractJsonPayload, validateOperationResult } from './result'
+import {
+    extractJsonPayload,
+    validateOperationResult,
+    type ValidatedOperationResult
+} from './result'
 import {
     ProviderError,
     redactSecret,
@@ -75,7 +78,7 @@ export const azureOpenAiAdapter: ProviderAdapter = {
         }
     },
 
-    parseBufferedResponse(raw: unknown): OperationResult {
+    parseBufferedResponse(raw: unknown): ValidatedOperationResult {
         return validateOperationResult(
             extractJsonPayload(chatCompletionContent(raw, 'Azure OpenAI'))
         )

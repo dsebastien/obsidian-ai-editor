@@ -49,6 +49,8 @@ export function aggregatePanelOperation(): AggregatePanelRequest {
                     {
                         quote: 'Hello world',
                         critique: 'Cliché opener',
+                        edits: [],
+                        invalidProposal: false,
                         severity: 'warning',
                         evidence: []
                     }
@@ -72,7 +74,7 @@ export function validReviewResult(): Record<string, unknown> {
                 prefix: '',
                 suffix: '. This is',
                 critique: 'Generic opening line',
-                suggestion: 'Bonjour world',
+                edits: [{ op: 'replace', text: 'Bonjour world' }],
                 rationale: 'More distinctive',
                 severity: 'suggestion',
                 confidence: 0.9
@@ -106,7 +108,11 @@ export function validPanelResult(): Record<string, unknown> {
     }
 }
 
-/** A payload with the right kind but a contract violation inside. */
+/**
+ * A payload with the right kind but a contract violation inside a finding.
+ * The envelope is valid, so the salvage pass drops the finding and reports it
+ * (contract v2 design §5) instead of failing the whole review.
+ */
 export function wrongSchemaResult(): Record<string, unknown> {
     return {
         kind: 'review',

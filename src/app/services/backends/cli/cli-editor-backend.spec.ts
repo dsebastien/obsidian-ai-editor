@@ -153,11 +153,16 @@ describe('createCliEditorExecutor — happy path', () => {
 })
 
 describe('createCliEditorExecutor — result validation', () => {
-    it('refuses a well-formed answer that is not the contract', async () => {
+    it('salvages a well-formed answer whose finding is malformed (dropped, counted)', async () => {
         const wrong = JSON.stringify({ kind: 'review', findings: [{ critique: 'no quote' }] })
         const { events } = await run(okOutcome(claudeSuccessEnvelope(wrong)))
         expect(events).toHaveLength(1)
-        expect(events[0]?.type === 'error' && events[0].error.code).toBe('invalid-output')
+        const event = events[0]
+        expect(event?.type).toBe('result')
+        if (event?.type === 'result') {
+            expect(event.result.kind === 'review' && event.result.findings).toEqual([])
+            expect(event.salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
+        }
     })
 
     it('refuses prose, which is what an agent CLI produces when it forgets', async () => {

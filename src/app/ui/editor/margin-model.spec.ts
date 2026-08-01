@@ -69,8 +69,22 @@ describe('marginCardView', () => {
         const card = marginCardView(
             entry({
                 findings: [
-                    { quote: 'a', critique: 'First problem', severity: 'warning', evidence: [] },
-                    { quote: 'b', critique: 'Second problem', severity: 'warning', evidence: [] }
+                    {
+                        quote: 'a',
+                        critique: 'First problem',
+                        edits: [],
+                        invalidProposal: false,
+                        severity: 'warning',
+                        evidence: []
+                    },
+                    {
+                        quote: 'b',
+                        critique: 'Second problem',
+                        edits: [],
+                        invalidProposal: false,
+                        severity: 'warning',
+                        evidence: []
+                    }
                 ]
             })
         )

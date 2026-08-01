@@ -115,25 +115,32 @@ describe('azureOpenAiAdapter.buildRequest', () => {
 
 describe('azureOpenAiAdapter.parseBufferedResponse', () => {
     it('parses a valid review result', () => {
-        const result = azureOpenAiAdapter.parseBufferedResponse(chatResponse(validReviewResult()))
+        const { result, salvage } = azureOpenAiAdapter.parseBufferedResponse(
+            chatResponse(validReviewResult())
+        )
+        expect(salvage).toBeNull()
         expect(result.kind).toBe('review')
     })
 
     it('parses a valid aggregate-panel result', () => {
-        const result = azureOpenAiAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
+        const { result } = azureOpenAiAdapter.parseBufferedResponse(
+            chatResponse(validPanelResult())
+        )
         expect(result.kind).toBe('aggregate-panel')
         if (result.kind === 'aggregate-panel') {
             expect(result.memberVerdicts[0]?.editorName).toBe('Hater')
         }
     })
 
-    it('throws invalid-output on wrong-schema and malformed payloads', () => {
-        try {
-            azureOpenAiAdapter.parseBufferedResponse(chatResponse(wrongSchemaResult()))
-            expect.unreachable()
-        } catch (error) {
-            expect((error as ProviderError).code).toBe('invalid-output')
+    it('salvages a schema-violating finding and throws on malformed payloads', () => {
+        const { result, salvage } = azureOpenAiAdapter.parseBufferedResponse(
+            chatResponse(wrongSchemaResult())
+        )
+        if (result.kind !== 'review') {
+            throw new Error('expected a review result')
         }
+        expect(result.findings).toEqual([])
+        expect(salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
         expect(() =>
             azureOpenAiAdapter.parseBufferedResponse({
                 choices: [{ message: { content: 'not json' } }]

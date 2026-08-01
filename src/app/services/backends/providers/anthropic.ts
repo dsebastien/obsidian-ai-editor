@@ -1,6 +1,9 @@
-import type { OperationResult } from '../../../domain/operations/contract'
 import { buildUserMessage, resultJsonSchema } from './prompt'
-import { extractJsonPayload, validateOperationResult } from './result'
+import {
+    extractJsonPayload,
+    validateOperationResult,
+    type ValidatedOperationResult
+} from './result'
 import {
     ProviderError,
     redactSecret,
@@ -140,7 +143,7 @@ export const anthropicAdapter: ProviderAdapter = {
         }
     },
 
-    parseBufferedResponse(raw: unknown): OperationResult {
+    parseBufferedResponse(raw: unknown): ValidatedOperationResult {
         if (typeof raw !== 'object' || raw === null) {
             throw new ProviderError('invalid-output', 'Anthropic response is not an object')
         }

@@ -19,7 +19,17 @@ export function rawFindingIdentity(raw: RawFinding): string {
     return JSON.stringify([
         raw.quote,
         raw.critique,
-        raw.suggestion ?? '',
+        // Proposal content participates in STREAM-vs-result dedupe identity
+        // only. Cross-run identity (issue #19) must key on the observation and
+        // exclude edits — contract v2 design doc §9.
+        raw.edits.map((edit) => [
+            edit.op,
+            edit.quote ?? '',
+            edit.text ?? '',
+            edit.occurrence ?? null,
+            edit.prefix ?? '',
+            edit.suffix ?? ''
+        ]),
         raw.occurrence ?? null,
         raw.prefix ?? '',
         raw.suffix ?? ''

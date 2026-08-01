@@ -73,10 +73,16 @@ describe('shapeStatusRun', () => {
             severity: 'warning',
             quote: 'Hello',
             critique: 'Too generic',
-            suggestion: 'Bonjour',
+            edits: [
+                {
+                    op: 'replace',
+                    text: 'Bonjour',
+                    anchor: { from: 0, to: 5, state: 'anchored' }
+                }
+            ],
             anchor: { from: 0, to: 5, state: 'anchored' }
         })
-        expect(shaped.findings[1]).toMatchObject({ suggestion: null, anchor: null })
+        expect(shaped.findings[1]).toMatchObject({ edits: [], anchor: null })
         expect(shaped.summaryByEditor).toEqual({ Hater: 'Solid draft' })
     })
 
@@ -196,7 +202,7 @@ describe('formatStatusText', () => {
         })
         expect(text.split('\n')).toEqual([
             'Run settled (1 done) — 1 finding',
-            '[suggestion] Hater 0-5: "Hello world" — Multi line critique -> Hi'
+            '[suggestion] Hater 0-5: "Hello world" — Multi line critique -> [replace] Hi'
         ])
     })
 
@@ -265,7 +271,13 @@ describe('handleStatusCli', () => {
                         severity: 'suggestion',
                         quote: 'Hello',
                         critique: 'Weak opener',
-                        suggestion: 'Hi',
+                        edits: [
+                            {
+                                op: 'replace',
+                                text: 'Hi',
+                                anchor: { from: 0, to: 5, state: 'anchored' }
+                            }
+                        ],
                         anchor: { from: 0, to: 5, state: 'anchored' }
                     }
                 ],

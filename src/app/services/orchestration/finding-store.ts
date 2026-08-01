@@ -1,8 +1,10 @@
 import type { Anchor, TextChange } from '../../domain/anchoring/anchor'
-import { mapAnchorThroughChanges, verifyPrecondition } from '../../domain/anchoring/anchor'
+import { mapAnchorThroughChanges } from '../../domain/anchoring/anchor'
 import type { MatchStrategy } from '../../domain/anchoring/match'
 import type { FindingId, RunId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
+import type { EditChange, EditPlanFailure, TrackedEdit } from '../../domain/operations/edit-apply'
+import { editsApplicable, planEditChanges } from '../../domain/operations/edit-apply'
 import { isThreadFull } from '../../domain/operations/thread'
 import type {
     ThreadBeginFailure,
@@ -46,11 +48,18 @@ export interface TrackedFinding {
     /** `null` when the quote could not be (unambiguously) located: display-only. */
     readonly anchor: Anchor | null
     /**
-     * Snapshot text at the anchored range at anchor time — the accept
-     * precondition. May differ from `raw.quote` for normalized matches.
+     * Snapshot text at the anchored range at anchor time — the precondition
+     * base. May differ from `raw.quote` for normalized matches.
      */
     readonly anchoredText: string | null
     readonly matchStrategy: MatchStrategy | null
+    /**
+     * The finding's proposal, resolved per edit (contract v2): each raw edit
+     * with its own anchoring outcome. Edits without an own quote copied the
+     * finding's anchor at ingestion; all copies remap independently through
+     * document changes. Accepting applies ALL of them or none (design §4).
+     */
+    readonly edits: readonly TrackedEdit[]
     readonly status: FindingStatus
     /** Set when status is `superseded`: the finding that replaced this one. */
     readonly supersededBy: FindingId | null
@@ -78,18 +87,21 @@ export interface NewFinding {
     readonly anchor: Anchor | null
     readonly anchoredText: string | null
     readonly matchStrategy: MatchStrategy | null
+    readonly edits: readonly TrackedEdit[]
 }
 
-export type AcceptFailureReason =
-    | 'not-found'
-    | 'invalid-status'
-    | 'unanchored'
-    | 'stale'
-    | 'no-suggestion'
-    | 'precondition-failed'
+export type AcceptFailureReason = 'not-found' | 'invalid-status' | EditPlanFailure
 
 export type AcceptResult =
-    | { readonly ok: true; readonly finding: TrackedFinding }
+    | {
+          readonly ok: true
+          readonly finding: TrackedFinding
+          /**
+           * The proposal's changes, verified against the live text and sorted
+           * by position — dispatchable as ONE undoable transaction.
+           */
+          readonly changes: readonly EditChange[]
+      }
     | { readonly ok: false; readonly reason: AcceptFailureReason }
 
 export type ThreadBeginResult =
@@ -129,6 +141,7 @@ export class FindingStore {
             anchor: input.anchor,
             anchoredText: input.anchoredText,
             matchStrategy: input.matchStrategy,
+            edits: input.edits,
             status: 'open',
             supersededBy: null,
             thread: [],
@@ -154,9 +167,9 @@ export class FindingStore {
     }
 
     /**
-     * Whether a finding's suggestion can currently be previewed/accepted:
-     * non-terminal status, anchored, not stale, an anchored text to verify the
-     * precondition against, and a suggestion.
+     * Whether a finding's proposal can currently be previewed/accepted:
+     * non-terminal status, and EVERY edit anchored, not stale and mutually
+     * conflict-free (`editsApplicable` — the all-or-nothing rule, design §4).
      *
      * Every clause mirrors an `accept()` refusal, so this predicate never
      * advertises a finding the apply path would reject — the panel's
@@ -169,17 +182,10 @@ export class FindingStore {
         if (!finding) {
             return false
         }
-        return (
-            !TERMINAL_STATUSES.includes(finding.status) &&
-            finding.anchor !== null &&
-            finding.anchoredText !== null &&
-            finding.anchor.state === 'anchored' &&
-            typeof finding.raw.suggestion === 'string' &&
-            finding.raw.suggestion.length > 0
-        )
+        return !TERMINAL_STATUSES.includes(finding.status) && editsApplicable(finding.edits)
     }
 
-    /** `open` → `preview`. Requires an actionable suggestion. */
+    /** `open` → `preview`. Requires an actionable proposal. */
     preview(id: FindingId): TrackedFinding | null {
         const finding = this.findings.get(id)
         if (!finding || finding.status !== 'open' || !this.isActionable(id)) {
@@ -198,9 +204,10 @@ export class FindingStore {
     }
 
     /**
-     * `open|preview` → `accepted`, gated by the precondition check: the
-     * current document must still contain the exact anchored text at the
-     * anchor (Business Rules #3). Never fuzzy-relocates.
+     * `open|preview` → `accepted`, gated by the full edit plan: EVERY edit of
+     * the proposal must still verify against the current document text
+     * (Business Rules #3) and the set must be conflict-free — all-or-nothing,
+     * one transaction (design §4). Never fuzzy-relocates.
      */
     accept(id: FindingId, currentText: string): AcceptResult {
         const finding = this.findings.get(id)
@@ -210,19 +217,15 @@ export class FindingStore {
         if (finding.status !== 'open' && finding.status !== 'preview') {
             return { ok: false, reason: 'invalid-status' }
         }
-        if (finding.anchor === null || finding.anchoredText === null) {
-            return { ok: false, reason: 'unanchored' }
+        const plan = planEditChanges(finding.edits, currentText)
+        if (!plan.ok) {
+            return { ok: false, reason: plan.reason }
         }
-        if (finding.anchor.state !== 'anchored') {
-            return { ok: false, reason: 'stale' }
+        return {
+            ok: true,
+            finding: this.update(finding, { status: 'accepted' }),
+            changes: plan.changes
         }
-        if (typeof finding.raw.suggestion !== 'string' || finding.raw.suggestion.length === 0) {
-            return { ok: false, reason: 'no-suggestion' }
-        }
-        if (!verifyPrecondition(currentText, finding.anchor, finding.anchoredText)) {
-            return { ok: false, reason: 'precondition-failed' }
-        }
-        return { ok: true, finding: this.update(finding, { status: 'accepted' }) }
     }
 
     /** `open|preview` → `rejected`. Allowed for stale/unanchored findings. */
@@ -272,11 +275,12 @@ export class FindingStore {
     }
 
     /**
-     * Maps every anchored finding through a batch of document changes
-     * (pre-change coordinates, sorted, non-overlapping — the CM6
-     * `iterChanges` shape). A finding whose anchor goes stale while in
-     * `preview` falls back to `open`: the diff on screen no longer reflects
-     * reality and must not be one keypress away from Accept.
+     * Maps every anchored finding — AND every anchored edit of its proposal —
+     * through a batch of document changes (pre-change coordinates, sorted,
+     * non-overlapping — the CM6 `iterChanges` shape). A finding whose
+     * proposal stops being applicable while in `preview` falls back to
+     * `open`: the diff on screen no longer reflects reality and must not be
+     * one keypress away from Accept.
      */
     applyTextChanges(changes: readonly TextChange[]): void {
         if (changes.length === 0) {
@@ -284,20 +288,46 @@ export class FindingStore {
         }
         let changed = false
         for (const finding of this.findings.values()) {
-            if (finding.anchor === null) {
+            let findingChanged = false
+            let anchor = finding.anchor
+            if (anchor !== null) {
+                const mapped = mapAnchorThroughChanges(anchor, changes)
+                if (
+                    mapped.from !== anchor.from ||
+                    mapped.to !== anchor.to ||
+                    mapped.state !== anchor.state
+                ) {
+                    anchor = mapped
+                    findingChanged = true
+                }
+            }
+            let edits = finding.edits
+            if (finding.edits.some((edit) => edit.anchor !== null)) {
+                const remapped = finding.edits.map((edit) => {
+                    if (edit.anchor === null) {
+                        return edit
+                    }
+                    const mapped = mapAnchorThroughChanges(edit.anchor, changes)
+                    if (
+                        mapped.from === edit.anchor.from &&
+                        mapped.to === edit.anchor.to &&
+                        mapped.state === edit.anchor.state
+                    ) {
+                        return edit
+                    }
+                    return { ...edit, anchor: mapped }
+                })
+                if (remapped.some((edit, index) => edit !== finding.edits[index])) {
+                    edits = remapped
+                    findingChanged = true
+                }
+            }
+            if (!findingChanged) {
                 continue
             }
-            const mapped = mapAnchorThroughChanges(finding.anchor, changes)
-            if (
-                mapped.from === finding.anchor.from &&
-                mapped.to === finding.anchor.to &&
-                mapped.state === finding.anchor.state
-            ) {
-                continue
-            }
-            const wentStale = finding.anchor.state === 'anchored' && mapped.state === 'stale'
-            const status = wentStale && finding.status === 'preview' ? 'open' : finding.status
-            this.findings.set(finding.id, { ...finding, anchor: mapped, status })
+            const status =
+                finding.status === 'preview' && !editsApplicable(edits) ? 'open' : finding.status
+            this.findings.set(finding.id, { ...finding, anchor, edits, status })
             changed = true
         }
         if (changed) {
@@ -351,21 +381,25 @@ export class FindingStore {
      * - `concede` → the finding is dismissed and flagged `conceded` (only when
      *   it is still open/preview: the user may have accepted it while the turn
      *   was in flight, and an applied edit is not undone by a late withdrawal).
-     * - `hold` → the critique and/or suggestion are updated IN PLACE (not
-     *   superseded: it is the same observation, refined — `supersede` stays
-     *   for the refine-proposal flow that mints a new finding). The anchor and
-     *   `anchoredText` are untouched, so `isActionable` re-derives the accept
-     *   precondition for the new suggestion for free: a span that went stale
-     *   while the turn was in flight keeps the revised suggestion
-     *   display-only (Business Rules #3). A finding sitting in `preview` with
-     *   a CHANGED suggestion falls back to `open` — the diff on screen is no
-     *   longer the proposal.
+     * - `hold` → the critique and/or proposal are updated IN PLACE (not
+     *   superseded: it is the same observation, refined). A revised proposal
+     *   (`outcome.revisedEdits`) REPLACES the finding's edits wholesale; the
+     *   caller supplies the anchored form (`revisedTrackedEdits`, resolved
+     *   against the live text — the store has no buffer). A `null` there
+     *   despite a revision degrades the new proposal to display-only (all
+     *   anchors null) rather than guessing (Business Rules #3/#4). A finding
+     *   sitting in `preview` with a CHANGED proposal falls back to `open` —
+     *   the diff on screen is no longer the proposal.
      *
      * Returns `null` when the turn no longer belongs to the store (the
      * finding was removed by a retry, or its pending turn was already
      * resolved): a late backend event must never resurrect it.
      */
-    completeThreadTurn(id: FindingId, outcome: ThreadOutcome): TrackedFinding | null {
+    completeThreadTurn(
+        id: FindingId,
+        outcome: ThreadOutcome,
+        revisedTrackedEdits: readonly TrackedEdit[] | null = null
+    ): TrackedFinding | null {
         const finding = this.findings.get(id)
         if (!finding || finding.threadTurn?.status !== 'pending') {
             return null
@@ -383,19 +417,29 @@ export class FindingStore {
                 ...(dismissable ? { status: 'dismissed' as const, conceded: true } : {})
             })
         }
-        const suggestion = outcome.revisedSuggestion ?? finding.raw.suggestion
-        const suggestionChanged = suggestion !== finding.raw.suggestion
+        const revisedRaw = outcome.revisedEdits
+        const edits: readonly TrackedEdit[] | null =
+            revisedRaw === null
+                ? null
+                : (revisedTrackedEdits ??
+                  // No live text to anchor against: fail closed, display-only.
+                  revisedRaw.map((edit) => ({
+                      op: edit.op,
+                      text: edit.op === 'delete' ? '' : (edit.text ?? ''),
+                      anchor: null,
+                      anchoredText: null,
+                      matchStrategy: null
+                  })))
         return this.update(finding, {
             thread,
             threadTurn: null,
             raw: {
                 ...finding.raw,
                 critique: outcome.revisedCritique ?? finding.raw.critique,
-                ...(suggestion === undefined ? {} : { suggestion })
+                ...(revisedRaw === null ? {} : { edits: [...revisedRaw] })
             },
-            ...(suggestionChanged && finding.status === 'preview'
-                ? { status: 'open' as const }
-                : {})
+            ...(edits === null ? {} : { edits }),
+            ...(edits !== null && finding.status === 'preview' ? { status: 'open' as const } : {})
         })
     }
 

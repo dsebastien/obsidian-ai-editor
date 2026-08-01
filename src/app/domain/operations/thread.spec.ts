@@ -51,7 +51,7 @@ describe('resolveThreadOutcome', () => {
             kind: 'hold',
             reply: 'Fair point, but the repetition still reads as an accident.',
             revisedCritique: null,
-            revisedSuggestion: null
+            revisedEdits: null
         })
     })
 
@@ -60,27 +60,35 @@ describe('resolveThreadOutcome', () => {
             result({
                 reply: '  Sharpened.  ',
                 revisedCritique: '  The repetition buries the verb.  ',
-                revisedSuggestion: '  swift auburn fox  '
+                revisedEdits: [{ op: 'replace', text: 'swift auburn fox' }]
             })
         )
         expect(outcome).toEqual({
             kind: 'hold',
             reply: 'Sharpened.',
             revisedCritique: 'The repetition buries the verb.',
-            revisedSuggestion: 'swift auburn fox'
+            revisedEdits: [{ op: 'replace', text: 'swift auburn fox' }]
         })
     })
 
-    it('treats blank revisions as absent', () => {
-        const outcome = resolveThreadOutcome(
-            result({ revisedCritique: '   ', revisedSuggestion: '' })
-        )
+    it('treats blank critique and empty edits as absent', () => {
+        const outcome = resolveThreadOutcome(result({ revisedCritique: '   ', revisedEdits: [] }))
         expect(outcome).toEqual({
             kind: 'hold',
             reply: 'Fair point, but the repetition still reads as an accident.',
             revisedCritique: null,
-            revisedSuggestion: null
+            revisedEdits: null
         })
+    })
+
+    it('rejects a revised replace without text at the contract boundary', () => {
+        expect(
+            threadTurnResultSchema.safeParse({
+                kind: 'thread-turn',
+                reply: 'Holding.',
+                revisedEdits: [{ op: 'replace' }]
+            }).success
+        ).toBe(false)
     })
 
     it('concedes, ignoring any revision sent alongside', () => {
@@ -88,7 +96,7 @@ describe('resolveThreadOutcome', () => {
             result({
                 concede: true,
                 reply: 'You are right, the repetition is deliberate.',
-                revisedSuggestion: 'something else'
+                revisedEdits: [{ op: 'replace', text: 'something else' }]
             })
         )
         expect(outcome).toEqual({

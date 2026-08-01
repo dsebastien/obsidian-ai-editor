@@ -32,6 +32,7 @@ export function makeState(overrides: Partial<EditorRunState> = {}): EditorRunSta
         error: null,
         continuing: false,
         continuationError: null,
+        salvage: null,
         ...overrides
     }
 }
@@ -40,6 +41,7 @@ export interface FindingFixture {
     readonly editorId: string
     readonly quote: string
     readonly critique: string
+    /** Shorthand: an own-quote-less replace of the finding's span (contract v2). */
     readonly suggestion?: string
     readonly severity?: 'info' | 'suggestion' | 'warning'
     readonly anchor?: Anchor | null
@@ -72,6 +74,9 @@ export class FakeRunHandle implements RunHandle {
         this.panelState = options.panel ?? null
         this.panelSettled = options.panelSettled ?? Promise.resolve()
         for (const fixture of findingFixtures) {
+            const anchor = fixture.anchor === undefined ? createAnchor(0, 5) : fixture.anchor
+            const anchoredText = anchor === null ? null : fixture.quote
+            const matchStrategy = anchor === null ? null : ('exact' as const)
             this.findings.add({
                 id: asFindingId(generateId()),
                 runId: asRunId('run-1'),
@@ -79,12 +84,26 @@ export class FakeRunHandle implements RunHandle {
                 raw: rawFindingSchema.parse({
                     quote: fixture.quote,
                     critique: fixture.critique,
-                    ...(fixture.suggestion === undefined ? {} : { suggestion: fixture.suggestion }),
+                    ...(fixture.suggestion === undefined
+                        ? {}
+                        : { edits: [{ op: 'replace', text: fixture.suggestion }] }),
                     ...(fixture.severity === undefined ? {} : { severity: fixture.severity })
                 }),
-                anchor: fixture.anchor === undefined ? createAnchor(0, 5) : fixture.anchor,
-                anchoredText: fixture.anchor === null ? null : fixture.quote,
-                matchStrategy: fixture.anchor === null ? null : 'exact'
+                anchor,
+                anchoredText,
+                matchStrategy,
+                edits:
+                    fixture.suggestion === undefined
+                        ? []
+                        : [
+                              {
+                                  op: 'replace',
+                                  text: fixture.suggestion,
+                                  anchor,
+                                  anchoredText,
+                                  matchStrategy
+                              }
+                          ]
             })
         }
     }

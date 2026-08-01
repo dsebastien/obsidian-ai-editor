@@ -21,6 +21,8 @@ describe('rawFindingSchema', () => {
         })
         expect(finding.severity).toEqual('suggestion')
         expect(finding.evidence).toEqual([])
+        expect(finding.edits).toEqual([])
+        expect(finding.invalidProposal).toBeFalse()
     })
 
     it('accepts a full finding', () => {
@@ -30,7 +32,7 @@ describe('rawFindingSchema', () => {
             suffix: ', and Docker Hub runs there',
             occurrence: 0,
             critique: 'Uncited factual claim.',
-            suggestion: 'AWS us-east-1 was degraded (see incident report)',
+            edits: [{ op: 'replace', text: 'AWS us-east-1 was degraded (see incident report)' }],
             rationale: 'Adds the citation.',
             severity: 'warning',
             confidence: 0.9,
@@ -43,6 +45,7 @@ describe('rawFindingSchema', () => {
             ]
         })
         expect(finding.evidence.length).toEqual(1)
+        expect(finding.edits).toHaveLength(1)
     })
 
     it('rejects an empty quote', () => {

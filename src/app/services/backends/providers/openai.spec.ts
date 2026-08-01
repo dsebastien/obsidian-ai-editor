@@ -215,7 +215,10 @@ describe('openAiAdapter.buildRequest', () => {
 
 describe('openAiAdapter.parseBufferedResponse', () => {
     it('parses a valid review result', () => {
-        const result = openAiAdapter.parseBufferedResponse(chatResponse(validReviewResult()))
+        const { result, salvage } = openAiAdapter.parseBufferedResponse(
+            chatResponse(validReviewResult())
+        )
+        expect(salvage).toBeNull()
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.findings).toHaveLength(1)
@@ -224,7 +227,7 @@ describe('openAiAdapter.parseBufferedResponse', () => {
     })
 
     it('parses a valid aggregate-panel result', () => {
-        const result = openAiAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
+        const { result } = openAiAdapter.parseBufferedResponse(chatResponse(validPanelResult()))
         expect(result.kind).toBe('aggregate-panel')
         if (result.kind === 'aggregate-panel') {
             expect(result.topFixes.map((fix) => fix.action)).toEqual([
@@ -243,16 +246,18 @@ describe('openAiAdapter.parseBufferedResponse', () => {
                 }
             ]
         }
-        expect(openAiAdapter.parseBufferedResponse(raw).kind).toBe('review')
+        expect(openAiAdapter.parseBufferedResponse(raw).result.kind).toBe('review')
     })
 
-    it('throws invalid-output on schema-violating content', () => {
-        try {
-            openAiAdapter.parseBufferedResponse(chatResponse(wrongSchemaResult()))
-            expect.unreachable()
-        } catch (error) {
-            expect((error as ProviderError).code).toBe('invalid-output')
+    it('salvages a schema-violating finding instead of failing the review', () => {
+        const { result, salvage } = openAiAdapter.parseBufferedResponse(
+            chatResponse(wrongSchemaResult())
+        )
+        if (result.kind !== 'review') {
+            throw new Error('expected a review result')
         }
+        expect(result.findings).toEqual([])
+        expect(salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
     })
 
     it('throws invalid-output on non-JSON content', () => {

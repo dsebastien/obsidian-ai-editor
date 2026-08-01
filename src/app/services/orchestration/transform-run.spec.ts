@@ -292,6 +292,8 @@ describe('TransformRunHandle protocol', () => {
                         finding: {
                             quote: 'The selected',
                             critique: 'off-contract',
+                            edits: [],
+                            invalidProposal: false,
                             severity: 'suggestion',
                             evidence: []
                         }

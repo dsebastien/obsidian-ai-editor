@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 import { asFindingId } from '../../domain/ids'
 import { createSnapshot } from '../../domain/snapshot'
-import type { OperationEvent, RawFinding, ReviewRequest } from '../../domain/operations/contract'
+import type {
+    OperationEvent,
+    OperationResult,
+    RawFinding,
+    ReviewRequest,
+    ThreadTurnRequest
+} from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import { RunController, type RunEditorSpec } from './run-controller'
 
@@ -15,7 +21,8 @@ function raw(overrides: Partial<RawFinding> = {}): RawFinding {
     return {
         quote: 'quick brown',
         critique: 'Too generic',
-        suggestion: 'swift auburn',
+        edits: [{ op: 'replace', text: 'swift auburn' }],
+        invalidProposal: false,
         severity: 'suggestion',
         evidence: [],
         ...overrides
@@ -78,7 +85,11 @@ describe('RunController happy path', () => {
         const beta = scriptedEditor('beta', (runId) => [
             finding(
                 runId,
-                raw({ quote: 'lazy dog', critique: 'Cliché', suggestion: 'idle hound' })
+                raw({
+                    quote: 'lazy dog',
+                    critique: 'Cliché',
+                    edits: [{ op: 'replace', text: 'idle hound' }]
+                })
             ),
             result(runId, [])
         ])
@@ -117,7 +128,7 @@ describe('RunController happy path', () => {
     it('ingests buffered result findings and dedupes streamed duplicates', async () => {
         const controller = new RunController()
         const streamedAndBuffered = raw()
-        const bufferedOnly = raw({ quote: 'lazy dog', critique: 'Other', suggestion: undefined })
+        const bufferedOnly = raw({ quote: 'lazy dog', critique: 'Other', edits: [] })
         const editor = scriptedEditor('buffered', (runId) => [
             finding(runId, streamedAndBuffered),
             result(runId, [streamedAndBuffered, bufferedOnly])
@@ -133,13 +144,13 @@ describe('RunController happy path', () => {
         const first = raw({
             quote: 'fox',
             critique: 'Overused',
-            suggestion: undefined,
+            edits: [],
             occurrence: 0
         })
         const second = raw({
             quote: 'fox',
             critique: 'Overused',
-            suggestion: undefined,
+            edits: [],
             occurrence: 1
         })
         const editor = scriptedEditor('occ', (runId) => [
@@ -345,7 +356,7 @@ describe('RunController event protocol', () => {
                 yield {
                     type: 'result',
                     runId: request.runId,
-                    result: { kind: 'refine-proposal', suggestion: 'nope' }
+                    result: { kind: 'insert-at', insertion: 'nope', evidence: [] }
                 }
             }
         }
@@ -427,7 +438,7 @@ describe('RunController anchoring outcomes', () => {
         const controller = new RunController()
         // "The " appears twice with identical neighborhoods → ambiguous.
         const editor = scriptedEditor('ambiguous', (runId) => [
-            result(runId, [raw({ quote: 'The', suggestion: 'A' })])
+            result(runId, [raw({ quote: 'The', edits: [{ op: 'replace', text: 'A' }] })])
         ])
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
         await run.settled
@@ -444,8 +455,13 @@ describe('RunController anchoring outcomes', () => {
         const controller = new RunController()
         const editor = scriptedEditor('hinted', (runId) => [
             result(runId, [
-                raw({ quote: 'The', prefix: 'lazy dog. ', suggestion: 'A' }),
-                raw({ quote: 'fox', occurrence: 1, critique: 'Second fox', suggestion: 'vixen' })
+                raw({ quote: 'The', prefix: 'lazy dog. ', edits: [{ op: 'replace', text: 'A' }] }),
+                raw({
+                    quote: 'fox',
+                    occurrence: 1,
+                    critique: 'Second fox',
+                    edits: [{ op: 'replace', text: 'vixen' }]
+                })
             ])
         ])
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
@@ -472,7 +488,11 @@ describe('RunController edits & acceptance', () => {
         const editor = scriptedEditor('editing', (runId) => [
             result(runId, [
                 raw(), // "quick brown" [4, 15)
-                raw({ quote: 'lazy dog', critique: 'Cliché', suggestion: 'idle hound' }) // [35, 43)
+                raw({
+                    quote: 'lazy dog',
+                    critique: 'Cliché',
+                    edits: [{ op: 'replace', text: 'idle hound' }]
+                }) // [35, 43)
             ])
         ])
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
@@ -506,7 +526,11 @@ describe('RunController edits & acceptance', () => {
                 // Arrives after the edits below: quote 'lazy dog' is [35, 43)
                 // in the snapshot but must be stored in CURRENT coordinates.
                 yield result(request.runId, [
-                    raw({ quote: 'lazy dog', critique: 'Cliché', suggestion: 'idle hound' })
+                    raw({
+                        quote: 'lazy dog',
+                        critique: 'Cliché',
+                        edits: [{ op: 'replace', text: 'idle hound' }]
+                    })
                 ])
             }
         }
@@ -1034,7 +1058,7 @@ describe('RunHandle.retryEditor (per-editor retry)', () => {
                         quote: 'fox',
                         occurrence: 1,
                         critique: 'Second fox',
-                        suggestion: 'vixen'
+                        edits: [{ op: 'replace', text: 'vixen' }]
                     })
                 ])
             }
@@ -1827,7 +1851,7 @@ describe('RunHandle.continueEditor', () => {
         const edited = `PREFIX ${DOC}`
         const { spec } = perAttempt('alpha', [
             (runId) => [result(runId, [])],
-            (runId) => [result(runId, [raw({ quote: 'quick brown', suggestion: undefined })])]
+            (runId) => [result(runId, [raw({ quote: 'quick brown', edits: [] })])]
         ])
         const controller = new RunController()
         const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
@@ -1979,5 +2003,173 @@ describe('RunHandle.continueEditor', () => {
         })
         await run.panelSettled
         expect(run.getPanelState()?.memberNames).toEqual(['Editor alpha', 'Editor beta'])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Contract v2: per-edit anchoring, salvage reporting, thread revisions
+// ---------------------------------------------------------------------------
+
+describe('RunController per-edit anchoring (contract v2)', () => {
+    // DOC = 'The quick brown fox jumps over the lazy dog. The fox is fast.'
+    it('an edit without its own quote copies the finding anchor; one with a quote anchors itself', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('v2', (runId) => [
+            result(runId, [
+                raw({
+                    quote: 'quick brown',
+                    edits: [
+                        { op: 'replace', text: 'swift auburn' },
+                        { op: 'insert-before', quote: 'lazy dog', text: 'famously ' }
+                    ]
+                })
+            ])
+        ])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        const tracked = run.findings.list()[0]
+        expect(tracked?.anchor).toEqual({ from: 4, to: 15, state: 'anchored' })
+        expect(tracked?.edits).toHaveLength(2)
+        // Own-quote-less edit: the finding's anchor, copied.
+        expect(tracked?.edits[0]?.anchor).toEqual({ from: 4, to: 15, state: 'anchored' })
+        expect(tracked?.edits[0]?.anchoredText).toEqual('quick brown')
+        // Own-quote edit: anchored independently ('lazy dog' at [35, 43)).
+        expect(tracked?.edits[1]?.anchor).toEqual({ from: 35, to: 43, state: 'anchored' })
+        expect(tracked?.edits[1]?.anchoredText).toEqual('lazy dog')
+        // The whole proposal is applicable — accept returns both changes.
+        const accepted = run.findings.accept(tracked!.id, DOC)
+        expect(accepted.ok).toBeTrue()
+        if (accepted.ok) {
+            expect(accepted.changes).toEqual([
+                { from: 4, to: 15, insert: 'swift auburn' },
+                { from: 35, to: 35, insert: 'famously ' }
+            ])
+        }
+    })
+
+    it('an edit whose own quote cannot be located leaves the WHOLE proposal display-only', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('v2-miss', (runId) => [
+            result(runId, [
+                raw({
+                    quote: 'quick brown',
+                    edits: [
+                        { op: 'replace', text: 'swift auburn' },
+                        { op: 'delete', quote: 'not in the document' }
+                    ]
+                })
+            ])
+        ])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        const tracked = run.findings.list()[0]
+        expect(tracked?.anchor).not.toBeNull()
+        expect(tracked?.edits[1]?.anchor).toBeNull()
+        expect(run.findings.isActionable(tracked!.id)).toBeFalse()
+    })
+})
+
+describe('RunController salvage reporting (contract v2)', () => {
+    it('records the result event salvage on the editor state, accumulating across passes', async () => {
+        const controller = new RunController()
+        const editor: RunEditorSpec = {
+            editorId: 'salvager',
+            editorName: 'Salvager',
+            execute: async function* (request) {
+                await Promise.resolve()
+                yield {
+                    type: 'result',
+                    runId: request.runId,
+                    result: { kind: 'review', findings: [raw()] },
+                    salvage: { discardedFindings: 2, invalidProposals: 1 }
+                }
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        expect(run.getEditorState('salvager')?.salvage).toEqual({
+            discardedFindings: 2,
+            invalidProposals: 1
+        })
+    })
+
+    it('stays null when nothing was salvaged', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [scriptedEditor('clean', (runId) => [result(runId, [raw()])])]
+        })
+        await run.settled
+        expect(run.getEditorState('clean')?.salvage).toBeNull()
+    })
+})
+
+describe('RunController thread revisions (contract v2)', () => {
+    function threadExecutor(
+        resultBody: Omit<Extract<OperationResult, { kind: 'thread-turn' }>, 'kind'>
+    ): (request: ThreadTurnRequest, signal: AbortSignal) => AsyncIterable<OperationEvent> {
+        return async function* (request) {
+            await Promise.resolve()
+            yield {
+                type: 'result',
+                runId: request.runId,
+                result: { kind: 'thread-turn', ...resultBody }
+            }
+        }
+    }
+
+    it('anchors revisedEdits against the live text supplied by currentText', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [scriptedEditor('rev', (runId) => [result(runId, [raw()])])]
+        })
+        await run.settled
+        const tracked = run.findings.list()[0]!
+        const begun = run.startThreadTurn({
+            findingId: tracked.id,
+            message: 'push back',
+            quote: 'quick brown',
+            currentText: () => DOC,
+            execute: threadExecutor({
+                reply: 'Revised.',
+                concede: false,
+                revisedEdits: [{ op: 'insert-after', quote: 'lazy dog', text: '!' }]
+            })
+        })
+        expect(begun.ok).toBeTrue()
+        if (!begun.ok) return
+        const resolution = await begun.settled
+        expect(resolution.status).toEqual('held')
+        const revised = run.findings.get(tracked.id)
+        expect(revised?.edits).toHaveLength(1)
+        expect(revised?.edits[0]?.anchor).toEqual({ from: 35, to: 43, state: 'anchored' })
+        expect(run.findings.isActionable(tracked.id)).toBeTrue()
+    })
+
+    it('degrades a revision to display-only when no live text is available', async () => {
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [scriptedEditor('rev2', (runId) => [result(runId, [raw()])])]
+        })
+        await run.settled
+        const tracked = run.findings.list()[0]!
+        const begun = run.startThreadTurn({
+            findingId: tracked.id,
+            message: 'push back',
+            quote: 'quick brown',
+            currentText: () => null,
+            execute: threadExecutor({
+                reply: 'Revised.',
+                concede: false,
+                revisedEdits: [{ op: 'replace', text: 'anything' }]
+            })
+        })
+        expect(begun.ok).toBeTrue()
+        if (!begun.ok) return
+        await begun.settled
+        expect(run.findings.get(tracked.id)?.edits[0]?.anchor).toBeNull()
+        expect(run.findings.isActionable(tracked.id)).toBeFalse()
     })
 })

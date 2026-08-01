@@ -1,5 +1,5 @@
 import type { Anchor } from '../anchoring/anchor'
-import type { ThreadTurnResult } from './contract'
+import type { RawEdit, ThreadTurnResult } from './contract'
 
 /**
  * Per-finding push-back threads (plan M4, design §6 decision 1: threads are
@@ -91,7 +91,11 @@ export type ThreadOutcome =
           readonly kind: 'hold'
           readonly reply: string
           readonly revisedCritique: string | null
-          readonly revisedSuggestion: string | null
+          /**
+           * Revised proposal (contract v2): replaces the finding's edits
+           * wholesale when present. `null` = the proposal is unchanged.
+           */
+          readonly revisedEdits: readonly RawEdit[] | null
       }
 
 /**
@@ -109,7 +113,10 @@ export function resolveThreadOutcome(result: ThreadTurnResult): ThreadOutcome {
         kind: 'hold',
         reply,
         revisedCritique: blankToNull(result.revisedCritique),
-        revisedSuggestion: blankToNull(result.revisedSuggestion)
+        revisedEdits:
+            result.revisedEdits === undefined || result.revisedEdits.length === 0
+                ? null
+                : result.revisedEdits
     }
 }
 

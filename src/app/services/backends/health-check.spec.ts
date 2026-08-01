@@ -203,7 +203,10 @@ describe('checkBackendHealth', () => {
         })
         const body = calls[0]?.body ?? ''
         expect(body).toContain('quick brown fox')
-        expect(body.length).toBeLessThan(4_000)
+        // Bound on the fixed prompt overhead (schema + format rules), NOT on
+        // the document: it grew with the v2 edits schema and may grow again,
+        // but a real note leaking in would blow far past this.
+        expect(body.length).toBeLessThan(8_000)
     })
 
     it('reports an unusable answer when the model ignores the structure', async () => {

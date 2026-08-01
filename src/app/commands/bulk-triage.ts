@@ -1,6 +1,6 @@
-import { verifyPrecondition } from '../domain/anchoring/anchor'
-import type { AnchorState } from '../domain/anchoring/anchor'
 import type { FindingStatus } from '../services/orchestration/finding-store'
+import type { EditChange, TrackedEdit } from '../domain/operations/edit-apply'
+import { changesConflict, editsApplicable, planEditChanges } from '../domain/operations/edit-apply'
 
 /**
  * Pure planning logic for bulk triage (plan M4 "Bulk triage": per-editor
@@ -10,11 +10,13 @@ import type { FindingStatus } from '../services/orchestration/finding-store'
  * text; these functions decide what can be applied, what must be skipped and
  * why, and how to word the outcome.
  *
- * Business Rules #2/#3 are enforced here as well as in the store: a
- * suggestion is only planned when the live document still contains exactly
- * the anchored text (`verifyPrecondition`), and overlapping suggestions never
- * both apply — the earlier anchor wins, the later one is reported as skipped
- * so the user knows to re-review that span.
+ * Contract v2: a finding's proposal is a SET of edits, applied all-or-nothing
+ * (design doc §4) — so the planning unit is the finding, and a finding whose
+ * edit-set overlaps an earlier planned finding's is skipped WHOLE. Business
+ * Rules #2/#3 are enforced here as well as in the store: every edit must
+ * still verify against the live text (`planEditChanges`), and overlapping
+ * proposals never both apply — the earlier one wins, the later one is
+ * reported as skipped so the user knows to re-review that span.
  */
 
 /**
@@ -24,99 +26,102 @@ import type { FindingStatus } from '../services/orchestration/finding-store'
 export interface BulkCandidateFinding {
     readonly id: string
     readonly status: FindingStatus
-    readonly anchor: {
-        readonly from: number
-        readonly to: number
-        readonly state: AnchorState
-    } | null
-    /** Snapshot text at the anchor — the accept precondition. */
-    readonly anchoredText: string | null
-    readonly raw: { readonly suggestion?: string | undefined }
+    readonly edits: readonly TrackedEdit[]
 }
 
-/** One planned replacement, in CURRENT document coordinates. */
-export interface BulkAcceptEdit {
+/** One planned finding: its full change set, in CURRENT document coordinates. */
+export interface BulkAcceptFinding {
     readonly findingId: string
-    readonly from: number
-    readonly to: number
-    readonly insert: string
+    /** Sorted, mutually conflict-free (guaranteed by `planEditChanges`). */
+    readonly changes: readonly EditChange[]
 }
 
 export interface BulkAcceptPlan {
     /**
-     * The edits to dispatch, sorted by position and mutually
-     * non-overlapping — dispatchable as ONE CM6 transaction (single undo
-     * step) because every offset refers to the same pre-transaction document.
+     * The findings to apply, in document order. The concatenation of their
+     * `changes` (already sorted, mutually non-overlapping across findings) is
+     * dispatchable as ONE CM6 transaction (single undo step) because every
+     * offset refers to the same pre-transaction document.
      */
-    readonly edits: readonly BulkAcceptEdit[]
-    /** Findings dropped because an earlier planned edit covers their span. */
+    readonly findings: readonly BulkAcceptFinding[]
+    /** Findings dropped because an earlier planned finding covers their span. */
     readonly skippedOverlapping: number
     /**
-     * Findings whose suggestion no longer matches the live text (edited since
-     * the run, or the anchor went stale) — never fuzzy-relocated (BR #3).
+     * Findings whose proposal no longer matches the live text (edited since
+     * the run, or an anchor went stale) — never fuzzy-relocated (BR #3).
      */
     readonly skippedChanged: number
 }
 
 /**
  * Whether a finding could be accepted at all, ignoring the document text:
- * non-terminal, anchored, not stale, and carrying a suggestion. Deliberately
- * mirrors `FindingStore.isActionable` — the panel's "Accept all (n)" count
- * and this planner must advertise the same set (pinned by spec).
+ * non-terminal, with every edit anchored and mutually conflict-free.
+ * Deliberately mirrors `FindingStore.isActionable` — the panel's "Accept all
+ * (n)" count and this planner must advertise the same set (pinned by spec).
  */
 export function isBulkAcceptable(finding: BulkCandidateFinding): boolean {
     if (finding.status !== 'open' && finding.status !== 'preview') {
         return false
     }
-    if (finding.anchor === null || finding.anchor.state !== 'anchored') {
-        return false
-    }
-    if (finding.anchoredText === null) {
-        return false
-    }
-    const suggestion = finding.raw.suggestion
-    return typeof suggestion === 'string' && suggestion.length > 0
+    return editsApplicable(finding.edits)
 }
 
 /**
  * Plans "accept all non-conflicting" over the candidates: every acceptable
- * finding whose precondition holds against `currentText`, in document order,
- * skipping any whose span overlaps an already-planned edit.
+ * finding whose full edit plan verifies against `currentText`, in document
+ * order, skipping any finding whose changes overlap an already-planned one.
  *
- * Findings that are not acceptable by shape (terminal, unanchored, no
- * suggestion) are ignored silently — they were never offered. Adjacent spans
- * (`from === previous.to`) do NOT conflict: CM6 accepts touching changes in
- * one transaction.
+ * Findings that are not acceptable by shape (terminal, unanchored,
+ * conflicting or empty proposal) are ignored silently — they were never
+ * offered. Adjacent spans (`from === previous.to`) do NOT conflict: CM6
+ * accepts touching changes in one transaction. Two zero-width insertions at
+ * the same position DO (their order would be arbitrary — same rule as inside
+ * one finding).
  */
 export function planBulkAccept(
     candidates: readonly BulkCandidateFinding[],
     currentText: string
 ): BulkAcceptPlan {
-    const acceptable = candidates.filter(isBulkAcceptable).sort(byPosition)
-    const edits: BulkAcceptEdit[] = []
-    let skippedOverlapping = 0
+    const planned: { findingId: string; changes: readonly EditChange[] }[] = []
     let skippedChanged = 0
-    let lastTo = -1
-    for (const finding of acceptable) {
-        // Both are non-null for acceptable findings; narrowed for the compiler.
-        const anchor = finding.anchor
-        const anchoredText = finding.anchoredText
-        const insert = finding.raw.suggestion
-        if (anchor === null || anchoredText === null || insert === undefined) {
+    for (const finding of candidates) {
+        if (!isBulkAcceptable(finding)) {
             continue
         }
-        if (!verifyPrecondition(currentText, anchor, anchoredText)) {
+        const plan = planEditChanges(finding.edits, currentText)
+        if (!plan.ok) {
+            // `editsApplicable` passed, so the only live-text failure left is
+            // the precondition (BR #3) — count it for the Notice.
             skippedChanged += 1
             continue
         }
-        if (anchor.from < lastTo) {
+        planned.push({ findingId: finding.id, changes: plan.changes })
+    }
+    // Document order, then resolve cross-finding overlaps: earlier wins, and
+    // the conflict rule is the SAME one edits within a finding obey
+    // (`changesConflict`) — touching is fine, overlap and same-position
+    // zero-width insertions are not.
+    planned.sort(
+        (a, b) =>
+            firstFrom(a.changes) - firstFrom(b.changes) ||
+            (a.findingId < b.findingId ? -1 : a.findingId > b.findingId ? 1 : 0)
+    )
+    const findings: BulkAcceptFinding[] = []
+    const accepted: EditChange[] = []
+    let skippedOverlapping = 0
+    for (const candidate of planned) {
+        if (changesConflict([...accepted, ...candidate.changes])) {
             skippedOverlapping += 1
             continue
         }
-        edits.push({ findingId: finding.id, from: anchor.from, to: anchor.to, insert })
-        lastTo = anchor.to
+        findings.push(candidate)
+        accepted.push(...candidate.changes)
     }
-    return { edits, skippedOverlapping, skippedChanged }
+    return { findings, skippedOverlapping, skippedChanged }
+}
+
+function firstFrom(changes: readonly EditChange[]): number {
+    return changes.reduce((min, change) => Math.min(min, change.from), Number.MAX_SAFE_INTEGER)
 }
 
 /** The findings a "dismiss all" applies to: every non-terminal candidate. */
@@ -134,7 +139,7 @@ export function dismissableFindingIds(
  * smaller than the plan); the plan's skip counts explain the rest.
  */
 export function bulkAcceptNotice(applied: number, plan: BulkAcceptPlan): string {
-    const skippedChanged = plan.skippedChanged + (plan.edits.length - applied)
+    const skippedChanged = plan.skippedChanged + (plan.findings.length - applied)
     const reasons: string[] = []
     if (plan.skippedOverlapping > 0) {
         reasons.push(`${plan.skippedOverlapping} overlapping`)
@@ -156,17 +161,4 @@ export function bulkDismissNotice(dismissed: number): string {
 
 function countLabel(count: number): string {
     return count === 1 ? '1 finding' : `${count} findings`
-}
-
-function byPosition(a: BulkCandidateFinding, b: BulkCandidateFinding): number {
-    const aAnchor = a.anchor
-    const bAnchor = b.anchor
-    if (!aAnchor || !bAnchor) {
-        return 0
-    }
-    return (
-        aAnchor.from - bAnchor.from ||
-        aAnchor.to - bAnchor.to ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-    )
 }

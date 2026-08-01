@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { createAnchor, type TextChange } from '../../domain/anchoring/anchor'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
+import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
 import { FindingStore, type NewFinding } from './finding-store'
 
@@ -11,11 +12,28 @@ function makeRaw(overrides: Partial<RawFinding> = {}): RawFinding {
     return {
         quote: 'quick brown',
         critique: 'Too generic',
-        suggestion: 'swift auburn',
+        edits: [{ op: 'replace', text: 'swift auburn' }],
+        invalidProposal: false,
         severity: 'suggestion',
         evidence: [],
         ...overrides
     }
+}
+
+/** The tracked form of the default raw edit: an anchored span replace. */
+function anchoredEdit(text = 'swift auburn'): TrackedEdit {
+    return {
+        op: 'replace',
+        text,
+        anchor: createAnchor(4, 15),
+        anchoredText: 'quick brown',
+        matchStrategy: 'exact'
+    }
+}
+
+/** A display-only tracked edit (target never located). */
+function unanchoredEdit(text = 'swift auburn'): TrackedEdit {
+    return { op: 'replace', text, anchor: null, anchoredText: null, matchStrategy: null }
 }
 
 function makeInput(overrides: Partial<NewFinding> = {}): NewFinding {
@@ -28,6 +46,7 @@ function makeInput(overrides: Partial<NewFinding> = {}): NewFinding {
         anchor: createAnchor(4, 15),
         anchoredText: 'quick brown',
         matchStrategy: 'exact',
+        edits: [anchoredEdit()],
         ...overrides
     }
 }
@@ -65,15 +84,20 @@ describe('FindingStore.preview', () => {
     it('rejects preview for unanchored findings', () => {
         const store = new FindingStore()
         const finding = store.add(
-            makeInput({ anchor: null, anchoredText: null, matchStrategy: null })
+            makeInput({
+                anchor: null,
+                anchoredText: null,
+                matchStrategy: null,
+                edits: [unanchoredEdit()]
+            })
         )
         expect(store.preview(finding.id)).toBeNull()
         expect(store.isActionable(finding.id)).toBeFalse()
     })
 
-    it('rejects preview when there is no suggestion', () => {
+    it('rejects preview when the finding proposes nothing', () => {
         const store = new FindingStore()
-        const finding = store.add(makeInput({ raw: makeRaw({ suggestion: undefined }) }))
+        const finding = store.add(makeInput({ raw: makeRaw({ edits: [] }), edits: [] }))
         expect(store.preview(finding.id)).toBeNull()
     })
 
@@ -99,6 +123,10 @@ describe('FindingStore.accept', () => {
         const finding = store.add(makeInput())
         const result = store.accept(finding.id, DOC)
         expect(result.ok).toBeTrue()
+        if (result.ok) {
+            // The full change set, verified and sorted — one transaction.
+            expect(result.changes).toEqual([{ from: 4, to: 15, insert: 'swift auburn' }])
+        }
         expect(store.get(finding.id)?.status).toEqual('accepted')
     })
 
@@ -125,7 +153,12 @@ describe('FindingStore.accept', () => {
     it('fails with unanchored for display-only findings', () => {
         const store = new FindingStore()
         const finding = store.add(
-            makeInput({ anchor: null, anchoredText: null, matchStrategy: null })
+            makeInput({
+                anchor: null,
+                anchoredText: null,
+                matchStrategy: null,
+                edits: [unanchoredEdit()]
+            })
         )
         expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'unanchored' })
     })
@@ -138,10 +171,28 @@ describe('FindingStore.accept', () => {
         expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'stale' })
     })
 
-    it('fails with no-suggestion when there is nothing to apply', () => {
+    it('fails with no-proposal when there is nothing to apply', () => {
         const store = new FindingStore()
-        const finding = store.add(makeInput({ raw: makeRaw({ suggestion: undefined }) }))
-        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'no-suggestion' })
+        const finding = store.add(makeInput({ raw: makeRaw({ edits: [] }), edits: [] }))
+        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'no-proposal' })
+    })
+
+    it('a multi-edit proposal applies all-or-nothing: one bad edit blocks the set', () => {
+        const store = new FindingStore()
+        const finding = store.add(makeInput({ edits: [anchoredEdit(), unanchoredEdit('extra')] }))
+        expect(store.isActionable(finding.id)).toBeFalse()
+        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'unanchored' })
+    })
+
+    it('an insert edit leaves the quoted text intact (the #17 fix)', () => {
+        const store = new FindingStore()
+        const insert: TrackedEdit = { ...anchoredEdit('NEW LINE\n'), op: 'insert-before' }
+        const finding = store.add(makeInput({ edits: [insert] }))
+        const result = store.accept(finding.id, DOC)
+        expect(result.ok).toBeTrue()
+        if (result.ok) {
+            expect(result.changes).toEqual([{ from: 4, to: 4, insert: 'NEW LINE\n' }])
+        }
     })
 
     it('fails with precondition-failed when the text drifted without remapping', () => {
@@ -176,7 +227,12 @@ describe('FindingStore.reject / dismiss', () => {
     it('allows dismissing stale and unanchored findings', () => {
         const store = new FindingStore()
         const unanchored = store.add(
-            makeInput({ anchor: null, anchoredText: null, matchStrategy: null })
+            makeInput({
+                anchor: null,
+                anchoredText: null,
+                matchStrategy: null,
+                edits: [unanchoredEdit()]
+            })
         )
         const anchored = store.add(makeInput())
         store.applyTextChanges([{ from: 5, to: 7, insertedLength: 0 }])
@@ -198,7 +254,12 @@ describe('FindingStore.supersede', () => {
     it('marks a finding superseded by an existing successor', () => {
         const store = new FindingStore()
         const original = store.add(makeInput())
-        const successor = store.add(makeInput({ raw: makeRaw({ suggestion: 'nimble brown' }) }))
+        const successor = store.add(
+            makeInput({
+                raw: makeRaw({ edits: [{ op: 'replace', text: 'nimble brown' }] }),
+                edits: [anchoredEdit('nimble brown')]
+            })
+        )
         const updated = store.supersede(original.id, successor.id)
         expect(updated?.status).toEqual('superseded')
         expect(updated?.supersededBy).toEqual(successor.id)
@@ -252,7 +313,14 @@ describe('FindingStore.applyTextChanges', () => {
     it('ignores unanchored findings and empty change lists', () => {
         let notifications = 0
         const store = new FindingStore(() => notifications++)
-        store.add(makeInput({ anchor: null, anchoredText: null, matchStrategy: null }))
+        store.add(
+            makeInput({
+                anchor: null,
+                anchoredText: null,
+                matchStrategy: null,
+                edits: [unanchoredEdit()]
+            })
+        )
         const before = notifications
         store.applyTextChanges([])
         store.applyTextChanges([{ from: 0, to: 1, insertedLength: 0 }])
@@ -362,7 +430,7 @@ describe('FindingStore.beginThreadTurn', () => {
                 kind: 'hold',
                 reply: `reply ${turn}`,
                 revisedCritique: null,
-                revisedSuggestion: null
+                revisedEdits: null
             })
             if (turn < THREAD_MAX_TURNS - 1) {
                 expect(store.beginThreadTurn(finding.id, `push ${turn}`).ok).toBeTrue()
@@ -385,7 +453,7 @@ describe('FindingStore.completeThreadTurn', () => {
             kind: 'hold',
             reply: 'Still reads as an accident',
             revisedCritique: null,
-            revisedSuggestion: null
+            revisedEdits: null
         })
         expect(held?.thread).toEqual([
             { role: 'user', content: 'I disagree' },
@@ -396,58 +464,71 @@ describe('FindingStore.completeThreadTurn', () => {
         expect(held?.conceded).toBeFalse()
     })
 
-    it('updates critique and suggestion in place, re-deriving actionability', () => {
+    it('updates critique and proposal in place, re-deriving actionability', () => {
         const store = new FindingStore()
         const finding = store.add(makeInput())
         store.beginThreadTurn(finding.id, 'give me something better')
-        const held = store.completeThreadTurn(finding.id, {
-            kind: 'hold',
-            reply: 'Here is a tighter version',
-            revisedCritique: 'The repetition buries the verb',
-            revisedSuggestion: 'swift auburn'
-        })
+        const held = store.completeThreadTurn(
+            finding.id,
+            {
+                kind: 'hold',
+                reply: 'Here is a tighter version',
+                revisedCritique: 'The repetition buries the verb',
+                revisedEdits: [{ op: 'replace', text: 'nimble auburn' }]
+            },
+            // The caller anchored the revision against the live text.
+            [anchoredEdit('nimble auburn')]
+        )
         expect(held?.raw.critique).toEqual('The repetition buries the verb')
-        expect(held?.raw.suggestion).toEqual('swift auburn')
+        expect(held?.raw.edits).toEqual([{ op: 'replace', text: 'nimble auburn' }])
         // Anchor and precondition base untouched → still acceptable.
         expect(held?.anchor).toEqual(finding.anchor)
         expect(held?.anchoredText).toEqual(finding.anchoredText)
         expect(store.isActionable(finding.id)).toBeTrue()
-        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+        const accepted = store.accept(finding.id, DOC)
+        expect(accepted.ok).toBeTrue()
+        if (accepted.ok) {
+            expect(accepted.changes).toEqual([{ from: 4, to: 15, insert: 'nimble auburn' }])
+        }
     })
 
-    it('keeps a revised suggestion display-only when the span went stale', () => {
+    it('degrades a revision to display-only when the caller could not anchor it', () => {
         const store = new FindingStore()
         const finding = store.add(makeInput())
         store.beginThreadTurn(finding.id, 'rework it')
-        // The user edits the span while the turn is in flight.
-        store.applyTextChanges([{ from: 6, to: 9, insertedLength: 1 }])
-        expect(store.get(finding.id)?.anchor?.state).toEqual('stale')
+        // No third argument: the note was closed when the turn landed.
         store.completeThreadTurn(finding.id, {
             kind: 'hold',
             reply: 'Revised',
             revisedCritique: null,
-            revisedSuggestion: 'brand new text'
+            revisedEdits: [{ op: 'replace', text: 'brand new text' }]
         })
-        expect(store.get(finding.id)?.raw.suggestion).toEqual('brand new text')
+        expect(store.get(finding.id)?.raw.edits).toEqual([
+            { op: 'replace', text: 'brand new text' }
+        ])
         expect(store.isActionable(finding.id)).toBeFalse()
-        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'stale' })
+        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'unanchored' })
     })
 
-    it('drops a preview back to open when the suggestion changed', () => {
+    it('drops a preview back to open when the proposal changed', () => {
         const store = new FindingStore()
         const finding = store.add(makeInput())
         store.preview(finding.id)
         store.beginThreadTurn(finding.id, 'rework it')
         expect(
-            store.completeThreadTurn(finding.id, {
-                kind: 'hold',
-                reply: 'Revised',
-                revisedCritique: null,
-                revisedSuggestion: 'brand new text'
-            })?.status
+            store.completeThreadTurn(
+                finding.id,
+                {
+                    kind: 'hold',
+                    reply: 'Revised',
+                    revisedCritique: null,
+                    revisedEdits: [{ op: 'replace', text: 'brand new text' }]
+                },
+                [anchoredEdit('brand new text')]
+            )?.status
         ).toEqual('open')
 
-        // An unchanged suggestion leaves the preview alone.
+        // An unchanged proposal leaves the preview alone.
         const other = store.add(makeInput())
         store.preview(other.id)
         store.beginThreadTurn(other.id, 'why?')
@@ -456,7 +537,7 @@ describe('FindingStore.completeThreadTurn', () => {
                 kind: 'hold',
                 reply: 'Because.',
                 revisedCritique: 'Sharper',
-                revisedSuggestion: null
+                revisedEdits: null
             })?.status
         ).toEqual('preview')
     })

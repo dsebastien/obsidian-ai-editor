@@ -30,7 +30,7 @@ import { StateEffect } from '@codemirror/state'
 import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
-import type { Severity } from '../../domain/operations/contract'
+import type { EditOp, Severity } from '../../domain/operations/contract'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
 import type { ThreadBeginFailure, ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
 import { entityName } from '../entity-label'
@@ -60,12 +60,23 @@ export interface FindingCardData {
     readonly critique: string
     /** The text the finding is about (anchored text, falling back to quote). */
     readonly quote: string
-    /** Proposed replacement, `null` when the finding has no suggestion. */
-    readonly suggestion: string | null
     /**
-     * Whether Accept may currently be offered: suggestion exists AND the
-     * FindingStore reports the finding actionable (anchored, not stale, not
-     * terminal). The accept call re-verifies before anything is applied.
+     * The proposal, one entry per edit (contract v2): the diff is rendered
+     * PER OP — an insertion looks like an insertion, a delete like a delete —
+     * so a wrong operation is visible before Accept, not after (#17).
+     */
+    readonly edits: readonly CardEditData[]
+    /**
+     * True when the editor's proposed edits failed validation and were
+     * stripped (salvage, design §5): the card shows the critique with a
+     * marker instead of pretending the finding was critique-only.
+     */
+    readonly invalidProposal: boolean
+    /**
+     * Whether Accept may currently be offered: the proposal is non-empty AND
+     * the FindingStore reports the finding actionable (every edit anchored,
+     * not stale, conflict-free, not terminal — all-or-nothing, design §4).
+     * The accept call re-verifies before anything is applied.
      */
     readonly acceptable: boolean
     /** Completed push-back exchanges, oldest first (see the thread domain). */
@@ -74,9 +85,22 @@ export interface FindingCardData {
     readonly threadTurn: ThreadTurn | null
 }
 
+/** One rendered edit of a finding's proposal. */
+export interface CardEditData {
+    readonly op: EditOp
+    /** The text the op targets (its anchored text, falling back to its quote). */
+    readonly target: string
+    /** Content the op writes; `''` for `delete`. */
+    readonly text: string
+}
+
 /** Outcome of an accept attempt, resolved by the review controller. */
 export type CardAcceptOutcome =
-    | { readonly ok: true; readonly from: number; readonly to: number; readonly insert: string }
+    | {
+          readonly ok: true
+          /** The proposal's full change set — ONE dispatch, one undo step. */
+          readonly changes: readonly { from: number; to: number; insert: string }[]
+      }
     | { readonly ok: false }
 
 /**
@@ -84,9 +108,9 @@ export type CardAcceptOutcome =
  *
  * `getCardData` returns `null` for findings that must no longer be shown
  * (unknown id, terminal status) — the card drops such sections silently.
- * `acceptFinding` MUST run the FindingStore accept path (precondition against
- * `currentText`, Business Rules #3) and, on success, mark the finding
- * accepted and return the range/replacement to dispatch. `dismissFinding`
+ * `acceptFinding` MUST run the FindingStore accept path (every edit's
+ * precondition against `currentText`, Business Rules #3) and, on success,
+ * mark the finding accepted and return the change set to dispatch. `dismissFinding`
  * marks the finding dismissed; the card removes its decoration.
  */
 export interface FindingLookup {
@@ -339,6 +363,14 @@ export function threadRefusalNotice(reason: ThreadBeginFailure, editorName: stri
 // ---------------------------------------------------------------------------
 // View plugin
 // ---------------------------------------------------------------------------
+
+/** Human wording per edit op, shown above each rendered edit. */
+const EDIT_OP_LABELS: Readonly<Record<EditOp, string>> = {
+    'replace': 'Replace',
+    'insert-before': 'Insert above',
+    'insert-after': 'Insert below',
+    'delete': 'Delete'
+}
 
 const SEVERITY_LABELS: Readonly<Record<Severity, string>> = {
     info: 'Info',
@@ -805,8 +837,15 @@ class FindingCardPlugin implements PluginValue {
         quote.textContent = data.quote
         section.appendChild(quote)
 
-        if (data.suggestion !== null) {
-            section.appendChild(this.renderDiff(data.quote, data.suggestion))
+        if (data.invalidProposal) {
+            const marker = doc.createElement('p')
+            marker.classList.add('editor-ai-daemons-finding-card-invalid-proposal')
+            marker.textContent =
+                'The proposed change could not be validated and was removed — only the critique is shown.'
+            section.appendChild(marker)
+        }
+        for (const edit of data.edits) {
+            section.appendChild(this.renderEdit(edit))
         }
 
         section.appendChild(this.renderActions(data))
@@ -817,21 +856,32 @@ class FindingCardPlugin implements PluginValue {
     }
 
     /**
-     * Plain two-block old/new preview (word-level diffing is a later
-     * milestone): the quoted text struck through, the suggestion below it.
+     * Per-op preview of one edit (contract v2): a replace shows old struck +
+     * new inserted; an insertion shows ONLY the inserted text (the target is
+     * untouched — rendering it struck would misreport the op, which is
+     * exactly the confusion #17 shipped); a delete shows only the struck
+     * target. The op label says in words what the shapes show.
      */
-    private renderDiff(oldText: string, newText: string): HTMLElement {
+    private renderEdit(edit: CardEditData): HTMLElement {
         const doc = this.view.dom.ownerDocument
         const diff = doc.createElement('div')
         diff.classList.add('editor-ai-daemons-finding-card-diff')
-        const oldEl = doc.createElement('del')
-        oldEl.classList.add('editor-ai-daemons-finding-card-diff-old')
-        oldEl.textContent = oldText
-        diff.appendChild(oldEl)
-        const newEl = doc.createElement('ins')
-        newEl.classList.add('editor-ai-daemons-finding-card-diff-new')
-        newEl.textContent = newText
-        diff.appendChild(newEl)
+        const label = doc.createElement('span')
+        label.classList.add('editor-ai-daemons-finding-card-diff-op')
+        label.textContent = EDIT_OP_LABELS[edit.op]
+        diff.appendChild(label)
+        if (edit.op === 'replace' || edit.op === 'delete') {
+            const oldEl = doc.createElement('del')
+            oldEl.classList.add('editor-ai-daemons-finding-card-diff-old')
+            oldEl.textContent = edit.target
+            diff.appendChild(oldEl)
+        }
+        if (edit.op !== 'delete') {
+            const newEl = doc.createElement('ins')
+            newEl.classList.add('editor-ai-daemons-finding-card-diff-new')
+            newEl.textContent = edit.text
+            diff.appendChild(newEl)
+        }
         return diff
     }
 
@@ -840,13 +890,14 @@ class FindingCardPlugin implements PluginValue {
         const actions = doc.createElement('div')
         actions.classList.add('editor-ai-daemons-finding-card-actions')
 
-        if (data.suggestion !== null) {
+        if (data.edits.length > 0) {
             const accept = doc.createElement('button')
             accept.classList.add('editor-ai-daemons-finding-card-accept', 'mod-cta')
             accept.textContent = 'Accept'
             accept.disabled = !data.acceptable
             if (!data.acceptable) {
-                accept.title = 'The text changed since this suggestion was made'
+                accept.title =
+                    'The proposal cannot be applied — the text changed, or a target could not be located'
             }
             accept.addEventListener('click', () => {
                 this.acceptSection(data.findingId)
@@ -1012,7 +1063,11 @@ class FindingCardPlugin implements PluginValue {
         }
         this.closeCard()
         this.view.dispatch({
-            changes: { from: outcome.from, to: outcome.to, insert: outcome.insert },
+            changes: outcome.changes.map((change) => ({
+                from: change.from,
+                to: change.to,
+                insert: change.insert
+            })),
             effects: removeFindingsEffect.of([findingId]),
             annotations: isolateHistory.of('full')
         })

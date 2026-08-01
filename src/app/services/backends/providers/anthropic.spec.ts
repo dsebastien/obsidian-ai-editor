@@ -164,7 +164,10 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
     }
 
     it('parses a valid review result from the forced tool call', () => {
-        const result = anthropicAdapter.parseBufferedResponse(toolUseResponse(validReviewResult()))
+        const { result, salvage } = anthropicAdapter.parseBufferedResponse(
+            toolUseResponse(validReviewResult())
+        )
+        expect(salvage).toBeNull()
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.findings[0]?.quote).toBe('Hello world')
@@ -173,7 +176,9 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
     })
 
     it('parses a valid aggregate-panel result', () => {
-        const result = anthropicAdapter.parseBufferedResponse(toolUseResponse(validPanelResult()))
+        const { result } = anthropicAdapter.parseBufferedResponse(
+            toolUseResponse(validPanelResult())
+        )
         expect(result.kind).toBe('aggregate-panel')
         if (result.kind === 'aggregate-panel') {
             expect(result.recommendation).toBe('needs-work')
@@ -192,7 +197,7 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
             ],
             stop_reason: 'tool_use'
         }
-        const result = anthropicAdapter.parseBufferedResponse(raw)
+        const { result } = anthropicAdapter.parseBufferedResponse(raw)
         expect(result.kind).toBe('review')
         if (result.kind === 'review') {
             expect(result.findings[0]?.quote).toBe('Hello world')
@@ -206,7 +211,7 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
                 { type: 'text', text: JSON.stringify(validReviewResult()) }
             ]
         }
-        expect(anthropicAdapter.parseBufferedResponse(raw).kind).toBe('review')
+        expect(anthropicAdapter.parseBufferedResponse(raw).result.kind).toBe('review')
     })
 
     it('throws invalid-output when only thinking blocks arrived', () => {
@@ -220,17 +225,18 @@ describe('anthropicAdapter.parseBufferedResponse', () => {
         const raw = {
             content: [{ type: 'text', text: JSON.stringify(validReviewResult()) }]
         }
-        expect(anthropicAdapter.parseBufferedResponse(raw).kind).toBe('review')
+        expect(anthropicAdapter.parseBufferedResponse(raw).result.kind).toBe('review')
     })
 
-    it('throws invalid-output on a schema-violating tool input', () => {
-        try {
-            anthropicAdapter.parseBufferedResponse(toolUseResponse(wrongSchemaResult()))
-            expect.unreachable()
-        } catch (error) {
-            expect(error).toBeInstanceOf(ProviderError)
-            expect((error as ProviderError).code).toBe('invalid-output')
+    it('salvages a schema-violating finding instead of failing the review', () => {
+        const { result, salvage } = anthropicAdapter.parseBufferedResponse(
+            toolUseResponse(wrongSchemaResult())
+        )
+        if (result.kind !== 'review') {
+            throw new Error('expected a review result')
         }
+        expect(result.findings).toEqual([])
+        expect(salvage).toEqual({ discardedFindings: 1, invalidProposals: 0 })
     })
 
     it('throws invalid-output on non-JSON text with no tool call', () => {

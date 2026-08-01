@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { asFindingId, asRunId } from '../domain/ids'
 import { FindingStore } from '../services/orchestration/finding-store'
 import type { RawFinding } from '../domain/operations/contract'
+import type { TrackedEdit } from '../domain/operations/edit-apply'
 import {
     bulkAcceptNotice,
     bulkDismissNotice,
@@ -15,26 +16,39 @@ import type { BulkCandidateFinding } from './bulk-triage'
 // Fixtures
 // ---------------------------------------------------------------------------
 
-interface CandidateOptions {
-    readonly id: string
+interface EditOptions {
+    readonly op?: TrackedEdit['op']
     readonly from?: number
     readonly to?: number
     readonly state?: 'anchored' | 'stale'
     readonly anchoredText?: string | null
-    readonly suggestion?: string | undefined
-    readonly status?: BulkCandidateFinding['status']
+    readonly text?: string
     readonly unanchored?: boolean
 }
 
-function candidate(options: CandidateOptions): BulkCandidateFinding {
+function edit(options: EditOptions = {}): TrackedEdit {
     const from = options.from ?? 0
     const to = options.to ?? from + 3
     return {
-        id: options.id,
-        status: options.status ?? 'open',
+        op: options.op ?? 'replace',
+        text: options.text ?? 'ABC',
         anchor: options.unanchored ? null : { from, to, state: options.state ?? 'anchored' },
         anchoredText: options.anchoredText === undefined ? 'abc' : options.anchoredText,
-        raw: { suggestion: options.suggestion === undefined ? 'ABC' : options.suggestion }
+        matchStrategy: options.unanchored ? null : 'exact'
+    }
+}
+
+interface CandidateOptions extends EditOptions {
+    readonly id: string
+    readonly status?: BulkCandidateFinding['status']
+    readonly edits?: readonly TrackedEdit[]
+}
+
+function candidate(options: CandidateOptions): BulkCandidateFinding {
+    return {
+        id: options.id,
+        status: options.status ?? 'open',
+        edits: options.edits ?? [edit(options)]
     }
 }
 
@@ -43,40 +57,51 @@ function candidate(options: CandidateOptions): BulkCandidateFinding {
 // ---------------------------------------------------------------------------
 
 describe('isBulkAcceptable', () => {
-    it('accepts an open, anchored finding carrying a suggestion', () => {
+    it('accepts an open finding whose every edit is anchored', () => {
         expect(isBulkAcceptable(candidate({ id: 'a' }))).toBe(true)
     })
 
-    it('refuses terminal, stale, unanchored and suggestion-less findings', () => {
+    it('refuses terminal, stale, unanchored and proposal-less findings', () => {
         expect(isBulkAcceptable(candidate({ id: 'a', status: 'dismissed' }))).toBe(false)
         expect(isBulkAcceptable(candidate({ id: 'b', state: 'stale' }))).toBe(false)
         expect(isBulkAcceptable(candidate({ id: 'c', unanchored: true }))).toBe(false)
-        expect(isBulkAcceptable(candidate({ id: 'd', suggestion: '' }))).toBe(false)
+        expect(isBulkAcceptable(candidate({ id: 'd', edits: [] }))).toBe(false)
         expect(isBulkAcceptable(candidate({ id: 'e', anchoredText: null }))).toBe(false)
+    })
+
+    it('refuses a finding whose own edits conflict (all-or-nothing)', () => {
+        expect(
+            isBulkAcceptable(
+                candidate({
+                    id: 'conflicted',
+                    edits: [edit({ from: 0, to: 5 }), edit({ from: 3, to: 8 })]
+                })
+            )
+        ).toBe(false)
     })
 
     it('agrees with FindingStore.isActionable (the count the UI advertises)', () => {
         const store = new FindingStore()
-        const raw = (suggestion?: string): RawFinding => ({
+        const raw: RawFinding = {
             quote: 'abc',
             critique: 'too long',
+            edits: [{ op: 'replace', text: 'ABC' }],
+            invalidProposal: false,
             severity: 'suggestion',
-            evidence: [],
-            ...(suggestion === undefined ? {} : { suggestion })
-        })
+            evidence: []
+        }
         const runId = asRunId('run-1')
-        const inputs = [
-            { id: 'ok', anchor: { from: 0, to: 3, state: 'anchored' as const }, suggestion: 'ABC' },
-            { id: 'stale', anchor: { from: 4, to: 7, state: 'stale' as const }, suggestion: 'DEF' },
-            { id: 'orphan', anchor: null, suggestion: 'GHI' },
-            { id: 'no-sug', anchor: { from: 8, to: 9, state: 'anchored' as const } },
+        const inputs: { id: string; edits: readonly TrackedEdit[] }[] = [
+            { id: 'ok', edits: [edit({ from: 0, to: 3 })] },
+            { id: 'stale', edits: [edit({ from: 4, to: 7, state: 'stale' })] },
+            { id: 'orphan', edits: [edit({ unanchored: true })] },
+            { id: 'no-proposal', edits: [] },
             // Anchored but with no anchored text: `accept()` refuses
             // ('unanchored'), so neither predicate may advertise it.
+            { id: 'no-anchored-text', edits: [edit({ from: 0, to: 3, anchoredText: null })] },
             {
-                id: 'no-anchored-text',
-                anchor: { from: 0, to: 3, state: 'anchored' as const },
-                suggestion: 'JKL',
-                anchoredText: null
+                id: 'self-conflicting',
+                edits: [edit({ from: 0, to: 5 }), edit({ from: 3, to: 8 })]
             }
         ]
         const candidates: BulkCandidateFinding[] = []
@@ -85,10 +110,11 @@ describe('isBulkAcceptable', () => {
                 id: asFindingId(input.id),
                 runId,
                 editorId: 'editor-1',
-                raw: raw(input.suggestion),
-                anchor: input.anchor,
-                anchoredText: 'anchoredText' in input ? null : input.anchor ? 'abc' : null,
-                matchStrategy: 'exact'
+                raw,
+                anchor: { from: 0, to: 3, state: 'anchored' },
+                anchoredText: 'abc',
+                matchStrategy: 'exact',
+                edits: input.edits
             })
             candidates.push(finding)
         }
@@ -115,54 +141,62 @@ describe('planBulkAccept', () => {
     it('plans every acceptable finding in document order', () => {
         const plan = planBulkAccept(
             [
-                candidate({ id: 'later', from: 8, to: 11, anchoredText: 'ghi', suggestion: 'GHI' }),
-                candidate({ id: 'first', from: 0, to: 3, anchoredText: 'abc', suggestion: 'ABC' }),
-                candidate({ id: 'mid', from: 4, to: 7, anchoredText: 'def', suggestion: 'DEF' })
+                candidate({ id: 'later', from: 8, to: 11, anchoredText: 'ghi', text: 'GHI' }),
+                candidate({ id: 'first', from: 0, to: 3, anchoredText: 'abc', text: 'ABC' }),
+                candidate({ id: 'mid', from: 4, to: 7, anchoredText: 'def', text: 'DEF' })
             ],
             text
         )
-        expect(plan.edits).toEqual([
-            { findingId: 'first', from: 0, to: 3, insert: 'ABC' },
-            { findingId: 'mid', from: 4, to: 7, insert: 'DEF' },
-            { findingId: 'later', from: 8, to: 11, insert: 'GHI' }
+        expect(plan.findings).toEqual([
+            { findingId: 'first', changes: [{ from: 0, to: 3, insert: 'ABC' }] },
+            { findingId: 'mid', changes: [{ from: 4, to: 7, insert: 'DEF' }] },
+            { findingId: 'later', changes: [{ from: 8, to: 11, insert: 'GHI' }] }
         ])
         expect(plan.skippedOverlapping).toBe(0)
         expect(plan.skippedChanged).toBe(0)
     })
 
-    it('keeps the earlier anchor and skips the overlapping later one', () => {
+    it('keeps the earlier finding and skips the overlapping later one WHOLE', () => {
         const plan = planBulkAccept(
             [
-                candidate({ id: 'wide', from: 0, to: 7, anchoredText: 'abc def', suggestion: 'X' }),
-                candidate({ id: 'inner', from: 4, to: 7, anchoredText: 'def', suggestion: 'Y' })
+                candidate({ id: 'wide', from: 0, to: 7, anchoredText: 'abc def', text: 'X' }),
+                // Two edits; only the first overlaps 'wide' — the finding is
+                // still skipped whole (all-or-nothing).
+                candidate({
+                    id: 'inner',
+                    edits: [
+                        edit({ from: 4, to: 7, anchoredText: 'def', text: 'Y' }),
+                        edit({ from: 8, to: 11, anchoredText: 'ghi', text: 'Z' })
+                    ]
+                })
             ],
             text
         )
-        expect(plan.edits.map((edit) => edit.findingId)).toEqual(['wide'])
+        expect(plan.findings.map((finding) => finding.findingId)).toEqual(['wide'])
         expect(plan.skippedOverlapping).toBe(1)
     })
 
     it('treats adjacent spans as non-conflicting', () => {
         const plan = planBulkAccept(
             [
-                candidate({ id: 'a', from: 0, to: 4, anchoredText: 'abc ', suggestion: 'ABC ' }),
-                candidate({ id: 'b', from: 4, to: 7, anchoredText: 'def', suggestion: 'DEF' })
+                candidate({ id: 'a', from: 0, to: 4, anchoredText: 'abc ', text: 'ABC ' }),
+                candidate({ id: 'b', from: 4, to: 7, anchoredText: 'def', text: 'DEF' })
             ],
             text
         )
-        expect(plan.edits).toHaveLength(2)
+        expect(plan.findings).toHaveLength(2)
         expect(plan.skippedOverlapping).toBe(0)
     })
 
     it('skips findings whose text changed since the run (BR #3, never relocated)', () => {
         const plan = planBulkAccept(
             [
-                candidate({ id: 'moved', from: 0, to: 3, anchoredText: 'xyz', suggestion: 'X' }),
-                candidate({ id: 'ok', from: 4, to: 7, anchoredText: 'def', suggestion: 'DEF' })
+                candidate({ id: 'moved', from: 0, to: 3, anchoredText: 'xyz', text: 'X' }),
+                candidate({ id: 'ok', from: 4, to: 7, anchoredText: 'def', text: 'DEF' })
             ],
             text
         )
-        expect(plan.edits.map((edit) => edit.findingId)).toEqual(['ok'])
+        expect(plan.findings.map((finding) => finding.findingId)).toEqual(['ok'])
         expect(plan.skippedChanged).toBe(1)
     })
 
@@ -174,7 +208,7 @@ describe('planBulkAccept', () => {
             ],
             text
         )
-        expect(plan.edits).toEqual([])
+        expect(plan.findings).toEqual([])
         // The stale one is not acceptable by shape (silent); the out-of-bounds
         // one is acceptable but fails the precondition.
         expect(plan.skippedChanged).toBe(1)
@@ -185,28 +219,58 @@ describe('planBulkAccept', () => {
             [
                 candidate({ id: 'terminal', status: 'accepted' }),
                 candidate({ id: 'orphan', unanchored: true }),
-                candidate({ id: 'no-sug', suggestion: '' })
+                candidate({ id: 'no-proposal', edits: [] })
             ],
             text
         )
-        expect(plan).toEqual({ edits: [], skippedOverlapping: 0, skippedChanged: 0 })
+        expect(plan).toEqual({ findings: [], skippedOverlapping: 0, skippedChanged: 0 })
     })
 
-    it('produces edits that apply as one non-overlapping sorted change set', () => {
+    it('a multi-edit finding contributes ALL its changes as one group', () => {
         const plan = planBulkAccept(
             [
-                candidate({ id: 'a', from: 0, to: 3, anchoredText: 'abc', suggestion: 'A' }),
-                candidate({ id: 'b', from: 2, to: 5, anchoredText: 'c d', suggestion: 'B' }),
-                candidate({ id: 'c', from: 8, to: 11, anchoredText: 'ghi', suggestion: 'C' })
+                candidate({
+                    id: 'multi',
+                    edits: [
+                        edit({
+                            op: 'insert-before',
+                            from: 4,
+                            to: 7,
+                            anchoredText: 'def',
+                            text: 'X '
+                        }),
+                        edit({ op: 'delete', from: 8, to: 11, anchoredText: 'ghi', text: '' })
+                    ]
+                })
+            ],
+            text
+        )
+        expect(plan.findings).toEqual([
+            {
+                findingId: 'multi',
+                changes: [
+                    { from: 4, to: 4, insert: 'X ' },
+                    { from: 8, to: 11, insert: '' }
+                ]
+            }
+        ])
+    })
+
+    it('produces changes that apply as one non-overlapping sorted set', () => {
+        const plan = planBulkAccept(
+            [
+                candidate({ id: 'a', from: 0, to: 3, anchoredText: 'abc', text: 'A' }),
+                candidate({ id: 'b', from: 2, to: 5, anchoredText: 'c d', text: 'B' }),
+                candidate({ id: 'c', from: 8, to: 11, anchoredText: 'ghi', text: 'C' })
             ],
             text
         )
         let previousTo = -1
-        for (const edit of plan.edits) {
-            expect(edit.from).toBeGreaterThanOrEqual(previousTo)
-            previousTo = edit.to
+        for (const change of plan.findings.flatMap((finding) => finding.changes)) {
+            expect(change.from).toBeGreaterThanOrEqual(previousTo)
+            previousTo = change.to
         }
-        expect(plan.edits).toHaveLength(2)
+        expect(plan.findings).toHaveLength(2)
     })
 })
 
@@ -235,15 +299,13 @@ describe('dismissableFindingIds', () => {
 
 describe('bulkAcceptNotice', () => {
     const plan = (
-        edits: number,
+        findings: number,
         skippedOverlapping = 0,
         skippedChanged = 0
     ): Parameters<typeof bulkAcceptNotice>[1] => ({
-        edits: Array.from({ length: edits }, (_unused, index) => ({
+        findings: Array.from({ length: findings }, (_unused, index) => ({
             findingId: `f-${index}`,
-            from: index,
-            to: index + 1,
-            insert: 'x'
+            changes: [{ from: index, to: index + 1, insert: 'x' }]
         })),
         skippedOverlapping,
         skippedChanged
@@ -260,7 +322,7 @@ describe('bulkAcceptNotice', () => {
         )
     })
 
-    it('counts planned edits the store refused as no longer matching', () => {
+    it('counts planned findings the store refused as no longer matching', () => {
         expect(bulkAcceptNotice(1, plan(2))).toBe(
             'Applied 1 finding. Skipped 1 no longer matching the text.'
         )

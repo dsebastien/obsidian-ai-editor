@@ -61,9 +61,10 @@ export const AGGREGATION_MAX_MEMBERS = 20
  * ## What is dropped, and what is never touched
  *
  * The chairperson WEIGHS members; it never anchors a span, never re-verifies a
- * source and never applies a replacement. So `prefix`, `suffix`, `occurrence`,
- * `confidence`, `rationale` and `evidence` are dropped outright, and
- * `critique` / `suggestion` / `summary` are truncated to fixed caps.
+ * source and never applies an edit. So `prefix`, `suffix`, `occurrence`,
+ * `confidence`, `rationale`, `evidence` and per-edit targeting hints are
+ * dropped outright, and `critique` / edit `text` / `summary` are truncated to
+ * fixed caps.
  *
  * **Quotes are never truncated.** A `PanelTopFix` points back at a member
  * finding BY QUOTE, and the surface that resolves the pointer matches against
@@ -78,7 +79,8 @@ export const AGGREGATION_MAX_MEMBERS = 20
 
 /** Per-field caps applied to every finding before the budget is considered. */
 export const AGGREGATION_CRITIQUE_MAX = 600
-export const AGGREGATION_SUGGESTION_MAX = 600
+/** Cap on each edit's `text` (contract v2): the chair sees WHAT was proposed. */
+export const AGGREGATION_EDIT_TEXT_MAX = 600
 export const AGGREGATION_SUMMARY_MAX = 1_500
 
 /**
@@ -137,9 +139,18 @@ function compactFinding(
         quote: finding.quote,
         critique: clip(finding.critique, AGGREGATION_CRITIQUE_MAX),
         severity: finding.severity,
-        ...(finding.suggestion
-            ? { suggestion: clip(finding.suggestion, AGGREGATION_SUGGESTION_MAX) }
-            : {}),
+        // The chair weighs proposals but never anchors or applies them, so
+        // per-edit targeting hints are dropped and `text` is clipped (design
+        // doc §8). Edit quotes are NOT top-fix pointers — only the finding's
+        // own quote is — so unlike it they may be clipped.
+        edits: finding.edits.map((edit) => ({
+            op: edit.op,
+            ...(edit.quote === undefined
+                ? {}
+                : { quote: clip(edit.quote, AGGREGATION_EDIT_TEXT_MAX) }),
+            ...(edit.text === undefined ? {} : { text: clip(edit.text, AGGREGATION_EDIT_TEXT_MAX) })
+        })),
+        invalidProposal: finding.invalidProposal,
         evidence: []
     }
 }
@@ -148,7 +159,11 @@ function compactFinding(
 function findingCost(
     finding: AggregatePanelRequest['members'][number]['findings'][number]
 ): number {
-    return finding.quote.length + finding.critique.length + (finding.suggestion?.length ?? 0)
+    const editsCost = finding.edits.reduce(
+        (sum, edit) => sum + edit.op.length + (edit.quote?.length ?? 0) + (edit.text?.length ?? 0),
+        0
+    )
+    return finding.quote.length + finding.critique.length + editsCost
 }
 
 export type PanelAggregationPlan =
