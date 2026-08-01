@@ -9,6 +9,8 @@ By default nothing runs on its own: reviews start when you ask for one. **Daemon
 
 **Settings → AI Editor → Behavior → Daemon → Daemon mode.** Off by default.
 
+Because it is a mode you flip by situation — on while drafting something you want watched, off the rest of the day — there is also a command: **AI Editor: Toggle daemon mode**. It reports the new state, and on the way on it repeats what that state costs.
+
 ## Cost first
 
 **Every refresh calls your configured AI backends.** A long editing session on one note can trigger many refreshes. If you pay per token, keep the idle delay generous and prefer a cheap model for the editors you leave running.
@@ -37,7 +39,7 @@ While a refresh is armed for the note you are on, a small pulsing dot appears at
 
 ## Turning it off
 
-Flip the toggle. Anything already in flight finishes; nothing new is armed. The idle-delay field only appears while the mode is on, so the cost-sensitive toggle stays the single decision point.
+Flip the toggle, or run **AI Editor: Toggle daemon mode**. Anything already in flight finishes; nothing new is armed. The idle-delay field only appears while the mode is on, so the cost-sensitive toggle stays the single decision point.
 
 ## Next
 

@@ -31,6 +31,7 @@ import { SetupWizardModal } from './settings/setup-wizard-modal'
 import { registerActionCommands } from './commands/action-commands'
 import { registerBulkCommands } from './commands/bulk-commands'
 import { registerReviewCommands } from './commands/review-commands'
+import { registerDaemonCommands } from './commands/daemon-commands'
 import { registerSetupCommands } from './commands/setup-commands'
 import { registerReviewCli } from './cli/register-review-cli'
 import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
@@ -150,6 +151,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
         registerReviewCommands(this, reviewController, this)
         registerSetupCommands(this, this)
+        registerDaemonCommands(this, this)
         this.openSetupWizardOnFirstRun()
         // Dynamic `action-<bindingId>` commands (design §3): registration
         // follows the settings via the mutation observer — add/removeCommand
