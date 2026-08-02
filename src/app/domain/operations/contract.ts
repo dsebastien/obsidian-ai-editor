@@ -444,8 +444,12 @@ export type OperationEvent =
               readonly code:
                   | 'auth'
                   | 'rate-limit'
+                  /** Credits/billing exhausted — clears only when the user pays (issue #23). */
+                  | 'quota'
                   | 'network'
                   | 'invalid-output'
+                  /** The model hit its output cap mid-payload (issue #18) — a shorter ask, not a retry. */
+                  | 'truncated'
                   | 'cancelled'
                   | 'timeout'
                   | 'unknown'

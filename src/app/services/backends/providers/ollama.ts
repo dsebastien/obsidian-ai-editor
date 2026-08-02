@@ -1,6 +1,7 @@
 import { buildUserMessage } from './prompt'
 import {
     extractJsonPayload,
+    guardTruncation,
     validateOperationResult,
     type ValidatedOperationResult
 } from './result'
@@ -73,11 +74,19 @@ export const ollamaAdapter: ProviderAdapter = {
         if (typeof message !== 'object' || message === null) {
             throw new ProviderError('invalid-output', 'Ollama response has no message')
         }
+        // `done_reason: 'length'` = the answer hit the output cap (issue
+        // #18): a payload that then fails to parse is 'truncated', not
+        // "invalid JSON".
+        const truncated = (raw as Record<string, unknown>)['done_reason'] === 'length'
         const content = (message as Record<string, unknown>)['content']
         if (typeof content !== 'string' || content.length === 0) {
-            throw new ProviderError('invalid-output', 'Ollama response has no text content')
+            return guardTruncation(truncated, () => {
+                throw new ProviderError('invalid-output', 'Ollama response has no text content')
+            })
         }
-        return validateOperationResult(extractJsonPayload(content))
+        return guardTruncation(truncated, () =>
+            validateOperationResult(extractJsonPayload(content))
+        )
     },
 
     capabilities(): ProviderCapabilities {

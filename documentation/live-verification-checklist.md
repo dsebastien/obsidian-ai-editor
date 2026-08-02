@@ -50,6 +50,14 @@ Status: **nothing verified.** Scheduler logic is spec-pinned; the feel of the 3 
 - Settings → Behavior → Idle delay: shows range 1–600, default 3, and the description names what resets the clock.
 - The `Toggle daemon mode` Notice mentions the quiet-window semantics.
 
+## Truncation and payload recovery (issue #18, 2026-08-02)
+
+Status: **nothing verified.** Parser and adapters are spec-pinned; the original repro needs a live backend.
+
+- Reproduce the original failure: a LONG selection → "Ask for comments" against a local model. The error must now say the model ran out of output space (or "stopped mid-answer") with the shorter-selection advice — not "Model response is not valid JSON" — and it must be visible on the margin card / panel job list, not only as a Notice.
+- A chatty model (prose around the JSON) no longer fails the run — the object is recovered and findings land.
+- The rail chip tooltip for a truncated editor says "failed (output cut short)".
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.

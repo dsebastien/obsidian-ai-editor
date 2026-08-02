@@ -1,6 +1,7 @@
 import { buildUserMessage, resultJsonSchema } from './prompt'
 import {
     extractJsonPayload,
+    guardTruncation,
     validateOperationResult,
     type ValidatedOperationResult
 } from './result'
@@ -147,6 +148,11 @@ export const anthropicAdapter: ProviderAdapter = {
         if (typeof raw !== 'object' || raw === null) {
             throw new ProviderError('invalid-output', 'Anthropic response is not an object')
         }
+        // `stop_reason: 'max_tokens'` = the answer hit the output cap
+        // (issue #18): a payload that then fails to parse is 'truncated',
+        // not "invalid JSON". Set by the buffered envelope and by the
+        // streaming accumulator's reassembly (from `message_delta`).
+        const truncated = (raw as Record<string, unknown>)['stop_reason'] === 'max_tokens'
         const content = (raw as Record<string, unknown>)['content']
         if (!Array.isArray(content)) {
             throw new ProviderError('invalid-output', 'Anthropic response has no content blocks')
@@ -160,7 +166,7 @@ export const anthropicAdapter: ProviderAdapter = {
             // `redacted_thinking` emitted under extended thinking — are
             // skipped: reasoning is never part of the operation result.
             if (candidate['type'] === 'tool_use' && candidate['name'] === RESULT_TOOL_NAME) {
-                return validateOperationResult(candidate['input'])
+                return guardTruncation(truncated, () => validateOperationResult(candidate['input']))
             }
         }
         // Defensive fallback: some models emit the JSON as text despite the
@@ -175,12 +181,16 @@ export const anthropicAdapter: ProviderAdapter = {
             )
             .map((block) => block.text)
         if (textParts.length === 0) {
-            throw new ProviderError(
-                'invalid-output',
-                'Anthropic response contains no result tool call'
-            )
+            return guardTruncation(truncated, () => {
+                throw new ProviderError(
+                    'invalid-output',
+                    'Anthropic response contains no result tool call'
+                )
+            })
         }
-        return validateOperationResult(extractJsonPayload(textParts.join('\n')))
+        return guardTruncation(truncated, () =>
+            validateOperationResult(extractJsonPayload(textParts.join('\n')))
+        )
     },
 
     capabilities(): ProviderCapabilities {

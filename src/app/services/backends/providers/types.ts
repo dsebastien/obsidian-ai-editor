@@ -69,7 +69,7 @@ export interface ProviderAdapter {
     capabilities(): ProviderCapabilities
 }
 
-export type ProviderErrorCode = 'invalid-config' | 'invalid-output'
+export type ProviderErrorCode = 'invalid-config' | 'invalid-output' | 'truncated'
 
 /**
  * Typed failure raised by adapters. Messages must never contain secrets:

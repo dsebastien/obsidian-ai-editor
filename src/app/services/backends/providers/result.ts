@@ -5,6 +5,7 @@ import {
     type OperationResult,
     type RawFinding
 } from '../../../domain/operations/contract'
+import { log } from '../../../../utils/log'
 import { ProviderError } from './types'
 
 /**
@@ -15,21 +16,136 @@ import { ProviderError } from './types'
  */
 
 /**
- * Parses model-produced text into JSON, tolerating the one deviation models
- * commonly make despite JSON-only instructions: wrapping the object in a
- * markdown code fence. Anything else malformed throws 'invalid-output'.
+ * Parses model-produced text into JSON (issue #18). Tolerated deviations, in
+ * order:
+ *
+ * 1. The whole (trimmed) text is JSON — the well-behaved case.
+ * 2. The text CONTAINS a balanced JSON object — code fences with any
+ *    language tag, prose before or after ("Here are my comments: {…}" /
+ *    a trailing "Let me know if…"), or both. The first balanced `{…}` that
+ *    parses is recovered; strict contract validation still runs on it
+ *    afterwards, so this recovers an object the model clearly meant to
+ *    send without accepting sloppy content.
+ *
+ * Anything else throws 'invalid-output' — after logging a diagnostic
+ * (payload length, first/last 100 characters, whether an unclosed object
+ * was found: the truncation signature) so a live failure can be told apart
+ * from a chatty preamble without guessing.
  */
 export function extractJsonPayload(content: string): unknown {
-    let text = content.trim()
-    const fenceMatch = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/.exec(text)
-    const fenced = fenceMatch?.[1]
-    if (fenced !== undefined) {
-        text = fenced.trim()
-    }
+    const text = content.trim()
     try {
         return JSON.parse(text) as unknown
     } catch {
-        throw new ProviderError('invalid-output', 'Model response is not valid JSON')
+        // Fall through to balanced-object recovery.
+    }
+    const recovery = recoverBalancedObject(text)
+    if (recovery.parsed !== undefined) {
+        return recovery.parsed
+    }
+    const head = JSON.stringify(text.slice(0, 100))
+    const tail = JSON.stringify(text.slice(-100))
+    log(
+        `Model response is not valid JSON — length ${text.length}, ` +
+            `${recovery.unclosed ? 'contains an UNCLOSED object (truncation signature)' : 'no recoverable object found'}, ` +
+            `first 100: ${head}, last 100: ${tail}`,
+        'warn'
+    )
+    if (recovery.unclosed) {
+        // The payload stops mid-object: the model ran out of output space
+        // (or the stream was cut). Without the provider's finish reason this
+        // is a strong signal, not proof — adapters that DO see a
+        // length-type finish reason throw 'truncated' before ever calling
+        // this parser's failure path.
+        throw new ProviderError(
+            'truncated',
+            'The model stopped mid-answer — the response ends inside an unfinished JSON object. Try a shorter selection or note, or a model with a larger output limit.'
+        )
+    }
+    throw new ProviderError('invalid-output', 'Model response is not valid JSON')
+}
+
+/**
+ * Scans for balanced top-level `{…}` candidates (string- and escape-aware)
+ * and returns the first one that parses. `unclosed: true` means the LAST
+ * candidate opened but never closed before the text ended — the shape a
+ * response truncated mid-object leaves behind.
+ */
+function recoverBalancedObject(text: string): { parsed?: unknown; unclosed: boolean } {
+    let start = text.indexOf('{')
+    let unclosed = false
+    while (start !== -1) {
+        let depth = 0
+        let inString = false
+        let escaped = false
+        let end = -1
+        for (let i = start; i < text.length; i++) {
+            const ch = text[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (ch === '\\') {
+                escaped = inString
+                continue
+            }
+            if (ch === '"') {
+                inString = !inString
+                continue
+            }
+            if (inString) {
+                continue
+            }
+            if (ch === '{') {
+                depth += 1
+            } else if (ch === '}') {
+                depth -= 1
+                if (depth === 0) {
+                    end = i
+                    break
+                }
+            }
+        }
+        if (end === -1) {
+            // Opened but never closed before the text ran out.
+            return { unclosed: true }
+        }
+        try {
+            return { parsed: JSON.parse(text.slice(start, end + 1)) as unknown, unclosed }
+        } catch {
+            // A brace inside prose ("an example {like this}") — try the next
+            // candidate object.
+            start = text.indexOf('{', start + 1)
+            unclosed = false
+        }
+    }
+    return { unclosed: false }
+}
+
+/** One actionable truncation message, shared by every provider (issue #18). */
+export const TRUNCATION_MESSAGE =
+    'The model ran out of output space before finishing its answer. Try a shorter selection or note, or a model with a larger output limit.'
+
+/**
+ * Runs a parse under the provider's OWN truncation verdict (issue #18): when
+ * the provider reported a length-type finish reason AND the payload fails to
+ * parse or validate, the failure is 'truncated' — the model was cut off —
+ * never a generic "not valid JSON". A payload that parses fine despite the
+ * flag is accepted: the cut may have landed exactly at the payload boundary,
+ * and a valid result is a valid result.
+ */
+export function guardTruncation<T>(truncatedByProvider: boolean, parse: () => T): T {
+    try {
+        return parse()
+    } catch (cause) {
+        if (
+            truncatedByProvider &&
+            cause instanceof ProviderError &&
+            (cause.code === 'invalid-output' || cause.code === 'truncated')
+        ) {
+            throw new ProviderError('truncated', TRUNCATION_MESSAGE)
+        }
+        throw cause
     }
 }
 

@@ -446,8 +446,12 @@ export function railErrorReason(code: string): string | undefined {
             return 'authentication'
         case 'rate-limit':
             return 'rate limit'
+        case 'quota':
+            return 'out of credit'
         case 'invalid-output':
             return 'invalid output'
+        case 'truncated':
+            return 'output cut short'
         default:
             return undefined
     }

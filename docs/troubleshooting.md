@@ -38,7 +38,11 @@ Requests are made from Obsidian's renderer, which is a browser context. The brow
 
 Every backend must return a structured result: findings with verbatim quotes, a critique, optional structured edits, a severity. A malformed envelope is still a failure — but a single malformed finding inside a valid review no longer fails the run: its proposal is removed (the card says so) or the finding is dropped, and the panel counts the loss.
 
-- **Use a stronger model.** Small local models routinely wrap JSON in prose or invent fields. This is the single most common cause.
+A model that wraps its JSON in prose ("Here are my comments: …") or a code fence is tolerated: the plugin recovers the object and validates it strictly afterwards. What you see as a failure is what could not be recovered.
+
+**If the message says the model ran out of output space** (or "stopped mid-answer"): the answer hit the model's output limit before it finished — this is not a formatting problem. A long selection or note produces a long answer. Try a shorter selection, split the note, or use a model with a larger output limit.
+
+- **Use a stronger model.** Small local models routinely invent fields or drift from the schema. This is the single most common cause.
 - **Check you are on a chat/instruct model**, not a base completion model.
 - **For agents**, expect it more often: an agent that narrates before answering looks exactly like this.
 - **Simplify the request** while diagnosing: one editor, a short selection, thinking off.

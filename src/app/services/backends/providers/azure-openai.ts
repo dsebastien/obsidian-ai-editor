@@ -1,7 +1,8 @@
-import { chatCompletionContent } from './openai'
+import { chatCompletionContent, chatCompletionTruncated } from './openai'
 import { buildUserMessage, resultJsonSchema } from './prompt'
 import {
     extractJsonPayload,
+    guardTruncation,
     validateOperationResult,
     type ValidatedOperationResult
 } from './result'
@@ -79,8 +80,8 @@ export const azureOpenAiAdapter: ProviderAdapter = {
     },
 
     parseBufferedResponse(raw: unknown): ValidatedOperationResult {
-        return validateOperationResult(
-            extractJsonPayload(chatCompletionContent(raw, 'Azure OpenAI'))
+        return guardTruncation(chatCompletionTruncated(raw), () =>
+            validateOperationResult(extractJsonPayload(chatCompletionContent(raw, 'Azure OpenAI')))
         )
     },
 

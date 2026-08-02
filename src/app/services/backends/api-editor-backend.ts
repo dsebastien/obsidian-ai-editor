@@ -1,3 +1,4 @@
+import { guardTruncation } from './providers/result'
 import type { ValidatedOperationResult } from './providers/result'
 import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
 import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings-schema'
@@ -367,6 +368,7 @@ interface AnthropicBlock {
  */
 function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator {
     const blocks = new Map<number, AnthropicBlock>()
+    let stopReason = ''
     return {
         push(event: SseEvent): boolean {
             const payload = parseSseJson(event)
@@ -426,26 +428,49 @@ function createAnthropicAccumulator(adapter: ProviderAdapter): StreamAccumulator
                     }
                     return false
                 }
+                case 'message_delta': {
+                    // Carries the final `stop_reason` — 'max_tokens' is the
+                    // truncation verdict (issue #18), preserved into the
+                    // reassembled envelope for the adapter's check.
+                    const delta =
+                        typeof frame['delta'] === 'object' && frame['delta'] !== null
+                            ? (frame['delta'] as Record<string, unknown>)
+                            : {}
+                    if (typeof delta['stop_reason'] === 'string') {
+                        stopReason = delta['stop_reason']
+                    }
+                    return false
+                }
                 default:
-                    // message_start / message_delta / message_stop / ping —
-                    // no payload content to accumulate.
+                    // message_start / message_stop / ping — no payload
+                    // content to accumulate.
                     return false
             }
         },
         finalize(): ValidatedOperationResult {
-            const content = [...blocks.entries()]
-                .sort(([a], [b]) => a - b)
-                // Thinking blocks (extended thinking) carry no payload — drop
-                // them so the reassembled envelope holds only result content.
-                .filter(
-                    ([, block]) => block.kind !== 'thinking' && block.kind !== 'redacted_thinking'
-                )
-                .map(([, block]) =>
-                    block.kind === 'tool_use'
-                        ? { type: 'tool_use', name: block.name, input: parseToolInput(block) }
-                        : { type: 'text', text: block.text }
-                )
-            return adapter.parseBufferedResponse({ content })
+            // The guard covers `parseToolInput` too: a stream cut mid
+            // tool-JSON throws before the reassembled envelope (and the
+            // adapter's own stop_reason check) exists (issue #18).
+            return guardTruncation(stopReason === 'max_tokens', () => {
+                const content = [...blocks.entries()]
+                    .sort(([a], [b]) => a - b)
+                    // Thinking blocks (extended thinking) carry no payload —
+                    // drop them so the reassembled envelope holds only result
+                    // content.
+                    .filter(
+                        ([, block]) =>
+                            block.kind !== 'thinking' && block.kind !== 'redacted_thinking'
+                    )
+                    .map(([, block]) =>
+                        block.kind === 'tool_use'
+                            ? { type: 'tool_use', name: block.name, input: parseToolInput(block) }
+                            : { type: 'text', text: block.text }
+                    )
+                return adapter.parseBufferedResponse({
+                    content,
+                    ...(stopReason.length > 0 ? { stop_reason: stopReason } : {})
+                })
+            })
         }
     }
 }
@@ -492,6 +517,7 @@ function anthropicStreamError(error: unknown): TransportError {
 function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
     let content = ''
     let refusal = ''
+    let finishReason = ''
     return {
         push(event: SseEvent): boolean {
             const payload = parseSseJson(event)
@@ -503,6 +529,16 @@ function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
                 return false // e.g. trailing usage-only chunk
             }
             const first: unknown = choices[0]
+            // The last content frame carries the choice's finish_reason —
+            // 'length' is the truncation verdict (issue #18), preserved into
+            // the reassembled envelope for `chatCompletionTruncated`.
+            const reason =
+                typeof first === 'object' && first !== null
+                    ? (first as Record<string, unknown>)['finish_reason']
+                    : undefined
+            if (typeof reason === 'string' && reason.length > 0) {
+                finishReason = reason
+            }
             const delta =
                 typeof first === 'object' && first !== null
                     ? (first as Record<string, unknown>)['delta']
@@ -539,7 +575,11 @@ function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
             if (refusal.length > 0) {
                 message['refusal'] = refusal
             }
-            return adapter.parseBufferedResponse({ choices: [{ message }] })
+            const choice: Record<string, unknown> = { message }
+            if (finishReason.length > 0) {
+                choice['finish_reason'] = finishReason
+            }
+            return adapter.parseBufferedResponse({ choices: [choice] })
         }
     }
 }
@@ -599,7 +639,10 @@ function normalizeError(
     }
     if (cause instanceof ProviderError) {
         return {
-            code: cause.code === 'invalid-output' ? 'invalid-output' : 'unknown',
+            code:
+                cause.code === 'invalid-output' || cause.code === 'truncated'
+                    ? cause.code
+                    : 'unknown',
             message: cause.message
         }
     }

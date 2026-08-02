@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { extractJsonPayload, validateOperationResult } from './result'
+import {
+    extractJsonPayload,
+    guardTruncation,
+    TRUNCATION_MESSAGE,
+    validateOperationResult
+} from './result'
 import { validPanelResult, validReviewResult } from './spec-fixtures'
 import { ProviderError } from './types'
 
@@ -313,5 +318,95 @@ describe('validateOperationResult — a runaway response is bounded by the contr
         expect(() =>
             validateOperationResult({ kind: 'thread-turn', reply: 'x'.repeat(10_001) })
         ).toThrow(ProviderError)
+    })
+})
+
+describe('extractJsonPayload recovery (issue #18)', () => {
+    const valid = '{"kind":"review","findings":[]}'
+
+    it('recovers an object wrapped in prose before and after', () => {
+        const text = `Here are my comments:\n${valid}\nLet me know if you need more!`
+        expect(extractJsonPayload(text)).toEqual({ kind: 'review', findings: [] })
+    })
+
+    it('recovers from a fence with an unexpected language tag inside prose', () => {
+        const text = 'Sure!\n```javascript\n' + valid + '\n```\nDone.'
+        expect(extractJsonPayload(text)).toEqual({ kind: 'review', findings: [] })
+    })
+
+    it('skips brace-noise in the preamble and recovers the real object', () => {
+        const text = `An example {like this} first.\n${valid}`
+        expect(extractJsonPayload(text)).toEqual({ kind: 'review', findings: [] })
+    })
+
+    it('is not fooled by braces inside JSON strings', () => {
+        const payload = '{"kind":"review","findings":[],"summary":"has { braces } inside"}'
+        expect(extractJsonPayload(`Note: ${payload}`)).toEqual({
+            kind: 'review',
+            findings: [],
+            summary: 'has { braces } inside'
+        })
+    })
+
+    it('classifies a payload ending inside an unfinished object as truncated', () => {
+        const cut = valid.slice(0, 15)
+        try {
+            extractJsonPayload(`Here you go: ${cut}`)
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect(cause).toBeInstanceOf(ProviderError)
+            expect((cause as ProviderError).code).toEqual('truncated')
+            expect((cause as ProviderError).message).toMatch(/shorter selection/i)
+        }
+    })
+
+    it('still reports plain garbage as invalid-output', () => {
+        try {
+            extractJsonPayload('no json here at all')
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect(cause).toBeInstanceOf(ProviderError)
+            expect((cause as ProviderError).code).toEqual('invalid-output')
+        }
+    })
+})
+
+describe('guardTruncation (issue #18)', () => {
+    it('converts an invalid-output failure into truncated when the provider says length', () => {
+        try {
+            guardTruncation(true, () => {
+                throw new ProviderError('invalid-output', 'nope')
+            })
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect((cause as ProviderError).code).toEqual('truncated')
+            expect((cause as ProviderError).message).toEqual(TRUNCATION_MESSAGE)
+        }
+    })
+
+    it('leaves failures alone without the provider verdict', () => {
+        try {
+            guardTruncation(false, () => {
+                throw new ProviderError('invalid-output', 'nope')
+            })
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect((cause as ProviderError).code).toEqual('invalid-output')
+        }
+    })
+
+    it('accepts a valid result despite the flag — a valid result is a valid result', () => {
+        expect(guardTruncation(true, () => 42)).toEqual(42)
+    })
+
+    it('never converts non-parse failures (e.g. invalid-config)', () => {
+        try {
+            guardTruncation(true, () => {
+                throw new ProviderError('invalid-config', 'bad config')
+            })
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect((cause as ProviderError).code).toEqual('invalid-config')
+        }
     })
 })

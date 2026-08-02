@@ -417,7 +417,7 @@ describe('createApiEditorExecutor — streaming', () => {
         expect(terminal.result.findings[0]?.quote).toBe('Hello world')
     })
 
-    it('maps a truncated stream whose payload fails validation to invalid-output', async () => {
+    it('maps a stream that ends mid-object to truncated (issue #18)', async () => {
         // Stream ends after half of the JSON — no more frames, no [DONE].
         const half = JSON.stringify(validReviewResult()).slice(0, 20)
         const body = [
@@ -433,7 +433,11 @@ describe('createApiEditorExecutor — streaming', () => {
         if (terminal.type !== 'error') {
             throw new Error('expected error')
         }
-        expect(terminal.error.code).toBe('invalid-output')
+        // The payload stops inside an unfinished JSON object — the
+        // truncation signature (issue #18): 'truncated' with an actionable
+        // message, never a bare "not valid JSON".
+        expect(terminal.error.code).toBe('truncated')
+        expect(terminal.error.message).toMatch(/shorter selection/i)
     })
 
     it('maps an Anthropic in-stream error frame (overloaded) to rate-limit', async () => {

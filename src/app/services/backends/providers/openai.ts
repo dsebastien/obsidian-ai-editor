@@ -2,6 +2,7 @@ import type { ApiBackend } from '../../../domain/settings/settings-schema'
 import { buildUserMessage, resultJsonSchema } from './prompt'
 import {
     extractJsonPayload,
+    guardTruncation,
     validateOperationResult,
     type ValidatedOperationResult
 } from './result'
@@ -36,6 +37,29 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 function trimTrailingSlash(url: string): string {
     return url.endsWith('/') ? url.slice(0, -1) : url
+}
+
+/**
+ * Whether a Chat Completions envelope says the answer hit the output cap
+ * (`choices[0].finish_reason === 'length'`, issue #18). Shared with the
+ * Azure OpenAI adapter and with the streaming accumulator's reassembled
+ * envelope. Absent/unknown reasons read as false — only an explicit length
+ * verdict converts a parse failure into 'truncated'.
+ */
+export function chatCompletionTruncated(raw: unknown): boolean {
+    if (typeof raw !== 'object' || raw === null) {
+        return false
+    }
+    const choices = (raw as Record<string, unknown>)['choices']
+    if (!Array.isArray(choices) || choices.length === 0) {
+        return false
+    }
+    const first: unknown = choices[0]
+    return (
+        typeof first === 'object' &&
+        first !== null &&
+        (first as Record<string, unknown>)['finish_reason'] === 'length'
+    )
 }
 
 /**
@@ -195,7 +219,9 @@ export const openAiAdapter: ProviderAdapter = {
     },
 
     parseBufferedResponse(raw: unknown): ValidatedOperationResult {
-        return validateOperationResult(extractJsonPayload(chatCompletionContent(raw, 'OpenAI')))
+        return guardTruncation(chatCompletionTruncated(raw), () =>
+            validateOperationResult(extractJsonPayload(chatCompletionContent(raw, 'OpenAI')))
+        )
     },
 
     capabilities(): ProviderCapabilities {
