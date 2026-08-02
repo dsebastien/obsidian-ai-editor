@@ -410,3 +410,46 @@ describe('guardTruncation (issue #18)', () => {
         }
     })
 })
+
+describe('extractJsonPayload recovery hardening (adversarial review 2026-08-02)', () => {
+    const valid = '{"kind":"review","findings":[]}'
+
+    it('a valid off-contract object in the preamble cannot shadow the payload', () => {
+        const text = `Metadata: {"format":"json"}\nActual: ${valid}`
+        expect(extractJsonPayload(text)).toEqual({ kind: 'review', findings: [] })
+    })
+
+    it('an unmatched prose brace does not block a later valid object, nor read as truncated', () => {
+        const text = `Use {placeholder syntax like this.\n${valid}`
+        expect(extractJsonPayload(text)).toEqual({ kind: 'review', findings: [] })
+    })
+
+    it('falls back to the first parsed object when none carries kind', () => {
+        // Still recovered (validation downstream reports the contract miss);
+        // better than throwing away an object the model clearly sent.
+        expect(extractJsonPayload('Here: {"foo":1} and {"bar":2}')).toEqual({ foo: 1 })
+    })
+
+    it('a brace flood terminates quickly at the candidate cap as invalid-output', () => {
+        const flood = `${'{'.repeat(2_000)}${'}'.repeat(2_000)}`
+        const startedAt = performance.now()
+        try {
+            extractJsonPayload(`noise ${flood} noise`)
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect(cause).toBeInstanceOf(ProviderError)
+            expect((cause as ProviderError).code).toEqual('invalid-output')
+        }
+        expect(performance.now() - startedAt).toBeLessThan(1_000)
+    })
+
+    it('still classifies a genuinely cut payload as truncated', () => {
+        const cut = `Prose first. {"kind":"review","findings":[{"quote":"abc","critique":"d`
+        try {
+            extractJsonPayload(cut)
+            throw new Error('expected a throw')
+        } catch (cause) {
+            expect((cause as ProviderError).code).toEqual('truncated')
+        }
+    })
+})

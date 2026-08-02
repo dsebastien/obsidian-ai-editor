@@ -34,9 +34,15 @@ export function isSettledClean(state: EditorRunState, findings: FindingStore): b
 }
 
 /**
- * Drops acknowledgements whose editor has live findings again (in place).
- * Deliberately keyed on LIVE findings, not on run status: an acknowledged
- * editor that is re-running stays hidden until something actually arrives.
+ * Drops acknowledgements whose editor has something NEW to show (in place):
+ *
+ * - LIVE (open/preview) findings — the "until it comes back" contract;
+ * - a terminal FAILURE (`error`/`cancelled`) — an acknowledged section that
+ *   kept hiding a failed re-run would suppress the error and its Retry
+ *   control behind an "all good" label (adversarial review, 2026-08-02).
+ *
+ * A RUNNING re-run keeps the acknowledgement: hiding stays stable until
+ * something actually arrives (no flicker for a still-clean answer).
  */
 export function pruneAcknowledged(
     acknowledged: Set<string>,
@@ -45,6 +51,10 @@ export function pruneAcknowledged(
 ): void {
     for (const state of states) {
         if (!acknowledged.has(state.editorId)) {
+            continue
+        }
+        if (state.status === 'error' || state.status === 'cancelled') {
+            acknowledged.delete(state.editorId)
             continue
         }
         const hasLive = state.findingIds.some((id) => {

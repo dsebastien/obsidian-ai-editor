@@ -1598,6 +1598,13 @@ export class ReviewController {
                 if (this.disposed || !this.deps.getSettings().behavior.daemonMode) {
                     return true
                 }
+                // Findings hidden AFTER the timer fired but before the run
+                // started (issue #29): the dispatch is still assembling
+                // context, and a paused note must not bill an invisible
+                // result (adversarial review, 2026-08-02).
+                if (this.hiddenFindings.has(filePath)) {
+                    return true
+                }
                 const run = this.deps.runController.getRun(filePath)
                 return run !== null && run.isBusy()
             },

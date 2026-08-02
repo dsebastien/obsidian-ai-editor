@@ -104,3 +104,23 @@ describe('pruneAcknowledged (issue #24)', () => {
         expect(acknowledged.has('e1')).toBeTrue()
     })
 })
+
+describe('pruneAcknowledged clears on terminal failure (adversarial review 2026-08-02)', () => {
+    it('a failed re-run returns the section — an error must never hide as "all good"', () => {
+        const store = new FindingStore()
+        const acknowledged = new Set(['e1'])
+        pruneAcknowledged(acknowledged, [editorState({ editorId: 'e1', status: 'error' })], store)
+        expect(acknowledged.size).toBe(0)
+    })
+
+    it('a cancelled re-run returns the section too', () => {
+        const store = new FindingStore()
+        const acknowledged = new Set(['e1'])
+        pruneAcknowledged(
+            acknowledged,
+            [editorState({ editorId: 'e1', status: 'cancelled' })],
+            store
+        )
+        expect(acknowledged.size).toBe(0)
+    })
+})

@@ -633,8 +633,14 @@ async function assertOkStatus(response: Response): Promise<void> {
 const QUOTA_MESSAGE =
     'The provider reports your credit or quota is exhausted — retrying will not help until the account is topped up.'
 
-/** How much of an error body classification may read (bound, BR #12-safe). */
-const ERROR_BODY_SNIFF_MAX = 4_096
+/**
+ * Largest error body classification will parse. `.text()` has already
+ * buffered the body either way; the cap only bounds the PARSE — slicing a
+ * larger body would corrupt its JSON and silently reclassify a genuine
+ * quota failure as a rate limit (adversarial review, 2026-08-02), so an
+ * oversized body is skipped whole and classified conservatively.
+ */
+const ERROR_BODY_SNIFF_MAX = 262_144
 
 /**
  * Whether a 429 body says "out of credit" rather than "slow down" (issue
@@ -646,8 +652,11 @@ const ERROR_BODY_SNIFF_MAX = 4_096
 async function bodySaysQuotaExhausted(response: Response): Promise<boolean> {
     let text: string
     try {
-        text = (await response.text()).slice(0, ERROR_BODY_SNIFF_MAX)
+        text = await response.text()
     } catch {
+        return false
+    }
+    if (text.length > ERROR_BODY_SNIFF_MAX) {
         return false
     }
     let parsed: unknown

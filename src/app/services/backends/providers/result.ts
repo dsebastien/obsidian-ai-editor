@@ -22,15 +22,20 @@ import { ProviderError } from './types'
  * 1. The whole (trimmed) text is JSON — the well-behaved case.
  * 2. The text CONTAINS a balanced JSON object — code fences with any
  *    language tag, prose before or after ("Here are my comments: {…}" /
- *    a trailing "Let me know if…"), or both. The first balanced `{…}` that
- *    parses is recovered; strict contract validation still runs on it
- *    afterwards, so this recovers an object the model clearly meant to
- *    send without accepting sloppy content.
+ *    a trailing "Let me know if…"), or both. Candidates are tried in order
+ *    and the first one CARRYING A `kind` FIELD wins (every operation result
+ *    has one) — so a small off-contract object in the preamble
+ *    (`{"format":"json"}`) cannot shadow the real payload behind it; the
+ *    first parsed object is the fallback when none carries `kind`. An
+ *    UNCLOSED candidate does not end the search — a balanced object inside
+ *    or after it is still recovered. Strict contract validation runs on the
+ *    recovery afterwards, so this recovers an object the model clearly
+ *    meant to send without accepting sloppy content.
  *
  * Anything else throws 'invalid-output' — after logging a diagnostic
- * (payload length, first/last 100 characters, whether an unclosed object
- * was found: the truncation signature) so a live failure can be told apart
- * from a chatty preamble without guessing.
+ * (payload length, first/last 100 characters, whether the payload's tail
+ * sits inside an unclosed object: the truncation signature) so a live
+ * failure can be told apart from a chatty preamble without guessing.
  */
 export function extractJsonPayload(content: string): unknown {
     const text = content.trim()
@@ -66,15 +71,31 @@ export function extractJsonPayload(content: string): unknown {
 }
 
 /**
- * Scans for balanced top-level `{…}` candidates (string- and escape-aware)
- * and returns the first one that parses. `unclosed: true` means the LAST
- * candidate opened but never closed before the text ended — the shape a
- * response truncated mid-object leaves behind.
+ * Bound on recovery candidates. Each candidate scan is O(remaining text), so
+ * pathological brace floods (thousands of `{` in prose or code samples) would
+ * otherwise go quadratic and freeze the renderer (adversarial review,
+ * 2026-08-02); 50 starts over a 100k-char payload is bounded work, and a real
+ * payload's object is found within the first few candidates.
+ */
+const RECOVERY_MAX_CANDIDATES = 50
+
+/**
+ * Scans balanced top-level `{…}` candidates (string- and escape-aware), in
+ * order. A candidate that parses AND carries a `kind` field wins immediately;
+ * the first parsed object without one is kept as fallback. `unclosed: true`
+ * means the LAST examined candidate ran off the end of the text — the shape a
+ * response truncated mid-object leaves behind; an unclosed OUTER candidate
+ * does not stop the search, because a balanced object may sit inside it
+ * (`Use {placeholder … {"kind":…}` — adversarial review, 2026-08-02).
  */
 function recoverBalancedObject(text: string): { parsed?: unknown; unclosed: boolean } {
     let start = text.indexOf('{')
-    let unclosed = false
-    while (start !== -1) {
+    let fallback: unknown
+    let haveFallback = false
+    let lastUnclosed = false
+    let attempts = 0
+    while (start !== -1 && attempts < RECOVERY_MAX_CANDIDATES) {
+        attempts += 1
         let depth = 0
         let inString = false
         let escaped = false
@@ -107,19 +128,45 @@ function recoverBalancedObject(text: string): { parsed?: unknown; unclosed: bool
             }
         }
         if (end === -1) {
-            // Opened but never closed before the text ran out.
-            return { unclosed: true }
-        }
-        try {
-            return { parsed: JSON.parse(text.slice(start, end + 1)) as unknown, unclosed }
-        } catch {
-            // A brace inside prose ("an example {like this}") — try the next
-            // candidate object.
+            // Opened but never closed before the text ran out. Keep looking:
+            // the NEXT candidate starts inside this one and may be balanced.
+            lastUnclosed = true
             start = text.indexOf('{', start + 1)
-            unclosed = false
+            continue
         }
+        lastUnclosed = false
+        try {
+            const parsed = JSON.parse(text.slice(start, end + 1)) as unknown
+            if (looksLikeOperationResult(parsed)) {
+                return { parsed, unclosed: false }
+            }
+            if (!haveFallback) {
+                fallback = parsed
+                haveFallback = true
+            }
+        } catch {
+            // A brace inside prose ("an example {like this}") — not a payload.
+        }
+        start = text.indexOf('{', start + 1)
     }
-    return { unclosed: false }
+    if (haveFallback) {
+        return { parsed: fallback, unclosed: false }
+    }
+    return { unclosed: lastUnclosed }
+}
+
+/**
+ * Whether a recovered object is plausibly THE payload: every operation
+ * result carries a string `kind` discriminator. A cheap shape probe, not
+ * validation — `validateOperationResult` remains the gate.
+ */
+function looksLikeOperationResult(candidate: unknown): boolean {
+    return (
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        !Array.isArray(candidate) &&
+        typeof (candidate as Record<string, unknown>)['kind'] === 'string'
+    )
 }
 
 /** One actionable truncation message, shared by every provider (issue #18). */

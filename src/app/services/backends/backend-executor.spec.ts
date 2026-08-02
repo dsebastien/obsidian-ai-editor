@@ -501,3 +501,22 @@ describe('createBackendExecutor — automatic retry (issue #23)', () => {
         expect(harness.health.lastFailure('api-ollama')).toBeNull()
     })
 })
+
+describe('quota classification body-size hardening (adversarial review 2026-08-02)', () => {
+    it('a quota 429 body larger than 4 KiB is still classified quota, never rate-limit', async () => {
+        // Padding pushes the (valid) JSON body past the old slice bound that
+        // used to corrupt it — a genuine quota failure must never trigger a
+        // paid rate-limit retry (Business Rule #18).
+        const body = JSON.stringify({
+            padding: 'x'.repeat(8_192),
+            error: { code: 'insufficient_quota', type: 'insufficient_quota', message: 'x' }
+        })
+        const harness = retryHarness([() => new Response(body, { status: 429 })])
+        const terminal = terminalOf(await harness.execute())
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('quota')
+        expect(harness.sleeps).toEqual([])
+    })
+})
