@@ -933,6 +933,11 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
                       panel,
                       settings,
                       charterText,
+                      // The chairperson aggregates with the user's question
+                      // in view (issue #27): a panel asked "is this argument
+                      // convincing?" must score answers to THAT, not to the
+                      // charter alone.
+                      ...(instruction ? { instructionText: instruction.text } : {}),
                       fetchImpl
                   })
               }
@@ -962,6 +967,8 @@ function createPanelSpec(input: {
     readonly panel: PanelConfig
     readonly settings: PluginSettingsV1
     readonly charterText: string
+    /** The run's freeform instruction, when one exists (issue #27). */
+    readonly instructionText?: string
     readonly fetchImpl: typeof fetch
 }): RunPanelSpec {
     const { panel, settings } = input
@@ -971,11 +978,14 @@ function createPanelSpec(input: {
     }
     // The chairperson answers in the configured language too — and the budget
     // is charged for the directive, so the aggregation's fixed cost is the
-    // prompt that is actually sent.
-    const chairPrompt = augmentResponseLanguage(
-        input.charterText,
-        settings.behavior.responseLanguageOverride
-    )
+    // prompt that is actually sent. An instruction layers ON TOP of the
+    // charter for the chair exactly as it does for the members (issue #27):
+    // the charter is who the panel is, the instruction is what was asked.
+    const briefed =
+        input.instructionText === undefined
+            ? input.charterText
+            : augmentSystemPrompt(input.charterText, input.instructionText)
+    const chairPrompt = augmentResponseLanguage(briefed, settings.behavior.responseLanguageOverride)
     const executor = createBackendExecutor({
         backend: resolution.backend,
         model: resolution.model,

@@ -14,7 +14,7 @@ import {
  * Editor context menu (design doc "Interaction surfaces" §1): right-click on
  * a selection in an editable markdown view offers the dispatchable bound
  * actions (icon by verb class, alphabetical, capped), then "Review
- * selection" and "Ask an editor…". Which items appear is decided by the pure
+ * selection" and "Ask a question…". Which items appear is decided by the pure
  * `editorMenuEntries` model over `resolveActions`; this file only builds the
  * state and wires the Obsidian `Menu`.
  */
@@ -89,7 +89,7 @@ export function registerEditorMenu(
                     case 'ask-editor':
                         menu.addItem((menuItem) => {
                             menuItem
-                                .setTitle('Ask an editor…')
+                                .setTitle('Ask a question…')
                                 .setIcon('message-circle-question')
                                 .setSection(PLUGIN_MENU_SECTION)
                                 .onClick(() => {

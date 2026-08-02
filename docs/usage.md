@@ -130,9 +130,9 @@ A reply is a normal AI request: it takes a turn in the concurrency queue and obe
 
 Threads are capped at six exchanges per finding and last for the session only: nothing is written to your note or to disk. A failed reply keeps your message so you can send it again.
 
-## Asking one editor something specific
+## Asking a question
 
-**Ask an editor** (command, or **Ask an editor…** in the selection context menu) opens a small dialog: pick the editor and type an instruction — _"is this argument convincing?"_. The editor reviews the note with your instruction on top of its own persona, and the findings arrive exactly like any other review.
+**Ask a question** (command, or **Ask a question…** in the selection context menu) opens a small dialog: pick an editor **or a whole [panel](panels.md)** and type an instruction — _"is this argument convincing?"_. An editor answers with your instruction on top of its own persona; a panel runs all its members with the question layered on top of the charter, and the chairperson's scorecard weighs the answers to the question you actually asked. Panel rows in the picker are marked **(panel · N requests)** so you can see the cost before you run it — asking a panel is one request per member plus the aggregation. The findings arrive exactly like any other review.
 
 ## Bulk operations
 

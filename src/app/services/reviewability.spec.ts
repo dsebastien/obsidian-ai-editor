@@ -7,6 +7,7 @@ import {
 import type { ApiBackend, EditorConfig, PluginSettingsV1 } from '../domain/settings/settings-schema'
 import type { NoteMetadata } from './context/vault-reader.intf'
 import {
+    askablePanels,
     hasReviewCapableEditor,
     isExcluded,
     isPluginEnabledForNote,
@@ -480,5 +481,49 @@ describe('reviewGate over a rule-assigned pool', () => {
             rules: [assignTo({ targetType: 'editor', targetId: 'editor-1' })]
         })
         expect(reviewGate('Notes/Other.md', facts, settings)).toEqual({ status: 'no-editor' })
+    })
+})
+
+// ---------------------------------------------------------------------------
+// askablePanels (issue #27)
+// ---------------------------------------------------------------------------
+
+describe('askablePanels', () => {
+    function panelSettings(panelOverrides: Record<string, unknown> = {}): PluginSettingsV1 {
+        return makeSettings({
+            editors: [makeEditor({ id: 'e1' }), makeEditor({ id: 'e2', name: 'Beginner' })],
+            panels: [
+                {
+                    id: 'p1',
+                    name: 'Publish panel',
+                    memberEditorIds: ['e1', 'e2'],
+                    aggregationBackend: { backendId: 'backend-1', model: '' },
+                    enabled: true,
+                    ...panelOverrides
+                }
+            ]
+        })
+    }
+
+    it('offers an enabled panel with resolvable members, counting members + aggregation', () => {
+        const panels = askablePanels(panelSettings())
+        expect(panels).toEqual([{ id: 'p1', name: 'Publish panel', requestCount: 3 }])
+    })
+
+    it('one runnable member is enough — panel runs complete partially by design', () => {
+        const settings = panelSettings({ memberEditorIds: ['e1', 'ghost'] })
+        expect(askablePanels(settings)[0]?.requestCount).toBe(2)
+    })
+
+    it('hides disabled panels and panels whose members all fail to resolve', () => {
+        expect(askablePanels(panelSettings({ enabled: false }))).toEqual([])
+        expect(askablePanels(panelSettings({ memberEditorIds: ['ghost'] }))).toEqual([])
+    })
+
+    it('an unresolvable aggregation backend costs nothing — members still run', () => {
+        const settings = panelSettings({
+            aggregationBackend: { backendId: 'missing', model: '' }
+        })
+        expect(askablePanels(settings)[0]?.requestCount).toBe(2)
     })
 })

@@ -192,7 +192,7 @@ None of them ships a default hotkey. Assign your own in **Settings → Hotkeys**
 | ----------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Review current note**                               | Reviews the active note                                                   |
 | **Review selection**                                  | Reviews the selected text                                                 |
-| **Ask an editor**                                     | One editor, one freeform instruction                                      |
+| **Ask a question**                                    | One editor or one panel, one freeform question                            |
 | **Ask for comments**                                  | Parks a margin comment on the selection                                   |
 | **Preview what will be sent**                         | Read-only context preview; sends nothing                                  |
 | **Open review panel**                                 | Opens **AI Editor Review** in the sidebar                                 |
@@ -211,7 +211,7 @@ None of them ships a default hotkey. Assign your own in **Settings → Hotkeys**
 
 ## Context menus
 
-**Right-click a selection** (editor): bound actions, then **Review selection**, **Ask for comments…**, **Ask an editor…**.
+**Right-click a selection** (editor): bound actions, then **Review selection**, **Ask for comments…**, **Ask a question…**.
 
 **Right-click a note** (file explorer): **Review note**, **Open review panel**.
 

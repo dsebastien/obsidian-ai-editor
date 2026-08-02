@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { canSubmitAsk, defaultAskEditor, normalizeInstruction } from './ask-editor-model'
+import {
+    askChoiceLabel,
+    canSubmitAsk,
+    defaultAskEditor,
+    normalizeInstruction
+} from './ask-editor-model'
 import type { AskEditorChoice } from './ask-editor-model'
 
 describe('normalizeInstruction', () => {
@@ -51,5 +56,18 @@ describe('defaultAskEditor', () => {
         // Deleted, disabled or review-incapable: never leave the picker empty.
         expect(defaultAskEditor(choices, 'gone')).toEqual({ id: 'editor-1', name: 'Hater' })
         expect(defaultAskEditor(choices, '')).toEqual({ id: 'editor-1', name: 'Hater' })
+    })
+})
+
+describe('askChoiceLabel (issue #27)', () => {
+    it('editors are bare names; panels carry the marker and the cost', () => {
+        expect(askChoiceLabel({ id: 'e', name: 'Hater' })).toBe('Hater')
+        expect(askChoiceLabel({ id: 'e', name: 'Hater', kind: 'editor' })).toBe('Hater')
+        expect(
+            askChoiceLabel({ id: 'p', name: 'Publish panel', kind: 'panel', requestCount: 5 })
+        ).toBe('Publish panel (panel · 5 requests)')
+        expect(
+            askChoiceLabel({ id: 'p', name: 'Solo panel', kind: 'panel', requestCount: 1 })
+        ).toBe('Solo panel (panel · 1 request)')
     })
 })

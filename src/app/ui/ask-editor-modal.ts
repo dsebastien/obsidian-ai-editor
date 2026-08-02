@@ -1,6 +1,11 @@
 import { Modal, Setting } from 'obsidian'
 import type { App, ButtonComponent } from 'obsidian'
-import { canSubmitAsk, defaultAskEditor, normalizeInstruction } from './ask-editor-model'
+import {
+    askChoiceLabel,
+    canSubmitAsk,
+    defaultAskEditor,
+    normalizeInstruction
+} from './ask-editor-model'
 import type { AskEditorChoice } from './ask-editor-model'
 
 /**
@@ -24,7 +29,10 @@ export interface AskEditorCopy {
 }
 
 const ASK_EDITOR_COPY: AskEditorCopy = {
-    title: 'Ask an editor',
+    // Intent-based name (issue #27, Sébastien's call): the picker says WHO
+    // is being asked — an editor or a whole panel — so the title does not
+    // have to carry the taxonomy.
+    title: 'Ask a question',
     cta: 'Ask',
     placeholder: 'Is this argument convincing?'
 }
@@ -78,18 +86,23 @@ export class AskEditorModal extends Modal {
             })
         }
 
-        const editorSetting = new Setting(this.contentEl).setName('Editor')
+        const hasPanels = this.choices.some((choice) => choice.kind === 'panel')
+        const editorSetting = new Setting(this.contentEl).setName(
+            hasPanels ? 'Editor or panel' : 'Editor'
+        )
         const single = this.choices.length === 1 ? this.choices[0] : undefined
         if (single) {
-            // Exactly one possible editor: static text, no pointless dropdown.
+            // Exactly one possible choice: static text, no pointless dropdown.
             editorSetting.controlEl.createSpan({
                 cls: 'editor-ai-daemons-ask-single-editor',
-                text: single.name
+                text: askChoiceLabel(single)
             })
         } else {
             editorSetting.addDropdown((dropdown) => {
                 for (const choice of this.choices) {
-                    dropdown.addOption(choice.id, choice.name)
+                    // Panels marked "(panel · N requests)" — BR #11 plus the
+                    // cost decision of issue #27.
+                    dropdown.addOption(choice.id, askChoiceLabel(choice))
                 }
                 dropdown.setValue(this.selectedEditorId).onChange((value) => {
                     this.selectedEditorId = value

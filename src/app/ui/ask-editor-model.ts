@@ -1,14 +1,37 @@
 /**
- * Pure logic for the freeform "Ask an editor" modal (design §6 decision 1):
+ * Pure logic for the freeform "Ask a question" modal (design §6 decision 1,
+ * né "Ask an editor" — renamed with issue #27 when panels joined the picker):
  * what the editor picker offers and when the Ask button is enabled. The
  * Obsidian `Modal` wiring (`ask-editor-modal.ts`) stays thin — it builds its
  * DOM around these functions and never re-implements the decisions.
  */
 
-/** One entry of the modal's editor picker. */
+/** One entry of the modal's picker: an editor, or a panel (issue #27). */
 export interface AskEditorChoice {
     readonly id: string
     readonly name: string
+    /** Absent = editor (the comment picker never offers panels). */
+    readonly kind?: 'editor' | 'panel'
+    /**
+     * Backend requests this choice runs (panels: resolvable members +
+     * aggregation). Editors omit it — one request is the baseline and
+     * labelling every row "1 request" would be noise.
+     */
+    readonly requestCount?: number
+}
+
+/**
+ * A choice's picker label (issue #27): panels are marked as such in every
+ * surface (Business Rules #11) and carry their request count — the picker
+ * must say that one option costs 5× another before it runs it.
+ */
+export function askChoiceLabel(choice: AskEditorChoice): string {
+    if (choice.kind !== 'panel') {
+        return choice.name
+    }
+    const count = choice.requestCount ?? 0
+    const requests = count === 1 ? '1 request' : `${count} requests`
+    return `${choice.name} (panel · ${requests})`
 }
 
 /**

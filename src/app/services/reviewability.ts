@@ -3,7 +3,11 @@ import type { EditorConfig, PluginSettingsV1 } from '../domain/settings/settings
 import { isExcluded } from './context/exclusions'
 import { noteRuleOutcome } from './rules/note-rules'
 import type { NoteFactsSource } from './rules/note-rules'
-import { resolveEditorBackend, resolveReviewParticipants } from './review-service'
+import {
+    resolveBackendRef,
+    resolveEditorBackend,
+    resolveReviewParticipants
+} from './review-service'
 
 /**
  * Shared reviewability predicate for every interaction surface (command
@@ -52,6 +56,42 @@ export function reviewCapableEditors(settings: PluginSettingsV1): EditorConfig[]
             editor.capabilities.review &&
             resolveEditorBackend(settings, editor).ok
     )
+}
+
+/** One panel the freeform ask may offer (issue #27). */
+export interface AskablePanel {
+    readonly id: string
+    readonly name: string
+    /**
+     * Backend requests choosing this panel will run: its RESOLVABLE members
+     * plus the aggregation when its backend resolves. The picker shows it —
+     * a list of bare names hid that one option costs 5× another.
+     */
+    readonly requestCount: number
+}
+
+/**
+ * The panels the freeform ask offers (issue #27): enabled, with at least one
+ * member that could actually run — the same discipline as
+ * `reviewCapableEditors`, extended to panels, so the picker can never offer
+ * something `startReview` would refuse (BR #14). Panel runs complete
+ * partially by design, so ONE runnable member is the bar, not all of them.
+ */
+export function askablePanels(settings: PluginSettingsV1): AskablePanel[] {
+    const capable = new Set(reviewCapableEditors(settings).map((editor) => editor.id))
+    const panels: AskablePanel[] = []
+    for (const panel of settings.panels) {
+        if (!panel.enabled) {
+            continue
+        }
+        const members = panel.memberEditorIds.filter((id) => capable.has(id)).length
+        if (members === 0) {
+            continue
+        }
+        const aggregation = resolveBackendRef(settings, panel.aggregationBackend).ok ? 1 : 0
+        panels.push({ id: panel.id, name: panel.name, requestCount: members + aggregation })
+    }
+    return panels
 }
 
 /**

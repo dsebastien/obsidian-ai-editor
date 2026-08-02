@@ -24,7 +24,7 @@ export const OPEN_REVIEW_PANEL_COMMAND_NAME = 'Open review panel'
  *   (not excluded + ≥1 dispatchable editor; service re-checks fail-closed).
  * - `Review selection` — non-empty selection in an editable reviewable view;
  *   captures the range synchronously (selection-capture contract, design §1).
- * - `Ask an editor` — same gate as `Review selection`; captures the range +
+ * - `Ask a question` (id `ask-editor`, kept for hotkey stability) — same gate as `Review selection`; captures the range +
  *   hash synchronously, then opens the freeform modal (design §6 decision 1).
  * - `Preview what will be sent` — the trust surface (plan M5): assembles the
  *   REAL context for the active note through the same `buildEditorPrompt` a
@@ -102,7 +102,7 @@ export function registerReviewCommands(
 
     plugin.addCommand({
         id: 'ask-editor',
-        name: 'Ask an editor',
+        name: 'Ask a question',
         editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
             // NOT `canReview`: the modal dispatches with the editor the user
             // picks (`instructionEditorIds`, precedence 2), which outranks a
@@ -132,7 +132,7 @@ export function registerReviewCommands(
         name: 'Ask for comments',
         editorCheckCallback: (checking: boolean, editor, ctx): boolean => {
             // A margin comment IS a review scoped to the span, so it takes the
-            // same gate as `Ask an editor` — plus a comment store to park it
+            // same gate as `Ask a question` — plus a comment store to park it
             // in. `canAskEditor`, not `canReview`: a comment names its own
             // editor, and "a rule's `assign` target does not override the
             // comment's editor" (`comment-job-service.ts`).

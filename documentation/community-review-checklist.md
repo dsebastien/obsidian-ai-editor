@@ -247,7 +247,7 @@ Beyond the linted call sites, commands, tab labels and modal titles were swept b
 grep -rn "id: '\|name: '" src/app/commands/ | grep -v spec
 ```
 
-16 static commands (`Review current note`, `Review selection`, `Ask an editor`, `Ask for comments`, `Preview what will be sent`, `Open review panel`, `Cancel review or action`, `Next finding`, `Previous finding`, `Accept current finding`, `Dismiss current finding`, `Cycle severity filter`, `Accept all non-conflicting findings`, `Generate more findings from every finished editor`, `Toggle the margin comment column`, `Run setup wizard`) plus the dynamic `Accept all from <editor>` / `Dismiss all from <editor>` / action-binding commands — all sentence case. Settings tabs: `Backends`, `Editors`, `Panels`, `Actions`, `Voice & style`, `Rules`, `Behavior`.
+16 static commands (`Review current note`, `Review selection`, `Ask a question`, `Ask for comments`, `Preview what will be sent`, `Open review panel`, `Cancel review or action`, `Next finding`, `Previous finding`, `Accept current finding`, `Dismiss current finding`, `Cycle severity filter`, `Accept all non-conflicting findings`, `Generate more findings from every finished editor`, `Toggle the margin comment column`, `Run setup wizard`) plus the dynamic `Accept all from <editor>` / `Dismiss all from <editor>` / action-binding commands — all sentence case. Settings tabs: `Backends`, `Editors`, `Panels`, `Actions`, `Voice & style`, `Rules`, `Behavior`.
 
 ---
 

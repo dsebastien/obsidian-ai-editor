@@ -48,6 +48,7 @@ import {
     isPluginDisabledByRule,
     isPluginEnabledForNote,
     isReviewable,
+    askablePanels,
     reviewCapableEditors,
     reviewGate
 } from '../services/reviewability'
@@ -1397,28 +1398,62 @@ export class ReviewController {
         }
         const capturedPath = view.file.path
         this.noteDaemonActivity(capturedPath)
-        const choices = reviewCapableEditors(this.deps.getSettings()).map((candidate) => ({
+        const settings = this.deps.getSettings()
+        const editorChoices = reviewCapableEditors(settings).map((candidate) => ({
             id: candidate.id,
-            name: candidate.name
+            name: candidate.name,
+            kind: 'editor' as const
         }))
-        if (choices.length === 0) {
+        if (editorChoices.length === 0) {
             // Unreachable behind the `canReviewSelection` gates; fail closed.
             return
         }
+        // Panels join the picker (issue #27): enabled, ≥1 runnable member —
+        // the picker never offers what `startReview` would refuse (BR #14).
+        const panelChoices = askablePanels(settings).map((panel) => ({
+            id: panel.id,
+            name: panel.name,
+            kind: 'panel' as const,
+            requestCount: panel.requestCount
+        }))
+        const panelIds = new Set(panelChoices.map((panel) => panel.id))
         const from = editor.posToOffset(editor.getCursor('from'))
         const to = editor.posToOffset(editor.getCursor('to'))
         const requested: RequestedSelection | undefined =
             from !== to ? { from, to, capturedHash: hashText(editor.getValue()) } : undefined
-        new AskEditorModal(this.deps.app, choices, (editorId, instruction) => {
-            if (view.file?.path !== capturedPath) {
-                new Notice('The note changed while the dialog was open — ask cancelled.')
-                return
+        new AskEditorModal(
+            this.deps.app,
+            [...editorChoices, ...panelChoices],
+            (chosenId, instruction) => {
+                if (view.file?.path !== capturedPath) {
+                    new Notice('The note changed while the dialog was open — ask cancelled.')
+                    return
+                }
+                if (panelIds.has(chosenId)) {
+                    // A panel ask is a panel RUN (issue #27): the question
+                    // reaches every member (instruction.editorIds lists the
+                    // membership so `buildEditorPrompt` applies the text to
+                    // each) layered ON TOP of the charter, and the
+                    // chairperson aggregates with the question in view.
+                    const memberIds =
+                        this.deps.getSettings().panels.find((panel) => panel.id === chosenId)
+                            ?.memberEditorIds ?? []
+                    void this.startReview(
+                        view,
+                        false,
+                        requested,
+                        'whole-note',
+                        { editorIds: [...memberIds], text: instruction },
+                        chosenId
+                    )
+                    return
+                }
+                void this.startReview(view, false, requested, 'whole-note', {
+                    editorIds: [chosenId],
+                    text: instruction
+                })
             }
-            void this.startReview(view, false, requested, 'whole-note', {
-                editorIds: [editorId],
-                text: instruction
-            })
-        }).open()
+        ).open()
     }
 
     // -- "What will be sent" preview ------------------------------------------

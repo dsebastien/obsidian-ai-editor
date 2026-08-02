@@ -37,13 +37,13 @@ Each row shows what it currently resolves to, and says so when a rule does nothi
 
 A rule supplies the **default participant pool**. These override it:
 
-- an explicit **Ask an editor**;
+- an explicit **Ask a question**;
 - **Ask for comments** — a [margin comment](margin-comments.md) names its own editor;
 - a **bound action** — you named the verb and it names its own target;
 - `--editors` on the [command line](command-line.md);
 - a **daemon refresh** of a note that was reviewed before, which reuses that review's editors.
 
-Because they override the rule, they stay available even when the rule's own target cannot run: a rule pointing at a disabled editor stops **Review**, not **Ask an editor**.
+Because they override the rule, they stay available even when the rule's own target cannot run: a rule pointing at a disabled editor stops **Review**, not **Ask a question**.
 
 A kill switch is different: it refuses everything, including all of the above.
 

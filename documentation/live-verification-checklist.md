@@ -109,6 +109,16 @@ Status: **nothing verified.**
 - "Clear for this note" clears only the bound note; Settings → Clear history empties everything and deletes the file.
 - An excluded note produces NO history entries even after a manual attempt; renaming a note carries its history; deleting removes it.
 
+## Ask a question — panels in the picker + rename (issue #27, 2026-08-02)
+
+Status: **nothing verified.**
+
+- The command and context-menu item now read "Ask a question" (id unchanged — existing hotkeys still fire it); the modal title matches.
+- With ≥1 enabled panel whose members can run, the picker lists panels after editors, marked "(panel · N requests)" with the real count (resolvable members + 1 when aggregation is configured).
+- Ask a panel a question: every member's findings reflect the question; the scorecard's verdict/top-fixes address the QUESTION, not just the charter.
+- A disabled panel, or one whose members all fail to resolve, does not appear. With no panels the picker looks exactly as before ("Editor" label, no suffixes).
+- "Ask for comments" is unchanged (editors only — a comment is answered by one editor).
+
 ## Selection segment on the rail (issue #26, 2026-08-02)
 
 Status: **nothing verified.**
@@ -237,7 +247,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 
 ## Action dispatch — bindings become real (v1 sweep stage C, slice 3)
 
-- Context menu on a selection shows bound actions with class icons, capped and alphabetical; Review selection / Ask an editor unchanged.
+- Context menu on a selection shows bound actions with class icons, capped and alphabetical; Review selection / Ask a question unchanged.
 - Fresh install (or `starterPackSeeded` reset): the seven default bindings appear pre-wired in the Actions tab and in the menu/palette.
 - Palette: `action-<verb>` commands appear/disappear live as bindings change in settings (no reload); a hotkey bound to Humanize survives renaming its editor.
 - Transform verb dispatch end-to-end: select text → Humanize → chip pulses "transforming" → inline diff widget → Accept is ONE undo step; Esc rejects.
@@ -321,7 +331,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Delete the panel a rule points at (accept the impact dialog), then re-add a rule pointing at a panel and delete the panel from `data.json` by hand: the review refuses with "the matching rule's panel no longer exists" instead of reviewing with everyone.
 - With rules present, restart Obsidian and immediately open a note matching a TAG kill switch: the rail must not flash before the metadata cache warms up.
 - Rules tab with the Starter Kit enabled: the paragraph says "detected", and a rule `osk-note-type "Permanent Notes"` matches a `type/permanent_note` note (via the registry's tag mapping). Disable the Starter Kit and reload: the paragraph says "not detected", the same rule stops matching, and `osk-note-type "permanent_note"` matches instead.
-- Ask an editor on a note a rule assigns to a DIFFERENT editor: the editor you picked answers, not the rule's.
+- Ask a question on a note a rule assigns to a DIFFERENT editor: the editor you picked answers, not the rule's.
 - Daemon mode on, with a kill switch matching the note: no automatic refresh, no armed dot, no log spam.
 - `obsidian ai-editor:review --file <switched-off note>` returns `"code": "rule-disabled"` and names the rule.
 
