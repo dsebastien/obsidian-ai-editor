@@ -864,6 +864,32 @@
     transition: opacity 200ms ease;
 }
 
+/* Collapse (issue #28): only the head survives — daemon toggle, collapsed
+   finding count, the chevron, and Cancel while a run is in flight. The
+   Review button and the editor list fold away. */
+.editor-ai-daemons-rail.is-collapsed .editor-ai-daemons-rail-list,
+.editor-ai-daemons-rail.is-collapsed
+    .editor-ai-daemons-rail-button:not(.editor-ai-daemons-rail-button-cancel) {
+    display: none;
+}
+
+.editor-ai-daemons-rail-collapse {
+    @apply shrink-0 cursor-pointer self-center border-none bg-transparent p-0 leading-none;
+    color: var(--text-muted);
+    font-size: var(--editor-ai-daemons-rail-font);
+}
+
+.editor-ai-daemons-rail-collapse:hover {
+    color: var(--text-normal);
+}
+
+.editor-ai-daemons-rail-collapsed-count {
+    @apply shrink-0 self-center rounded-full px-1;
+    font-size: var(--editor-ai-daemons-rail-badge-font);
+    color: var(--text-on-accent, white);
+    background-color: var(--text-accent);
+}
+
 /* Idle fade (issue #33): the rail floats over the note text, so while it is
    neither hovered, nor holding keyboard focus (:focus-within — a keyboard
    user tabbing in lifts it exactly like hover), nor actively reporting

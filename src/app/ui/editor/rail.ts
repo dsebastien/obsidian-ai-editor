@@ -59,6 +59,11 @@ export interface RailCallbacks {
      * widget so the rail stays plain DOM (no Obsidian imports).
      */
     readonly onToggleDaemon: () => void
+    /**
+     * Collapse/expand the rail (issue #28). Global, persisted like a setting
+     * (`behavior.railCollapsed`); the chevron in the head is the control.
+     */
+    readonly onToggleCollapsed: () => void
     readonly onEditorClick: (editorId: string) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly onRetry: (editorId: string) => void
@@ -162,6 +167,10 @@ export class PersonaRail {
     private buttonTooltip = ''
     private buttonAriaLabel = ''
     private buttonAction: RailViewModel['button']['action'] = 'review'
+    private readonly collapseEl: HTMLButtonElement
+    private readonly countEl: HTMLElement
+    private collapsedGlyph = ''
+    private countText = ''
     /**
      * What the previous render showed, so `railMotion` can tell a new run from
      * the dozens of re-renders inside one.
@@ -233,6 +242,25 @@ export class PersonaRail {
             }
         })
         headEl.appendChild(this.buttonEl)
+
+        // Collapsed finding count (issue #28): the one number that makes a
+        // user expand again. Hidden unless collapsed with findings.
+        this.countEl = this.doc.createElement('span')
+        this.countEl.classList.add(
+            'editor-ai-daemons-rail-collapsed-count',
+            'editor-ai-daemons-hidden'
+        )
+        headEl.appendChild(this.countEl)
+
+        // Collapse/expand chevron (issue #28): always visible, so a lone
+        // daemon toggle still hints that a rail is folded behind it.
+        this.collapseEl = this.doc.createElement('button')
+        this.collapseEl.classList.add('editor-ai-daemons-rail-collapse')
+        this.collapseEl.type = 'button'
+        this.collapseEl.addEventListener('click', () => {
+            this.callbacks.onToggleCollapsed()
+        })
+        headEl.appendChild(this.collapseEl)
         this.rootEl.appendChild(headEl)
 
         this.listEl = this.doc.createElement('div')
@@ -290,6 +318,12 @@ export class PersonaRail {
                     dot.status === 'transforming'
             )
         this.rootEl.classList.toggle('is-busy', busy)
+        // Collapse (issue #28): CSS hides the list and the Review button off
+        // this class; Cancel stays visible while a run is in flight (a
+        // collapsed rail with no visible cancel is the one unacceptable
+        // shape), and the daemon toggle survives by construction.
+        this.rootEl.classList.toggle('is-collapsed', viewModel.collapsed)
+        this.syncCollapse(viewModel)
         this.syncHead(viewModel)
 
         // A panel run renders as ONE entity: a ringed row owning its members
@@ -337,6 +371,36 @@ export class PersonaRail {
     /** Removes the rail from the DOM. The instance must not be reused. */
     destroy(): void {
         this.rootEl.remove()
+    }
+
+    /** Patches the chevron + collapsed count in place (issue #28). */
+    private syncCollapse(viewModel: RailViewModel): void {
+        const glyph = viewModel.collapsed ? '▸' : '▾'
+        if (this.collapsedGlyph !== glyph) {
+            this.collapseEl.textContent = glyph
+            this.collapsedGlyph = glyph
+        }
+        this.collapseEl.setAttribute('aria-expanded', String(!viewModel.collapsed))
+        const label = viewModel.collapsed ? 'Expand the review rail' : 'Collapse the review rail'
+        if (this.collapseEl.getAttribute('aria-label') !== label) {
+            this.applyTooltip(this.collapseEl, label)
+        }
+        const count =
+            viewModel.collapsed && viewModel.totalFindings > 0
+                ? String(viewModel.totalFindings)
+                : ''
+        if (this.countText !== count) {
+            this.countEl.textContent = count
+            this.countEl.classList.toggle('editor-ai-daemons-hidden', count.length === 0)
+            if (count.length > 0) {
+                const findings = viewModel.totalFindings === 1 ? 'finding' : 'findings'
+                this.applyTooltip(
+                    this.countEl,
+                    `${String(viewModel.totalFindings)} ${findings} — expand the rail to see them`
+                )
+            }
+            this.countText = count
+        }
     }
 
     /** Patches the head in place, so focus on either control survives. */

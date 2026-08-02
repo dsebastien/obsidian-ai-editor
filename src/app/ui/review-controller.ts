@@ -316,6 +316,11 @@ export interface ReviewControllerDeps {
      * being able to write the rest.
      */
     readonly setDaemonMode?: (enabled: boolean) => Promise<void>
+    /**
+     * Persists `behavior.railCollapsed` from the rail's chevron (issue #28).
+     * Same narrow-seam rationale as `setDaemonMode`.
+     */
+    readonly setRailCollapsed?: (collapsed: boolean) => Promise<void>
     readonly runController: RunController
     /** Transform/generate runs (one per file); shares the request gate. */
     readonly transformController: TransformController
@@ -1589,6 +1594,30 @@ export class ReviewController {
         // interleave. Safe: timer callback context, never a CM6 update cycle.
         this.refreshAll()
         return 'started'
+    }
+
+    /**
+     * Flips the rail's collapsed state from its chevron (issue #28). Global
+     * and persisted; the settings observer refreshes every rail, so all
+     * panes fold together.
+     */
+    private toggleRailCollapsed(): void {
+        const setRailCollapsed = this.deps.setRailCollapsed
+        if (!setRailCollapsed) {
+            return
+        }
+        const next = !this.deps.getSettings().behavior.railCollapsed
+        void setRailCollapsed(next)
+            .then(() => {
+                if (!this.disposed) {
+                    this.scheduleRefresh()
+                }
+            })
+            .catch(() => {
+                if (!this.disposed) {
+                    new Notice('AI Editor: failed to change the rail state.')
+                }
+            })
     }
 
     /**
@@ -3155,6 +3184,9 @@ export class ReviewController {
                 onToggleDaemon: (): void => {
                     this.toggleDaemonMode()
                 },
+                onToggleCollapsed: (): void => {
+                    this.toggleRailCollapsed()
+                },
                 onEditorClick: (editorId): void => {
                     this.handleChipClick(view, editorId)
                 },
@@ -3434,6 +3466,7 @@ export class ReviewController {
             daemonMode: this.deps.getSettings().behavior.daemonMode,
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
+            collapsed: this.deps.getSettings().behavior.railCollapsed,
             narrow,
             // Motion key only (rail-model `railMotion`): the rows stagger in
             // when it changes. The snapshot id IS the run identity — a retry

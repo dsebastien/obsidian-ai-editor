@@ -90,6 +90,15 @@ export interface RailState {
      */
     readonly narrow?: boolean
     /**
+     * Collapsed rail (issue #28): only the daemon toggle (plus a finding
+     * count, the expand chevron, and Cancel while a run is in flight)
+     * remains visible. GLOBAL and persisted (`behavior.railCollapsed`) —
+     * a rail collapsed on one note and expanded on another would feel
+     * arbitrary. Contrast with hiding findings (#29): per note, session
+     * only, deliberately different persistence.
+     */
+    readonly collapsed?: boolean
+    /**
      * Identity of the run currently projected, or undefined when there is no
      * run. Purely a MOTION key: `railMotion` staggers the rows in when it
      * changes, so a new run animates and the dozens of re-renders inside one
@@ -260,6 +269,14 @@ export interface RailViewModel {
      * name budget. Never icon-only — see {@link RailState.narrow}.
      */
     readonly compact: boolean
+    /** Collapsed to the daemon toggle (issue #28); see RailState.collapsed. */
+    readonly collapsed: boolean
+    /**
+     * Findings reported across every editor — the one number worth showing
+     * while collapsed ("collapsed, 7 findings" is what makes the user expand
+     * again). Zero hides the badge.
+     */
+    readonly totalFindings: number
     /** Motion key of the projected run; null when no run is bound. */
     readonly runKey: string | null
 }
@@ -588,6 +605,8 @@ export function buildRailViewModel(state: RailState): RailViewModel {
             compact
         ),
         compact,
+        collapsed: state.collapsed === true,
+        totalFindings: state.editors.reduce((sum, editor) => sum + editor.findingCount, 0),
         runKey: state.runKey ?? null
     }
 }

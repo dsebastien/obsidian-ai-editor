@@ -42,6 +42,8 @@ Every markdown editor gets a small card in its top-right corner: the [daemon](da
 
 The rail floats over the note, so **when you are not using it, it fades** to a low opacity and the text underneath stays readable. Hovering it, tabbing into it, a running review, or an armed daemon refresh bring it back to full strength.
 
+You can also **collapse it** with the chevron in its head: only the daemon toggle, a total finding count and the chevron remain — and **Cancel stays visible while a review runs**, so a collapsed rail never hides the way out. The state is global and remembered across notes and restarts; the chevron brings everything back.
+
 In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [AI Editor Review panel](#the-ai-editor-review-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
 
 If your operating system is set to reduce motion, nothing on the rail animates and every state is still told apart by shape: dashed, arc, solid, error, muted.

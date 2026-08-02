@@ -67,6 +67,16 @@ Status: **nothing verified.** Policy, breaker and tracker are spec-pinned; the l
 - Daemon mode on + a broken backend: after 3 automatic refreshes fail, daemon mode turns itself OFF with a sticky Notice naming the failure; manual Review still works; toggling daemon back on starts a fresh streak.
 - "Test connection" on a previously failing backend that now works: subsequent reviews retry normally again (the breaker reset).
 
+## Rail collapse (issue #28, 2026-08-02)
+
+Status: **nothing verified.**
+
+- The chevron collapses the rail to daemon toggle + count + chevron; expanding restores the full card. State survives note switches AND a restart (persisted), and applies to every pane at once.
+- While a review runs collapsed, **Cancel is visible** and works; when idle, no Review button shows.
+- The count badge shows the total findings ("7") only while collapsed and non-zero; its tooltip says to expand.
+- The collapsed rail still fades when idle (#33) and un-fades on hover/focus.
+- Keyboard: tab reaches the chevron in both states; aria-expanded flips.
+
 ## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
 
 Status: **nothing verified.**

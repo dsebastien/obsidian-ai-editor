@@ -122,6 +122,10 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 this.update((draft) => {
                     draft.behavior.daemonMode = enabled
                 }),
+            setRailCollapsed: (collapsed) =>
+                this.update((draft) => {
+                    draft.behavior.railCollapsed = collapsed
+                }),
             runController,
             transformController,
             setFindingCount: (count) => this.setFindingCount(count),

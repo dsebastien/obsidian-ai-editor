@@ -186,6 +186,7 @@ function mount(): Harness {
             onReview: () => clicks.push('review'),
             onCancel: () => clicks.push('cancel'),
             onToggleDaemon: () => clicks.push('daemon'),
+            onToggleCollapsed: () => clicks.push('collapse'),
             onEditorClick: (editorId) => clicks.push(`editor:${editorId}`),
             onRetry: (editorId) => clicks.push(`retry:${editorId}`),
             onPanelClick: () => clicks.push('panel')
@@ -618,5 +619,55 @@ describe('PersonaRail idle fade (issue #33)', () => {
             })
         )
         expect(root.classList.contains('is-busy')).toBe(false)
+    })
+})
+
+describe('PersonaRail collapse (issue #28)', () => {
+    it('marks the root collapsed and flips the chevron + aria-expanded', () => {
+        const { rail, root } = mount()
+        rail.render(state({ collapsed: true }))
+        expect(root.classList.contains('is-collapsed')).toBe(true)
+        const chevron = root.find('editor-ai-daemons-rail-collapse')
+        expect(chevron?.textContent).toBe('▸')
+        expect(chevron?.attributes.get('aria-expanded')).toBe('false')
+        rail.render(state({ collapsed: false }))
+        expect(root.classList.contains('is-collapsed')).toBe(false)
+        expect(chevron?.textContent).toBe('▾')
+        expect(chevron?.attributes.get('aria-expanded')).toBe('true')
+    })
+
+    it('routes a chevron click to the collapse callback', () => {
+        const { rail, root, clicks } = mount()
+        rail.render(state({}))
+        root.find('editor-ai-daemons-rail-collapse')?.dispatch('click')
+        expect(clicks).toEqual(['collapse'])
+    })
+
+    it('shows the total finding count only while collapsed and non-zero', () => {
+        const { rail, root } = mount()
+        const editors = [editor({ id: 'a', findingCount: 3 }), editor({ id: 'b', findingCount: 4 })]
+        rail.render(state({ editors, collapsed: true }))
+        const count = root.find('editor-ai-daemons-rail-collapsed-count')
+        expect(count?.textContent).toBe('7')
+        expect(count?.classList.contains('editor-ai-daemons-hidden')).toBe(false)
+        // Expanded: the rows themselves carry the counts.
+        rail.render(state({ editors, collapsed: false }))
+        expect(count?.classList.contains('editor-ai-daemons-hidden')).toBe(true)
+        // Collapsed with nothing reported: no badge.
+        rail.render(state({ editors: [editor({ findingCount: 0 })], collapsed: true }))
+        expect(count?.classList.contains('editor-ai-daemons-hidden')).toBe(true)
+    })
+
+    it('keeps the daemon toggle and the Cancel action reachable while collapsed', () => {
+        const { rail, root, clicks } = mount()
+        rail.render(state({ collapsed: true, running: true }))
+        // The daemon toggle and the (Cancel) button still exist and dispatch;
+        // hiding the Review form of the button is CSS, keyed off the classes
+        // asserted here.
+        root.find('editor-ai-daemons-rail-daemon')?.dispatch('click')
+        const button = root.find('editor-ai-daemons-rail-button')
+        expect(button?.classList.contains('editor-ai-daemons-rail-button-cancel')).toBe(true)
+        button?.dispatch('click')
+        expect(clicks).toEqual(['daemon', 'cancel'])
     })
 })

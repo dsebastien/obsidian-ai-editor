@@ -317,6 +317,13 @@ export const behaviorSettingsSchema = z.object({
      * edit that caused it feels disconnected from it.
      */
     daemonIdleSeconds: z.number().int().min(1).max(600).default(3),
+    /**
+     * The persona rail collapsed to its head (issue #28): daemon toggle,
+     * finding count, expand chevron — and Cancel while a run is in flight.
+     * Persisted UI state, GLOBAL by design (per-note would feel arbitrary);
+     * the rail's chevron is the only control, so no settings-tab row.
+     */
+    railCollapsed: z.boolean().default(false),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
     /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */
