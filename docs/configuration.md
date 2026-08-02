@@ -33,6 +33,13 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 | **Daemon mode**          | toggle | `off`   | —     | Editors refresh their recommendations after you pause editing                                                                                                               |
 | **Idle delay (seconds)** | int    | `3`     | 1–600 | Only shown while daemon mode is on. Any interaction restarts the clock — typing, moving the cursor, triaging, using the panel or a card; only an actual edit arms a refresh |
 
+### History
+
+| Setting             | Type   | Default | What it does                                                                                                                                         |
+| ------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Durable history** | toggle | `off`   | Keep the History tab across sessions, per note. Stores quoted note text in the plugin folder — see [Privacy](privacy-and-security.md#review-history) |
+| **Clear history**   | button | —       | Removes every history entry, in memory and on disk                                                                                                   |
+
 ### Privacy exclusions
 
 | Setting                         | Type   | Default | What it does                                        |

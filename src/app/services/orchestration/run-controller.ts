@@ -389,6 +389,39 @@ export interface RunHandle {
 }
 
 /**
+ * Read-only observer of run outcomes (issue #21 — the history archive).
+ * Called AFTER the store settled, never consulted for decisions: history is
+ * a record of what happened, not a participant. Every callback is wrapped in
+ * a try/catch at the call site — an archive must never break a run.
+ */
+export interface RunObserver {
+    /** One editor finished a pass; `findings` are the ones it produced that
+     * were not already recorded (continuations report only their additions). */
+    editorSettled(input: {
+        readonly filePath: string
+        readonly editorId: string
+        readonly editorName: string
+        readonly findings: readonly TrackedFinding[]
+    }): void
+    /** A push-back turn landed (conceded or held). */
+    threadSettled(input: {
+        readonly filePath: string
+        readonly editorId: string
+        readonly editorName: string
+        readonly quote: string
+        readonly message: string
+        readonly reply: string
+        readonly outcome: 'held' | 'conceded'
+    }): void
+    /** A panel scorecard was produced. */
+    panelSettled(input: {
+        readonly filePath: string
+        readonly panelName: string
+        readonly result: PanelResult
+    }): void
+}
+
+/**
  * Per-attempt anchoring base: the text findings of the CURRENT attempt are
  * anchored against, plus every edit batch applied since (each batch in the
  * coordinates of the document it was applied to). Findings arriving after an
@@ -600,10 +633,14 @@ class ReviewRunHandle implements RunHandle {
      */
     private readonly carryoverOutOfScope = new Set<FindingId>()
 
+    /** Finding ids already reported to the observer (issue #21). */
+    private readonly reportedToObserver = new Set<FindingId>()
+
     constructor(
         input: StartRunInput,
         private readonly requestGate: Semaphore,
-        carryover: readonly TrackedFinding[] = []
+        carryover: readonly TrackedFinding[] = [],
+        private readonly observer: RunObserver | null = null
     ) {
         this.snapshot = input.snapshot
         this.findings = new FindingStore(() => this.notify())
@@ -1163,8 +1200,27 @@ class ReviewRunHandle implements RunHandle {
                 )
             }
         }
+        const turnMessage = this.findings.get(findingId)?.threadTurn?.message ?? ''
         if (this.findings.completeThreadTurn(findingId, outcome, revisedTrackedEdits) === null) {
             return { status: 'discarded' }
+        }
+        // History (issue #21): the landed exchange is archived — an editor's
+        // reply is often exactly the sentence the user wants to find again.
+        const landed = this.findings.get(findingId)
+        if (this.observer !== null && landed !== null) {
+            try {
+                this.observer.threadSettled({
+                    filePath: this.snapshot.filePath,
+                    editorId: landed.editorId,
+                    editorName: this.states.get(landed.editorId)?.editorName ?? landed.editorId,
+                    quote: landed.raw.quote,
+                    message: turnMessage,
+                    reply: outcome.reply,
+                    outcome: outcome.kind === 'concede' ? 'conceded' : 'held'
+                })
+            } catch {
+                // Archive only.
+            }
         }
         if (outcome.kind === 'concede') {
             return { status: 'conceded', reply: outcome.reply }
@@ -1574,6 +1630,32 @@ class ReviewRunHandle implements RunHandle {
         // completed round drops what it no longer reports; a failed or
         // cancelled one keeps the previous round's findings on screen.
         this.resolveCarryoverAtTerminal(state, status === 'done' ? 'done' : 'failed')
+        // History (issue #21): a completed pass archives what it produced —
+        // only the not-yet-reported findings, so a continuation adds its
+        // additions rather than repeating the first pass. After carryover
+        // resolution on purpose: dropped stale carryover is not this pass's
+        // output. Observer failures never break a run.
+        if (state.status === 'done' && this.observer !== null) {
+            const fresh = state.findingIds
+                .filter((id) => !this.reportedToObserver.has(id))
+                .map((id) => this.findings.get(id))
+                .filter((finding): finding is TrackedFinding => finding !== null)
+            for (const finding of fresh) {
+                this.reportedToObserver.add(finding.id)
+            }
+            if (fresh.length > 0) {
+                try {
+                    this.observer.editorSettled({
+                        filePath: this.snapshot.filePath,
+                        editorId: state.editorId,
+                        editorName: state.editorName,
+                        findings: fresh
+                    })
+                } catch {
+                    // History is an archive, never a participant.
+                }
+            }
+        }
         // No further finding can arrive for this attempt: drop the anchor
         // base so edit batches stop accumulating for this editor (and the
         // retry text, when any, is released).
@@ -1671,6 +1753,18 @@ class ReviewRunHandle implements RunHandle {
             if (result !== null) {
                 panel.result = result
                 panel.resultStale = false
+                // History (issue #21): a produced scorecard is archived.
+                if (this.observer !== null) {
+                    try {
+                        this.observer.panelSettled({
+                            filePath: this.snapshot.filePath,
+                            panelName: panel.panelName,
+                            result
+                        })
+                    } catch {
+                        // Archive only.
+                    }
+                }
             }
             // A failed or cancelled attempt leaves whatever scorecard was
             // already there (only a continuation can have retained one) —
@@ -1829,7 +1923,11 @@ export class RunController {
      * default (unlimited) keeps headless/test callers unthrottled unless they
      * opt in.
      */
-    constructor(getMaxConcurrentRequests: () => number = () => Number.POSITIVE_INFINITY) {
+    constructor(
+        getMaxConcurrentRequests: () => number = () => Number.POSITIVE_INFINITY,
+        /** History archive observer (issue #21); null = nothing records. */
+        private readonly observer: RunObserver | null = null
+    ) {
         this.requestGate = new Semaphore(getMaxConcurrentRequests)
     }
 
@@ -1845,7 +1943,7 @@ export class RunController {
             // records are history, not observations, and stay behind.
             carryover = existing.findings.list().filter((f) => f.status !== 'superseded')
         }
-        const run = new ReviewRunHandle(input, this.requestGate, carryover)
+        const run = new ReviewRunHandle(input, this.requestGate, carryover, this.observer)
         this.runs.set(input.snapshot.filePath, run)
         return run
     }

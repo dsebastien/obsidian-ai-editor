@@ -113,6 +113,12 @@ The panel's **Review** button works on the note you are on, or the last one you 
 
 The **status bar** shows the number of open findings for the active note, and disappears when there are none.
 
+## The History tab
+
+The panel has two tabs: **Review** (everything above) and **History** — the archive behind it. Every finding, push-back reply and panel scorecard lands there as it is produced, grouped by day (newest first) with filter chips by type and by editor, so "what did the Hater say before I re-ran it?" and "what did I dismiss ten minutes ago?" have answers. Entries are clipped records, selectable and copyable; a verbatim repeat of what an editor already said is not recorded twice.
+
+By default history lives for the session. Turn on **Durable history** (Behavior settings) to keep it across restarts, per note — it is stored in the plugin folder and **contains quoted text from your notes**, which is why it is off by default, excluded from settings export, and clearable: per note from the tab's footer, entirely from the settings. Old entries expire on their own (90 days, at most 100 per note). Excluded notes and notes a rule switched the plugin off for never get history at all — the same absolute rule as requests.
+
 ## Pushing back on a finding
 
 Every card has a reply box. Type your objection — _"I disagree, this repetition is intentional"_ — and press Enter or select **Send**. The message goes to the same editor that raised the finding, which answers one of two ways:

@@ -10,6 +10,11 @@ export interface TabContext {
     readonly facade: SettingsFacade
     /** Re-renders the whole settings tab; call after structural mutations. */
     readonly refresh: () => void
+    /**
+     * Clears the review history, in memory and on disk (issue #21). Wired by
+     * the plugin; absent in headless/test contexts.
+     */
+    readonly clearHistory?: () => void
 }
 
 /**

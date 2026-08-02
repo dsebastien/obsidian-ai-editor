@@ -2446,3 +2446,71 @@ describe('RunController cross-run carryover (issue #19)', () => {
         await run2.settled
     })
 })
+
+describe('RunController history observer (issue #21)', () => {
+    function observerHarness(): {
+        settled: { editorId: string; findings: number; quotes: string[] }[]
+        observer: import('./run-controller').RunObserver
+    } {
+        const settled: { editorId: string; findings: number; quotes: string[] }[] = []
+        return {
+            settled,
+            observer: {
+                editorSettled: (input) => {
+                    settled.push({
+                        editorId: input.editorId,
+                        findings: input.findings.length,
+                        quotes: input.findings.map((f) => f.raw.quote)
+                    })
+                },
+                threadSettled: () => undefined,
+                panelSettled: () => undefined
+            }
+        }
+    }
+
+    it('reports a completed pass once, with the findings it produced', async () => {
+        const { settled, observer } = observerHarness()
+        const controller = new RunController(undefined, observer)
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, raw()), result(runId, [])])
+            ]
+        })
+        await run.settled
+        expect(settled).toEqual([{ editorId: 'alpha', findings: 1, quotes: ['quick brown'] }])
+    })
+
+    it('reports nothing for a failed editor', async () => {
+        const { settled, observer } = observerHarness()
+        const controller = new RunController(undefined, observer)
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [
+                    finding(runId, raw()),
+                    { type: 'error', runId, error: { code: 'network', message: 'boom' } }
+                ])
+            ]
+        })
+        await run.settled
+        expect(settled).toEqual([])
+    })
+
+    it('a re-run reports its round even when carryover adopted the finding', async () => {
+        const { settled, observer } = observerHarness()
+        const controller = new RunController(undefined, observer)
+        const editor = scriptedEditor('alpha', (runId) => [
+            finding(runId, raw()),
+            result(runId, [])
+        ])
+        const run1 = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run1.settled
+        const run2 = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run2.settled
+        // Two rounds, one report each — the HISTORY dedupe (verbatim-repeat
+        // key) is the service's job, not the observer's.
+        expect(settled).toHaveLength(2)
+    })
+})

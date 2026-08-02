@@ -107,6 +107,7 @@ import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
 import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
+import type { HistoryService } from '../services/history/history-service'
 import { pruneAcknowledged } from './acknowledged-editors'
 import { chipClickAction, railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus, RailPanelState } from './editor/rail-model'
@@ -116,7 +117,12 @@ import type { SeverityFilterMode } from './severity-filter'
 import { scorecardStatusKind } from './panel-scorecard'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './side-panel'
 import { verdictLabel } from './verdict-label'
-import type { SidePanelBinding, SidePanelCommentJobs, SidePanelState } from './side-panel'
+import type {
+    SidePanelBinding,
+    SidePanelCommentJobs,
+    SidePanelHistory,
+    SidePanelState
+} from './side-panel'
 import { commentJobsSection, commentRetryNotice, commentStartNotice } from './comment-jobs-model'
 import type { CommentJobRegistry } from '../services/comments/comment-job-registry'
 import { retryCommentJob, startCommentJob } from '../services/comments/comment-job-service'
@@ -323,6 +329,8 @@ export interface ReviewControllerDeps {
      */
     readonly setRailCollapsed?: (collapsed: boolean) => Promise<void>
     readonly runController: RunController
+    /** Review history service (issue #21); absent in headless/test callers. */
+    readonly history?: HistoryService
     /** Transform/generate runs (one per file); shares the request gate. */
     readonly transformController: TransformController
     /** Status-bar projection (open finding count for the active note). */
@@ -2591,7 +2599,26 @@ export class ReviewController {
                 }
             },
             binding: this.getPanelBinding(),
-            commentJobs: this.getPanelCommentJobs(path)
+            commentJobs: this.getPanelCommentJobs(path),
+            history: this.getPanelHistory(path)
+        }
+    }
+
+    /** History tab data for the bound note (issue #21); null when unwired. */
+    private getPanelHistory(path: string | null): SidePanelHistory | null {
+        const history = this.deps.history
+        if (!history) {
+            return null
+        }
+        return {
+            filePath: path,
+            list: () => (path === null ? [] : history.listForFile(path)),
+            clearFile: (): void => {
+                if (path !== null) {
+                    history.clearFile(path)
+                }
+            },
+            durable: this.deps.getSettings().behavior.durableHistory
         }
     }
 

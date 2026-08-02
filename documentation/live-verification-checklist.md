@@ -97,6 +97,18 @@ Status: **nothing verified.**
 - "Show" restores everything at once. A panel run: members acknowledgeable individually, the scorecard never hides.
 - Restart Obsidian: nothing is acknowledged any more (session-only by design).
 
+## History tab (issue #21, 2026-08-02)
+
+Status: **nothing verified.**
+
+- The panel shows Review | History tabs; History lists this note's entries newest-day-first with time stamps; filter chips appear once 2+ kinds or editors exist and narrow the list; text is selectable.
+- Run a review → findings appear as history entries after the editor settles. Push back on a finding → the exchange lands. Run a panel → the scorecard lands.
+- Re-run without changes: a verbatim-identical round adds nothing; a reworded critique adds an entry.
+- Empty state names what will be collected and (with durable off) points at the setting.
+- Durable OFF: restart Obsidian → history gone. Durable ON: restart → history is back; `history.json` exists in the plugin folder; toggling ON mid-session adopts what an earlier durable session saved.
+- "Clear for this note" clears only the bound note; Settings → Clear history empties everything and deletes the file.
+- An excluded note produces NO history entries even after a manual attempt; renaming a note carries its history; deleting removes it.
+
 ## Selection segment on the rail (issue #26, 2026-08-02)
 
 Status: **nothing verified.**

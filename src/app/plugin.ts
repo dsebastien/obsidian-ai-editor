@@ -14,7 +14,12 @@ import {
     commentStoreLoadSummary
 } from './services/comments/comment-repository'
 import type { MarginCommentRepository } from './services/comments/comment-repository'
-import { createCommentRepository, registerCommentStoreHooks } from './ui/comment-store'
+import {
+    createCommentRepository,
+    pluginDataDir,
+    VaultCommentStorage,
+    registerCommentStoreHooks
+} from './ui/comment-store'
 import { CommentJobRegistry } from './services/comments/comment-job-registry'
 import { BackgroundRequestGate } from './services/orchestration/background-gate'
 import { CommentRunController } from './services/orchestration/comment-run'
@@ -24,6 +29,9 @@ import { transformPreviewField } from './ui/editor/transform-preview'
 import { registerEditorMenu } from './ui/menus/editor-menu'
 import { registerFileMenu } from './ui/menus/file-menu'
 import { backendHealth } from './services/backends/backend-health'
+import { createHistoryRecorder } from './services/history/history-recorder'
+import { HistoryRepository, historyStorePathIn } from './services/history/history-repository'
+import { HistoryService } from './services/history/history-service'
 import { DaemonController } from './ui/daemon-controller'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
@@ -84,6 +92,12 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
     private backgroundGate: BackgroundRequestGate | null = null
 
+    /** Durable history sidecar (issue #21); the service lives in `onload`. */
+    private historyRepository: HistoryRepository | null = null
+
+    /** True once the durable history file was loaded into the session store. */
+    private historyLoaded = false
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
@@ -91,7 +105,59 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         await this.loadPluginSettings()
         await this.loadMarginComments()
 
-        this.addSettingTab(new AIEditorPluginSettingTab(this.app, this))
+        // Review history (issue #21): the session store exists always; the
+        // durable sidecar loads/persists only while the setting is on. The
+        // privacy gate is late-bound to the review controller's reviewability
+        // answer, so excluded and rule-disabled notes never enter history
+        // (Business Rule #7 applies to history too).
+        const historyRepository = new HistoryRepository({
+            storage: new VaultCommentStorage(this),
+            storePath: historyStorePathIn(pluginDataDir(this)),
+            setTimer: (callback, ms) => window.setTimeout(callback, ms),
+            clearTimer: (handle) => {
+                window.clearTimeout(handle)
+            },
+            onWriteError: (message) => log(`Could not save history: ${message}`, 'error'),
+            onCorrupt: (backupPath) => {
+                log(`History store was unreadable; kept at ${backupPath}`, 'warn')
+                new Notice(
+                    `AI Editor: the history file could not be read and was kept aside at ${backupPath}. History starts fresh.`
+                )
+            }
+        })
+        this.historyRepository = historyRepository
+        const historyService = new HistoryService({
+            isRecordable: (filePath) => this.reviewController?.canReviewPath(filePath) ?? false,
+            onChange: () => {
+                if (this.settings.behavior.durableHistory) {
+                    historyRepository.scheduleSave(historyService.serialize())
+                }
+                this.reviewController?.requestRefresh()
+            }
+        })
+        if (this.settings.behavior.durableHistory) {
+            historyService.hydrate(await historyRepository.load())
+            this.historyLoaded = true
+        }
+        // History follows renames and dies with deletions, like comments.
+        this.registerEvent(
+            this.app.vault.on('rename', (file, oldPath) => {
+                historyService.renameFile(oldPath, file.path)
+            })
+        )
+        this.registerEvent(
+            this.app.vault.on('delete', (file) => {
+                historyService.deleteUnder(file.path)
+            })
+        )
+
+        const settingsTab = new AIEditorPluginSettingTab(this.app, this)
+        settingsTab.clearHistory = (): void => {
+            historyService.clearAll()
+            void historyRepository.clear()
+            new Notice('AI Editor: history cleared.')
+        }
+        this.addSettingTab(settingsTab)
 
         this.statusBarEl = this.addStatusBarItem()
         this.setFindingCount(0)
@@ -106,7 +172,10 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // `behavior.maxConcurrentRequests` backend requests in flight across
         // all runs. Read per acquisition, so settings changes apply to the
         // next request without a reload.
-        const runController = new RunController(() => this.settings.behavior.maxConcurrentRequests)
+        const runController = new RunController(
+            () => this.settings.behavior.maxConcurrentRequests,
+            createHistoryRecorder(historyService)
+        )
         this.runController = runController
         // Transform/generate runs share the SAME request gate: reviews and
         // actions together never exceed `maxConcurrentRequests`.
@@ -129,6 +198,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             runController,
             transformController,
             setFindingCount: (count) => this.setFindingCount(count),
+            history: historyService,
             ...(commentJobs ? { commentJobs } : {})
         })
         this.reviewController = reviewController
@@ -158,6 +228,14 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         reviewController.attachDaemon(daemonController)
         this.register(
             this.subscribe(() => {
+                // Durable history toggled on mid-session: adopt what an
+                // earlier session persisted, once.
+                if (this.settings.behavior.durableHistory && !this.historyLoaded) {
+                    this.historyLoaded = true
+                    void historyRepository.load().then((entries) => {
+                        historyService.hydrate(entries)
+                    })
+                }
                 daemonController.settingsChanged()
                 // A settings change may be the fix (new key, new endpoint):
                 // yesterday's failure streaks must not keep suppressing
@@ -305,6 +383,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // only be fire-and-forget — which is why the debounce is short.
         void this.commentRepository?.flush()
         this.commentRepository = null
+        // History sidecar: same fire-and-forget flush discipline.
+        if (this.settings.behavior.durableHistory) {
+            void this.historyRepository?.flush()
+        }
+        this.historyRepository = null
         // Daemon timers next (no NEW timer can fire mid-teardown; a dispatch
         // already mid-flight in the review pipeline aborts via `abortWhen`'s
         // disposed check before it could start a run), then

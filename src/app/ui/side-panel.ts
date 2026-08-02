@@ -13,7 +13,18 @@ import { undecoratedNoticeText } from './editor/decoration-budget'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
+import type { HistoryEntry } from '../domain/history/history-entry'
 import { isSettledClean } from './acknowledged-editors'
+import {
+    applyFilters,
+    availableEditors,
+    availableKinds,
+    entryTime,
+    groupByDay,
+    HISTORY_KIND_LABELS,
+    NO_HISTORY_FILTERS
+} from './history-tab'
+import type { HistoryFilters } from './history-tab'
 import { orderRowsByPosition, sectionNavigationView } from './panel-finding-nav'
 import type { SectionNavigationView } from './panel-finding-nav'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
@@ -171,6 +182,20 @@ export interface SidePanelState {
     readonly binding: SidePanelBinding | null
     /** Null when the plugin has no comment store (headless/test callers). */
     readonly commentJobs: SidePanelCommentJobs | null
+    /** History tab data for the bound note (issue #21); null when unwired. */
+    readonly history: SidePanelHistory | null
+}
+
+/** What the History tab needs from the controller (issue #21). */
+export interface SidePanelHistory {
+    /** Bound note path; null when the panel is bound to nothing. */
+    readonly filePath: string | null
+    /** THUNK: entries for the bound note, newest first, read at render. */
+    readonly list: () => readonly HistoryEntry[]
+    /** Clears the bound note's history (confirmed by proximity, not modal). */
+    readonly clearFile: () => void
+    /** Whether the durable setting is on (drives the empty-state copy). */
+    readonly durable: boolean
 }
 
 /** Pulls the current state when the panel (re)opens or refreshes itself. */
@@ -234,6 +259,10 @@ export class ReviewSidePanelView extends ItemView {
     private liveEl: HTMLElement | null = null
     /** Which editor's stepper was last activated here — what to announce. */
     private pendingStepEditorId: string | null = null
+    /** Active panel tab (issue #21): the review surface or the archive. */
+    private activeTab: 'review' | 'history' = 'review'
+    /** History filters — view state, reset per session like the tab. */
+    private historyFilters: HistoryFilters = NO_HISTORY_FILTERS
     /** Set during a render when that editor's section was (re)built. */
     private pendingAnnouncement: string | null = null
 
@@ -409,6 +438,15 @@ export class ReviewSidePanelView extends ItemView {
             return
         }
         this.renderHeader(root, state)
+        // Tab bar (issue #21): the live review surface and the archive
+        // behind it. Only rendered when history is wired at all.
+        if (state.history !== null) {
+            this.renderTabBar(root)
+            if (this.activeTab === 'history') {
+                this.renderHistoryTab(root, state.history)
+                return
+            }
+        }
 
         const binding = state.binding
         if (!binding) {
@@ -457,6 +495,147 @@ export class ReviewSidePanelView extends ItemView {
             )
         }
         this.renderAcknowledgedFooter(root, binding, acknowledgedCount)
+    }
+
+    /** The Review | History tab bar (issue #21). */
+    private renderTabBar(root: HTMLElement): void {
+        const bar = root.createDiv({ cls: 'editor-ai-daemons-panel-tabs' })
+        bar.setAttribute('role', 'tablist')
+        const tabs: { id: 'review' | 'history'; label: string }[] = [
+            { id: 'review', label: 'Review' },
+            { id: 'history', label: 'History' }
+        ]
+        for (const tab of tabs) {
+            const active = this.activeTab === tab.id
+            const el = bar.createEl('button', {
+                cls: `editor-ai-daemons-panel-tab${active ? ' is-active' : ''}`,
+                text: tab.label
+            })
+            el.setAttribute('role', 'tab')
+            el.setAttribute('aria-selected', String(active))
+            el.addEventListener('click', () => {
+                if (this.activeTab !== tab.id) {
+                    this.activeTab = tab.id
+                    this.render()
+                }
+            })
+        }
+    }
+
+    /**
+     * The History tab (issue #21): day groups newest first, filter chips by
+     * kind and editor derived from what is present, a per-note clear. The
+     * empty state says what the tab will collect rather than showing an
+     * empty list.
+     */
+    private renderHistoryTab(root: HTMLElement, history: SidePanelHistory): void {
+        const container = root.createDiv({ cls: 'editor-ai-daemons-history' })
+        const entries = history.list()
+        if (entries.length === 0) {
+            container.createDiv({
+                cls: 'editor-ai-daemons-panel-empty',
+                text:
+                    'No history for this note yet. Findings, push-back replies and panel ' +
+                    'scorecards land here as reviews run' +
+                    (history.durable
+                        ? ' — and are kept across sessions.'
+                        : ' — for this session. Turn on “Durable history” in the Behavior settings to keep them.')
+            })
+            return
+        }
+        this.renderHistoryFilters(container, entries)
+        const filtered = applyFilters(entries, this.historyFilters)
+        if (filtered.length === 0) {
+            container.createDiv({
+                cls: 'editor-ai-daemons-panel-empty',
+                text: 'Nothing matches the active filters.'
+            })
+        }
+        for (const group of groupByDay(filtered, Date.now())) {
+            container.createDiv({ cls: 'editor-ai-daemons-history-day', text: group.label })
+            for (const entry of group.entries) {
+                this.renderHistoryEntry(container, entry)
+            }
+        }
+        const footer = container.createDiv({ cls: 'editor-ai-daemons-history-footer' })
+        const count = entries.length === 1 ? '1 entry' : `${entries.length} entries`
+        footer.createSpan({ text: count })
+        const clear = footer.createEl('button', {
+            cls: 'editor-ai-daemons-history-clear',
+            text: 'Clear for this note'
+        })
+        clear.addEventListener('click', () => {
+            history.clearFile()
+        })
+    }
+
+    private renderHistoryFilters(root: HTMLElement, entries: readonly HistoryEntry[]): void {
+        const kinds = availableKinds(entries)
+        const editors = availableEditors(entries)
+        if (kinds.length < 2 && editors.length < 2) {
+            return // nothing to narrow
+        }
+        const row = root.createDiv({ cls: 'editor-ai-daemons-history-filters' })
+        for (const kind of kinds) {
+            const active = this.historyFilters.kinds.has(kind)
+            const chip = row.createEl('button', {
+                cls: `editor-ai-daemons-history-chip${active ? ' is-active' : ''}`,
+                text: HISTORY_KIND_LABELS[kind]
+            })
+            chip.setAttribute('aria-pressed', String(active))
+            chip.addEventListener('click', () => {
+                const next = new Set(this.historyFilters.kinds)
+                if (!next.delete(kind)) {
+                    next.add(kind)
+                }
+                this.historyFilters = { ...this.historyFilters, kinds: next }
+                this.render()
+            })
+        }
+        for (const editor of editors) {
+            const active = this.historyFilters.editorNames.has(editor)
+            const chip = row.createEl('button', {
+                cls: `editor-ai-daemons-history-chip${active ? ' is-active' : ''}`,
+                text: editor
+            })
+            chip.setAttribute('aria-pressed', String(active))
+            chip.addEventListener('click', () => {
+                const next = new Set(this.historyFilters.editorNames)
+                if (!next.delete(editor)) {
+                    next.add(editor)
+                }
+                this.historyFilters = { ...this.historyFilters, editorNames: next }
+                this.render()
+            })
+        }
+    }
+
+    private renderHistoryEntry(root: HTMLElement, entry: HistoryEntry): void {
+        const item = root.createDiv({ cls: 'editor-ai-daemons-history-entry' })
+        const head = item.createDiv({ cls: 'editor-ai-daemons-history-entry-head' })
+        head.createSpan({
+            cls: 'editor-ai-daemons-history-entry-who',
+            text: entry.editorName
+        })
+        head.createSpan({
+            cls: 'editor-ai-daemons-history-entry-meta',
+            text:
+                entry.label.length > 0
+                    ? `${HISTORY_KIND_LABELS[entry.kind]} · ${entry.label} · ${entryTime(entry.at)}`
+                    : `${HISTORY_KIND_LABELS[entry.kind]} · ${entryTime(entry.at)}`
+        })
+        if (entry.quote.length > 0) {
+            item.createDiv({ cls: 'editor-ai-daemons-history-entry-quote', text: entry.quote })
+        }
+        if (entry.text.length > 0) {
+            item.createDiv({ cls: 'editor-ai-daemons-history-entry-text', text: entry.text })
+        }
+        for (const edit of entry.edits) {
+            item.createDiv({
+                cls: 'editor-ai-daemons-history-entry-edit',
+                text: `${edit.op}: ${edit.text}`
+            })
+        }
     }
 
     /** The restorable trace of acknowledged sections (issue #24). */

@@ -70,6 +70,9 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
     /** True while a re-render was caused by the user moving between tabs. */
     private pendingTabFocus = false
 
+    /** Clears review history (issue #21); wired by the plugin after load. */
+    clearHistory: (() => void) | undefined
+
     constructor(app: App, plugin: SettingsTabPlugin) {
         super(app, plugin)
         this.plugin = plugin
@@ -164,7 +167,8 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
             const ctx: TabContext = {
                 app: this.app,
                 facade: this.facade,
-                refresh: () => this.renderAll()
+                refresh: () => this.renderAll(),
+                ...(this.clearHistory ? { clearHistory: this.clearHistory } : {})
             }
             activeTab.render(content, ctx)
         }

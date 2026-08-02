@@ -18,8 +18,11 @@ import { log } from '../../utils/log'
  * a vault.
  */
 
-/** `CommentStorageAdapter` over the vault's own file adapter. */
-class VaultCommentStorage implements CommentStorageAdapter {
+/**
+ * `CommentStorageAdapter` over the vault's own file adapter. Exported for the
+ * history sidecar (issue #21), which persists with the same five calls.
+ */
+export class VaultCommentStorage implements CommentStorageAdapter {
     constructor(private readonly plugin: Plugin) {}
 
     async read(path: string): Promise<string | null> {

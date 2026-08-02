@@ -2686,3 +2686,102 @@
     border: 1px solid var(--background-modifier-border);
     border-radius: var(--radius-s);
 }
+
+/* ========================================
+   HISTORY TAB (issue #21,
+   src/app/ui/side-panel.ts + history-tab.ts)
+   ======================================== */
+
+.editor-ai-daemons-panel-tabs {
+    @apply mb-2 flex gap-1;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.editor-ai-daemons-panel-tab {
+    @apply cursor-pointer border-none bg-transparent px-2 py-1 text-sm;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+}
+
+.editor-ai-daemons-panel-tab.is-active {
+    color: var(--text-normal);
+    border-bottom-color: var(--text-accent);
+}
+
+.editor-ai-daemons-history {
+    @apply flex flex-col gap-1;
+    user-select: text;
+}
+
+.editor-ai-daemons-history-day {
+    @apply mt-2 text-xs font-medium uppercase;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-history-filters {
+    @apply flex flex-wrap gap-1;
+}
+
+.editor-ai-daemons-history-chip {
+    @apply cursor-pointer rounded-full border-none px-2 py-0 text-xs;
+    background: var(--background-modifier-hover);
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-history-chip.is-active {
+    background: var(--text-accent);
+    color: var(--text-on-accent, white);
+}
+
+.editor-ai-daemons-history-entry {
+    @apply rounded p-2;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+}
+
+.editor-ai-daemons-history-entry-head {
+    @apply flex items-baseline justify-between gap-2;
+}
+
+.editor-ai-daemons-history-entry-who {
+    @apply text-sm font-medium;
+}
+
+.editor-ai-daemons-history-entry-meta {
+    @apply shrink-0 text-xs;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-history-entry-quote {
+    @apply my-1 border-l-2 pl-2 text-xs italic;
+    border-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.editor-ai-daemons-history-entry-text {
+    @apply text-sm;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.editor-ai-daemons-history-entry-edit {
+    @apply mt-1 text-xs;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.editor-ai-daemons-history-footer {
+    @apply mt-2 flex items-center justify-between text-xs;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-history-clear {
+    @apply cursor-pointer px-1 py-0 text-xs;
+    color: var(--text-normal);
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+}

@@ -49,6 +49,10 @@ Nothing else. No vault listing, no file names beyond the ones attached, no metad
 
 Run **Preview what will be sent** to see the exact assembly for one editor and one note — total characters against the budget, one row per section with its size and whether the budget truncated or dropped it, and the verbatim system prompt with a copy button. It sends nothing. It assembles through the same code a real request uses, so it cannot drift from what would actually be sent.
 
+## Review history
+
+The History tab keeps clipped records of what your editors said — including **quoted text from your notes**. Session history lives in memory only. With **Durable history** on (off by default), it persists to `history.json` in the plugin folder: note content in a plugin file, which may travel with anything that syncs your vault. It is excluded from settings export, expires automatically (90 days / 100 entries per note), and is clearable per note or entirely. Notes excluded by your privacy settings, and notes a rule disabled the plugin for, are never recorded.
+
 ## Where API keys live
 
 **In this plugin's `data.json`, inside your vault.** That is Obsidian's storage for plugin settings, and it is worth stating rather than burying:

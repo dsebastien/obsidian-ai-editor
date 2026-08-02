@@ -324,6 +324,16 @@ export const behaviorSettingsSchema = z.object({
      * the rail's chevron is the only control, so no settings-tab row.
      */
     railCollapsed: z.boolean().default(false),
+    /**
+     * Durable per-file history (issue #21, level 2): with this on, the
+     * History tab's entries persist across sessions in `history.json` inside
+     * the plugin folder. History contains verbatim (clipped) quotes from
+     * notes — note content in a plugin file that may sync — which is why it
+     * is OFF by default, stated in the settings copy, excluded from settings
+     * export (it is not a setting) and clearable. Session history exists
+     * regardless.
+     */
+    durableHistory: z.boolean().default(false),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
     /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */

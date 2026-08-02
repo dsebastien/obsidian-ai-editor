@@ -156,6 +156,31 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
         )
     }
 
+    new Setting(containerEl).setName('History').setHeading()
+    new Setting(containerEl)
+        .setName('Durable history')
+        .setDesc(
+            'Keep the History tab across sessions, per note. History contains quoted ' +
+                'text from your notes, stored in the plugin folder (which may sync). ' +
+                'Off keeps history for the current session only.'
+        )
+        .addToggle((toggle) => {
+            toggle.setValue(settings.behavior.durableHistory)
+            toggle.onChange((value) => {
+                commit(ctx, (draft) => {
+                    draft.behavior.durableHistory = value
+                })
+            })
+        })
+    new Setting(containerEl)
+        .setName('Clear history')
+        .setDesc('Removes every history entry, in memory and on disk.')
+        .addButton((button) => {
+            button.setButtonText('Clear').onClick(() => {
+                ctx.clearHistory?.()
+            })
+        })
+
     new Setting(containerEl).setName('Privacy exclusions').setHeading()
     containerEl.createEl('p', {
         cls: 'editor-ai-daemons-tab-intro',
