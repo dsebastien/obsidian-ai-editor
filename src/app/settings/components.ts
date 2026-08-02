@@ -256,7 +256,7 @@ export function renderPromptTextArea(
     new Setting(containerEl)
         .setName(options.name)
         .setDesc(options.desc)
-        .setClass('ai-editor-settings-textarea')
+        .setClass('editor-ai-daemons-settings-textarea')
         .addTextArea((textArea) => {
             textArea.setPlaceholder(options.placeholder)
             textArea.setValue(options.get())

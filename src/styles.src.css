@@ -284,19 +284,19 @@
 }
 
 /* Full-width textarea rows (prompts, charters, voice profile) */
-.ai-editor-settings-textarea {
+.editor-ai-daemons-settings-textarea {
     @apply flex-col items-stretch gap-2;
 }
 
-.ai-editor-settings-textarea .setting-item-info {
+.editor-ai-daemons-settings-textarea .setting-item-info {
     @apply w-full;
 }
 
-.ai-editor-settings-textarea .setting-item-control {
+.editor-ai-daemons-settings-textarea .setting-item-control {
     @apply w-full;
 }
 
-.ai-editor-settings-textarea textarea {
+.editor-ai-daemons-settings-textarea textarea {
     @apply w-full;
     min-height: 110px;
     resize: vertical;

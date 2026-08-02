@@ -6,6 +6,15 @@ Every verdict below carries the command that produced it. Re-run them before sub
 
 **Updated 2026-07-31**: the § 0 naming blocker is resolved — the plugin is now `editor-ai-daemons` / "AI Editor", re-verified free against the live catalog. Nothing else in the sweep changed.
 
+**Re-verified 2026-08-02** after ~20 commits (contract v2, carryover, retry/quota, rail collapse/fade, hide findings, acknowledgements, selectable text). Every command in this document re-run:
+
+- Catalog (now **6 268** entries): `editor-ai-daemons` id and name still free, still zero "daemon" entries, `ai-editor` still held by `buszk/obsidian-ai-editor`. `desktop-releases.json` `latestVersion` still `1.13.4` ≥ `minAppVersion` 1.8.7.
+- New-API check re-run: none of the >1.8.7 APIs used (the session's additions use only `registerDomEvent`, plain DOM and `navigator.clipboard` — not Obsidian APIs).
+- HTML sinks: still zero call sites (4 comment mentions). `!important`: still comment-only. `.obsidian` hardcodes: none. Placeholder commands: none.
+- Bundle: `dist/main.js` 741 KB, `dist/styles.css` 55 KB; the one `console.warn` is still zod's (§ 7).
+- **One regression caught and fixed**: `.ai-editor-settings-textarea` (plus the unstyled `ai-editor-settings-panel` DOM id and `ai-editor-settings-content` class) had survived the § 0 rename with the RETIRED prefix — the § 11 selector check failed on the shipped stylesheet. All three renamed to `editor-ai-daemons-*`; the selector check is clean again (only the `.modal` compound). The export format marker `ai-editor-settings` and default export filename stay, per the § 0 rename table.
+- Gates: format + validate (tsc, eslint `--max-warnings 0`, **2 472** specs) + build all green.
+
 | Verdict         | Meaning                                                              |
 | --------------- | -------------------------------------------------------------------- |
 | **PASS**        | Verified compliant.                                                  |
