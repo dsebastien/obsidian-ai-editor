@@ -8,10 +8,15 @@ import type { TriageMemory } from './finding-navigation'
  * `finding-navigation.ts` (`triageStep`/`triageCurrent`); the controller
  * only stores what those functions need.
  *
- * Run identity: each cursor is validated against an opaque `runToken` (the
- * controller passes the `RunHandle` instance). A run replacement gives the
- * file a new token, so `get` with the fresh token evicts the stale cursor —
- * a new run has new finding ids and the old cursor must never leak into it.
+ * Run identity: each cursor carries an opaque `runToken` (the controller
+ * passes the `RunHandle` instance). A run replacement gives the file a new
+ * token; `get` with the fresh token RE-BINDS the cursor to it rather than
+ * evicting (issue #19): carryover keeps finding ids alive across runs, so a
+ * mid-triage refresh must not reset the user's position. When the cursor's
+ * finding did NOT survive, nothing leaks — `triageCurrent` matches by id
+ * against the live target set and reports no current, and `triageStep` falls
+ * back to the recorded offset, exactly the degradation an evicted cursor
+ * produced.
  *
  * Lifecycle owned by the caller: `clear` on file delete/rename and on
  * Escape (the explicit "leave triage" gesture), `clearAll` on dispose.
@@ -20,8 +25,8 @@ export class TriageCursorStore {
     private readonly byFile = new Map<string, { token: unknown; memory: TriageMemory }>()
 
     /**
-     * The stored cursor for `filePath`, or `null` when none exists or the
-     * stored one belongs to a different run (evicted on the spot).
+     * The stored cursor for `filePath`, or `null` when none exists. A cursor
+     * recorded under a previous run is re-bound to `runToken` (see above).
      */
     get(filePath: string, runToken: unknown): TriageMemory | null {
         const entry = this.byFile.get(filePath)
@@ -29,8 +34,7 @@ export class TriageCursorStore {
             return null
         }
         if (entry.token !== runToken) {
-            this.byFile.delete(filePath)
-            return null
+            this.byFile.set(filePath, { token: runToken, memory: entry.memory })
         }
         return entry.memory
     }

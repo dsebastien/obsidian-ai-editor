@@ -82,6 +82,12 @@ export interface FindingDecorationSpec {
      * rendered with the distinct `editor-ai-daemons-finding-current` ring.
      */
     readonly current: boolean
+    /**
+     * A previous round's finding kept on screen while a re-review runs
+     * (issue #19): rendered dimmed via `editor-ai-daemons-finding-carryover`,
+     * still fully actionable.
+     */
+    readonly carryover: boolean
 }
 
 /**
@@ -133,6 +139,7 @@ interface FindingMarkSpec {
     readonly stale: boolean
     readonly emphasized: boolean
     readonly current: boolean
+    readonly carryover: boolean
 }
 
 /**
@@ -156,6 +163,9 @@ function buildMark(spec: FindingMarkSpec): Decoration {
     }
     if (spec.stale) {
         classes.push('editor-ai-daemons-finding-stale')
+    }
+    if (spec.carryover) {
+        classes.push('editor-ai-daemons-finding-carryover')
     }
     if (spec.emphasized) {
         classes.push('editor-ai-daemons-finding-emphasized')
@@ -185,7 +195,8 @@ function buildMark(spec: FindingMarkSpec): Decoration {
         edgeIndex: spec.edgeIndex,
         stale: spec.stale,
         emphasized: spec.emphasized,
-        current: spec.current
+        current: spec.current,
+        carryover: spec.carryover
     })
 }
 
@@ -206,7 +217,8 @@ function markSpecOf(decoration: Decoration): FindingMarkSpec {
         edgeIndex: spec.edgeIndex ?? 0,
         stale: spec.stale ?? false,
         emphasized: spec.emphasized ?? false,
-        current: spec.current ?? false
+        current: spec.current ?? false,
+        carryover: spec.carryover ?? false
     }
 }
 

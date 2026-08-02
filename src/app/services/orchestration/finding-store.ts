@@ -76,6 +76,15 @@ export interface TrackedFinding {
      * dismissed it" in Notices and reports.
      */
     readonly conceded: boolean
+    /**
+     * True while this finding is a PREVIOUS run's, kept on screen while a
+     * re-review runs (issue #19): surfaces dim it, and the run handle resolves
+     * it against the new round's findings — adopted (same observation
+     * repeated), kept (re-run failed, or outside the re-run's scope) or
+     * dropped (not repeated). Fully functional meanwhile: the user can still
+     * accept, dismiss or push back on it.
+     */
+    readonly carryover: boolean
 }
 
 /** Input for registering a freshly anchored finding (status starts at `open`). */
@@ -83,6 +92,28 @@ export interface NewFinding {
     readonly id: FindingId
     readonly runId: RunId
     readonly editorId: string
+    readonly raw: RawFinding
+    readonly anchor: Anchor | null
+    readonly anchoredText: string | null
+    readonly matchStrategy: MatchStrategy | null
+    readonly edits: readonly TrackedEdit[]
+}
+
+/**
+ * Input for registering a PREVIOUS run's finding into a new run's store
+ * (issue #19): identity, triage status and thread history are preserved; the
+ * anchoring fields are the caller's re-anchoring against the new snapshot.
+ */
+export interface CarryoverFinding extends NewFinding {
+    readonly status: FindingStatus
+    readonly thread: readonly ThreadMessage[]
+    readonly threadTurn: ThreadTurn | null
+    readonly conceded: boolean
+}
+
+/** The new attempt's data an adopted carryover finding is refreshed with. */
+export interface AdoptionPatch {
+    readonly runId: RunId
     readonly raw: RawFinding
     readonly anchor: Anchor | null
     readonly anchoredText: string | null
@@ -146,11 +177,87 @@ export class FindingStore {
             supersededBy: null,
             thread: [],
             threadTurn: null,
-            conceded: false
+            conceded: false,
+            carryover: false
         }
         this.findings.set(finding.id, finding)
         this.notify()
         return finding
+    }
+
+    /**
+     * Registers a previous run's finding, flagged `carryover` (issue #19).
+     * `preview` degrades to `open` — the diff that was on screen belonged to
+     * the replaced run; a pending push-back turn degrades to failed — its
+     * completion targets the OLD run's store and can never land here.
+     */
+    addCarryover(input: CarryoverFinding): TrackedFinding {
+        const finding: TrackedFinding = {
+            id: input.id,
+            runId: input.runId,
+            editorId: input.editorId,
+            raw: input.raw,
+            anchor: input.anchor,
+            anchoredText: input.anchoredText,
+            matchStrategy: input.matchStrategy,
+            edits: input.edits,
+            status: input.status === 'preview' ? 'open' : input.status,
+            supersededBy: null,
+            thread: input.thread,
+            threadTurn:
+                input.threadTurn?.status === 'pending'
+                    ? {
+                          status: 'failed',
+                          message: input.threadTurn.message,
+                          reason: 'The review was refreshed'
+                      }
+                    : input.threadTurn,
+            conceded: input.conceded,
+            carryover: true
+        }
+        this.findings.set(finding.id, finding)
+        this.notify()
+        return finding
+    }
+
+    /**
+     * Adopts a carryover finding into the current round (issue #19): the same
+     * observation was repeated, so the finding keeps its id, its triage status
+     * and its thread history, while the anchoring and proposal are refreshed
+     * from the new attempt. Clears the carryover flag.
+     */
+    adoptCarryover(id: FindingId, patch: AdoptionPatch): TrackedFinding | null {
+        const finding = this.findings.get(id)
+        if (!finding || !finding.carryover) {
+            return null
+        }
+        return this.update(finding, { ...patch, carryover: false })
+    }
+
+    /**
+     * Clears the carryover flag without adopting (issue #19): the re-run
+     * failed or was cancelled, or the finding sits outside a selection-scoped
+     * re-run — the previous round's finding IS the current information again.
+     */
+    markCurrent(id: FindingId): TrackedFinding | null {
+        const finding = this.findings.get(id)
+        if (!finding || !finding.carryover) {
+            return null
+        }
+        return this.update(finding, { carryover: false })
+    }
+
+    /**
+     * Re-flags a finding as carryover (issue #19): a per-editor retry re-runs
+     * the round the finding was carried into, so it goes back to pending
+     * resolution against the retry's output.
+     */
+    markCarryover(id: FindingId): TrackedFinding | null {
+        const finding = this.findings.get(id)
+        if (!finding || finding.carryover) {
+            return null
+        }
+        return this.update(finding, { carryover: true })
     }
 
     get(id: FindingId): TrackedFinding | null {

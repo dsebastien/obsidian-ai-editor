@@ -25,6 +25,8 @@ Who takes part: every enabled editor, unless a [binding rule](rules.md) assigns 
 
 Notes above your **Size warning threshold** (default 8000 words) ask for confirmation before anything is sent.
 
+**Reviewing again does not throw your work away.** Starting a new review of a note that already has findings keeps them on screen — dimmed — while the new round runs, and everything you decided carries over: a finding the editor raises again keeps its identity and your verdict (a dismissed objection stays dismissed, even reworded), a finding the editor no longer raises disappears when that editor finishes, and if the new round fails or you cancel it, the previous findings simply return to normal. Reviewing a selection only ever replaces findings inside that selection.
+
 ## The persona rail
 
 Every markdown editor gets a small card in its top-right corner: the [daemon](daemon-mode.md) toggle, a **Review** / **Cancel** button, and one named row per enabled editor.

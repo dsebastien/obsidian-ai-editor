@@ -37,6 +37,7 @@ function findingSpec(overrides: Partial<FindingDecorationSpec> = {}): FindingDec
         edgeIndex: 0,
         stale: false,
         current: false,
+        carryover: false,
         ...overrides
     }
 }

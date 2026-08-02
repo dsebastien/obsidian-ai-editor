@@ -34,6 +34,10 @@ All of these must hold:
 
 Notes above the **size warning threshold** are silently skipped: daemon mode never interrupts you with a dialog.
 
+## A refresh never wipes your triage
+
+The findings you are working through stay on screen — dimmed — while a refresh runs, and your decisions carry across it: dismissed findings stay dismissed, unchanged findings keep their identity and thread, and a refresh that fails leaves everything exactly as it was. See [Review a note](usage.md#start-a-review).
+
 ## Which editors run
 
 A refresh reuses the editors of the note's **previous review** — or every enabled editor when the note has never been reviewed. It never overrides you: summon, cancel and retry always win, and an explicit review replaces whatever the daemon was going to do.

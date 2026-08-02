@@ -1156,8 +1156,16 @@ export class ReviewSidePanelView extends ItemView {
         const item = list.createDiv({
             cls: `editor-ai-daemons-panel-finding${clickable && !stale ? ' is-clickable' : ''}${
                 stale ? ' is-stale' : ''
-            }${current ? ' is-current' : ''}`
+            }${current ? ' is-current' : ''}${finding.carryover ? ' is-carryover' : ''}`
         })
+        if (finding.carryover) {
+            // Issue #19: a previous round's finding, kept on screen while the
+            // re-review runs. Dimmed by CSS; named for assistive tech.
+            item.setAttribute(
+                'aria-description',
+                'From the previous review — being checked by the running review'
+            )
+        }
         if (current) {
             // `aria-current` and not `aria-selected`: the row is not part of a
             // selection widget, it is the one item in the set the rest of the

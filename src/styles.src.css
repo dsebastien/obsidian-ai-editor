@@ -1537,6 +1537,12 @@
     text-underline-offset: 3px;
 }
 
+/* Carryover (issue #19): a previous round's finding kept on screen while a
+   re-review runs — dimmed but still fully actionable (unlike stale) */
+.editor-ai-daemons-finding-carryover {
+    @apply opacity-55;
+}
+
 /* ========================================
    TRANSFORM PREVIEW (CM6 block widget,
    src/app/ui/editor/transform-preview.ts)
@@ -2174,6 +2180,12 @@
 }
 
 .editor-ai-daemons-panel-finding.is-stale {
+    @apply opacity-60;
+}
+
+/* Carryover (issue #19): previous round's row, dimmed while the re-review
+   runs; stays clickable/actionable */
+.editor-ai-daemons-panel-finding.is-carryover {
     @apply opacity-60;
 }
 

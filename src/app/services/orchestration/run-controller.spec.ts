@@ -2173,3 +2173,276 @@ describe('RunController thread revisions (contract v2)', () => {
         expect(run.findings.isActionable(tracked.id)).toBeFalse()
     })
 })
+
+describe('RunController cross-run carryover (issue #19)', () => {
+    /** Editor whose stream waits for an external gate before yielding. */
+    function gatedEditor(
+        editorId: string,
+        gate: Promise<void>,
+        script: (runId: string) => OperationEvent[]
+    ): RunEditorSpec {
+        return {
+            editorId,
+            editorName: `Editor ${editorId}`,
+            execute: async function* (request) {
+                await gate
+                yield* script(request.runId)
+            }
+        }
+    }
+
+    async function firstRunWithFinding(
+        controller: RunController,
+        rawFinding: RawFinding = raw(),
+        editorId = 'alpha'
+    ) {
+        const editor = scriptedEditor(editorId, (runId) => [
+            finding(runId, rawFinding),
+            result(runId, [])
+        ])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+        const tracked = run.findings.listByEditor(editorId)
+        expect(tracked).toHaveLength(1)
+        return { run, tracked: tracked[0]! }
+    }
+
+    it('keeps the previous findings on screen (dimmed) while the new run prepares', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const gate = deferred()
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [gatedEditor('alpha', gate.promise, (runId) => [result(runId, [])])]
+        })
+        // Before anything streams: the old finding is present, flagged, listed
+        // for its editor, re-anchored against the new snapshot.
+        const carried = run2.findings.get(tracked.id)
+        expect(carried).not.toBeNull()
+        expect(carried?.carryover).toBeTrue()
+        expect(carried?.status).toEqual('open')
+        expect(carried?.anchor).toEqual({ from: 4, to: 15, state: 'anchored' })
+        expect(run2.getEditorState('alpha')?.findingIds).toEqual([tracked.id])
+        gate.resolve()
+        await run2.settled
+    })
+
+    it('an unchanged observation keeps its id and refreshes from the new round', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const repeat = raw({ edits: [{ op: 'delete' }] }) // same observation, new proposal
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, repeat), result(runId, [])])
+            ]
+        })
+        await run2.settled
+        const findings = run2.findings.listByEditor('alpha')
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.id).toEqual(tracked.id)
+        expect(findings[0]?.carryover).toBeFalse()
+        expect(findings[0]?.status).toEqual('open')
+        expect(findings[0]?.raw.edits).toEqual([{ op: 'delete' }])
+        expect(run2.getEditorState('alpha')?.findingIds).toEqual([tracked.id])
+    })
+
+    it('a dismissed finding stays dismissed when the observation is repeated verbatim', async () => {
+        const controller = new RunController()
+        const { run, tracked } = await firstRunWithFinding(controller)
+        run.findings.dismiss(tracked.id)
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, raw()), result(runId, [])])
+            ]
+        })
+        await run2.settled
+        const findings = run2.findings.listByEditor('alpha')
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.id).toEqual(tracked.id)
+        expect(findings[0]?.status).toEqual('dismissed')
+        expect(findings[0]?.carryover).toBeFalse()
+    })
+
+    it('a dismissed finding does not resurrect via a reworded critique on the same span', async () => {
+        const controller = new RunController()
+        const { run, tracked } = await firstRunWithFinding(controller)
+        run.findings.dismiss(tracked.id)
+        const reworded = raw({ critique: 'Entirely different wording, same objection' })
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, reworded), result(runId, [])])
+            ]
+        })
+        await run2.settled
+        const findings = run2.findings.listByEditor('alpha')
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.id).toEqual(tracked.id)
+        expect(findings[0]?.status).toEqual('dismissed')
+        expect(findings[0]?.raw.critique).toEqual('Entirely different wording, same objection')
+    })
+
+    it('an accepted finding repeated by the re-run is dropped as stale', async () => {
+        const controller = new RunController()
+        const { run, tracked } = await firstRunWithFinding(controller)
+        const accepted = run.findings.accept(tracked.id, DOC)
+        expect(accepted.ok).toBeTrue()
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, raw()), result(runId, [])])
+            ]
+        })
+        await run2.settled
+        const findings = run2.findings.listByEditor('alpha')
+        // Only the accepted record remains — the repeat did not enter.
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.id).toEqual(tracked.id)
+        expect(findings[0]?.status).toEqual('accepted')
+    })
+
+    it('an observation the re-run no longer reports is dropped when the round completes', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const other = raw({ quote: 'lazy dog', critique: 'Cliché', edits: [] })
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [finding(runId, other), result(runId, [])])
+            ]
+        })
+        await run2.settled
+        const findings = run2.findings.listByEditor('alpha')
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.raw.quote).toEqual('lazy dog')
+        expect(run2.findings.get(tracked.id)).toBeNull()
+        expect(run2.getEditorState('alpha')?.findingIds).not.toContain(tracked.id)
+    })
+
+    it('a failed re-run keeps the previous findings, un-dimmed', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [
+                scriptedEditor('alpha', (runId) => [
+                    { type: 'error', runId, error: { code: 'network', message: 'boom' } }
+                ])
+            ]
+        })
+        await run2.settled
+        const carried = run2.findings.get(tracked.id)
+        expect(carried).not.toBeNull()
+        expect(carried?.carryover).toBeFalse()
+        expect(carried?.status).toEqual('open')
+    })
+
+    it('cancelling a re-run keeps the previous findings, un-dimmed', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const gate = deferred()
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [gatedEditor('alpha', gate.promise, (runId) => [result(runId, [])])]
+        })
+        expect(run2.findings.get(tracked.id)?.carryover).toBeTrue()
+        run2.cancelRun()
+        expect(run2.findings.get(tracked.id)?.carryover).toBeFalse()
+        expect(run2.findings.get(tracked.id)?.status).toEqual('open')
+        gate.resolve()
+        await run2.settled
+    })
+
+    it('a selection-scoped re-run never drops carried findings outside its range', async () => {
+        const controller = new RunController()
+        const inScope = raw() // 'quick brown' → [4, 15)
+        const outOfScope = raw({ quote: 'lazy dog', critique: 'Cliché', edits: [] })
+        const editor = scriptedEditor('alpha', (runId) => [
+            finding(runId, inScope),
+            finding(runId, outOfScope),
+            result(runId, [])
+        ])
+        const run1 = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run1.settled
+        expect(run1.findings.list()).toHaveLength(2)
+        // Re-review ONLY the 'quick brown' span, reporting nothing.
+        const run2 = controller.startRun({
+            snapshot: snapshot(DOC, { from: 4, to: 15 }),
+            editors: [scriptedEditor('alpha', (runId) => [result(runId, [])])]
+        })
+        await run2.settled
+        const remaining = run2.findings.listByEditor('alpha')
+        expect(remaining).toHaveLength(1)
+        expect(remaining[0]?.raw.quote).toEqual('lazy dog')
+        expect(remaining[0]?.carryover).toBeFalse()
+    })
+
+    it('a per-editor retry re-dims carried findings instead of destroying them', async () => {
+        const controller = new RunController()
+        const { run, tracked } = await firstRunWithFinding(controller)
+        run.findings.dismiss(tracked.id)
+        let attempt = 0
+        const flaky: RunEditorSpec = {
+            editorId: 'alpha',
+            editorName: 'Alpha',
+            execute: async function* (request) {
+                await Promise.resolve()
+                attempt += 1
+                if (attempt === 1) {
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: { code: 'network', message: 'boom' }
+                    } as OperationEvent
+                    return
+                }
+                yield finding(request.runId, raw())
+                yield result(request.runId, [])
+            }
+        }
+        const run2 = controller.startRun({ snapshot: snapshot(), editors: [flaky] })
+        await run2.settled
+        // Failed round: carried finding kept, un-dimmed.
+        expect(run2.findings.get(tracked.id)?.carryover).toBeFalse()
+        const retried = run2.retryEditor('alpha', DOC)
+        expect(retried.ok).toBeTrue()
+        // Wait for the retry loop to settle.
+        while (!run2.isSettled()) {
+            await new Promise((resolve) => setTimeout(resolve, 1))
+        }
+        const findings = run2.findings.listByEditor('alpha')
+        expect(findings).toHaveLength(1)
+        expect(findings[0]?.id).toEqual(tracked.id)
+        expect(findings[0]?.status).toEqual('dismissed')
+        expect(findings[0]?.carryover).toBeFalse()
+    })
+
+    it('findings of an editor not part of the new run are not carried', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const run2 = controller.startRun({
+            snapshot: snapshot(),
+            editors: [scriptedEditor('beta', (runId) => [result(runId, [])])]
+        })
+        await run2.settled
+        expect(run2.findings.get(tracked.id)).toBeNull()
+    })
+
+    it('carryover from a quote the note no longer contains degrades to display-only', async () => {
+        const controller = new RunController()
+        const { tracked } = await firstRunWithFinding(controller)
+        const gate = deferred()
+        const changed = 'A completely different document now.'
+        const run2 = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'notes/test.md', text: changed }),
+            editors: [gatedEditor('alpha', gate.promise, (runId) => [result(runId, [])])]
+        })
+        const carried = run2.findings.get(tracked.id)
+        expect(carried?.anchor).toBeNull()
+        expect(carried?.edits.every((edit) => edit.anchor === null)).toBeTrue()
+        gate.resolve()
+        await run2.settled
+    })
+})

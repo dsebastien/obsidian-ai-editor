@@ -18,13 +18,15 @@ describe('TriageCursorStore', () => {
         expect(store.has('note.md')).toBe(true)
     })
 
-    it('evicts on run-token mismatch (run replaced or discarded)', () => {
+    it('re-binds to a new run token so the cursor survives a re-review (issue #19)', () => {
         const store = new TriageCursorStore()
         store.set('note.md', runA, { id: 'f-1', from: 12 })
-        expect(store.get('note.md', runB)).toBeNull()
-        // Evicted for good: the original token no longer finds it either.
-        expect(store.get('note.md', runA)).toBeNull()
-        expect(store.has('note.md')).toBe(false)
+        // Carryover keeps finding ids alive across runs: the cursor follows
+        // the replacement run instead of resetting the user's triage position.
+        expect(store.get('note.md', runB)).toEqual({ id: 'f-1', from: 12 })
+        expect(store.has('note.md')).toBe(true)
+        // Re-bound for good: it now belongs to the new run.
+        expect(store.get('note.md', runB)).toEqual({ id: 'f-1', from: 12 })
     })
 
     it('keeps files independent', () => {

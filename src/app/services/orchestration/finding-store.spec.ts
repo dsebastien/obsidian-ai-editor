@@ -4,7 +4,7 @@ import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
 import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
-import { FindingStore, type NewFinding } from './finding-store'
+import { FindingStore, type CarryoverFinding, type NewFinding } from './finding-store'
 
 const DOC = 'The quick brown fox jumps over the lazy dog'
 
@@ -597,5 +597,117 @@ describe('FindingStore.failThreadTurn', () => {
         expect(failed?.thread).toEqual([])
         // Idempotent: no pending turn left to fail.
         expect(store.failThreadTurn(finding.id, 'again')).toBeNull()
+    })
+})
+
+describe('FindingStore carryover (issue #19)', () => {
+    function carryInput(overrides: Partial<CarryoverFinding> = {}): CarryoverFinding {
+        return {
+            ...makeInput(),
+            status: 'open',
+            thread: [],
+            threadTurn: null,
+            conceded: false,
+            ...overrides
+        }
+    }
+
+    it('registers a carried finding flagged carryover, preserving status and thread', () => {
+        const store = new FindingStore()
+        const thread = [
+            { role: 'user' as const, content: 'Why?' },
+            { role: 'editor' as const, content: 'Because.' }
+        ]
+        const finding = store.addCarryover(
+            carryInput({ status: 'dismissed', thread, conceded: true })
+        )
+        expect(finding.carryover).toBeTrue()
+        expect(finding.status).toEqual('dismissed')
+        expect(finding.thread).toEqual(thread)
+        expect(finding.conceded).toBeTrue()
+    })
+
+    it('fresh findings are never carryover', () => {
+        const store = new FindingStore()
+        expect(store.add(makeInput()).carryover).toBeFalse()
+    })
+
+    it('degrades preview to open — the previewed diff belonged to the replaced run', () => {
+        const store = new FindingStore()
+        expect(store.addCarryover(carryInput({ status: 'preview' })).status).toEqual('open')
+    })
+
+    it('degrades a pending push-back turn to failed — its completion can never land here', () => {
+        const store = new FindingStore()
+        const finding = store.addCarryover(
+            carryInput({ threadTurn: { status: 'pending', message: 'Are you sure?' } })
+        )
+        expect(finding.threadTurn).toEqual({
+            status: 'failed',
+            message: 'Are you sure?',
+            reason: 'The review was refreshed'
+        })
+    })
+
+    it('adoptCarryover refreshes anchoring and proposal, keeps id/status/thread, clears the flag', () => {
+        const store = new FindingStore()
+        const thread = [
+            { role: 'user' as const, content: 'Why?' },
+            { role: 'editor' as const, content: 'Because.' }
+        ]
+        const carried = store.addCarryover(carryInput({ status: 'dismissed', thread }))
+        const newRunId = asRunId(generateId())
+        const newRaw = makeRaw({ critique: 'Sharper critique' })
+        const adopted = store.adoptCarryover(carried.id, {
+            runId: newRunId,
+            raw: newRaw,
+            anchor: createAnchor(4, 15),
+            anchoredText: 'quick brown',
+            matchStrategy: 'exact',
+            edits: [anchoredEdit('sharper text')]
+        })
+        expect(adopted?.id).toEqual(carried.id)
+        expect(adopted?.carryover).toBeFalse()
+        expect(adopted?.status).toEqual('dismissed')
+        expect(adopted?.thread).toEqual(thread)
+        expect(adopted?.raw).toEqual(newRaw)
+        expect(adopted?.runId).toEqual(newRunId)
+    })
+
+    it('adoptCarryover refuses non-carryover findings', () => {
+        const store = new FindingStore()
+        const fresh = store.add(makeInput())
+        expect(
+            store.adoptCarryover(fresh.id, {
+                runId: asRunId(generateId()),
+                raw: makeRaw(),
+                anchor: null,
+                anchoredText: null,
+                matchStrategy: null,
+                edits: []
+            })
+        ).toBeNull()
+    })
+
+    it('markCurrent clears the flag without touching anything else; markCarryover re-flags', () => {
+        const store = new FindingStore()
+        const carried = store.addCarryover(carryInput({ status: 'dismissed' }))
+        const current = store.markCurrent(carried.id)
+        expect(current?.carryover).toBeFalse()
+        expect(current?.status).toEqual('dismissed')
+        expect(store.markCurrent(carried.id)).toBeNull() // idempotence guard
+        const reflagged = store.markCarryover(carried.id)
+        expect(reflagged?.carryover).toBeTrue()
+        expect(store.markCarryover(carried.id)).toBeNull()
+    })
+
+    it('a carried open finding stays fully actionable (preview, accept, dismiss)', () => {
+        const store = new FindingStore()
+        const carried = store.addCarryover(carryInput())
+        expect(store.isActionable(carried.id)).toBeTrue()
+        expect(store.preview(carried.id)?.status).toEqual('preview')
+        expect(store.closePreview(carried.id)?.status).toEqual('open')
+        const accepted = store.accept(carried.id, DOC)
+        expect(accepted.ok).toBeTrue()
     })
 })

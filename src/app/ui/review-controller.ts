@@ -3798,9 +3798,10 @@ export class ReviewController {
         const identities = this.editorIdentities()
         const panelName = run.getPanelState()?.panelName ?? null
         // The triage cursor rides the specs so it survives full rebuilds
-        // (see finding-decorations.ts). Reading through the store validates
-        // run identity: a cursor left behind by a replaced run is evicted
-        // right here, on the first rebuild that could have shown it.
+        // (see finding-decorations.ts). Reading through the store re-binds
+        // the cursor to a replacement run (issue #19 carryover keeps finding
+        // ids alive); a cursor whose finding did not survive simply matches
+        // nothing below.
         const cursor = this.triageCursors.get(run.snapshot.filePath, run)
         const specs: FindingDecorationSpec[] = []
         // Severity filter: hidden findings render nothing at all (they stay in
@@ -3828,7 +3829,8 @@ export class ReviewController {
                 severity: finding.raw.severity,
                 edgeIndex: findingEdgeIndex(identity?.index ?? -1),
                 stale,
-                current: cursor !== null && cursor.id === finding.id && !stale
+                current: cursor !== null && cursor.id === finding.id && !stale,
+                carryover: finding.carryover
             })
         }
         return specs

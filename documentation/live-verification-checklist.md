@@ -24,6 +24,20 @@ Status: **nothing verified.** The contract change shipped with 2378 tests green,
 
 ---
 
+## Cross-run carryover — re-review keeps findings and triage (issue #19, 2026-08-02)
+
+Status: **nothing verified.** Shipped with full unit/integration coverage (store, run controller, cursor), but no eye has seen the dimmed state or the swap in a running vault.
+
+- Review a note, wait for findings, then hit Review again: the existing findings STAY on screen — dimmed in the editor highlights and in the side panel — for the whole wait, instead of the note going bare.
+- While dimmed, a carried finding still works: card opens, Accept applies, Dismiss clears — dimming is presentational only.
+- Dismiss a finding, re-review with the same editor: the dismissed finding must NOT come back as open (verbatim repeat or reworded critique on the same span alike).
+- Findings the re-review repeats keep their identity: same position in the panel list, thread history intact when you open the card.
+- Findings the re-review no longer reports disappear when that editor finishes — not before.
+- Cancel a re-review mid-flight: the previous findings un-dim and remain usable. Same after a re-review that errors (e.g. backend unreachable).
+- Daemon mode on: pause typing, let the auto-refresh fire — mid-triage the findings you are working through must survive the refresh (this was the worst manifestation of the bug).
+- Keyboard triage mid-refresh: the current-finding ring/cursor stays on the same finding across the swap when that finding survives.
+- Select a span, "Review selection": findings elsewhere in the note are NOT dropped when the selection-scoped run completes.
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.

@@ -278,7 +278,8 @@ describe('perf: decoration rebuilds with many findings', () => {
             severity: 'suggestion' as const,
             edgeIndex: index % 6,
             stale: false,
-            current: false
+            current: false,
+            carryover: false
         }))
     }
 

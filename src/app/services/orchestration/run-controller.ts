@@ -17,6 +17,7 @@ import type {
     Verdict
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import { anchorsOverlap, observationIdentity } from '../../domain/operations/cross-run'
 import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { rawFindingIdentity } from '../../domain/operations/finding-identity'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
@@ -31,6 +32,7 @@ import type { ThreadBeginFailure } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { hashText } from '../../domain/snapshot'
 import { FindingStore } from './finding-store'
+import type { TrackedFinding } from './finding-store'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
 
@@ -575,9 +577,33 @@ class ReviewRunHandle implements RunHandle {
     private panelEpoch = 0
     private resolvePanelSettled: () => void = () => undefined
 
+    // -- Cross-run carryover bookkeeping (issue #19) ------------------------
+    /**
+     * Per editor: carried findings not yet resolved against the new round.
+     * Resolution empties it — by adoption (observation repeated), by drop
+     * (round done, not repeated, in scope) or by keep (round failed, or out
+     * of a selection-scoped round's scope).
+     */
+    private readonly pendingCarryover = new Map<string, Set<FindingId>>()
+    /**
+     * Every finding id that entered this run as carryover — adopted or not.
+     * `retryEditor` uses it to tell "carried, must survive a retry re-dimmed"
+     * from "this round's own finding, replaced by the retry".
+     */
+    private readonly carryoverOrigin = new Set<FindingId>()
+    /** Cached observation identity per carried finding (strict match key). */
+    private readonly carryoverKeys = new Map<FindingId, string>()
+    /**
+     * Carried findings outside a selection-scoped run's range (or with no
+     * anchor while a selection is set): the round makes no statement about
+     * them, so an unmatched one is KEPT, never dropped.
+     */
+    private readonly carryoverOutOfScope = new Set<FindingId>()
+
     constructor(
         input: StartRunInput,
-        private readonly requestGate: Semaphore
+        private readonly requestGate: Semaphore,
+        carryover: readonly TrackedFinding[] = []
     ) {
         this.snapshot = input.snapshot
         this.findings = new FindingStore(() => this.notify())
@@ -630,6 +656,73 @@ class ReviewRunHandle implements RunHandle {
                 continuing: false,
                 continuationError: null
             })
+        }
+
+        // -- Cross-run carryover (issue #19) --------------------------------
+        // The replaced run's findings enter this run's store BEFORE any
+        // stream starts: they stay on screen (dimmed) through the whole wait,
+        // keep their triage status and thread history, and each editor
+        // resolves them against what it re-reports (`ingestFinding` /
+        // `terminate`). Only editors participating in THIS run carry —
+        // a deselected editor's findings die with its run, as before.
+        if (carryover.length > 0) {
+            // One shared matcher, same rationale as `AnchorBase`.
+            const matcher = createQuoteMatcher(input.snapshot.text)
+            const selection = input.snapshot.selection ?? null
+            for (const previous of carryover) {
+                const state = this.states.get(previous.editorId)
+                if (!state || previous.status === 'superseded') {
+                    continue
+                }
+                // Re-anchor from the raw observation against THIS snapshot —
+                // the same ladder fresh findings use, so a quote the note no
+                // longer contains degrades to display-only rather than
+                // trusting positions from a text this run never saw (BR #3/#4).
+                let anchor: Anchor | null = null
+                let anchoredText: string | null = null
+                let matchStrategy: MatchStrategy | null = null
+                const match = matcher.match(previous.raw.quote, {
+                    prefix: previous.raw.prefix,
+                    suffix: previous.raw.suffix,
+                    occurrence: previous.raw.occurrence
+                })
+                if (match.status === 'matched') {
+                    anchor = createAnchor(match.match.from, match.match.to)
+                    anchoredText = matcher.text.slice(match.match.from, match.match.to)
+                    matchStrategy = match.match.strategy
+                }
+                const edits = resolveTrackedEdits(previous.raw.edits, matcher, [], {
+                    anchor,
+                    anchoredText,
+                    matchStrategy
+                })
+                this.findings.addCarryover({
+                    id: previous.id,
+                    runId: state.runId,
+                    editorId: previous.editorId,
+                    raw: previous.raw,
+                    anchor,
+                    anchoredText,
+                    matchStrategy,
+                    edits,
+                    status: previous.status,
+                    thread: previous.thread,
+                    threadTurn: previous.threadTurn,
+                    conceded: previous.conceded
+                })
+                state.findingIds.push(previous.id)
+                this.carryoverOrigin.add(previous.id)
+                this.carryoverKeys.set(previous.id, observationIdentity(previous.raw))
+                let pending = this.pendingCarryover.get(previous.editorId)
+                if (!pending) {
+                    pending = new Set()
+                    this.pendingCarryover.set(previous.editorId, pending)
+                }
+                pending.add(previous.id)
+                if (selection !== null && (anchor === null || !anchorsOverlap(anchor, selection))) {
+                    this.carryoverOutOfScope.add(previous.id)
+                }
+            }
         }
 
         const loops = input.editors.map((spec) => {
@@ -747,6 +840,9 @@ class ReviewRunHandle implements RunHandle {
                 } else {
                     state.status = 'cancelled'
                 }
+                // A cancelled round keeps the previous round's findings on
+                // screen, un-dimmed (issue #19) — same rule as `terminate`.
+                this.resolveCarryoverAtTerminal(state, 'failed')
                 state.anchorBase = null
                 // Reclaim the permit NOW: the aborted stream may keep
                 // draining (or, for an abort-ignoring executor, never end),
@@ -795,9 +891,29 @@ class ReviewRunHandle implements RunHandle {
         // The retry REPLACES the failed attempt's findings (see the interface
         // doc): remove them from the store — decorations/panels drop them on
         // the next refresh — and reset the dedupe keys so the new attempt may
-        // legitimately re-report the same critique.
-        this.findings.removeMany(state.findingIds)
+        // legitimately re-report the same critique. EXCEPT the previous
+        // round's carried findings (issue #19): those are not the failed
+        // attempt's work, so they go back to pending carryover — re-dimmed,
+        // triage intact — and resolve against the retry's output instead.
+        const carried = state.findingIds.filter((id) => this.carryoverOrigin.has(id))
+        this.findings.removeMany(state.findingIds.filter((id) => !this.carryoverOrigin.has(id)))
+        const pending = this.pendingCarryover.get(editorId) ?? new Set<FindingId>()
+        this.pendingCarryover.set(editorId, pending)
+        pending.clear()
         state.findingIds = []
+        for (const id of carried) {
+            const finding = this.findings.get(id)
+            if (!finding) {
+                continue
+            }
+            this.findings.markCarryover(id)
+            // The strict key follows the finding's CURRENT observation: an
+            // adoption during the failed attempt refreshed `raw`, and the
+            // retry must match against what is actually on screen.
+            this.carryoverKeys.set(id, observationIdentity(finding.raw))
+            pending.add(id)
+            state.findingIds.push(id)
+        }
         state.seenFindingKeys.clear()
         // Fresh attempt identity: late events from the previous attempt's
         // still-draining stream carry the old runId and are discarded.
@@ -1306,6 +1422,13 @@ class ReviewRunHandle implements RunHandle {
             matchStrategy
         })
 
+        // Cross-run reconciliation (issue #19): a finding repeating a carried
+        // observation refreshes THAT finding — same id, same triage status,
+        // same thread — instead of entering the store as a new one.
+        if (this.reconcileCarryover(state, raw, { anchor, anchoredText, matchStrategy, edits })) {
+            return
+        }
+
         const id = asFindingId(generateId())
         state.findingIds.push(id)
         // `add` fires the store's onChange, which notifies subscribers.
@@ -1319,6 +1442,112 @@ class ReviewRunHandle implements RunHandle {
             matchStrategy,
             edits
         })
+    }
+
+    /**
+     * Resolves an incoming finding against the editor's pending carryover
+     * (issue #19). Strict pass first: same observation identity (quote +
+     * hints + critique — never proposal content, contract v2 design §9) →
+     * the carried finding is adopted (id, status and thread kept; anchoring
+     * and proposal refreshed), or, when it was ACCEPTED, the repeat is simply
+     * dropped — the edit is already in the document, re-reporting it is
+     * stale. Loose pass second, for dismissal-carry only: a dismissed or
+     * rejected finding on an overlapping span of the same editor stays
+     * judged even when the model reworded its critique — a dismissed
+     * objection must not resurrect via rephrasing. Returns true when the
+     * incoming finding was consumed either way.
+     */
+    private reconcileCarryover(
+        state: InternalEditorState,
+        raw: RawFinding,
+        patch: {
+            readonly anchor: Anchor | null
+            readonly anchoredText: string | null
+            readonly matchStrategy: MatchStrategy | null
+            readonly edits: readonly TrackedEdit[]
+        }
+    ): boolean {
+        const pending = this.pendingCarryover.get(state.editorId)
+        if (!pending || pending.size === 0) {
+            return false
+        }
+        const key = observationIdentity(raw)
+        for (const id of pending) {
+            if (this.carryoverKeys.get(id) !== key) {
+                continue
+            }
+            pending.delete(id)
+            const previous = this.findings.get(id)
+            if (!previous) {
+                continue // defensive: vanished record cannot be adopted
+            }
+            if (previous.status === 'accepted') {
+                return true
+            }
+            this.findings.adoptCarryover(id, { runId: state.runId, raw, ...patch })
+            return true
+        }
+        if (patch.anchor !== null) {
+            for (const id of pending) {
+                const previous = this.findings.get(id)
+                if (
+                    !previous ||
+                    (previous.status !== 'dismissed' && previous.status !== 'rejected') ||
+                    previous.anchor === null ||
+                    !anchorsOverlap(previous.anchor, patch.anchor)
+                ) {
+                    continue
+                }
+                pending.delete(id)
+                this.findings.adoptCarryover(id, { runId: state.runId, raw, ...patch })
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Settles an editor's remaining pending carryover when its attempt
+     * reaches a terminal state (issue #19).
+     *
+     * - `done`: an in-scope carried finding the round did NOT repeat is
+     *   removed — the editor looked at that text again and no longer raises
+     *   the objection. Out-of-scope ones (selection runs) are kept and
+     *   un-dimmed: the round made no statement about them.
+     * - `failed` (error or cancel): everything is kept and un-dimmed — the
+     *   previous round's findings ARE the current information again. This is
+     *   the other half of the #19 fix: a failed or cancelled re-review no
+     *   longer wipes what the user was working through.
+     */
+    private resolveCarryoverAtTerminal(
+        state: InternalEditorState,
+        outcome: 'done' | 'failed'
+    ): void {
+        const pending = this.pendingCarryover.get(state.editorId)
+        if (!pending || pending.size === 0) {
+            return
+        }
+        if (outcome === 'failed') {
+            for (const id of pending) {
+                this.findings.markCurrent(id)
+            }
+            pending.clear()
+            return
+        }
+        const dropped: FindingId[] = []
+        for (const id of pending) {
+            if (this.carryoverOutOfScope.has(id)) {
+                this.findings.markCurrent(id)
+            } else {
+                dropped.push(id)
+            }
+        }
+        pending.clear()
+        if (dropped.length > 0) {
+            this.findings.removeMany(dropped)
+            const droppedSet = new Set(dropped)
+            state.findingIds = state.findingIds.filter((id) => !droppedSet.has(id))
+        }
     }
 
     private terminate(
@@ -1341,6 +1570,10 @@ class ReviewRunHandle implements RunHandle {
             state.status = status
             state.error = error
         }
+        // Carryover resolution rides the SAME terminal edge (issue #19): a
+        // completed round drops what it no longer reports; a failed or
+        // cancelled one keeps the previous round's findings on screen.
+        this.resolveCarryoverAtTerminal(state, status === 'done' ? 'done' : 'failed')
         // No further finding can arrive for this attempt: drop the anchor
         // base so edit batches stop accumulating for this editor (and the
         // retry text, when any, is released).
@@ -1602,10 +1835,17 @@ export class RunController {
 
     startRun(input: StartRunInput): RunHandle {
         const existing = this.runs.get(input.snapshot.filePath)
+        let carryover: readonly TrackedFinding[] = []
         if (existing) {
             existing.cancelRun()
+            // Cross-run carryover (issue #19): the replaced run's findings —
+            // with their triage statuses and threads — seed the new run
+            // instead of vanishing. Captured AFTER the cancel so in-flight
+            // thread turns are already settled as failed. `superseded`
+            // records are history, not observations, and stay behind.
+            carryover = existing.findings.list().filter((f) => f.status !== 'superseded')
         }
-        const run = new ReviewRunHandle(input, this.requestGate)
+        const run = new ReviewRunHandle(input, this.requestGate, carryover)
         this.runs.set(input.snapshot.filePath, run)
         return run
     }
