@@ -77,6 +77,16 @@ Status: **nothing verified.**
 - The collapsed rail still fades when idle (#33) and un-fades on hover/focus.
 - Keyboard: tab reaches the chevron in both states; aria-expanded flips.
 
+## Show/hide findings + daemon pause (issue #29, 2026-08-02)
+
+Status: **nothing verified.**
+
+- The rail's ▣/▢ toggle (and the "Show/hide findings in the note" command) clears highlights, the current-finding ring and any open card; the side panel keeps listing everything; toggling back restores decorations with statuses intact.
+- Daemon on, findings hidden, edit the note, wait: NO refresh fires. Show them again: a refresh arms and fires after the idle window (text changed while hidden).
+- Hidden on one note only: another note's daemon keeps refreshing; the global daemon toggle still reads ON.
+- Clicking a finding in the panel, or summoning a review, un-hides automatically.
+- Two panes on one note agree (hide in one, the other clears too). Restart Obsidian: findings are shown again (state is session-only by design).
+
 ## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
 
 Status: **nothing verified.**

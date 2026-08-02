@@ -187,6 +187,7 @@ function mount(): Harness {
             onCancel: () => clicks.push('cancel'),
             onToggleDaemon: () => clicks.push('daemon'),
             onToggleCollapsed: () => clicks.push('collapse'),
+            onToggleFindings: () => clicks.push('findings'),
             onEditorClick: (editorId) => clicks.push(`editor:${editorId}`),
             onRetry: (editorId) => clicks.push(`retry:${editorId}`),
             onPanelClick: () => clicks.push('panel')
@@ -669,5 +670,21 @@ describe('PersonaRail collapse (issue #28)', () => {
         expect(button?.classList.contains('editor-ai-daemons-rail-button-cancel')).toBe(true)
         button?.dispatch('click')
         expect(clicks).toEqual(['daemon', 'cancel'])
+    })
+})
+
+describe('PersonaRail findings-visibility toggle (issue #29)', () => {
+    it('mirrors the hidden state onto the control and routes clicks', () => {
+        const { rail, root, clicks } = mount()
+        rail.render(state({ findingsHidden: false }))
+        const toggle = root.find('editor-ai-daemons-rail-findings-toggle')
+        expect(toggle?.textContent).toBe('▣')
+        expect(toggle?.attributes.get('aria-pressed')).toBe('false')
+        rail.render(state({ findingsHidden: true }))
+        expect(toggle?.textContent).toBe('▢')
+        expect(toggle?.attributes.get('aria-pressed')).toBe('true')
+        expect(toggle?.classList.contains('is-findings-hidden')).toBe(true)
+        toggle?.dispatch('click')
+        expect(clicks).toEqual(['findings'])
     })
 })

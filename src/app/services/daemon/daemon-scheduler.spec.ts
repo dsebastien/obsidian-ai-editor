@@ -382,3 +382,62 @@ describe('DaemonScheduler.recordActivity', () => {
         expect(scheduler.nextDueAt(PATH)).toEqual(100_000 + IDLE_MS)
     })
 })
+
+// ---------------------------------------------------------------------------
+// Pause / resume (issue #29 — findings hidden)
+// ---------------------------------------------------------------------------
+
+describe('DaemonScheduler pause/resume', () => {
+    it('reports nothing due while paused, and a stray fire keeps the arm', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.pause(PATH)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.armedPaths()).toEqual([])
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'skip',
+            reason: 'paused'
+        })
+        // The arm survived: resuming re-derives the window from resume time.
+        scheduler.resume(PATH, 50_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(50_000 + IDLE_MS)
+    })
+
+    it('edits made while paused arm silently and fire after resume', () => {
+        const scheduler = makeScheduler()
+        scheduler.pause(PATH)
+        scheduler.recordEdit(PATH, 5_000)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        scheduler.resume(PATH, 20_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(20_000 + IDLE_MS)
+        expect(scheduler.fire(PATH, 20_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('resuming a note that never armed stays unarmed — the changed-text gate is untouched', () => {
+        const scheduler = makeScheduler()
+        scheduler.pause(PATH)
+        scheduler.resume(PATH, 10_000)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+    })
+
+    it('pause is per note and cleared by close and by disable', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordEdit(OTHER, 1_000)
+        scheduler.pause(PATH)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.nextDueAt(OTHER)).toEqual(1_000 + IDLE_MS)
+        // Close drops the pause with the rest of the file state.
+        scheduler.fileClosed(PATH)
+        scheduler.recordEdit(PATH, 2_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(2_000 + IDLE_MS)
+        // Disable clears every pause; re-enabling starts clean.
+        scheduler.pause(PATH)
+        scheduler.setConfig({ enabled: false, idleMs: IDLE_MS })
+        scheduler.setConfig({ enabled: true, idleMs: IDLE_MS })
+        scheduler.recordEdit(PATH, 3_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(3_000 + IDLE_MS)
+    })
+})

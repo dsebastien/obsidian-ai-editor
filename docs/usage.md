@@ -44,6 +44,8 @@ The rail floats over the note, so **when you are not using it, it fades** to a l
 
 You can also **collapse it** with the chevron in its head: only the daemon toggle, a total finding count and the chevron remain — and **Cancel stays visible while a review runs**, so a collapsed rail never hides the way out. The state is global and remembered across notes and restarts; the chevron brings everything back.
 
+Next to Review sits the **findings visibility toggle** (filled = shown, hollow = hidden; also the command **Show/hide findings in the note**): it clears every highlight, ring and card from the text **without dismissing anything** — the findings stay in the review panel and come back untouched. While hidden, the **daemon is paused for that note** (refreshing what you asked not to see is pure cost); showing them again resumes it, and a refresh arms if the text changed meanwhile. Per note, never remembered across restarts — a note always opens with findings shown. Summoning a review, or jumping to a finding from the panel, shows them again automatically.
+
 In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [AI Editor Review panel](#the-ai-editor-review-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
 
 If your operating system is set to reduce motion, nothing on the rail animates and every state is still told apart by shape: dashed, arc, solid, error, muted.

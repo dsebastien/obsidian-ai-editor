@@ -868,9 +868,26 @@
    finding count, the chevron, and Cancel while a run is in flight. The
    Review button and the editor list fold away. */
 .editor-ai-daemons-rail.is-collapsed .editor-ai-daemons-rail-list,
+.editor-ai-daemons-rail.is-collapsed .editor-ai-daemons-rail-findings-toggle,
 .editor-ai-daemons-rail.is-collapsed
     .editor-ai-daemons-rail-button:not(.editor-ai-daemons-rail-button-cancel) {
     display: none;
+}
+
+/* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
+   hidden — the daemon toggle's convention. */
+.editor-ai-daemons-rail-findings-toggle {
+    @apply shrink-0 cursor-pointer self-center border-none bg-transparent p-0 leading-none;
+    color: var(--text-muted);
+    font-size: var(--editor-ai-daemons-rail-font);
+}
+
+.editor-ai-daemons-rail-findings-toggle:hover {
+    color: var(--text-normal);
+}
+
+.editor-ai-daemons-rail-findings-toggle.is-findings-hidden {
+    color: var(--text-accent);
 }
 
 .editor-ai-daemons-rail-collapse {

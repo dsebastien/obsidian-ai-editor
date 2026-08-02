@@ -497,6 +497,13 @@ export class ReviewController {
      * panel's filter control says how much it is hiding.
      */
     private readonly severityFilters = new SeverityFilterStore()
+    /**
+     * Notes whose findings are hidden (issue #29): decorations, ring and
+     * card suppressed; daemon paused for the note. PER NOTE (all panes of a
+     * file agree) and session-only — never persisted, so a note always opens
+     * with findings shown.
+     */
+    private readonly hiddenFindings = new Set<string>()
     /** Unsubscribes the background-comment registry listener on dispose. */
     private commentJobsUnsubscribe: (() => void) | null = null
     /** Sticky: survives focus moving to the side panel itself. */
@@ -633,6 +640,7 @@ export class ReviewController {
         deleteKeysUnder(this.undecoratedByFile, path)
         this.triageCursors.clearUnder(path)
         this.severityFilters.clearUnder(path)
+        deleteKeysUnder(this.hiddenFindings, path)
         this.daemon?.filesClosedUnder(path)
     }
 
@@ -803,6 +811,9 @@ export class ReviewController {
         if (!file || this.disposed) {
             return
         }
+        // A manual summon is a request to SEE findings (issue #29): it
+        // un-hides them (and resumes the note's daemon) before running.
+        this.setFindingsHidden(file.path, false)
         const snapshot = this.snapshotView(view, file.path, scope)
         // Capture-time baseline for the selection re-validation: on the FIRST
         // invocation this snapshot is taken in the same synchronous block as
@@ -1594,6 +1605,55 @@ export class ReviewController {
         // interleave. Safe: timer callback context, never a CM6 update cycle.
         this.refreshAll()
         return 'started'
+    }
+
+    /** Whether the note's findings are hidden (issue #29). */
+    areFindingsHidden(path: string): boolean {
+        return this.hiddenFindings.has(path)
+    }
+
+    /** `Toggle findings visibility` gate: a bound, plugin-enabled note. */
+    canToggleFindingsVisibility(): boolean {
+        const path = this.resolveActiveFilePath()
+        return path !== null && this.isPluginEnabledFor(path)
+    }
+
+    /**
+     * Shows/hides the active note's findings (issue #29): rail toggle and
+     * palette command. Hiding suppresses the annotations on the TEXT
+     * (highlights, ring, card) — the store and the side panel keep them —
+     * and pauses the daemon for the note: refreshing what the user asked
+     * not to see is pure cost. Showing resumes the daemon (a refresh arms
+     * if the text changed meanwhile, per the scheduler's resume rules).
+     */
+    toggleFindingsVisibility(): void {
+        const path = this.resolveActiveFilePath()
+        if (path === null || this.disposed) {
+            return
+        }
+        this.setFindingsHidden(path, !this.hiddenFindings.has(path))
+    }
+
+    private setFindingsHidden(path: string, hidden: boolean): void {
+        if (hidden === this.hiddenFindings.has(path)) {
+            return
+        }
+        if (hidden) {
+            this.hiddenFindings.add(path)
+            this.daemon?.pause(path)
+            // The card annotates the text; hiding the annotations closes it.
+            const view = this.findMarkdownView(path)
+            if (view) {
+                editorViewOf(view)?.dispatch({ effects: showFindingCardEffect.of(null) })
+            }
+            new Notice(
+                'Findings hidden for this note — daemon paused for it. They stay in the review panel.'
+            )
+        } else {
+            this.hiddenFindings.delete(path)
+            this.daemon?.resume(path)
+        }
+        this.scheduleRefresh()
     }
 
     /**
@@ -3187,6 +3247,14 @@ export class ReviewController {
                 onToggleCollapsed: (): void => {
                     this.toggleRailCollapsed()
                 },
+                onToggleFindings: (): void => {
+                    // Scoped to the rail's view, not the active file: the
+                    // control was clicked on THIS pane's rail.
+                    const path = view.file?.path
+                    if (path) {
+                        this.setFindingsHidden(path, !this.hiddenFindings.has(path))
+                    }
+                },
                 onEditorClick: (editorId): void => {
                     this.handleChipClick(view, editorId)
                 },
@@ -3467,6 +3535,7 @@ export class ReviewController {
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
             collapsed: this.deps.getSettings().behavior.railCollapsed,
+            findingsHidden: filePath !== null && this.hiddenFindings.has(filePath),
             narrow,
             // Motion key only (rail-model `railMotion`): the rows stagger in
             // when it changes. The snapshot id IS the run identity — a retry
@@ -3871,7 +3940,10 @@ export class ReviewController {
         // by how many editors are enabled (see `decoration-budget.ts`). What
         // it leaves out is counted, kept in the store and reported by the side
         // panel — a highlight is dropped, never a finding.
-        const budgeted = applyDecorationBudget(run ? this.buildDecorationSpecs(run) : [])
+        // Hidden findings (issue #29): the annotations on the text go, the
+        // store and the panel stay.
+        const hidden = glue.filePath !== null && this.hiddenFindings.has(glue.filePath)
+        const budgeted = applyDecorationBudget(run && !hidden ? this.buildDecorationSpecs(run) : [])
         const specs = budgeted.decorated
         if (glue.filePath !== null) {
             this.undecoratedByFile.set(glue.filePath, budgeted.undecorated)
@@ -4195,6 +4267,9 @@ export class ReviewController {
         // The ONE reveal path (panel clicks, keyboard triage, chip cycling,
         // margin column) — navigating findings is activity (issue #20).
         this.noteDaemonActivity(filePath)
+        // Revealing something invisible is incoherent (issue #29): any
+        // surface that jumps to a finding un-hides the note's findings first.
+        this.setFindingsHidden(filePath, false)
         const run = this.deps.runController.getRun(filePath)
         const finding = run?.findings.get(findingId) ?? null
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {

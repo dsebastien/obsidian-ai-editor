@@ -34,6 +34,10 @@ All of these must hold:
 
 Notes above the **size warning threshold** are silently skipped: daemon mode never interrupts you with a dialog.
 
+## Hiding findings pauses it for that note
+
+The rail's findings-visibility toggle ([Review a note](usage.md#the-persona-rail)) hides every finding annotation in a note — and while they are hidden, the daemon does not refresh that note: paying for results you asked not to see would be the worst version of the cost story. The global toggle stays on and other notes keep refreshing. Showing the findings again resumes the note, and a refresh arms if the text changed while they were hidden.
+
 ## A refresh never wipes your triage
 
 The findings you are working through stay on screen — dimmed — while a refresh runs, and your decisions carry across it: dismissed findings stay dismissed, unchanged findings keep their identity and thread, and a refresh that fails leaves everything exactly as it was. See [Review a note](usage.md#start-a-review).

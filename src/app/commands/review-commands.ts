@@ -250,6 +250,21 @@ export function registerReviewCommands(
     })
 
     plugin.addCommand({
+        id: 'toggle-findings-visibility',
+        name: 'Show/hide findings in the note',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canToggleFindingsVisibility()) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.toggleFindingsVisibility()
+            return true
+        }
+    })
+
+    plugin.addCommand({
         id: 'filter-severity',
         name: 'Cycle severity filter',
         checkCallback: (checking: boolean): boolean => {

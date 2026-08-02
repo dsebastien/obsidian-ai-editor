@@ -64,6 +64,8 @@ export interface DaemonFireProbe {
 export type DaemonSkipReason =
     | 'disabled'
     | 'not-armed'
+    /** Findings hidden for this note (issue #29): the arm is KEPT, not consumed. */
+    | 'paused'
     | 'run-in-flight'
     | 'not-reviewable'
     | 'unchanged'
@@ -106,6 +108,13 @@ export class DaemonScheduler {
     private readonly paths = new Map<string, PathState>()
     /** Files whose oversized skip was already logged (once per file). */
     private readonly oversizedLogged = new Set<string>()
+    /**
+     * Files whose findings are hidden (issue #29): no timer is due and no
+     * dispatch fires, but edits keep ARMING silently — refreshing findings
+     * the user asked not to see is pure cost, while forgetting that the text
+     * changed would make un-hiding lose the pending refresh.
+     */
+    private readonly paused = new Set<string>()
 
     /**
      * Applies the current settings. Disabling clears ALL per-file state —
@@ -118,6 +127,38 @@ export class DaemonScheduler {
         if (!config.enabled) {
             this.paths.clear()
             this.oversizedLogged.clear()
+            this.paused.clear()
+        }
+    }
+
+    /**
+     * Suspends automatic refreshes for `path` (issue #29: findings hidden).
+     * The pending arm is KEPT — edits made while paused keep arming — but
+     * `nextDueAt` reports nothing due and a stray timer fire skips without
+     * consuming, so no request is spent on a result the user cannot see.
+     */
+    pause(path: string): void {
+        if (!this.config.enabled) {
+            return
+        }
+        this.paused.add(path)
+    }
+
+    /**
+     * Resumes automatic refreshes (issue #29: findings shown again). A note
+     * that armed before or during the pause re-arms from NOW — the full
+     * quiet window must elapse after un-hiding (same rationale as the
+     * settle re-arm), and the changed-hash gate at fire time still decides
+     * whether the text actually needs a refresh.
+     */
+    resume(path: string, now: number): void {
+        if (!this.paused.delete(path)) {
+            return
+        }
+        const state = this.paths.get(path)
+        if (state && state.armedAt !== null && !state.runInFlight) {
+            state.armedAt = now
+            state.lastActivityAt = null
         }
     }
 
@@ -194,6 +235,7 @@ export class DaemonScheduler {
     fileClosed(path: string): void {
         this.paths.delete(path)
         this.oversizedLogged.delete(path)
+        this.paused.delete(path)
     }
 
     /**
@@ -205,6 +247,7 @@ export class DaemonScheduler {
     filesClosedUnder(path: string): void {
         deleteKeysUnder(this.paths, path)
         deleteKeysUnder(this.oversizedLogged, path)
+        deleteKeysUnder(this.paused, path)
     }
 
     /** When the file's timer should fire, or null when nothing is armed. */
@@ -213,7 +256,7 @@ export class DaemonScheduler {
             return null
         }
         const state = this.paths.get(path)
-        if (!state || state.armedAt === null || state.runInFlight) {
+        if (!state || state.armedAt === null || state.runInFlight || this.paused.has(path)) {
             return null
         }
         return this.dueAtOf(state.armedAt, state.lastActivityAt)
@@ -240,6 +283,12 @@ export class DaemonScheduler {
         const state = this.paths.get(path)
         if (!state || state.armedAt === null) {
             return { action: 'skip', reason: 'not-armed' }
+        }
+        if (this.paused.has(path)) {
+            // Defensive: no timer should exist while paused (`nextDueAt` is
+            // null). The arm is deliberately NOT consumed — resume re-derives
+            // the window from it.
+            return { action: 'skip', reason: 'paused' }
         }
         if (state.runInFlight || probe.runInFlight) {
             // Desync guard: trust the live probe over internal bookkeeping.

@@ -64,6 +64,11 @@ export interface RailCallbacks {
      * (`behavior.railCollapsed`); the chevron in the head is the control.
      */
     readonly onToggleCollapsed: () => void
+    /**
+     * Show/hide the note's findings (issue #29): decorations off, daemon
+     * paused for the note. Per note, session-only.
+     */
+    readonly onToggleFindings: () => void
     readonly onEditorClick: (editorId: string) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly onRetry: (editorId: string) => void
@@ -169,8 +174,11 @@ export class PersonaRail {
     private buttonAction: RailViewModel['button']['action'] = 'review'
     private readonly collapseEl: HTMLButtonElement
     private readonly countEl: HTMLElement
+    private readonly findingsEl: HTMLButtonElement
     private collapsedGlyph = ''
     private countText = ''
+    private findingsGlyph = ''
+    private findingsTooltip = ''
     /**
      * What the previous render showed, so `railMotion` can tell a new run from
      * the dozens of re-renders inside one.
@@ -242,6 +250,18 @@ export class PersonaRail {
             }
         })
         headEl.appendChild(this.buttonEl)
+
+        // Findings visibility toggle (issue #29): filled = shown, hollow =
+        // hidden — the daemon toggle's convention. Always present, like the
+        // daemon toggle: a control that only appeared once something was
+        // hidden could never be the thing that hides it.
+        this.findingsEl = this.doc.createElement('button')
+        this.findingsEl.classList.add('editor-ai-daemons-rail-findings-toggle')
+        this.findingsEl.type = 'button'
+        this.findingsEl.addEventListener('click', () => {
+            this.callbacks.onToggleFindings()
+        })
+        headEl.appendChild(this.findingsEl)
 
         // Collapsed finding count (issue #28): the one number that makes a
         // user expand again. Hidden unless collapsed with findings.
@@ -324,6 +344,7 @@ export class PersonaRail {
         // shape), and the daemon toggle survives by construction.
         this.rootEl.classList.toggle('is-collapsed', viewModel.collapsed)
         this.syncCollapse(viewModel)
+        this.syncFindingsToggle(viewModel)
         this.syncHead(viewModel)
 
         // A panel run renders as ONE entity: a ringed row owning its members
@@ -371,6 +392,21 @@ export class PersonaRail {
     /** Removes the rail from the DOM. The instance must not be reused. */
     destroy(): void {
         this.rootEl.remove()
+    }
+
+    /** Patches the findings-visibility toggle in place (issue #29). */
+    private syncFindingsToggle(viewModel: RailViewModel): void {
+        const toggle = viewModel.findingsToggle
+        if (this.findingsGlyph !== toggle.text) {
+            this.findingsEl.textContent = toggle.text
+            this.findingsGlyph = toggle.text
+        }
+        this.findingsEl.setAttribute('aria-pressed', String(toggle.hidden))
+        this.findingsEl.classList.toggle('is-findings-hidden', toggle.hidden)
+        if (this.findingsTooltip !== toggle.tooltip) {
+            this.applyTooltip(this.findingsEl, toggle.tooltip, toggle.ariaLabel)
+            this.findingsTooltip = toggle.tooltip
+        }
     }
 
     /** Patches the chevron + collapsed count in place (issue #28). */

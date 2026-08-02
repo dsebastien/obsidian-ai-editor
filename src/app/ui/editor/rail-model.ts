@@ -90,6 +90,13 @@ export interface RailState {
      */
     readonly narrow?: boolean
     /**
+     * Findings hidden for this note (issue #29): decorations, ring and card
+     * are suppressed and the daemon is paused for the note. PER NOTE and
+     * session-only — a hidden state that survived a restart would be a
+     * silent way to think the plugin is broken.
+     */
+    readonly findingsHidden?: boolean
+    /**
      * Collapsed rail (issue #28): only the daemon toggle (plus a finding
      * count, the expand chevron, and Cancel while a run is in flight)
      * remains visible. GLOBAL and persisted (`behavior.railCollapsed`) —
@@ -269,6 +276,8 @@ export interface RailViewModel {
      * name budget. Never icon-only — see {@link RailState.narrow}.
      */
     readonly compact: boolean
+    /** The findings-visibility toggle (issue #29), always present. */
+    readonly findingsToggle: RailFindingsToggleViewModel
     /** Collapsed to the daemon toggle (issue #28); see RailState.collapsed. */
     readonly collapsed: boolean
     /**
@@ -279,6 +288,35 @@ export interface RailViewModel {
     readonly totalFindings: number
     /** Motion key of the projected run; null when no run is bound. */
     readonly runKey: string | null
+}
+
+/**
+ * The findings-visibility toggle (issue #29). Mirrors the daemon toggle's
+ * filled/hollow convention: filled = findings visible, hollow = hidden.
+ */
+export interface RailFindingsToggleViewModel {
+    readonly hidden: boolean
+    readonly text: string
+    readonly ariaLabel: string
+    readonly tooltip: string
+}
+
+export function buildFindingsToggleViewModel(hidden: boolean): RailFindingsToggleViewModel {
+    return hidden
+        ? {
+              hidden: true,
+              text: '▢',
+              ariaLabel: 'Findings hidden — show them',
+              tooltip:
+                  'Findings are hidden in this note and the daemon is paused for it. Click to show them again.'
+          }
+        : {
+              hidden: false,
+              text: '▣',
+              ariaLabel: 'Findings shown — hide them',
+              tooltip:
+                  'Hide the findings in this note (they stay in the review panel) and pause the daemon for it.'
+          }
 }
 
 /**
@@ -605,6 +643,7 @@ export function buildRailViewModel(state: RailState): RailViewModel {
             compact
         ),
         compact,
+        findingsToggle: buildFindingsToggleViewModel(state.findingsHidden === true),
         collapsed: state.collapsed === true,
         totalFindings: state.editors.reduce((sum, editor) => sum + editor.findingCount, 0),
         runKey: state.runKey ?? null

@@ -104,6 +104,30 @@ export class DaemonController {
         this.syncTimer(path)
     }
 
+    /**
+     * Findings hidden for `path` (issue #29): automatic refreshes stop for
+     * that note — refreshing what the user asked not to see is pure cost.
+     * The global daemon mode is untouched.
+     */
+    pause(path: string): void {
+        if (this.disposed) {
+            return
+        }
+        this.scheduler.pause(path)
+        this.syncTimer(path)
+        this.deps.onStateChange()
+    }
+
+    /** Findings shown again for `path`: refreshes resume (issue #29). */
+    resume(path: string): void {
+        if (this.disposed) {
+            return
+        }
+        this.scheduler.resume(path, this.now())
+        this.syncTimer(path)
+        this.deps.onStateChange()
+    }
+
     /** Live run state for `path` (reported on every refresh cycle). */
     syncRunState(path: string, inFlight: boolean): void {
         if (this.disposed) {
