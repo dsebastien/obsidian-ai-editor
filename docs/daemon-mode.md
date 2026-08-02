@@ -46,6 +46,10 @@ A refresh reuses the editors of the note's **previous review** — or every enab
 
 While a refresh is armed for the note you are on, the daemon toggle above the Review button pulses. It is the same control that turns the mode on and off, so the state and the switch are never in two places — and with reduced motion enabled it is dimmed rather than animated.
 
+## It turns itself off when refreshes keep failing
+
+After three automatic refreshes in a row fail completely (a dead API key, an exhausted quota, an unreachable server), daemon mode switches itself off and tells you why in a notice that stays until you dismiss it. Unattended refreshes against a broken backend would silently bill every attempt — so the loop stops, while summoning a review manually keeps working (that is also how you check the problem is fixed). Turning the toggle back on is the "try again".
+
 ## Turning it off
 
 Flip it in the rail, in settings, or run **AI Editor: Toggle daemon mode**. Anything already in flight finishes; nothing new is armed. The idle-delay field only appears while the mode is on, so the cost-sensitive toggle stays the single decision point.

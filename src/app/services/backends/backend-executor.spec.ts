@@ -291,6 +291,10 @@ describe('createBackendExecutor — request policy', () => {
             model: 'claude-test-1',
             systemPrompt: 'You are an editor.',
             behavior: { ...behavior, stripFrontmatter: true },
+            // The probe response is unparseable, and the retry layer (issue
+            // #23) would legitimately send a second attempt — this test is
+            // about the ONE request's payload.
+            autoRetry: false,
             fetchImpl
         })
         const request: OperationRequest = {
@@ -304,5 +308,196 @@ describe('createBackendExecutor — request policy', () => {
         expect(bodies).toHaveLength(1)
         expect(bodies[0]).toContain('Body sentence.')
         expect(bodies[0]).not.toContain('ACME')
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Automatic retry + failure classification (issue #23)
+// ---------------------------------------------------------------------------
+
+import { BackendHealthRegistry, UNHEALTHY_AFTER } from './backend-health'
+
+function ollamaBackend(): ApiBackend {
+    return apiBackendSchema.parse({
+        id: 'api-ollama',
+        family: 'api',
+        kind: 'ollama',
+        label: 'Ollama',
+        defaultModel: 'test-model'
+    })
+}
+
+const VALID_REVIEW_JSON = '{"kind":"review","findings":[]}'
+
+function okOllamaResponse(content = VALID_REVIEW_JSON): Response {
+    return new Response(JSON.stringify({ message: { content } }), { status: 200 })
+}
+
+/** Fetch that answers each call from a script of response builders. */
+function scriptedFetch(script: (() => Response)[]): {
+    calls: number[]
+    fetchImpl: typeof fetch
+} {
+    const calls: number[] = []
+    let index = 0
+    const fetchImpl = (() => {
+        calls.push(index)
+        const build = script[Math.min(index, script.length - 1)]
+        index += 1
+        return Promise.resolve(build ? build() : new Response('', { status: 500 }))
+    }) as unknown as typeof fetch
+    return { calls, fetchImpl }
+}
+
+interface RetryHarness {
+    readonly health: BackendHealthRegistry
+    readonly sleeps: number[]
+    execute(signal?: AbortSignal): Promise<OperationEvent[]>
+}
+
+function retryHarness(script: (() => Response)[], preFailures = 0): RetryHarness {
+    const health = new BackendHealthRegistry()
+    for (let i = 0; i < preFailures; i++) {
+        health.recordFailure('api-ollama', 'auth')
+    }
+    const sleeps: number[] = []
+    const { fetchImpl } = scriptedFetch(script)
+    const executor = createBackendExecutor({
+        backend: ollamaBackend(),
+        model: 'test-model',
+        systemPrompt: 'You are an editor.',
+        behavior,
+        fetchImpl,
+        retryDeps: {
+            health,
+            sleep: (ms: number): Promise<void> => {
+                sleeps.push(ms)
+                return Promise.resolve()
+            },
+            random: () => 0.5
+        }
+    })
+    return {
+        health,
+        sleeps,
+        async execute(signal?: AbortSignal): Promise<OperationEvent[]> {
+            const events: OperationEvent[] = []
+            for await (const event of executor.execute(
+                operation(),
+                signal ?? new AbortController().signal
+            )) {
+                events.push(event)
+            }
+            return events
+        }
+    }
+}
+
+function terminalOf(events: OperationEvent[]): OperationEvent {
+    const terminal = events.at(-1)
+    if (!terminal) {
+        throw new Error('no terminal event')
+    }
+    return terminal
+}
+
+describe('createBackendExecutor — automatic retry (issue #23)', () => {
+    it('retries a transient 5xx with backoff and succeeds silently', async () => {
+        const harness = retryHarness([
+            () => new Response('', { status: 503 }),
+            () => okOllamaResponse()
+        ])
+        const events = await harness.execute()
+        const terminal = terminalOf(events)
+        expect(terminal.type).toBe('result')
+        // One backoff sleep (1 s base, flat jitter), then the success.
+        expect(harness.sleeps).toEqual([1_000])
+        // Success closes the streak.
+        expect(harness.health.lastFailure('api-ollama')).toBeNull()
+    })
+
+    it('never retries auth, and the message names the fix', async () => {
+        const harness = retryHarness([() => new Response('', { status: 401 })])
+        const events = await harness.execute()
+        const terminal = terminalOf(events)
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('auth')
+        expect(terminal.error.message).toMatch(/Backends settings tab/)
+        expect(harness.sleeps).toEqual([])
+        expect(harness.health.lastFailure('api-ollama')).toEqual({ code: 'auth', count: 1 })
+    })
+
+    it('maps HTTP 402 to quota and never retries', async () => {
+        const harness = retryHarness([() => new Response('', { status: 402 })])
+        const terminal = terminalOf(await harness.execute())
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('quota')
+        expect(terminal.error.message).toMatch(/credit or quota/i)
+        expect(harness.sleeps).toEqual([])
+    })
+
+    it('maps a 429 whose body says insufficient_quota to quota, not rate-limit', async () => {
+        const body = JSON.stringify({
+            error: { code: 'insufficient_quota', type: 'insufficient_quota', message: 'x' }
+        })
+        const harness = retryHarness([() => new Response(body, { status: 429 })])
+        const terminal = terminalOf(await harness.execute())
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('quota')
+    })
+
+    it('honours Retry-After on a genuine rate limit, then succeeds', async () => {
+        const harness = retryHarness([
+            () =>
+                new Response('{"error":{"code":"rate_limit_exceeded"}}', {
+                    status: 429,
+                    headers: { 'retry-after': '2' }
+                }),
+            () => okOllamaResponse()
+        ])
+        const events = await harness.execute()
+        expect(terminalOf(events).type).toBe('result')
+        expect(harness.sleeps).toEqual([2_000])
+    })
+
+    it('retries invalid-output exactly once, and the final error counts attempts', async () => {
+        const harness = retryHarness([() => okOllamaResponse('not json at all')])
+        const terminal = terminalOf(await harness.execute())
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('invalid-output')
+        expect(terminal.error.message).toMatch(/after 2 attempts/)
+    })
+
+    it('spends no retries on an unhealthy backend — the first failure surfaces', async () => {
+        const harness = retryHarness(
+            [() => new Response('', { status: 503 }), () => okOllamaResponse()],
+            UNHEALTHY_AFTER
+        )
+        const terminal = terminalOf(await harness.execute())
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('network')
+        expect(harness.sleeps).toEqual([])
+    })
+
+    it('a cancellation is never retried and never counts as a backend failure', async () => {
+        const controller = new AbortController()
+        controller.abort()
+        const harness = retryHarness([() => okOllamaResponse()])
+        const terminal = terminalOf(await harness.execute(controller.signal))
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('cancelled')
+        expect(harness.health.lastFailure('api-ollama')).toBeNull()
     })
 })

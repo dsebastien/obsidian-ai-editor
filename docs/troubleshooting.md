@@ -50,6 +50,10 @@ A model that wraps its JSON in prose ("Here are my comments: …") or a code fen
 
 The response is also refused if the envelope exceeds the safety bounds: more than 200 findings, or a replacement over 100000 characters. Per-finding bound violations (an oversized quote or critique, an invalid edit) degrade just that finding instead.
 
+## Failures, retries, and what the plugin does on its own
+
+Transient failures are retried automatically, a bounded number of times: a network blip or a 5xx gets a couple of attempts with a short backoff, a timeout and an unusable answer get one more attempt, a rate limit waits the time the provider asked for (up to 30 seconds). What is **never** retried: a rejected key (fix it in the Backends tab), an exhausted quota or credit (the message says so — paying is the fix, retrying is not), a cancelled run, and an answer that ran out of output space. A backend that keeps failing stops receiving automatic retries until a request succeeds, you run **Test connection**, or you change settings. [Daemon mode](daemon-mode.md) additionally turns itself off after three fully-failed automatic refreshes.
+
 ## Findings appear under "Not anchored"
 
 The editor's quote could not be located in your text — not exactly, and not uniquely enough to be safe.

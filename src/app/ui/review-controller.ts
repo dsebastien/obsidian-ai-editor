@@ -1591,6 +1591,31 @@ export class ReviewController {
         return 'started'
     }
 
+    /**
+     * Daemon port: switches the mode off after repeated failed automatic
+     * refreshes (issue #23) and says why — loudly, because daemon runs are
+     * the ones nobody is watching. Manual reviews stay available, and the
+     * toggle (rail or command) is the "I fixed it, try again" gesture.
+     */
+    disableDaemonMode(reason: string): void {
+        const setDaemonMode = this.deps.setDaemonMode
+        if (!setDaemonMode || this.disposed) {
+            return
+        }
+        void setDaemonMode(false)
+            .then(() => {
+                if (!this.disposed) {
+                    new Notice(`Daemon mode turned off: ${reason}.`, 0)
+                    this.scheduleRefresh()
+                }
+            })
+            .catch(() => {
+                if (!this.disposed) {
+                    new Notice('AI Editor: failed to turn daemon mode off.')
+                }
+            })
+    }
+
     /** Deferred refresh entry for the daemon's armed-state indicator. */
     requestRefresh(): void {
         this.scheduleRefresh()

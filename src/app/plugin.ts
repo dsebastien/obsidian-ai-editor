@@ -23,6 +23,7 @@ import { findingDecorationsField } from './ui/editor/finding-decorations'
 import { transformPreviewField } from './ui/editor/transform-preview'
 import { registerEditorMenu } from './ui/menus/editor-menu'
 import { registerFileMenu } from './ui/menus/file-menu'
+import { backendHealth } from './services/backends/backend-health'
 import { DaemonController } from './ui/daemon-controller'
 import { ReviewController } from './ui/review-controller'
 import { REVIEW_PANEL_VIEW_TYPE, ReviewSidePanelView } from './ui/side-panel'
@@ -151,7 +152,15 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         })
         this.daemonController = daemonController
         reviewController.attachDaemon(daemonController)
-        this.register(this.subscribe(() => daemonController.settingsChanged()))
+        this.register(
+            this.subscribe(() => {
+                daemonController.settingsChanged()
+                // A settings change may be the fix (new key, new endpoint):
+                // yesterday's failure streaks must not keep suppressing
+                // automatic retries against a repaired backend (issue #23).
+                backendHealth.resetAll()
+            })
+        )
 
         registerReviewCommands(this, reviewController, this)
         registerSetupCommands(this, this)

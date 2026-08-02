@@ -61,6 +61,8 @@ export interface CreateApiEditorExecutorInput {
 export type TransportErrorCode =
     | 'auth'
     | 'rate-limit'
+    /** Credits/billing exhausted (issue #23) — never retried. */
+    | 'quota'
     | 'network'
     | 'timeout'
     | 'cancelled'
@@ -77,11 +79,14 @@ export type TransportErrorCode =
  */
 export class TransportError extends Error {
     readonly code: TransportErrorCode
+    /** Provider-requested wait (Retry-After) for rate-limit failures. */
+    readonly retryAfterMs: number | null
 
-    constructor(code: TransportErrorCode, message: string) {
+    constructor(code: TransportErrorCode, message: string, retryAfterMs: number | null = null) {
         super(message)
         this.name = 'TransportError'
         this.code = code
+        this.retryAfterMs = retryAfterMs
     }
 }
 
@@ -205,7 +210,7 @@ async function* executeBuffered(
         body: descriptor.body,
         signal
     })
-    assertOkStatus(response)
+    await assertOkStatus(response)
     const text = await response.text()
     let raw: unknown
     try {
@@ -251,7 +256,7 @@ async function* executeStream(
         body: enableStreamFlag(descriptor.body),
         signal
     })
-    assertOkStatus(response)
+    await assertOkStatus(response)
     const sse = new SseDecoder()
     const body = response.body
     if (body === null) {
@@ -589,25 +594,103 @@ function createOpenAiAccumulator(adapter: ProviderAdapter): StreamAccumulator {
 // ---------------------------------------------------------------------------
 
 /**
- * Maps an HTTP failure status to a transport error. The response body is
- * deliberately never read into the message — provider error bodies can
- * echo the submitted API key (Business Rules #12).
+ * Maps an HTTP failure status to a transport error. The response body may be
+ * READ for classification (quota vs rate limit hides in provider-specific
+ * error codes — issue #23) but is never echoed into a message: provider
+ * error bodies can carry the submitted API key (Business Rules #12
+ * constrains what is echoed, not how well the failure is understood).
  */
-function assertOkStatus(response: Response): void {
+async function assertOkStatus(response: Response): Promise<void> {
     if (response.ok) {
         return
     }
     const status = response.status
     if (status === 401 || status === 403) {
-        throw new TransportError('auth', `Provider rejected the credentials (HTTP ${status})`)
+        throw new TransportError(
+            'auth',
+            `Provider rejected the credentials (HTTP ${status}) — check the API key in the Backends settings tab.`
+        )
+    }
+    if (status === 402) {
+        throw new TransportError('quota', QUOTA_MESSAGE)
     }
     if (status === 429) {
-        throw new TransportError('rate-limit', 'Provider rate limit reached (HTTP 429)')
+        if (await bodySaysQuotaExhausted(response)) {
+            throw new TransportError('quota', QUOTA_MESSAGE)
+        }
+        throw new TransportError(
+            'rate-limit',
+            'Provider rate limit reached (HTTP 429)',
+            retryAfterMsOf(response)
+        )
     }
     if (status >= 500) {
         throw new TransportError('network', `Provider is unavailable (HTTP ${status})`)
     }
     throw new TransportError('unknown', `Provider request failed (HTTP ${status})`)
+}
+
+const QUOTA_MESSAGE =
+    'The provider reports your credit or quota is exhausted — retrying will not help until the account is topped up.'
+
+/** How much of an error body classification may read (bound, BR #12-safe). */
+const ERROR_BODY_SNIFF_MAX = 4_096
+
+/**
+ * Whether a 429 body says "out of credit" rather than "slow down" (issue
+ * #23): OpenAI-family uses `error.code`/`error.type` `insufficient_quota`;
+ * other providers use billing/credit wordings in the same fields. Only the
+ * structured code/type fields are inspected — never free-form messages —
+ * and nothing read here reaches a user-visible string.
+ */
+async function bodySaysQuotaExhausted(response: Response): Promise<boolean> {
+    let text: string
+    try {
+        text = (await response.text()).slice(0, ERROR_BODY_SNIFF_MAX)
+    } catch {
+        return false
+    }
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(text) as unknown
+    } catch {
+        return false
+    }
+    const error =
+        typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>)['error']
+            : undefined
+    if (typeof error !== 'object' || error === null) {
+        return false
+    }
+    const record = error as Record<string, unknown>
+    const token = [record['code'], record['type']]
+        .filter((value): value is string => typeof value === 'string')
+        .join(' ')
+        .toLowerCase()
+    return (
+        token.includes('insufficient_quota') ||
+        token.includes('billing') ||
+        token.includes('credit')
+    )
+}
+
+/** Parses Retry-After (delta-seconds or HTTP date) into ms; null when absent/absurd. */
+function retryAfterMsOf(response: Response): number | null {
+    const header = response.headers.get('retry-after')
+    if (header === null || header.length === 0) {
+        return null
+    }
+    const seconds = Number(header)
+    if (Number.isFinite(seconds) && seconds >= 0) {
+        return Math.round(seconds * 1_000)
+    }
+    const date = Date.parse(header)
+    if (Number.isNaN(date)) {
+        return null
+    }
+    const delta = date - Date.now()
+    return delta > 0 ? delta : 0
 }
 
 /**
@@ -635,7 +718,11 @@ function normalizeError(
         }
     }
     if (cause instanceof TransportError) {
-        return { code: cause.code, message: cause.message }
+        return {
+            code: cause.code,
+            message: cause.message,
+            ...(cause.retryAfterMs !== null ? { retryAfterMs: cause.retryAfterMs } : {})
+        }
     }
     if (cause instanceof ProviderError) {
         return {

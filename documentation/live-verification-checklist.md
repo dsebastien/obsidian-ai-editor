@@ -58,6 +58,15 @@ Status: **nothing verified.** Parser and adapters are spec-pinned; the original 
 - A chatty model (prose around the JSON) no longer fails the run — the object is recovered and findings land.
 - The rail chip tooltip for a truncated editor says "failed (output cut short)".
 
+## Failure classification, auto-retry, daemon auto-disable (issue #23, 2026-08-02)
+
+Status: **nothing verified.** Policy, breaker and tracker are spec-pinned; the live behaviors need a vault and a deliberately broken backend.
+
+- Configure a backend with a WRONG API key and review: the failure says authentication and points at the Backends tab; no automatic retry happens (watch the provider dashboard / server log — exactly one request).
+- Briefly kill a local server (Ollama) mid-idle, review, restart it within a couple of seconds: the review should succeed on the automatic retry without the user doing anything.
+- Daemon mode on + a broken backend: after 3 automatic refreshes fail, daemon mode turns itself OFF with a sticky Notice naming the failure; manual Review still works; toggling daemon back on starts a fresh streak.
+- "Test connection" on a previously failing backend that now works: subsequent reviews retry normally again (the breaker reset).
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.

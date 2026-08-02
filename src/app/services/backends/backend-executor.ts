@@ -7,8 +7,10 @@ import type {
     CliBackend
 } from '../../domain/settings/settings-schema'
 import { createApiEditorExecutor } from './api-editor-backend'
+import { backendHealth, type BackendHealthRegistry } from './backend-health'
 import { cliTimeoutMs, createCliEditorExecutor, getCliToolAdapter } from './cli'
 import { redactSecret } from './providers'
+import { decideRetry } from './retry-policy'
 
 /**
  * The one place a resolved backend becomes something the orchestrator can
@@ -80,6 +82,14 @@ export interface CreateBackendExecutorInput {
      * so the user's configured timeout is what applies.
      */
     readonly timeoutMsOverride?: number
+    /**
+     * Disables the automatic-retry layer (issue #23). The one legitimate
+     * caller is again the health probe: a check must report what ONE attempt
+     * does, not what three attempts eventually manage.
+     */
+    readonly autoRetry?: boolean
+    /** Injectable health registry + timing for specs. */
+    readonly retryDeps?: Partial<AutoRetryDeps>
 }
 
 /**
@@ -185,14 +195,127 @@ function withRequestPolicy(execute: BackendExecutor, behavior: BehaviorSettings)
     return (request, signal) => execute(applyFrontmatterPolicy(request, behavior), signal)
 }
 
+// ---------------------------------------------------------------------------
+// Automatic retry (issue #23)
+// ---------------------------------------------------------------------------
+
+/** What `withAutoRetry` needs beyond the executor (injectable for specs). */
+export interface AutoRetryDeps {
+    readonly backendId: string
+    readonly health: BackendHealthRegistry
+    /** Resolves after `ms`, or immediately when the signal aborts. */
+    readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>
+    readonly random: () => number
+}
+
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+        if (signal.aborted) {
+            resolve()
+            return
+        }
+        const onAbort = (): void => {
+            clearTimeout(timer)
+            resolve()
+        }
+        const timer = setTimeout(() => {
+            signal.removeEventListener('abort', onAbort)
+            resolve()
+        }, ms)
+        signal.addEventListener('abort', onAbort, { once: true })
+    })
+}
+
+/**
+ * Wraps an executor with the automatic-retry policy (issue #23): a failed
+ * attempt whose error `decideRetry` deems transient is silently re-run —
+ * bounded counts, backoff/Retry-After waits, abortable throughout — and only
+ * the FINAL outcome reaches the orchestrator, so the run layer's
+ * exactly-one-terminal-event protocol is preserved. Applied to BOTH families
+ * at the one seam every request crosses.
+ *
+ * Feeds the circuit breaker: any success resets the backend's failure
+ * streak; a final failure records it. While the backend reads unhealthy the
+ * retry budget is NOT spent — the first failure surfaces immediately, and
+ * the user's manual summon (which still always runs) is what probes recovery.
+ *
+ * `cancelled` never retries, never counts as a failure, and a cancellation
+ * arriving during a retry wait ends the run as cancelled.
+ */
+function withAutoRetry(execute: BackendExecutor, deps: AutoRetryDeps): BackendExecutor {
+    return async function* retried(request, signal) {
+        for (let attempt = 1; ; attempt += 1) {
+            let failure: Extract<OperationEvent, { type: 'error' }> | null = null
+            for await (const event of execute(request, signal)) {
+                if (failure !== null) {
+                    continue // post-terminal noise: discard, never re-emit
+                }
+                if (event.type === 'error') {
+                    failure = event
+                    continue
+                }
+                yield event
+            }
+            if (failure === null) {
+                deps.health.recordSuccess(deps.backendId)
+                return
+            }
+            const code = failure.error.code
+            if (code === 'cancelled' || signal.aborted) {
+                yield failure // the user meant it — not a backend failure
+                return
+            }
+            const decision = deps.health.isUnhealthy(deps.backendId)
+                ? { retry: false, delayMs: 0 }
+                : decideRetry(code, attempt, failure.error.retryAfterMs ?? null, deps.random)
+            if (!decision.retry) {
+                deps.health.recordFailure(deps.backendId, code)
+                yield attempt === 1
+                    ? failure
+                    : {
+                          ...failure,
+                          error: {
+                              ...failure.error,
+                              message: `${failure.error.message} (after ${attempt} attempts)`
+                          }
+                      }
+                return
+            }
+            if (decision.delayMs > 0) {
+                await deps.sleep(decision.delayMs, signal)
+            }
+            if (signal.aborted) {
+                yield {
+                    type: 'error',
+                    runId: request.runId,
+                    error: { code: 'cancelled', message: 'Run cancelled' }
+                }
+                return
+            }
+        }
+    }
+}
+
 /** Builds the executor + redaction pair for one resolved backend. */
 export function createBackendExecutor(input: CreateBackendExecutorInput): ResolvedBackendExecutor {
     const { backend, model, systemPrompt, behavior } = input
     const timeoutMs = input.timeoutMsOverride ?? backendTimeoutMs(backend, behavior)
+    const retryDeps: AutoRetryDeps = {
+        backendId: input.retryDeps?.backendId ?? backend.id,
+        health: input.retryDeps?.health ?? backendHealth,
+        sleep: input.retryDeps?.sleep ?? abortableSleep,
+        random: input.retryDeps?.random ?? Math.random
+    }
+    const finish = (execute: BackendExecutor): BackendExecutor =>
+        input.autoRetry === false
+            ? withRequestPolicy(execute, behavior)
+            : withAutoRetry(withRequestPolicy(execute, behavior), retryDeps)
     if (backend.family === 'cli') {
         if (!hasLaunchConsent(backend)) {
             return {
                 redactError: (message: string): string => message,
+                // Never wrapped in retry: a consent refusal is not a backend
+                // failure and must not feed the circuit breaker.
                 execute: refuseUnconsentedCli(backend)
             }
         }
@@ -202,28 +325,26 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
             // and pretending otherwise would suggest a protection that is not
             // there.
             redactError: (message: string): string => message,
-            execute: withRequestPolicy(
+            execute: finish(
                 createCliEditorExecutor({
                     backendConfig: backend,
                     model,
                     systemPrompt,
                     timeoutMs
-                }),
-                behavior
+                })
             )
         }
     }
     return {
         redactError: (message: string): string => redactSecret(message, backend.apiKey),
-        execute: withRequestPolicy(
+        execute: finish(
             createApiEditorExecutor({
                 backendConfig: backend,
                 model,
                 systemPrompt,
                 timeoutMs,
                 fetchImpl: input.fetchImpl
-            }),
-            behavior
+            })
         )
     }
 }

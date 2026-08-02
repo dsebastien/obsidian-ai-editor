@@ -1,5 +1,9 @@
 import { isPathUnder } from '../domain/path-scope'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
+import {
+    DaemonFailureTracker,
+    DAEMON_DISABLE_AFTER
+} from '../services/daemon/daemon-failure-tracker'
 import { DaemonScheduler } from '../services/daemon/daemon-scheduler'
 import type { DaemonFireProbe } from '../services/daemon/daemon-scheduler'
 import type { RunController } from '../services/orchestration/run-controller'
@@ -42,6 +46,14 @@ export interface DaemonReviewPort {
         editorIds: readonly string[] | null,
         panelId: string | null
     ): Promise<'started' | 'refused'>
+    /**
+     * Flips daemon mode OFF and tells the user why (issue #23): called after
+     * repeated consecutive daemon refreshes failed outright. Daemon runs are
+     * the ones nobody watches — an unattended loop against a dead key or an
+     * exhausted quota would retry forever and bill every attempt. Manual
+     * actions stay available; the toggle is the "I fixed it" gesture.
+     */
+    disableDaemonMode(reason: string): void
 }
 
 export interface DaemonControllerDeps {
@@ -59,6 +71,8 @@ export class DaemonController {
     private readonly timers = new Map<string, number>()
     private readonly now: () => number
     private disposed = false
+    /** Consecutive fully-failed refreshes → auto-disable (issue #23). */
+    private readonly failureTracker = new DaemonFailureTracker()
 
     constructor(deps: DaemonControllerDeps) {
         this.deps = deps
@@ -124,6 +138,9 @@ export class DaemonController {
         if (this.disposed) {
             return
         }
+        // Toggling the mode is the try-again gesture: the failure streak
+        // must not survive it (issue #23).
+        this.failureTracker.reset()
         const armedBefore = this.scheduler.armedPaths()
         this.scheduler.setConfig(this.readConfig())
         // Off: the scheduler cleared its arms — drop every real timer too.
@@ -214,11 +231,48 @@ export class DaemonController {
                 // would silently downgrade the note to loose editors with no
                 // charter and no scorecard.
                 const panelId = run?.getPanelState()?.panelId ?? null
-                void this.deps.port.startDaemonReview(path, editorIds, panelId)
+                void this.deps.port
+                    .startDaemonReview(path, editorIds, panelId)
+                    .then((outcome) => {
+                        if (outcome === 'started' && !this.disposed) {
+                            this.observeRefreshOutcome(path)
+                        }
+                    })
+                    .catch(() => undefined)
                 this.deps.onStateChange()
                 return
             }
         }
+    }
+
+    /**
+     * Watches ONE daemon-dispatched run to its settle and feeds the
+     * auto-disable tracker (issue #23, pure logic + spec in
+     * `daemon-failure-tracker.ts`). On a `disable` verdict the port turns
+     * the mode off and says why — an unattended loop must not keep billing
+     * a broken backend.
+     */
+    private observeRefreshOutcome(path: string): void {
+        const run = this.deps.runController.getRun(path)
+        if (!run) {
+            return
+        }
+        void run.settled.then(() => {
+            if (this.disposed || !this.readConfig().enabled) {
+                return
+            }
+            const states = run.getEditorStates()
+            if (this.failureTracker.record(states) === 'continue') {
+                return
+            }
+            const failed = states.find((state) => state.status === 'error')
+            const cause = failed
+                ? `${failed.editorName} — ${failed.error?.code ?? 'unknown'}`
+                : 'unknown'
+            this.deps.port.disableDaemonMode(
+                `automatic refreshes failed ${DAEMON_DISABLE_AFTER} times in a row (last: ${cause})`
+            )
+        })
     }
 
     /** Live facts for the scheduler's fire-time gates. */

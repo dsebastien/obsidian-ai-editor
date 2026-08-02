@@ -454,5 +454,11 @@ export type OperationEvent =
                   | 'timeout'
                   | 'unknown'
               readonly message: string
+              /**
+               * Provider-requested wait before retrying (Retry-After), when
+               * one was sent with a rate-limit failure. Consumed by the
+               * automatic retry policy (issue #23).
+               */
+              readonly retryAfterMs?: number
           }
       }

@@ -5,6 +5,7 @@ import { hashText } from '../../domain/snapshot'
 import { DEFAULT_PLUGIN_SETTINGS } from '../../domain/settings/settings-schema'
 import type { BackendInstance } from '../../domain/settings/settings-schema'
 import { createBackendExecutor } from './backend-executor'
+import { backendHealth } from './backend-health'
 
 /**
  * "Test connection" for one configured backend, API or CLI: ONE cheap real
@@ -179,6 +180,9 @@ export async function checkBackendHealth(
         // supplies its own bounded timeout and defaults for the rest.
         behavior: DEFAULT_PLUGIN_SETTINGS.behavior,
         timeoutMsOverride: timeoutMs,
+        // A check reports what ONE attempt does — the automatic-retry layer
+        // (issue #23) would turn "fails two times out of three" into a pass.
+        autoRetry: false,
         fetchImpl: input.fetchImpl ?? globalThis.fetch
     })
     const controller = new AbortController()
@@ -197,5 +201,11 @@ export async function checkBackendHealth(
             terminal = event
         }
     }
-    return classifyHealthEvent(terminal, input.backend.family, timeoutMs)
+    const result = classifyHealthEvent(terminal, input.backend.family, timeoutMs)
+    if (result.status === 'ok') {
+        // "Test connection" is the explicit try-again gesture (issue #23):
+        // a passing probe closes the backend's circuit breaker.
+        backendHealth.recordSuccess(input.backend.id)
+    }
+    return result
 }
