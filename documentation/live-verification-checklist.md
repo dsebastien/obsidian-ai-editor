@@ -97,6 +97,17 @@ Status: **nothing verified.**
 - "Show" restores everything at once. A panel run: members acknowledgeable individually, the scorecard never hides.
 - Restart Obsidian: nothing is acknowledged any more (session-only by design).
 
+## Selection segment on the rail (issue #26, 2026-08-02)
+
+Status: **nothing verified.**
+
+- Select text, hold still ~200 ms: a "Selection" segment appears attached to Review (one visual object, flush corners). No flicker while dragging the selection out.
+- Click it: the review runs on ONLY the selection — and the visual selection in the editor SURVIVES the click (mousedown capture; the critical check). Focus stays in the editor.
+- Collapse the selection: the segment vanishes instantly. Collapsed rail: never appears. During a run (button = Cancel): never appears; returns after settle if the selection still exists.
+- Keyboard: tab to the segment, Enter dispatches (no double-dispatch from a pointer click).
+- The segment obeys the idle fade — appears dimmed while the pointer is in the editor, lifts on hover.
+- With every editor disabled (Review disabled): the segment does not appear.
+
 ## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
 
 Status: **nothing verified.**

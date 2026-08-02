@@ -874,6 +874,36 @@
     display: none;
 }
 
+/* Split-button row (issue #26): Review + its appearing "Selection" segment
+   read as ONE control — shared corners meet flush in the middle. */
+.editor-ai-daemons-rail-button-row {
+    @apply flex w-full items-stretch;
+}
+
+.editor-ai-daemons-rail-button-row:has(
+        .editor-ai-daemons-rail-selection:not(.editor-ai-daemons-hidden)
+    )
+    .editor-ai-daemons-rail-button {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.editor-ai-daemons-rail-selection {
+    @apply shrink-0 cursor-pointer font-medium;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-left: 1px solid color-mix(in srgb, var(--text-on-accent, white) 35%, transparent);
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-size: var(--editor-ai-daemons-rail-font);
+    line-height: 1.4;
+}
+
+.editor-ai-daemons-rail-selection:hover {
+    background-color: var(--interactive-accent-hover, var(--interactive-accent));
+}
+
 /* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
    hidden — the daemon toggle's convention. */
 .editor-ai-daemons-rail-findings-toggle {

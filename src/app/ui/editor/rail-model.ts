@@ -90,6 +90,13 @@ export interface RailState {
      */
     readonly narrow?: boolean
     /**
+     * A non-empty, STABLE text selection exists in the note (issue #26) —
+     * debounced by the controller (~200 ms after the drag settles; cleared
+     * instantly on collapse), so the rail never flickers mid-drag. Drives
+     * the Review button's appearing "Selection" segment.
+     */
+    readonly hasSelection?: boolean
+    /**
      * Findings hidden for this note (issue #29): decorations, ring and card
      * are suppressed and the daemon is paused for the note. PER NOTE and
      * session-only — a hidden state that survived a restart would be a
@@ -278,6 +285,14 @@ export interface RailViewModel {
     readonly compact: boolean
     /** The findings-visibility toggle (issue #29), always present. */
     readonly findingsToggle: RailFindingsToggleViewModel
+    /**
+     * The appearing "Selection" segment on the Review button (issue #26):
+     * non-null exactly when clicking it could dispatch — a stable selection
+     * exists, the rail is expanded, no run is in flight (the button is
+     * Cancel then) and reviewing is possible at all. Never a dead control
+     * (Business Rules #14).
+     */
+    readonly selectionSegment: RailSelectionSegmentViewModel | null
     /** Collapsed to the daemon toggle (issue #28); see RailState.collapsed. */
     readonly collapsed: boolean
     /**
@@ -288,6 +303,13 @@ export interface RailViewModel {
     readonly totalFindings: number
     /** Motion key of the projected run; null when no run is bound. */
     readonly runKey: string | null
+}
+
+/** The Review button's appearing selection segment (issue #26). */
+export interface RailSelectionSegmentViewModel {
+    readonly label: string
+    readonly ariaLabel: string
+    readonly tooltip: string
 }
 
 /**
@@ -644,6 +666,18 @@ export function buildRailViewModel(state: RailState): RailViewModel {
         ),
         compact,
         findingsToggle: buildFindingsToggleViewModel(state.findingsHidden === true),
+        selectionSegment:
+            state.hasSelection === true &&
+            state.collapsed !== true &&
+            base.action === 'review' &&
+            !base.disabled
+                ? {
+                      label: 'Selection',
+                      ariaLabel: 'Review only the selected text',
+                      tooltip:
+                          'Review only the selected text with the enabled editors. The whole-note Review button is unchanged.'
+                  }
+                : null,
         collapsed: state.collapsed === true,
         totalFindings: state.editors.reduce((sum, editor) => sum + editor.findingCount, 0),
         runKey: state.runKey ?? null

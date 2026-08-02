@@ -15,6 +15,7 @@ The review loop is the heart of the plugin: summon your editors, read what they 
 | **Review current note**    | Same thing, from the command palette                                     |
 | **Review selection**       | Reviews only the selected text                                           |
 | Right-click a selection    | **Review selection** in the context menu                                 |
+| **Selection** on the rail  | Appears attached to Review while text is selected — same scoped review   |
 | Right-click a note         | **Review note** in the file explorer's context menu                      |
 | **Review** in the panel    | Reviews the note the panel is bound to, without going back to the editor |
 | `editor-ai-daemons:review` | From the terminal — see [The command line](command-line.md)              |
@@ -43,6 +44,8 @@ Every markdown editor gets a small card in its top-right corner: the [daemon](da
 The rail floats over the note, so **when you are not using it, it fades** to a low opacity and the text underneath stays readable. Hovering it, tabbing into it, a running review, or an armed daemon refresh bring it back to full strength.
 
 You can also **collapse it** with the chevron in its head: only the daemon toggle, a total finding count and the chevron remain — and **Cancel stays visible while a review runs**, so a collapsed rail never hides the way out. The state is global and remembered across notes and restarts; the chevron brings everything back.
+
+While you have text selected (and no run is in flight), the Review button grows a small attached **Selection** segment — click it to review only the selected text, exactly like the context menu's **Review selection**. It appears once the selection holds still for a moment, disappears the instant the selection collapses, and never shows on a collapsed rail. Clicking it does not steal focus or clear your selection.
 
 Next to Review sits the **findings visibility toggle** (filled = shown, hollow = hidden; also the command **Show/hide findings in the note**): it clears every highlight, ring and card from the text **without dismissing anything** — the findings stay in the review panel and come back untouched. While hidden, the **daemon is paused for that note** (refreshing what you asked not to see is pure cost); showing them again resumes it, and a refresh arms if the text changed meanwhile. Per note, never remembered across restarts — a note always opens with findings shown. Summoning a review, or jumping to a finding from the panel, shows them again automatically.
 

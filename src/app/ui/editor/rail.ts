@@ -69,6 +69,13 @@ export interface RailCallbacks {
      * paused for the note. Per note, session-only.
      */
     readonly onToggleFindings: () => void
+    /**
+     * Review only the selected text (issue #26). Fired on MOUSEDOWN with the
+     * default prevented, so the click can never steal editor focus or
+     * collapse the very selection it is about to review — the controller
+     * captures the selection synchronously in this call.
+     */
+    readonly onReviewSelection: () => void
     readonly onEditorClick: (editorId: string) => void
     /** Retry the one failed/cancelled editor inside the existing run. */
     readonly onRetry: (editorId: string) => void
@@ -175,6 +182,8 @@ export class PersonaRail {
     private readonly collapseEl: HTMLButtonElement
     private readonly countEl: HTMLElement
     private readonly findingsEl: HTMLButtonElement
+    private readonly selectionEl: HTMLButtonElement
+    private selectionTooltip = ''
     private collapsedGlyph = ''
     private countText = ''
     private findingsGlyph = ''
@@ -249,7 +258,36 @@ export class PersonaRail {
                 this.callbacks.onReview()
             }
         })
-        headEl.appendChild(this.buttonEl)
+        // Split-button row (issue #26): Review plus its appearing
+        // "Selection" segment share one visual object; the segment exists
+        // only while a stable selection makes it dispatchable.
+        const buttonRowEl = this.doc.createElement('div')
+        buttonRowEl.classList.add('editor-ai-daemons-rail-button-row')
+        buttonRowEl.appendChild(this.buttonEl)
+        this.selectionEl = this.doc.createElement('button')
+        this.selectionEl.classList.add(
+            'editor-ai-daemons-rail-selection',
+            'editor-ai-daemons-hidden'
+        )
+        this.selectionEl.type = 'button'
+        this.selectionEl.addEventListener('mousedown', (event) => {
+            // Dispatch on mousedown with the default prevented: the browser's
+            // default would move focus and could collapse the editor
+            // selection BEFORE a click handler ran — killing the very thing
+            // being reviewed. The controller captures the selection
+            // synchronously inside this callback.
+            event.preventDefault()
+            this.callbacks.onReviewSelection()
+        })
+        this.selectionEl.addEventListener('click', (event) => {
+            // Keyboard activation only (Enter/Space arrive as click with
+            // detail 0); a pointer click already dispatched on mousedown.
+            if (event.detail === 0) {
+                this.callbacks.onReviewSelection()
+            }
+        })
+        buttonRowEl.appendChild(this.selectionEl)
+        headEl.appendChild(buttonRowEl)
 
         // Findings visibility toggle (issue #29): filled = shown, hollow =
         // hidden — the daemon toggle's convention. Always present, like the
@@ -345,6 +383,7 @@ export class PersonaRail {
         this.rootEl.classList.toggle('is-collapsed', viewModel.collapsed)
         this.syncCollapse(viewModel)
         this.syncFindingsToggle(viewModel)
+        this.syncSelectionSegment(viewModel)
         this.syncHead(viewModel)
 
         // A panel run renders as ONE entity: a ringed row owning its members
@@ -392,6 +431,22 @@ export class PersonaRail {
     /** Removes the rail from the DOM. The instance must not be reused. */
     destroy(): void {
         this.rootEl.remove()
+    }
+
+    /** Patches the appearing "Selection" segment in place (issue #26). */
+    private syncSelectionSegment(viewModel: RailViewModel): void {
+        const segment = viewModel.selectionSegment
+        this.selectionEl.classList.toggle('editor-ai-daemons-hidden', segment === null)
+        if (segment === null) {
+            return
+        }
+        if (this.selectionEl.textContent !== segment.label) {
+            this.selectionEl.textContent = segment.label
+        }
+        if (this.selectionTooltip !== segment.tooltip) {
+            this.applyTooltip(this.selectionEl, segment.tooltip, segment.ariaLabel)
+            this.selectionTooltip = segment.tooltip
+        }
     }
 
     /** Patches the findings-visibility toggle in place (issue #29). */

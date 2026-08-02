@@ -188,6 +188,7 @@ function mount(): Harness {
             onToggleDaemon: () => clicks.push('daemon'),
             onToggleCollapsed: () => clicks.push('collapse'),
             onToggleFindings: () => clicks.push('findings'),
+            onReviewSelection: () => clicks.push('review-selection'),
             onEditorClick: (editorId) => clicks.push(`editor:${editorId}`),
             onRetry: (editorId) => clicks.push(`retry:${editorId}`),
             onPanelClick: () => clicks.push('panel')

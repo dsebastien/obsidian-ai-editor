@@ -342,6 +342,14 @@ interface ViewGlue {
     readonly rail: PersonaRail
     filePath: string | null
     run: RunHandle | null
+    /**
+     * A non-empty selection has been STABLE for the debounce window (issue
+     * #26): drives the rail's appearing "Selection" segment. Set through
+     * `trackSelection` off the CM6 `selectionSet` stream — debounced in
+     * (~200 ms, no flicker mid-drag), cleared instantly on collapse.
+     */
+    selectionStable: boolean
+    selectionTimer: number | null
     unsubscribe: (() => void) | null
     /** Serialized last-dispatched decoration specs (skip no-op dispatches). */
     lastSpecsKey: string
@@ -411,6 +419,13 @@ interface ViewGlue {
 }
 
 const REVEAL_SELECTION_MS = 1_500
+
+/**
+ * How long a selection must hold still before the rail's "Selection" segment
+ * appears (issue #26): long enough that a drag in progress never flickers it,
+ * short enough to feel immediate once the mouse settles.
+ */
+const SELECTION_STABLE_MS = 200
 
 /** How long a chip click emphasizes its editor's highlights. */
 const CHIP_EMPHASIS_MS = 2_000
@@ -3115,6 +3130,13 @@ export class ReviewController {
         if (glue.view.file?.path !== glue.filePath) {
             return
         }
+        if (update.selectionSet) {
+            // Rail selection segment (issue #26): debounced in, instant out.
+            this.trackSelection(
+                glue,
+                update.state.selection.ranges.some((range) => !range.empty)
+            )
+        }
         if (!update.docChanged) {
             // Pure cursor/selection movement: reading the note is activity
             // (issue #20) — it postpones a pending daemon refresh without
@@ -3295,6 +3317,11 @@ export class ReviewController {
                 onToggleCollapsed: (): void => {
                     this.toggleRailCollapsed()
                 },
+                onReviewSelection: (): void => {
+                    // Synchronous capture inside the mousedown dispatch: the
+                    // selection is read in this very tick (issue #26).
+                    this.startSelectionReview(view, view.editor)
+                },
                 onToggleFindings: (): void => {
                     // Scoped to the rail's view, not the active file: the
                     // control was clicked on THIS pane's rail.
@@ -3332,6 +3359,8 @@ export class ReviewController {
             rail,
             filePath: null,
             run: null,
+            selectionStable: false,
+            selectionTimer: null,
             unsubscribe: null,
             lastSpecsKey: '',
             transformRun: null,
@@ -3479,8 +3508,45 @@ export class ReviewController {
         this.scheduleRefresh()
     }
 
+    /**
+     * Selection-stability tracker for the rail's "Selection" segment (issue
+     * #26). Appear is DEBOUNCED (~200 ms after the selection stops changing:
+     * a drag fires dozens of `selectionSet` updates, and a segment popping in
+     * mid-drag would shift the Review button under a moving pointer);
+     * disappear is INSTANT (a visible control whose selection is gone would
+     * be a dead control — BR #14). A still-non-empty selection that merely
+     * changed shape keeps the segment without re-debouncing.
+     */
+    private trackSelection(glue: ViewGlue, hasSelection: boolean): void {
+        if (glue.selectionTimer !== null) {
+            window.clearTimeout(glue.selectionTimer)
+            glue.selectionTimer = null
+        }
+        if (!hasSelection) {
+            if (glue.selectionStable) {
+                glue.selectionStable = false
+                this.scheduleRefresh()
+            }
+            return
+        }
+        if (glue.selectionStable) {
+            return // already showing; a reshaped selection stays shown
+        }
+        glue.selectionTimer = window.setTimeout(() => {
+            glue.selectionTimer = null
+            if (!this.disposed) {
+                glue.selectionStable = true
+                this.scheduleRefresh()
+            }
+        }, SELECTION_STABLE_MS)
+    }
+
     private destroyGlue(glue: ViewGlue): void {
         this.clearEmphasisTimer(glue)
+        if (glue.selectionTimer !== null) {
+            window.clearTimeout(glue.selectionTimer)
+            glue.selectionTimer = null
+        }
         glue.unsubscribe?.()
         glue.unsubscribe = null
         glue.transformUnsubscribe?.()
@@ -3584,6 +3650,7 @@ export class ReviewController {
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
             collapsed: this.deps.getSettings().behavior.railCollapsed,
             findingsHidden: filePath !== null && this.hiddenFindings.has(filePath),
+            hasSelection: !pluginDisabled && glue.selectionStable,
             narrow,
             // Motion key only (rail-model `railMotion`): the rows stagger in
             // when it changes. The snapshot id IS the run identity — a retry
