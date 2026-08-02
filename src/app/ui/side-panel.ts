@@ -13,6 +13,7 @@ import { undecoratedNoticeText } from './editor/decoration-budget'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
+import { isSettledClean } from './acknowledged-editors'
 import { orderRowsByPosition, sectionNavigationView } from './panel-finding-nav'
 import type { SectionNavigationView } from './panel-finding-nav'
 import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
@@ -94,6 +95,16 @@ export interface SidePanelBinding {
      * above already reports through the controller method it calls.
      */
     readonly noteActivity: () => void
+    /**
+     * Editor ids acknowledged as "all good" for this note (issue #24) —
+     * already pruned by the controller, so every id here is still clean.
+     * Their sections are skipped and counted in a restorable footer line.
+     */
+    readonly acknowledgedEditors: readonly string[]
+    /** Acknowledge one settled-clean editor: its section leaves the list. */
+    readonly acknowledgeEditor: (editorId: string) => void
+    /** The footer's "Show" action: clears this note's acknowledgements. */
+    readonly clearAcknowledgements: () => void
 }
 
 /**
@@ -427,7 +438,16 @@ export class ReviewSidePanelView extends ItemView {
         // panel's membership — `resolveReviewParticipants`), so the panel's
         // name is what each section below belongs to.
         const panelName = binding.run.getPanelState()?.panelName ?? null
+        // Acknowledged all-good sections (issue #24) are skipped — and
+        // COUNTED: a panel that silently omits editors would leave the user
+        // wondering whether they ran. The scorecard above is never hidden.
+        const acknowledged = new Set(binding.acknowledgedEditors)
+        let acknowledgedCount = 0
         for (const editorState of binding.run.getEditorStates()) {
+            if (acknowledged.has(editorState.editorId)) {
+                acknowledgedCount += 1
+                continue
+            }
             this.renderEditorSection(
                 root,
                 binding,
@@ -436,6 +456,33 @@ export class ReviewSidePanelView extends ItemView {
                 panelName
             )
         }
+        this.renderAcknowledgedFooter(root, binding, acknowledgedCount)
+    }
+
+    /** The restorable trace of acknowledged sections (issue #24). */
+    private renderAcknowledgedFooter(
+        root: HTMLElement,
+        binding: SidePanelBinding,
+        count: number
+    ): void {
+        if (count === 0) {
+            return
+        }
+        const footer = root.createDiv({ cls: 'editor-ai-daemons-panel-acknowledged' })
+        footer.createSpan({
+            text:
+                count === 1
+                    ? '1 all-good editor acknowledged'
+                    : `${count} all-good editors acknowledged`
+        })
+        const show = footer.createEl('button', {
+            cls: 'editor-ai-daemons-panel-acknowledged-show',
+            text: 'Show'
+        })
+        show.setAttribute('aria-label', 'Show the acknowledged all-good editors again')
+        show.addEventListener('click', () => {
+            binding.clearAcknowledgements()
+        })
     }
 
     /**
@@ -896,6 +943,22 @@ export class ReviewSidePanelView extends ItemView {
             header.createSpan({
                 cls: `editor-ai-daemons-panel-verdict editor-ai-daemons-panel-verdict-${state.verdict}`,
                 text: verdictLabel(state.verdict)
+            })
+        }
+        if (isSettledClean(state, binding.run.findings)) {
+            // Acknowledge an all-good editor (issue #24): manual, never
+            // automatic — the clean result is the editor's answer and the
+            // user gets to read it before it goes. The section returns by
+            // itself when this editor next reports live findings.
+            const ackLabel = `Acknowledge ${state.editorName} — hide this section until it reports findings again`
+            const ackEl = header.createEl('button', {
+                cls: 'editor-ai-daemons-panel-acknowledge',
+                text: '✓'
+            })
+            ackEl.setAttribute('aria-label', ackLabel)
+            ackEl.title = ackLabel
+            ackEl.addEventListener('click', () => {
+                binding.acknowledgeEditor(state.editorId)
             })
         }
         if (state.status === 'error' || state.status === 'cancelled') {

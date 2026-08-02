@@ -107,6 +107,7 @@ import { newlyStaleIds, staleIds } from './editor/stale-diff'
 import { clearTransformPreviewEffect, showTransformPreviewEffect } from './editor/transform-preview'
 import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
+import { pruneAcknowledged } from './acknowledged-editors'
 import { chipClickAction, railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus, RailPanelState } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
@@ -504,6 +505,12 @@ export class ReviewController {
      * with findings shown.
      */
     private readonly hiddenFindings = new Set<string>()
+    /**
+     * Acknowledged all-good editors per note (issue #24): their clean panel
+     * sections stay hidden until they report live findings again. Session
+     * only — nothing is hidden tomorrow that was not hidden today.
+     */
+    private readonly acknowledgedAllGood = new Map<string, Set<string>>()
     /** Unsubscribes the background-comment registry listener on dispose. */
     private commentJobsUnsubscribe: (() => void) | null = null
     /** Sticky: survives focus moving to the side panel itself. */
@@ -641,6 +648,7 @@ export class ReviewController {
         this.triageCursors.clearUnder(path)
         this.severityFilters.clearUnder(path)
         deleteKeysUnder(this.hiddenFindings, path)
+        deleteKeysUnder(this.acknowledgedAllGood, path)
         this.daemon?.filesClosedUnder(path)
     }
 
@@ -2822,8 +2830,41 @@ export class ReviewController {
             },
             noteActivity: (): void => {
                 this.noteDaemonActivity(path)
+            },
+            // Pruned at BINDING time (issue #24): an acknowledged editor with
+            // live findings again is un-acknowledged before the panel renders,
+            // so the render stays a pure projection.
+            acknowledgedEditors: [...this.pruneAcknowledgements(path, run)],
+            acknowledgeEditor: (editorId: string): void => {
+                this.noteDaemonActivity(path)
+                let set = this.acknowledgedAllGood.get(path)
+                if (!set) {
+                    set = new Set()
+                    this.acknowledgedAllGood.set(path, set)
+                }
+                set.add(editorId)
+                this.scheduleRefresh()
+            },
+            clearAcknowledgements: (): void => {
+                this.noteDaemonActivity(path)
+                this.acknowledgedAllGood.delete(path)
+                this.scheduleRefresh()
             }
         }
+    }
+
+    /**
+     * The note's acknowledged set with stale entries dropped (issue #24): an
+     * editor that has live findings again must return to the panel — hiding
+     * a later, non-empty result would hide real feedback.
+     */
+    private pruneAcknowledgements(path: string, run: RunHandle): Set<string> {
+        const set = this.acknowledgedAllGood.get(path)
+        if (!set || set.size === 0) {
+            return new Set()
+        }
+        pruneAcknowledged(set, run.getEditorStates(), run.findings)
+        return set
     }
 
     // -- Finding card lookup --------------------------------------------------

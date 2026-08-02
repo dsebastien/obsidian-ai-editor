@@ -87,6 +87,16 @@ Status: **nothing verified.**
 - Clicking a finding in the panel, or summoning a review, un-hides automatically.
 - Two panes on one note agree (hide in one, the other clears too). Restart Obsidian: findings are shown again (state is session-only by design).
 
+## Acknowledge all-good editors (issue #24, 2026-08-02)
+
+Status: **nothing verified.**
+
+- A settled editor with zero findings shows the ✓ in its section header; clicking hides the section and the footer says "1 all-good editor acknowledged · Show".
+- An editor whose findings you dismissed/accepted entirely also becomes acknowledgeable; one with open findings, or still running/failed, never shows the ✓.
+- Re-review with the editor still clean: the section stays hidden (no flicker). Re-review where it reports findings: the section returns by itself and the ✓ is gone.
+- "Show" restores everything at once. A panel run: members acknowledgeable individually, the scorecard never hides.
+- Restart Obsidian: nothing is acknowledged any more (session-only by design).
+
 ## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
 
 Status: **nothing verified.**

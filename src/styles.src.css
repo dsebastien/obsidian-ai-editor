@@ -2628,3 +2628,31 @@
         scroll-behavior: auto;
     }
 }
+
+/* ========================================
+   ACKNOWLEDGED ALL-GOOD EDITORS (issue #24,
+   src/app/ui/side-panel.ts + acknowledged-editors.ts)
+   ======================================== */
+
+.editor-ai-daemons-panel-acknowledge {
+    @apply shrink-0 cursor-pointer border-none bg-transparent p-0 px-1 leading-none;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller, 12px);
+}
+
+.editor-ai-daemons-panel-acknowledge:hover {
+    color: var(--color-green, green);
+}
+
+.editor-ai-daemons-panel-acknowledged {
+    @apply mt-2 flex items-center gap-2 text-xs;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-panel-acknowledged-show {
+    @apply cursor-pointer px-1 py-0 text-xs;
+    color: var(--text-normal);
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+}
