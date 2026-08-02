@@ -15,6 +15,14 @@
  *   the explicit user action authorizing automatic dispatches).
  * - A file arms on an edit and fires only after `idleMs` of inactivity;
  *   every further edit restarts the window.
+ * - The idle window measures "has the user paused?", not "has the user
+ *   stopped pressing keys?" (issue #20): ANY plugin/note interaction —
+ *   cursor movement, triage, panel clicks, threads — postpones the window
+ *   via `recordActivity`, but only an EDIT can arm it. Mere activity never
+ *   satisfies the changed-text gate, so interacting with the panel cannot
+ *   trigger a review of unchanged text; it only keeps a pending refresh
+ *   from firing into the middle of the user's work. This reset is what
+ *   makes the short default window safe.
  * - Never while a run (or per-editor retry) is in flight for the file: a
  *   daemon dispatch goes through the regular `startRun`, which CANCELS the
  *   file's previous run — so dispatching mid-run would steal the user's
@@ -81,6 +89,12 @@ interface PathState {
     /** Timestamp of the arming event (last edit, or the settle that
      * re-armed); null = not armed. */
     armedAt: number | null
+    /**
+     * Timestamp of the last non-edit interaction while armed (issue #20);
+     * null = none since arming. Postpones the due time, never arms —
+     * cleared whenever the arm is consumed or (re)set.
+     */
+    lastActivityAt: number | null
     runInFlight: boolean
     /** Edits seen while a run was in flight — coalesced into one re-arm at
      * settle time. */
@@ -88,7 +102,7 @@ interface PathState {
 }
 
 export class DaemonScheduler {
-    private config: DaemonConfig = { enabled: false, idleMs: 30_000 }
+    private config: DaemonConfig = { enabled: false, idleMs: 3_000 }
     private readonly paths = new Map<string, PathState>()
     /** Files whose oversized skip was already logged (once per file). */
     private readonly oversizedLogged = new Set<string>()
@@ -119,6 +133,26 @@ export class DaemonScheduler {
             return
         }
         state.armedAt = now
+        // The edit IS the latest activity; older activity must not linger.
+        state.lastActivityAt = null
+    }
+
+    /**
+     * Any non-edit interaction with the plugin or the note at time `now`
+     * (issue #20): cursor/selection movement, panel and card interactions,
+     * triage, threads, modals. Postpones a PENDING arm's due time and does
+     * nothing else — activity alone never arms (the changed-text gate stays
+     * edit-only) and never touches an in-flight run's coalescing state.
+     */
+    recordActivity(path: string, now: number): void {
+        if (!this.config.enabled) {
+            return
+        }
+        const state = this.paths.get(path)
+        if (!state || state.armedAt === null || state.runInFlight) {
+            return
+        }
+        state.lastActivityAt = now
     }
 
     /**
@@ -136,6 +170,7 @@ export class DaemonScheduler {
             if (!state.runInFlight) {
                 state.runInFlight = true
                 state.armedAt = null
+                state.lastActivityAt = null
                 state.editedDuringRun = false
             }
             return
@@ -151,6 +186,7 @@ export class DaemonScheduler {
             // window must elapse again, so a settle never triggers an
             // immediate back-to-back dispatch.
             state.armedAt = now
+            state.lastActivityAt = null
         }
     }
 
@@ -180,7 +216,7 @@ export class DaemonScheduler {
         if (!state || state.armedAt === null || state.runInFlight) {
             return null
         }
-        return state.armedAt + this.config.idleMs
+        return this.dueAtOf(state.armedAt, state.lastActivityAt)
     }
 
     /** Every file with a pending arm (timer resync after settings change). */
@@ -209,14 +245,16 @@ export class DaemonScheduler {
             // Desync guard: trust the live probe over internal bookkeeping.
             state.runInFlight = true
             state.armedAt = null
+            state.lastActivityAt = null
             state.editedDuringRun = true
             return { action: 'skip', reason: 'run-in-flight' }
         }
-        const dueAt = state.armedAt + this.config.idleMs
+        const dueAt = this.dueAtOf(state.armedAt, state.lastActivityAt)
         if (now < dueAt) {
             return { action: 'wait', dueAt }
         }
         state.armedAt = null // consumed — every branch below is terminal
+        state.lastActivityAt = null
         if (!probe.reviewable) {
             return { action: 'skip', reason: 'not-reviewable' }
         }
@@ -234,10 +272,24 @@ export class DaemonScheduler {
         return { action: 'dispatch' }
     }
 
+    /**
+     * The armed window's expiry: `idleMs` after the LATEST of the arming edit
+     * and any interaction recorded since (issue #20) — quiet means "no edits
+     * AND no activity", not merely "no keystrokes".
+     */
+    private dueAtOf(armedAt: number, lastActivityAt: number | null): number {
+        return Math.max(armedAt, lastActivityAt ?? armedAt) + this.config.idleMs
+    }
+
     private stateOf(path: string): PathState {
         let state = this.paths.get(path)
         if (!state) {
-            state = { armedAt: null, runInFlight: false, editedDuringRun: false }
+            state = {
+                armedAt: null,
+                lastActivityAt: null,
+                runInFlight: false,
+                editedDuringRun: false
+            }
             this.paths.set(path, state)
         }
         return state

@@ -28,10 +28,10 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 
 ### Daemon
 
-| Setting                  | Type   | Default | Range | What it does                                                      |
-| ------------------------ | ------ | ------- | ----- | ----------------------------------------------------------------- |
-| **Daemon mode**          | toggle | `off`   | —     | Editors refresh their recommendations after you pause editing     |
-| **Idle delay (seconds)** | int    | `30`    | 5–600 | Only shown while daemon mode is on. Every edit restarts the clock |
+| Setting                  | Type   | Default | Range | What it does                                                                                                                                                                |
+| ------------------------ | ------ | ------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Daemon mode**          | toggle | `off`   | —     | Editors refresh their recommendations after you pause editing                                                                                                               |
+| **Idle delay (seconds)** | int    | `3`     | 1–600 | Only shown while daemon mode is on. Any interaction restarts the clock — typing, moving the cursor, triaging, using the panel or a card; only an actual edit arms a refresh |
 
 ### Privacy exclusions
 

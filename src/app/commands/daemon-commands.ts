@@ -20,7 +20,7 @@ import type { SettingsFacade } from '../settings/settings-facade'
  */
 export function daemonToggleNotice(enabled: boolean, idleSeconds: number): string {
     return enabled
-        ? `Daemon mode on — editors refresh a changed note ${idleSeconds}s after you stop typing. Each refresh calls your backends.`
+        ? `Daemon mode on — editors refresh a changed note after ${idleSeconds}s of quiet (any interaction restarts the clock). Each refresh calls your backends.`
         : 'Daemon mode off — editors run only when you summon them.'
 }
 

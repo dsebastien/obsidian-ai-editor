@@ -27,7 +27,7 @@ This is the one deliberate exception to "nothing runs automatically", and turnin
 All of these must hold:
 
 - daemon mode is on;
-- you stopped editing the note for the **idle delay** (default 30 seconds, range 5–600; every edit restarts the clock);
+- the note was **quiet** for the **idle delay** (default 3 seconds, range 1–600). Quiet means no interaction at all — typing, moving the cursor, selecting text, triaging findings, using the review panel or a card all restart the clock, so a refresh never fires into the middle of your work;
 - the note is reviewable — not [excluded](privacy-and-security.md), not switched off by a [rule](rules.md), and at least one editor can review it;
 - **its text actually changed** since the last review — moving the cursor around is not an edit;
 - no review is already running for it. Edits made during a run coalesce into a single refresh once the run finishes.

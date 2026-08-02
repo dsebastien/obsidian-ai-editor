@@ -517,6 +517,21 @@ export class ReviewController {
         this.daemon = daemon
     }
 
+    /**
+     * Reports a non-edit interaction with `path` to the daemon (issue #20):
+     * the idle window answers "has the user paused?", so triage, navigation,
+     * panel/card interactions, threads, modals and cursor movement all
+     * postpone a pending refresh — only an edit can arm one. Every
+     * interaction surface below funnels through a handful of controller
+     * methods, and each of those calls this. Nearly free while daemon mode
+     * is off or nothing is armed.
+     */
+    private noteDaemonActivity(path: string | null | undefined): void {
+        if (path != null) {
+            this.daemon?.recordActivity(path)
+        }
+    }
+
     /** Registers workspace listeners; call once from `onload`. */
     initialize(): void {
         const { plugin, app } = this.deps
@@ -1168,6 +1183,7 @@ export class ReviewController {
         if (!file || this.disposed || !this.deps.commentJobs) {
             return
         }
+        this.noteDaemonActivity(file.path)
         if (this.deps.commentJobs.isReadOnly()) {
             // The store could not be preserved at load, so nothing written
             // this session survives it. Refusing here is the honest answer:
@@ -1333,6 +1349,7 @@ export class ReviewController {
             return
         }
         const capturedPath = view.file.path
+        this.noteDaemonActivity(capturedPath)
         const choices = reviewCapableEditors(this.deps.getSettings()).map((candidate) => ({
             id: candidate.id,
             name: candidate.name
@@ -1400,6 +1417,7 @@ export class ReviewController {
             return
         }
         const notePath = file.path
+        this.noteDaemonActivity(notePath)
         const choices = previewEditorChoices(this.deps.getSettings())
         if (choices.length === 0) {
             return // unreachable behind `canPreviewContext`; fail closed
@@ -2240,6 +2258,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
+        this.noteDaemonActivity(context.path)
         const mode = this.severityFilters.cycle(context.path)
         new Notice(severityFilterNotice(mode, this.hiddenFindingCount(context.run, mode)))
         this.scheduleRefresh()
@@ -2302,6 +2321,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
+        this.noteDaemonActivity(context.path)
         const editorView = this.editorViewFor(context.path)
         if (!editorView) {
             new Notice('Open the note in an editor to apply findings.')
@@ -2348,6 +2368,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
+        this.noteDaemonActivity(context.path)
         const ids = dismissableFindingIds(this.bulkCandidates(context.path, context.run, editorId))
         for (const id of ids) {
             context.run.findings.dismiss(asFindingId(id))
@@ -2684,6 +2705,9 @@ export class ReviewController {
             },
             dismissAll: (editorId: string): void => {
                 this.dismissAllFindings(editorId, path)
+            },
+            noteActivity: (): void => {
+                this.noteDaemonActivity(path)
             }
         }
     }
@@ -2780,6 +2804,7 @@ export class ReviewController {
             new Notice('That finding is no longer available.')
             return false
         }
+        this.noteDaemonActivity(run.snapshot.filePath)
         const finding = run.findings.get(id)
         const editorName =
             finding === null
@@ -2881,6 +2906,7 @@ export class ReviewController {
         if (!run) {
             return { ok: false }
         }
+        this.noteDaemonActivity(run.snapshot.filePath)
         const result = run.findings.accept(id, currentText)
         if (!result.ok) {
             this.scheduleRefresh()
@@ -2894,7 +2920,12 @@ export class ReviewController {
     /** Dismiss: terminal status; the refresh cycle drops its decoration. */
     private dismissFinding(rawId: string): void {
         const id = asFindingId(rawId)
-        this.deps.runController.findRunWithFinding(id)?.findings.dismiss(id)
+        const run = this.deps.runController.findRunWithFinding(id)
+        if (!run) {
+            return
+        }
+        this.noteDaemonActivity(run.snapshot.filePath)
+        run.findings.dismiss(id)
     }
 
     // -- Editor update forwarding --------------------------------------------
@@ -2910,7 +2941,7 @@ export class ReviewController {
      * leave anchors on stale offsets (Business Rules #3/#4).
      */
     private handleEditorUpdate(update: ViewUpdate): void {
-        if (this.disposed || !update.docChanged) {
+        if (this.disposed || (!update.docChanged && !update.selectionSet)) {
             return
         }
         const glue = this.findGlueByEditorView(update.view)
@@ -2920,6 +2951,15 @@ export class ReviewController {
         // The file shown by this view changed (doc-replacing transaction of a
         // note switch): never forward it to the previous note's run.
         if (glue.view.file?.path !== glue.filePath) {
+            return
+        }
+        if (!update.docChanged) {
+            // Pure cursor/selection movement: reading the note is activity
+            // (issue #20) — it postpones a pending daemon refresh without
+            // arming one. Recorded from ANY pane of the file (activity is
+            // per file, and double-reporting is harmless), then done: none
+            // of the edit forwarding below applies.
+            this.daemon?.recordActivity(glue.filePath)
             return
         }
         // A presented transform preview may go stale with this edit: defer a
@@ -4094,6 +4134,9 @@ export class ReviewController {
         findingId: FindingId,
         focusEditor = true
     ): Promise<MarkdownView | null> {
+        // The ONE reveal path (panel clicks, keyboard triage, chip cycling,
+        // margin column) — navigating findings is activity (issue #20).
+        this.noteDaemonActivity(filePath)
         const run = this.deps.runController.getRun(filePath)
         const finding = run?.findings.get(findingId) ?? null
         if (!finding || finding.anchor === null || finding.anchor.state !== 'anchored') {

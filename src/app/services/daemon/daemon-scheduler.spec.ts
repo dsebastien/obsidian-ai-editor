@@ -303,3 +303,82 @@ describe('DaemonScheduler lifecycle', () => {
         expect(scheduler.armedPaths()).toEqual([PATH])
     })
 })
+
+// ---------------------------------------------------------------------------
+// Activity reset (issue #20)
+// ---------------------------------------------------------------------------
+
+describe('DaemonScheduler.recordActivity', () => {
+    it('postpones a pending arm — the window measures quiet, not just no-typing', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+        scheduler.recordActivity(PATH, 10_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(10_000 + IDLE_MS)
+        // A fire at the ORIGINAL due time comes back as wait-for-the-new-one.
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'wait',
+            dueAt: 10_000 + IDLE_MS
+        })
+        // Still armed; quiet after the last activity dispatches.
+        expect(scheduler.fire(PATH, 10_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('never arms by itself — the changed-text gate stays edit-only', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordActivity(PATH, 1_000)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'skip',
+            reason: 'not-armed'
+        })
+    })
+
+    it('a fresh edit supersedes older activity (latest signal wins)', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordActivity(PATH, 5_000)
+        scheduler.recordEdit(PATH, 8_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(8_000 + IDLE_MS)
+    })
+
+    it('is ignored while a run is in flight and does not leak into the re-arm', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.syncRunState(PATH, true, 2_000)
+        scheduler.recordActivity(PATH, 50_000)
+        scheduler.recordEdit(PATH, 51_000) // coalesces into the settle re-arm
+        scheduler.syncRunState(PATH, false, 60_000)
+        // Re-armed from settle time; the mid-run activity must not postpone.
+        expect(scheduler.nextDueAt(PATH)).toEqual(60_000 + IDLE_MS)
+    })
+
+    it('does nothing while disabled and keeps files independent', () => {
+        const disabled = makeScheduler(false)
+        disabled.recordActivity(PATH, 1_000)
+        expect(disabled.nextDueAt(PATH)).toBeNull()
+
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordEdit(OTHER, 1_000)
+        scheduler.recordActivity(OTHER, 20_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+        expect(scheduler.nextDueAt(OTHER)).toEqual(20_000 + IDLE_MS)
+    })
+
+    it('stale activity is cleared once the arm is consumed', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordActivity(PATH, 2_000)
+        // Consume the arm (not-reviewable skip).
+        expect(scheduler.fire(PATH, 2_000 + IDLE_MS, clearProbe({ reviewable: false }))).toEqual({
+            action: 'skip',
+            reason: 'not-reviewable'
+        })
+        // A new arm derives its window from the new edit alone.
+        scheduler.recordEdit(PATH, 100_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(100_000 + IDLE_MS)
+    })
+})

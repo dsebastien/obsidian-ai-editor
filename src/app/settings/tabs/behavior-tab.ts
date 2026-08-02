@@ -143,9 +143,12 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
     if (settings.behavior.daemonMode) {
         renderIntField(
             'Idle delay (seconds)',
-            'How long you must stop editing a note before its review refreshes.',
+            'How long the note must be quiet before its review refreshes. Any ' +
+                'interaction restarts the clock — typing, moving the cursor, ' +
+                'triaging findings, using the review panel or a card. Only an ' +
+                'actual edit arms a refresh in the first place.',
             settings.behavior.daemonIdleSeconds,
-            5,
+            1,
             600,
             (draft, next) => {
                 draft.behavior.daemonIdleSeconds = next

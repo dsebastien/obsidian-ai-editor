@@ -75,6 +75,21 @@ export class DaemonController {
         this.syncTimer(path)
     }
 
+    /**
+     * Any non-edit interaction with `path` (issue #20): cursor/selection
+     * movement, triage, panel/card interactions, threads, modals. Postpones a
+     * pending refresh; never arms one. The timer resync is cheap and keeps
+     * the real timer honest, but even without it an early fire comes back as
+     * `wait` and re-arms — the scheduler is the authority on the due time.
+     */
+    recordActivity(path: string): void {
+        if (this.disposed) {
+            return
+        }
+        this.scheduler.recordActivity(path, this.now())
+        this.syncTimer(path)
+    }
+
     /** Live run state for `path` (reported on every refresh cycle). */
     syncRunState(path: string, inFlight: boolean): void {
         if (this.disposed) {

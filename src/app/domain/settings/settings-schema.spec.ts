@@ -94,7 +94,9 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         // Daemon mode is off by default (Business Rule #1: automatic runs
         // only after the user explicitly enabled the toggle) — cost control.
         expect(behavior.daemonMode).toEqual(false)
-        expect(behavior.daemonIdleSeconds).toEqual(30)
+        // Short by design (issue #20): any interaction resets the window,
+        // which is what makes 3 s safe.
+        expect(behavior.daemonIdleSeconds).toEqual(3)
     })
 
     it('bounds the request timeout to 30-3600 seconds, integers only', () => {
@@ -107,12 +109,12 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         expect(parse(90.5)).toEqual(false)
     })
 
-    it('bounds the daemon idle delay to 5-600 seconds, integers only', () => {
+    it('bounds the daemon idle delay to 1-600 seconds, integers only', () => {
         const parse = (daemonIdleSeconds: unknown) =>
             behaviorSettingsSchema.safeParse({ daemonIdleSeconds }).success
-        expect(parse(5)).toEqual(true)
+        expect(parse(1)).toEqual(true)
         expect(parse(600)).toEqual(true)
-        expect(parse(4)).toEqual(false)
+        expect(parse(0)).toEqual(false)
         expect(parse(601)).toEqual(false)
         expect(parse(30.5)).toEqual(false)
     })

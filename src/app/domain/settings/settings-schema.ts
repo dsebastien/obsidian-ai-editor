@@ -309,10 +309,14 @@ export const behaviorSettingsSchema = z.object({
      */
     daemonMode: z.boolean().default(false),
     /**
-     * Seconds of editing inactivity before a daemon refresh dispatches
-     * (per-file idle window; every edit restarts it).
+     * Seconds of quiet before a daemon refresh dispatches (per-file idle
+     * window). Quiet means no edits AND no plugin/note interaction — typing,
+     * cursor movement, triage, panel clicks and threads all restart it
+     * (issue #20); only an edit ARMS it. Short by default: the activity
+     * reset is what makes 3 s safe, and a refresh half a minute after the
+     * edit that caused it feels disconnected from it.
      */
-    daemonIdleSeconds: z.number().int().min(5).max(600).default(30),
+    daemonIdleSeconds: z.number().int().min(1).max(600).default(3),
     excludedFolders: z.array(z.string().max(1_000)).max(200).default([]),
     excludedTags: z.array(z.string().max(200)).max(200).default([]),
     /** Frontmatter flag that opts a note out entirely: `ai_editor: false`. */

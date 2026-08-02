@@ -88,6 +88,12 @@ export interface SidePanelBinding {
     readonly acceptAll: (editorId: string) => void
     /** Dismiss every open finding of one editor. */
     readonly dismissAll: (editorId: string) => void
+    /**
+     * Reports a non-mutating panel interaction (scrolling the list) so the
+     * daemon's idle window resets on it (issue #20). Every mutating callback
+     * above already reports through the controller method it calls.
+     */
+    readonly noteActivity: () => void
 }
 
 /**
@@ -247,6 +253,19 @@ export class ReviewSidePanelView extends ItemView {
     }
 
     override onOpen(): Promise<void> {
+        // Scrolling the findings list is user activity for the daemon's idle
+        // window (issue #20). One passive listener on the persistent
+        // `contentEl` (renders empty its CHILDREN, listeners on it survive);
+        // the binding is read at event time, so it always reports for the
+        // note the panel currently shows.
+        this.registerDomEvent(
+            this.contentEl,
+            'scroll',
+            () => {
+                this.panelState?.binding?.noteActivity()
+            },
+            { capture: true, passive: true }
+        )
         this.setPanelState(this.provider())
         return Promise.resolve()
     }

@@ -38,6 +38,18 @@ Status: **nothing verified.** Shipped with full unit/integration coverage (store
 - Keyboard triage mid-refresh: the current-finding ring/cursor stays on the same finding across the swap when that finding survives.
 - Select a span, "Review selection": findings elsewhere in the note are NOT dropped when the selection-scoped run completes.
 
+## Daemon debounce — short window, any-interaction reset (issue #20, 2026-08-02)
+
+Status: **nothing verified.** Scheduler logic is spec-pinned; the feel of the 3 s window and the activity feeds need a live vault.
+
+- Daemon on, edit a note, hands off everything: the refresh fires ~3 s after the last keystroke (default settings).
+- Edit, then keep moving the cursor / selecting text WITHOUT editing: no refresh fires while you keep interacting; it fires ~3 s after you truly stop.
+- Edit, then triage in the panel (click findings, step with the arrows, dismiss a couple): the pending refresh keeps postponing — it must never fire mid-triage.
+- Edit, then scroll the review panel continuously: same — postponed until you stop.
+- Interacting WITHOUT any prior edit (pure reading/triage of an already-reviewed, unchanged note) never triggers a refresh at all.
+- Settings → Behavior → Idle delay: shows range 1–600, default 3, and the description names what resets the clock.
+- The `Toggle daemon mode` Notice mentions the quiet-window semantics.
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.
