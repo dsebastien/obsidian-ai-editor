@@ -676,7 +676,10 @@ class FindingCardPlugin implements PluginValue {
         for (const input of Array.from(
             card.querySelectorAll('input.editor-ai-daemons-finding-card-pushback-input')
         )) {
-            if (!(input instanceof HTMLInputElement)) {
+            // `.instanceOf` (Obsidian global helper), not `instanceof`: the
+            // card can live in a POPOUT window whose HTMLInputElement is a
+            // different constructor — an identity check would always fail.
+            if (!input.instanceOf(HTMLInputElement)) {
                 continue
             }
             const findingId = input.dataset['findingId']
@@ -744,7 +747,7 @@ class FindingCardPlugin implements PluginValue {
             card.querySelectorAll('input.editor-ai-daemons-finding-card-pushback-input')
         )) {
             if (
-                !(input instanceof HTMLInputElement) ||
+                !input.instanceOf(HTMLInputElement) ||
                 input.dataset['findingId'] !== focused.findingId
             ) {
                 continue

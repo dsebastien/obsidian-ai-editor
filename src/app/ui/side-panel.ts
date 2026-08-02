@@ -284,7 +284,8 @@ export class ReviewSidePanelView extends ItemView {
      * registered identifier no user sees, and changing it orphans open leaves.
      */
     getDisplayText(): string {
-        // eslint-disable-next-line obsidianmd/ui/sentence-case -- reason: proper noun. "AI Editor" is the plugin's name (manifest.json), so the tab title is a name, not a sentence — the same exemption the plugin name itself gets.
+        // A name, not a sentence — declared as vocabulary in eslint.config.ts
+        // (0.4.1 forbids inline sentence-case disables).
         return 'AI Editor Review'
     }
 

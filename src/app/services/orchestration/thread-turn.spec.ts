@@ -417,7 +417,7 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            // eslint-disable-next-line require-yield
+            // eslint-disable-next-line require-yield -- reason: a generator that throws before yielding IS the failure mode under test
             execute: async function* () {
                 throw new Error('socket closed')
             }

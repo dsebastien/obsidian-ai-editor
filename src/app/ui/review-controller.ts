@@ -3622,6 +3622,15 @@ export class ReviewController {
         if (previousPath !== filePath) {
             glue.chipCycle = null
             this.clearEmphasisTimer(glue)
+            // The selection belonged to the previous note (adversarial
+            // review 2026-08-02): a stale `selectionStable` would show the
+            // rail's Selection segment on a note with nothing selected. The
+            // note-switch transaction re-derives it via `selectionSet`.
+            if (glue.selectionTimer !== null) {
+                window.clearTimeout(glue.selectionTimer)
+                glue.selectionTimer = null
+            }
+            glue.selectionStable = false
         }
         // Same-pane navigation (view rebound from note A to note B): clear
         // A's daemon schedule when this was the LAST view showing A — the

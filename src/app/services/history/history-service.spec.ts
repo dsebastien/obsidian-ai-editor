@@ -137,3 +137,19 @@ describe('HistoryService (issue #21)', () => {
         expect(history.listForFile('a.md')).toHaveLength(2) // ancient evicted
     })
 })
+
+describe('hydrate honors the privacy gate (adversarial review 2026-08-02)', () => {
+    it('drops persisted entries for notes that are no longer recordable', () => {
+        let allowed = 'a.md'
+        const history = new HistoryService({
+            isRecordable: (path) => path === allowed,
+            now: () => NOW
+        })
+        history.hydrate([entry(NOW - DAY, 'a.md', 'keep'), entry(NOW - DAY, 'b.md', 'drop')])
+        expect(history.listForFile('a.md')).toHaveLength(1)
+        // b.md was excluded since being persisted: BR #7 is absolute — its
+        // content must not resurface through the archive.
+        expect(history.listForFile('b.md')).toHaveLength(0)
+        void allowed
+    })
+})

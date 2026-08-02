@@ -98,6 +98,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     /** True once the durable history file was loaded into the session store. */
     private historyLoaded = false
 
+    /** Invalidates in-flight history loads when the user clears (see below). */
+    private historyEpoch = 0
+
     override async onload(): Promise<void> {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
@@ -135,10 +138,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 this.reviewController?.requestRefresh()
             }
         })
-        if (this.settings.behavior.durableHistory) {
-            historyService.hydrate(await historyRepository.load())
-            this.historyLoaded = true
-        }
+        // Hydration happens AFTER the review controller exists (below): the
+        // privacy gate is late-bound to it, and hydrating here would filter
+        // every persisted entry against a gate that answers false.
         // History follows renames and dies with deletions, like comments.
         this.registerEvent(
             this.app.vault.on('rename', (file, oldPath) => {
@@ -153,6 +155,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
         const settingsTab = new AIEditorPluginSettingTab(this.app, this)
         settingsTab.clearHistory = (): void => {
+            // The epoch invalidates any in-flight load: a stale hydrate must
+            // not resurrect what was just cleared (adversarial review
+            // 2026-08-02); the repository's own generation guard covers the
+            // in-flight WRITE the same way.
+            this.historyEpoch += 1
             historyService.clearAll()
             void historyRepository.clear()
             new Notice('AI Editor: history cleared.')
@@ -202,6 +209,19 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             ...(commentJobs ? { commentJobs } : {})
         })
         this.reviewController = reviewController
+        // Durable history hydration (issue #21): now that the privacy gate
+        // can answer, adopt what earlier sessions persisted. Async on
+        // purpose (onload must stay cheap); epoch-guarded so a clear issued
+        // while the file is still loading wins (adversarial review).
+        if (this.settings.behavior.durableHistory && !this.historyLoaded) {
+            this.historyLoaded = true
+            const epoch = this.historyEpoch
+            void historyRepository.load().then((entries) => {
+                if (epoch === this.historyEpoch) {
+                    historyService.hydrate(entries)
+                }
+            })
+        }
         this.registerEditorExtension([
             findingDecorationsField,
             transformPreviewField,
@@ -232,8 +252,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 // earlier session persisted, once.
                 if (this.settings.behavior.durableHistory && !this.historyLoaded) {
                     this.historyLoaded = true
+                    const epoch = this.historyEpoch
                     void historyRepository.load().then((entries) => {
-                        historyService.hydrate(entries)
+                        if (epoch === this.historyEpoch) {
+                            historyService.hydrate(entries)
+                        }
                     })
                 }
                 daemonController.settingsChanged()

@@ -253,8 +253,9 @@ describe('perf: word diff on a large replacement', () => {
             // and the number is in the history next to the timings.
             const segments = wordDiff(oldText, newText)
             const changed = segments.filter((segment) => segment.kind !== 'same').length
-            // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
-            console.log(`  ⏱  wordDiff 30k chars granularity: ${changed} changed segments`)
+            process.stdout.write(
+                `  ⏱  wordDiff 30k chars granularity: ${changed} changed segments\n`
+            )
             // Before the anchor split this was 2 — the whole selection struck,
             // the whole replacement inserted.
             expect(changed).toBeGreaterThan(500)
@@ -481,9 +482,8 @@ describe('perf: context assembly with a big budget and many linked notes', () =>
                 })
             }
             const elapsed = performance.now() - started
-            // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
-            console.log(
-                `  ⏱  assembleContext ×8 editors / 20 linked notes (raw): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads`
+            process.stdout.write(
+                `  ⏱  assembleContext ×8 editors / 20 linked notes (raw): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads\n`
             )
             expect(elapsed).toBeLessThan(2_000)
             // The number the caching reader exists to fix: 8 editors, 20
@@ -510,9 +510,8 @@ describe('perf: context assembly with a big budget and many linked notes', () =>
                 })
             }
             const elapsed = performance.now() - started
-            // eslint-disable-next-line no-console -- reason: benchmarks report what they measured; this file is test-only and never bundled into the plugin.
-            console.log(
-                `  ⏱  assembleContext ×8 editors / 20 linked notes (run-scoped reader): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads`
+            process.stdout.write(
+                `  ⏱  assembleContext ×8 editors / 20 linked notes (run-scoped reader): ${elapsed.toFixed(2)}ms, ${vault.reads} note reads, ${vault.metadataReads} metadata reads\n`
             )
             expect(vault.reads).toBe(LINKED_NOTES)
             expect(vault.metadataReads).toBe(LINKED_NOTES + 1)

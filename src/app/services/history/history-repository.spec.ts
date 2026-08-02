@@ -156,3 +156,82 @@ describe('HistoryRepository (issue #21)', () => {
         expect(await repo.load()).toHaveLength(1)
     })
 })
+
+describe('clear vs in-flight write (adversarial review 2026-08-02)', () => {
+    it('a write racing clear() never recreates the cleared store', async () => {
+        const files = new Map<string, string>()
+        const gate: { release: (() => void) | null } = { release: null }
+        const storage: CommentStorageAdapter = {
+            read: (path) => Promise.resolve(files.get(path) ?? null),
+            write: async (path, data) => {
+                // First write (the temp stage) blocks until the test says go.
+                await new Promise<void>((resolve) => {
+                    gate.release = resolve
+                })
+                files.set(path, data)
+            },
+            exists: (path) => Promise.resolve(files.has(path)),
+            rename: (from, to) => {
+                const data = files.get(from)
+                if (data === undefined) {
+                    return Promise.reject(new Error('missing'))
+                }
+                files.delete(from)
+                files.set(to, data)
+                return Promise.resolve()
+            },
+            remove: (path) => {
+                files.delete(path)
+                return Promise.resolve()
+            }
+        }
+        const timer: { fire: (() => void) | null } = { fire: null }
+        const repo = new HistoryRepository({
+            storage,
+            storePath: historyStorePathIn('plugins/x'),
+            setTimer: (callback) => {
+                timer.fire = callback
+                return 1
+            },
+            clearTimer: () => {
+                timer.fire = null
+            },
+            onWriteError: () => undefined,
+            onCorrupt: () => undefined
+        })
+        repo.scheduleSave([entry('one')])
+        timer.fire?.()
+        // The staged write is now in flight, parked on the blocked adapter.
+        await Promise.resolve()
+        await repo.clear() // user: "history cleared"
+        gate.release?.()
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+        // The resumed write must NOT have recreated the store.
+        expect(files.has(historyStorePathIn('plugins/x'))).toBeFalse()
+    })
+})
+
+describe('persisted-entry normalization (adversarial review 2026-08-02)', () => {
+    it('coerces partial synced entries into fully-shaped ones instead of crashing rendering', async () => {
+        const partial = {
+            id: 'p1',
+            at: 5,
+            filePath: 'a.md',
+            kind: 'finding'
+            // no editorName/quote/text/edits/label — another writer's shape
+        }
+        const text = JSON.stringify({
+            format: HISTORY_STORE_FORMAT,
+            version: HISTORY_STORE_VERSION,
+            entries: [partial, { id: 'bad', at: 1, filePath: 'a.md', kind: 'nonsense' }]
+        })
+        const { repo } = harness({ [STORE]: text })
+        const loaded = await repo.load()
+        expect(loaded).toHaveLength(1)
+        expect(loaded[0]?.quote).toBe('')
+        expect(loaded[0]?.edits).toEqual([])
+        expect(loaded[0]?.label).toBe('')
+    })
+})

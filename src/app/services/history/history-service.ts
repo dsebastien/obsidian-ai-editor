@@ -145,9 +145,16 @@ export class HistoryService {
         return [...this.entries]
     }
 
-    /** Durable layer: load persisted entries (retention re-applied). */
+    /**
+     * Durable layer: load persisted entries. The privacy gate applies HERE
+     * TOO (adversarial review 2026-08-02): a note excluded or rule-disabled
+     * since the entries were persisted must not resurface through the
+     * archive — Business Rule #7 is absolute, and hydration is just another
+     * way content enters the store. Retention re-applied.
+     */
     hydrate(entries: readonly HistoryEntry[]): void {
-        this.entries = applyRetention([...this.entries, ...entries], this.now())
+        const admitted = entries.filter((entry) => this.isRecordable(entry.filePath))
+        this.entries = applyRetention([...this.entries, ...admitted], this.now())
         this.onChange?.()
     }
 

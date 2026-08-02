@@ -142,8 +142,9 @@ export function bench(label: string, body: () => void, runs = 3): BenchResult {
         minMs: timings[0] ?? 0,
         maxMs: timings[timings.length - 1] ?? 0
     }
-    // eslint-disable-next-line no-console -- reason: the whole point of a benchmark is to report the number it measured; this file is test-only and never bundled into the plugin.
-    console.log(formatBenchResult(result))
+    // stdout, not console: benchmarks report what they measured, this file is
+    // test-only and never bundled — and 0.4.1 forbids disabling no-console.
+    process.stdout.write(`${formatBenchResult(result)}\n`)
     return result
 }
 

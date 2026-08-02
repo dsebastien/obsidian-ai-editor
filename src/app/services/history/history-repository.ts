@@ -58,6 +58,12 @@ export class HistoryRepository {
     private writing = false
     private queued: string | null = null
     private pending: string | null = null
+    /**
+     * Bumped by `clear()`: a write that started before the bump must not
+     * finish after it — a resumed staged write would silently recreate the
+     * file the user was just told is gone (adversarial review 2026-08-02).
+     */
+    private generation = 0
 
     constructor(options: HistoryRepositoryOptions) {
         this.options = options
@@ -84,7 +90,9 @@ export class HistoryRepository {
             if (parsed.format !== HISTORY_STORE_FORMAT || !Array.isArray(parsed.entries)) {
                 throw new Error('unrecognized store shape')
             }
-            return parsed.entries.filter(isEntryShaped)
+            return parsed.entries
+                .map(normalizeEntry)
+                .filter((entry): entry is HistoryEntry => entry !== null)
         } catch {
             const backupPath = `${storePath}.corrupt-${String(this.options.now?.() ?? Date.now())}`
             try {
@@ -134,6 +142,7 @@ export class HistoryRepository {
         }
         this.pending = null
         this.queued = null
+        this.generation += 1
         const { storage, storePath } = this.options
         try {
             if (await storage.exists(storePath)) {
@@ -158,15 +167,25 @@ export class HistoryRepository {
             return
         }
         this.writing = true
+        const generation = this.generation
         try {
             const { storage, storePath } = this.options
             const tempPath = storePath + TEMP_SUFFIX
             // Stage, then swap: a crash mid-write leaves either the old file
             // (temp incomplete) or the staged temp (`load` recovers it) —
-            // never a half-written store.
+            // never a half-written store. A `clear()` racing this write wins:
+            // the generation check refuses to recreate a cleared store.
             await storage.write(tempPath, text)
+            if (generation !== this.generation) {
+                await storage.remove(tempPath)
+                return
+            }
             if (await storage.exists(storePath)) {
                 await storage.remove(storePath)
+            }
+            if (generation !== this.generation) {
+                await storage.remove(tempPath)
+                return
             }
             await storage.rename(tempPath, storePath)
         } catch (cause) {
@@ -183,16 +202,49 @@ export class HistoryRepository {
     }
 }
 
-function isEntryShaped(candidate: unknown): candidate is HistoryEntry {
+const ENTRY_KINDS = new Set(['finding', 'thread', 'scorecard', 'transform'])
+
+/**
+ * Normalizes one persisted candidate into a fully-shaped entry, or null.
+ * The file syncs and another writer may have produced partial objects — a
+ * candidate that passes a shallow shape check but omits `quote`/`edits`/
+ * `label` would crash the History rendering (adversarial review
+ * 2026-08-02), so every optional-ish field is coerced to its empty form.
+ */
+function normalizeEntry(candidate: unknown): HistoryEntry | null {
     if (typeof candidate !== 'object' || candidate === null) {
-        return false
+        return null
     }
     const record = candidate as Record<string, unknown>
-    return (
-        typeof record['id'] === 'string' &&
-        typeof record['at'] === 'number' &&
-        typeof record['filePath'] === 'string' &&
-        typeof record['kind'] === 'string' &&
-        typeof record['editorName'] === 'string'
-    )
+    if (
+        typeof record['id'] !== 'string' ||
+        typeof record['at'] !== 'number' ||
+        typeof record['filePath'] !== 'string' ||
+        typeof record['kind'] !== 'string' ||
+        !ENTRY_KINDS.has(record['kind'])
+    ) {
+        return null
+    }
+    const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+    const edits = Array.isArray(record['edits'])
+        ? record['edits']
+              .filter(
+                  (edit): edit is Record<string, unknown> =>
+                      typeof edit === 'object' && edit !== null
+              )
+              .map((edit) => ({ op: text(edit['op']), text: text(edit['text']) }))
+        : []
+    return {
+        id: record['id'],
+        at: record['at'],
+        filePath: record['filePath'],
+        editorId: text(record['editorId']),
+        editorName: text(record['editorName']),
+        kind: record['kind'] as HistoryEntry['kind'],
+        key: text(record['key']),
+        quote: text(record['quote']),
+        text: text(record['text']),
+        edits,
+        label: text(record['label'])
+    }
 }
