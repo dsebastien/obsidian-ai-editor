@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.1.0...0.2.0) (2026-08-02)
+
+### ⚠ BREAKING CHANGES
+
+* **contract:** structured edits replace free-text suggestions (#17, #22)
+
+### Features
+
+* **backends:** classify failures, retry only what is retryable, daemon auto-off ([#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23)) ([b520cfb](https://github.com/dsebastien/obsidian-ai-editor/commit/b520cfba7e4d728c9de6223dd667d86d737b8e76)), closes [#12](https://github.com/dsebastien/obsidian-ai-editor/issues/12)
+* **contract:** structured edits replace free-text suggestions ([#17](https://github.com/dsebastien/obsidian-ai-editor/issues/17), [#22](https://github.com/dsebastien/obsidian-ai-editor/issues/22)) ([b164d7a](https://github.com/dsebastien/obsidian-ai-editor/commit/b164d7a570e1c401d83f75d3dcc5b7522c5de0af))
+* **panel:** acknowledge an all-good editor to clear its section ([#24](https://github.com/dsebastien/obsidian-ai-editor/issues/24)) ([812cf2d](https://github.com/dsebastien/obsidian-ai-editor/commit/812cf2d2ec7b6623e5a26468aca389bd5f533be0))
+* **panel:** History tab — session archive, durable per file behind a setting ([#21](https://github.com/dsebastien/obsidian-ai-editor/issues/21)) ([7925849](https://github.com/dsebastien/obsidian-ai-editor/commit/7925849bd611851bd4a25fcdd06918e91bb84789)), closes [#19](https://github.com/dsebastien/obsidian-ai-editor/issues/19)
+* **rail:** appearing Selection segment reviews only the selected text ([#26](https://github.com/dsebastien/obsidian-ai-editor/issues/26)) ([2048bab](https://github.com/dsebastien/obsidian-ai-editor/commit/2048bab951235c8dc619a56c7979835775a4d7f4)), closes [28/#33](https://github.com/28/obsidian-ai-editor/issues/33) [#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14) [#33](https://github.com/dsebastien/obsidian-ai-editor/issues/33)
+* **rail:** collapse to the daemon toggle, expand back ([#28](https://github.com/dsebastien/obsidian-ai-editor/issues/28)) ([752f3aa](https://github.com/dsebastien/obsidian-ai-editor/commit/752f3aaab33e8252332ce3a5295465eb7a891663)), closes [#33](https://github.com/dsebastien/obsidian-ai-editor/issues/33)
+* **review:** show/hide findings per note, pausing the daemon while hidden ([#29](https://github.com/dsebastien/obsidian-ai-editor/issues/29)) ([f39c442](https://github.com/dsebastien/obsidian-ai-editor/commit/f39c442c896dee1bbeea3867836f50d7a26f2583))
+* **ui:** rail fades when idle, finding text is selectable and copyable ([#33](https://github.com/dsebastien/obsidian-ai-editor/issues/33), [#34](https://github.com/dsebastien/obsidian-ai-editor/issues/34)) ([5a5f43c](https://github.com/dsebastien/obsidian-ai-editor/commit/5a5f43c384185e79eeaa6cbe0c73125803a63c9c))
+
+### Bug Fixes
+
+* **backends:** truncation is its own failure, and near-JSON is recovered ([#18](https://github.com/dsebastien/obsidian-ai-editor/issues/18)) ([fc12545](https://github.com/dsebastien/obsidian-ai-editor/commit/fc1254530792e392d28de6d5ee05d93264f97a09)), closes [#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23)
+* **daemon:** 3s idle default, any interaction resets the window ([#20](https://github.com/dsebastien/obsidian-ai-editor/issues/20)) ([303f83c](https://github.com/dsebastien/obsidian-ai-editor/commit/303f83cca50ef73186551cefecfff28169d73728))
+* harden JSON recovery, quota sniff, daemon pause and acknowledgements ([ce2fe2a](https://github.com/dsebastien/obsidian-ai-editor/commit/ce2fe2aa3635d7cf86089f83ae92e6772ff6a78f)), closes [#18](https://github.com/dsebastien/obsidian-ai-editor/issues/18) [#18](https://github.com/dsebastien/obsidian-ai-editor/issues/18) [#29](https://github.com/dsebastien/obsidian-ai-editor/issues/29)
+* **review:** re-reviewing keeps findings and the user's triage ([#19](https://github.com/dsebastien/obsidian-ai-editor/issues/19)) ([9ae9cee](https://github.com/dsebastien/obsidian-ai-editor/commit/9ae9cee6291aa71d609b14766b9fe7549b0de7cb))
+* second adversarial round + lint currency (obsidianmd 0.4.1) ([76b2bd7](https://github.com/dsebastien/obsidian-ai-editor/commit/76b2bd7f503921254229eade207751bb76fa8a86)), closes [#7](https://github.com/dsebastien/obsidian-ai-editor/issues/7) [#35](https://github.com/dsebastien/obsidian-ai-editor/issues/35)
+* **settings:** the last three ai-editor-prefixed identifiers finish the rename ([1a21ebf](https://github.com/dsebastien/obsidian-ai-editor/commit/1a21ebfb417227618976ad7262918a1720c36260))
+
 ## 0.1.0 (2026-08-01)
 
 ### Features
@@ -191,3 +217,4 @@ All notable changes to this project will be documented in this file.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+

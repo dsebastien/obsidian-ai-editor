@@ -1,5 +1,31 @@
 # Release Notes
 
+## 0.2.0 (2026-08-02)
+
+### ⚠ BREAKING CHANGES
+
+- **contract:** structured edits replace free-text suggestions (#17, #22)
+
+### Features
+
+- **backends:** classify failures, retry only what is retryable, daemon auto-off ([#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23))
+- **contract:** structured edits replace free-text suggestions ([#17](https://github.com/dsebastien/obsidian-ai-editor/issues/17), [#22](https://github.com/dsebastien/obsidian-ai-editor/issues/22))
+- **panel:** acknowledge an all-good editor to clear its section ([#24](https://github.com/dsebastien/obsidian-ai-editor/issues/24))
+- **panel:** History tab — session archive, durable per file behind a setting ([#21](https://github.com/dsebastien/obsidian-ai-editor/issues/21))
+- **rail:** appearing Selection segment reviews only the selected text ([#26](https://github.com/dsebastien/obsidian-ai-editor/issues/26)), closes [28/#33](https://github.com/28/obsidian-ai-editor/issues/33) [#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14) [#33](https://github.com/dsebastien/obsidian-ai-editor/issues/33)
+- **rail:** collapse to the daemon toggle, expand back ([#28](https://github.com/dsebastien/obsidian-ai-editor/issues/28))
+- **review:** show/hide findings per note, pausing the daemon while hidden ([#29](https://github.com/dsebastien/obsidian-ai-editor/issues/29))
+- **ui:** rail fades when idle, finding text is selectable and copyable ([#33](https://github.com/dsebastien/obsidian-ai-editor/issues/33), [#34](https://github.com/dsebastien/obsidian-ai-editor/issues/34))
+
+### Bug Fixes
+
+- **backends:** truncation is its own failure, and near-JSON is recovered ([#18](https://github.com/dsebastien/obsidian-ai-editor/issues/18))
+- **daemon:** 3s idle default, any interaction resets the window ([#20](https://github.com/dsebastien/obsidian-ai-editor/issues/20))
+- harden JSON recovery, quota sniff, daemon pause and acknowledgements [#18](https://github.com/dsebastien/obsidian-ai-editor/issues/18) [#29](https://github.com/dsebastien/obsidian-ai-editor/issues/29)
+- **review:** re-reviewing keeps findings and the user's triage ([#19](https://github.com/dsebastien/obsidian-ai-editor/issues/19))
+- second adversarial round + lint currency (obsidianmd 0.4.1) [#35](https://github.com/dsebastien/obsidian-ai-editor/issues/35)
+- **settings:** the last three ai-editor-prefixed identifiers finish the rename
+
 ## 0.1.0 (2026-08-01)
 
 ### Features
