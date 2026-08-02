@@ -579,3 +579,44 @@ describe('PersonaRail live region', () => {
         expect(status.textContent).toBe(announced)
     })
 })
+
+describe('PersonaRail idle fade (issue #33)', () => {
+    it('marks the rail busy while an editor is working', () => {
+        const { rail, root } = mount()
+        rail.render(state({ editors: [editor({ status: 'running' })], running: true }))
+        expect(root.classList.contains('is-busy')).toBe(true)
+    })
+
+    it('marks the rail busy while a run is in flight even with settled rows', () => {
+        const { rail, root } = mount()
+        rail.render(state({ editors: [editor({ status: 'done' })], running: true }))
+        expect(root.classList.contains('is-busy')).toBe(true)
+    })
+
+    it('marks the rail busy while a daemon refresh is armed', () => {
+        const { rail, root } = mount()
+        rail.render(
+            state({
+                editors: [editor({ status: 'idle' })],
+                running: false,
+                daemonMode: true,
+                daemonArmed: true
+            })
+        )
+        expect(root.classList.contains('is-busy')).toBe(true)
+    })
+
+    it('clears the busy mark on an idle rail — CSS may fade it', () => {
+        const { rail, root } = mount()
+        rail.render(state({ editors: [editor({ status: 'running' })], running: true }))
+        rail.render(
+            state({
+                editors: [editor({ status: 'done' })],
+                running: false,
+                daemonMode: true, // merely ON never blocks the fade
+                daemonArmed: false
+            })
+        )
+        expect(root.classList.contains('is-busy')).toBe(false)
+    })
+})

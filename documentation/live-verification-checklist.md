@@ -67,6 +67,18 @@ Status: **nothing verified.** Policy, breaker and tracker are spec-pinned; the l
 - Daemon mode on + a broken backend: after 3 automatic refreshes fail, daemon mode turns itself OFF with a sticky Notice naming the failure; manual Review still works; toggling daemon back on starts a fresh streak.
 - "Test connection" on a previously failing backend that now works: subsequent reviews retry normally again (the breaker reset).
 
+## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
+
+Status: **nothing verified.**
+
+- The rail dims when the pointer leaves it and nothing in it has focus; hovering or tabbing into it restores it. It stays SOLID while a review runs and while the daemon toggle pulses (refresh armed); a daemon that is merely on (breathing, nothing armed) does not keep it solid.
+- Reduced motion on: the fade snaps rather than animates.
+- The faded rail still catches clicks normally.
+- Card: drag-select the critique, the quote and an edit preview — the card stays open, the copied text matches the visible text exactly (whitespace included), and the editor's own selection/cursor is unmoved afterwards. Same for a thread reply.
+- Card: the Copy button on the quote block and on each proposed edit copies verbatim and flips to "Copied" briefly.
+- Panel: select text inside a finding row — releasing the mouse must NOT jump to the finding; a plain click still does. Critique, quote, editor summary, salvage lines and scorecard text are all selectable.
+- Escape and the triage keys still work after making a selection inside the card.
+
 ## End-to-end review flow (the M2 baseline — start here)
 
 Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.

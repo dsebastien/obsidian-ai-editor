@@ -272,6 +272,24 @@ export class PersonaRail {
         // Narrow pane: denser, NOT icon-only (plan M4 adaptive layout, revised
         // 2026-08-01 — the names are the point of the rail).
         this.rootEl.classList.toggle('editor-ai-daemons-rail-compact', viewModel.compact)
+        // Idle fade (issue #33): the rail floats over the note text, so when
+        // it is neither hovered/focused nor actively REPORTING it dims (CSS
+        // :hover/:focus-within lift it back — visual treatment only, hit
+        // targets and the a11y tree untouched). "Reporting" = a run in
+        // flight (the button offers Cancel), any editor working, or a daemon
+        // refresh armed (the pulsing toggle is a countdown the user may be
+        // watching). A daemon that is merely ON breathes but does not block
+        // the fade — it would otherwise never fade for daemon users.
+        const busy =
+            viewModel.button.action === 'cancel' ||
+            viewModel.daemon.armed ||
+            viewModel.dots.some(
+                (dot) =>
+                    dot.status === 'pending' ||
+                    dot.status === 'running' ||
+                    dot.status === 'transforming'
+            )
+        this.rootEl.classList.toggle('is-busy', busy)
         this.syncHead(viewModel)
 
         // A panel run renders as ONE entity: a ringed row owning its members

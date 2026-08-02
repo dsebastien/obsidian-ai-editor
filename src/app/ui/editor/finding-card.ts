@@ -836,6 +836,9 @@ class FindingCardPlugin implements PluginValue {
         quote.classList.add('editor-ai-daemons-finding-card-quote')
         quote.textContent = data.quote
         section.appendChild(quote)
+        // Copy the quoted span verbatim (issue #34): one click, exactly the
+        // visible text — no drag gymnastics inside an overlay.
+        section.appendChild(this.copyButton(doc, 'Copy the quoted text', () => data.quote))
 
         if (data.invalidProposal) {
             const marker = doc.createElement('p')
@@ -881,8 +884,45 @@ class FindingCardPlugin implements PluginValue {
             newEl.classList.add('editor-ai-daemons-finding-card-diff-new')
             newEl.textContent = edit.text
             diff.appendChild(newEl)
+            // Copy the proposed content verbatim (issue #34) — often exactly
+            // the wording the user wants to reuse without accepting anything.
+            diff.appendChild(this.copyButton(doc, 'Copy the proposed text', () => edit.text))
         }
         return diff
+    }
+
+    /**
+     * A small Copy control (issue #34): writes `text()` to the clipboard
+     * verbatim (whitespace included) and confirms inline by flipping its
+     * label — the card deliberately imports nothing from Obsidian, so no
+     * Notice. Clipboard access is optional-chained: a headless or detached
+     * document has no clipboard, and the button must degrade to a no-op
+     * rather than throw inside the card.
+     */
+    private copyButton(doc: Document, label: string, text: () => string): HTMLElement {
+        const button = doc.createElement('button')
+        button.classList.add('editor-ai-daemons-finding-card-copy')
+        button.textContent = 'Copy'
+        button.setAttribute('aria-label', label)
+        button.title = label
+        button.addEventListener('click', () => {
+            const clipboard = doc.defaultView?.navigator.clipboard
+            if (!clipboard) {
+                return
+            }
+            void clipboard
+                .writeText(text())
+                .then(() => {
+                    button.textContent = 'Copied'
+                    button.disabled = true
+                    doc.defaultView?.setTimeout(() => {
+                        button.textContent = 'Copy'
+                        button.disabled = false
+                    }, 1_500)
+                })
+                .catch(() => undefined)
+        })
+        return button
     }
 
     private renderActions(data: FindingCardData): HTMLElement {

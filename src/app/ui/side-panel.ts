@@ -1220,7 +1220,23 @@ export class ReviewSidePanelView extends ItemView {
             item.setAttribute('role', 'button')
             item.setAttribute('tabindex', '0')
             const reveal = (): void => binding.revealFinding(finding.id)
-            item.addEventListener('click', reveal)
+            item.addEventListener('click', () => {
+                // Selecting text ends with a click on the row (issue #34):
+                // jumping to the finding would re-render the panel and
+                // destroy the selection the user just made. A click that
+                // completes a non-collapsed selection inside this row is the
+                // selection gesture, not a navigation request.
+                const selection = item.ownerDocument.getSelection()
+                if (
+                    selection !== null &&
+                    !selection.isCollapsed &&
+                    selection.anchorNode !== null &&
+                    item.contains(selection.anchorNode)
+                ) {
+                    return
+                }
+                reveal()
+            })
             item.addEventListener('keydown', (event: KeyboardEvent) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()

@@ -40,6 +40,8 @@ Every markdown editor gets a small card in its top-right corner: the [daemon](da
 - A [panel](panels.md) is one row with a **hollow** centre where an editor's is filled, its name carries "(panel)", and its members are bracketed beneath it.
 - The daemon toggle pulses while a refresh is armed for this note.
 
+The rail floats over the note, so **when you are not using it, it fades** to a low opacity and the text underneath stays readable. Hovering it, tabbing into it, a running review, or an armed daemon refresh bring it back to full strength.
+
 In a narrow pane the rail gets **denser** — smaller type, tighter rows, long names shortened with an ellipsis — but the names never disappear. It stays a launcher there: the [AI Editor Review panel](#the-ai-editor-review-panel) is the full-size surface for reading findings, and the **Review** tooltip says so.
 
 If your operating system is set to reduce motion, nothing on the rail animates and every state is still told apart by shape: dashed, arc, solid, error, muted.
@@ -65,6 +67,8 @@ Click a highlight to open a floating card:
 Overlapping findings stack in one card, innermost first. A proposal is one or more labelled edits — **Replace**, **Insert above**, **Insert below**, **Delete** — each previewed in its own shape: an insertion shows only what is added (your text stays), a delete shows only what goes. **Accept** applies the whole proposal as a single undoable edit — all of it or none, and only while the text still matches exactly what it was computed against; otherwise the finding is stale and must be re-reviewed. A proposal the plugin could not validate is removed and the card says so — you still get the critique, never a wrong write. Escape, clicking away, scrolling, or editing closes the card.
 
 Opening a card deliberately does **not** move focus: triage is driven from the keyboard and stealing focus would break the loop that opened the card.
+
+Everything a finding says is **selectable and copyable** — critique, quote, edit previews, thread replies, in the card and in the review panel alike. A drag that starts inside the card keeps it open, and in the panel finishing a selection on a row does not jump to the finding. The card's quote block and each proposed edit also carry a small **Copy** button that copies the text verbatim, whitespace included.
 
 ## Keyboard triage
 

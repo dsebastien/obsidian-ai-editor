@@ -861,6 +861,58 @@
     /* Mount only: the root element outlives every re-render (rail.ts replaces
        children, never the root), so this plays once when the rail appears. */
     animation: editor-ai-daemons-rail-in 200ms ease-out;
+    transition: opacity 200ms ease;
+}
+
+/* Idle fade (issue #33): the rail floats over the note text, so while it is
+   neither hovered, nor holding keyboard focus (:focus-within — a keyboard
+   user tabbing in lifts it exactly like hover), nor actively reporting
+   (`is-busy`, set by rail.ts while a run is in flight or a daemon refresh is
+   armed), it dims enough for the text underneath to stay readable. Visual
+   treatment only: hit targets and the accessibility tree are untouched, and
+   the faded rail still catches clicks (fade ≠ click-through). */
+.editor-ai-daemons-rail:not(:hover):not(:focus-within):not(.is-busy) {
+    opacity: 0.4;
+}
+
+/* ========================================
+   SELECTABLE FINDING TEXT (issue #34)
+   Obsidian's view chrome is user-select:
+   none; everything a finding SAYS —
+   critique, quote, edit previews, thread
+   replies, summaries, scorecards — must be
+   selectable and copyable in both surfaces.
+   Buttons and controls stay as they are.
+   ======================================== */
+
+.editor-ai-daemons-panel-finding-body,
+.editor-ai-daemons-panel-summary,
+.editor-ai-daemons-scorecard,
+.editor-ai-daemons-panel-skips,
+.editor-ai-daemons-finding-card-critique,
+.editor-ai-daemons-finding-card-quote,
+.editor-ai-daemons-finding-card-diff,
+.editor-ai-daemons-finding-card-invalid-proposal,
+.editor-ai-daemons-finding-card-thread-body,
+.editor-ai-daemons-finding-card-thread-failure {
+    user-select: text;
+}
+
+/* Small copy affordance on the card's quote block and edit previews
+   (issue #34): precise, one click — complements selection, not a
+   substitute for it. */
+.editor-ai-daemons-finding-card-copy {
+    @apply ml-auto shrink-0 self-start px-1 py-0 text-xs;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    cursor: pointer;
+}
+
+.editor-ai-daemons-finding-card-copy:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
 }
 
 /* Narrow pane: ONLY the scale changes. Same rules, same shapes, less room. */
