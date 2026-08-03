@@ -1430,6 +1430,18 @@ export class ReviewController {
                     return
                 }
                 if (panelIds.has(chosenId)) {
+                    // Re-resolve at submit (round-3 review): the modal can sit
+                    // open while settings change underneath it. A panel that
+                    // is no longer offerable (disabled, deleted, members gone)
+                    // must cancel like the note-changed guard above — not
+                    // dispatch a run the picker would now refuse (BR #14).
+                    const stillOfferable = askablePanels(this.deps.getSettings()).some(
+                        (panel) => panel.id === chosenId
+                    )
+                    if (!stillOfferable) {
+                        new Notice('That panel changed while the dialog was open — ask cancelled.')
+                        return
+                    }
                     // A panel ask is a panel RUN (issue #27): the question
                     // reaches every member (instruction.editorIds lists the
                     // membership so `buildEditorPrompt` applies the text to
@@ -2645,9 +2657,14 @@ export class ReviewController {
         if (!history) {
             return null
         }
+        // The privacy gate lives HERE, not in hydration (BR #19, round-3
+        // review): an excluded or rule-disabled note's archived entries are
+        // never shown, but they are not destroyed either — exclude the note
+        // and its history goes dark; un-exclude it and it is back.
+        const showable = (target: string): boolean => this.isPluginEnabledFor(target)
         return {
             filePath: path,
-            list: () => (path === null ? [] : history.listForFile(path)),
+            list: () => (path === null || !showable(path) ? [] : history.listForFile(path)),
             clearFile: (): void => {
                 if (path !== null) {
                     history.clearFile(path)

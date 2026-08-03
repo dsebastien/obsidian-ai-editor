@@ -138,18 +138,21 @@ describe('HistoryService (issue #21)', () => {
     })
 })
 
-describe('hydrate honors the privacy gate (adversarial review 2026-08-02)', () => {
-    it('drops persisted entries for notes that are no longer recordable', () => {
-        let allowed = 'a.md'
+describe('hydrate is non-destructive (adversarial review round 3, 2026-08-02)', () => {
+    it('keeps persisted entries even when isRecordable says no at load time', () => {
+        // isRecordable mixes privacy with editor availability and cold-start
+        // metadata; a transient "no" (backend down, metadata not indexed yet)
+        // must not eat durable history. BR #19: the DISPLAY side gates —
+        // hydration never filters.
         const history = new HistoryService({
-            isRecordable: (path) => path === allowed,
+            isRecordable: () => false,
             now: () => NOW
         })
-        history.hydrate([entry(NOW - DAY, 'a.md', 'keep'), entry(NOW - DAY, 'b.md', 'drop')])
+        history.hydrate([entry(NOW - DAY, 'a.md', 'keep'), entry(NOW - DAY, 'b.md', 'also-keep')])
         expect(history.listForFile('a.md')).toHaveLength(1)
-        // b.md was excluded since being persisted: BR #7 is absolute — its
-        // content must not resurface through the archive.
-        expect(history.listForFile('b.md')).toHaveLength(0)
-        void allowed
+        expect(history.listForFile('b.md')).toHaveLength(1)
+        // The round-trip preserves them too: serialize() must not lose what
+        // hydrate() admitted, or the loss would be written back to disk.
+        expect(history.serialize()).toHaveLength(2)
     })
 })

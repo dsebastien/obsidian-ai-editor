@@ -146,15 +146,19 @@ export class HistoryService {
     }
 
     /**
-     * Durable layer: load persisted entries. The privacy gate applies HERE
-     * TOO (adversarial review 2026-08-02): a note excluded or rule-disabled
-     * since the entries were persisted must not resurface through the
-     * archive — Business Rule #7 is absolute, and hydration is just another
-     * way content enters the store. Retention re-applied.
+     * Durable layer: load persisted entries. Deliberately NOT filtered by
+     * `isRecordable` (adversarial review round 3, 2026-08-02): the predicate
+     * mixes privacy with editor availability and cold-start metadata, so
+     * filtering here silently DESTROYED durable history whenever a backend
+     * was down or a note's metadata had not been indexed yet — and `hydrate`
+     * feeds `serialize`, so the loss was written back. Everything persisted
+     * was recordable when it happened; the display side gates instead: an
+     * excluded or rule-disabled note's history is never SHOWN (BR #19,
+     * `getPanelHistory`), which honors BR #7 without eating data on a
+     * transient answer. Retention re-applied.
      */
     hydrate(entries: readonly HistoryEntry[]): void {
-        const admitted = entries.filter((entry) => this.isRecordable(entry.filePath))
-        this.entries = applyRetention([...this.entries, ...admitted], this.now())
+        this.entries = applyRetention([...this.entries, ...entries], this.now())
         this.onChange?.()
     }
 

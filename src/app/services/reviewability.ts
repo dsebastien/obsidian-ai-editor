@@ -84,7 +84,9 @@ export function askablePanels(settings: PluginSettingsV1): AskablePanel[] {
         if (!panel.enabled) {
             continue
         }
-        const members = panel.memberEditorIds.filter((id) => capable.has(id)).length
+        // Deduped (round-3 review): a duplicated member id in settings must
+        // not inflate the request count the picker shows.
+        const members = [...new Set(panel.memberEditorIds)].filter((id) => capable.has(id)).length
         if (members === 0) {
             continue
         }

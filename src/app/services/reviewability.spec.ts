@@ -526,4 +526,12 @@ describe('askablePanels', () => {
         })
         expect(askablePanels(settings)[0]?.requestCount).toBe(2)
     })
+
+    it('a duplicated member id does not inflate the request count (round-3 review)', () => {
+        // Dispatch filters settings.editors by pool membership, so an editor
+        // runs once no matter how often a panel lists it — the shown count
+        // must match.
+        const settings = panelSettings({ memberEditorIds: ['e1', 'e1', 'e2'] })
+        expect(askablePanels(settings)[0]?.requestCount).toBe(3)
+    })
 })

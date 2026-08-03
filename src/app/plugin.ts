@@ -209,10 +209,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             ...(commentJobs ? { commentJobs } : {})
         })
         this.reviewController = reviewController
-        // Durable history hydration (issue #21): now that the privacy gate
-        // can answer, adopt what earlier sessions persisted. Async on
-        // purpose (onload must stay cheap); epoch-guarded so a clear issued
-        // while the file is still loading wins (adversarial review).
+        // Durable history hydration (issue #21): adopt what earlier sessions
+        // persisted, unfiltered — the display side gates excluded notes (BR
+        // #19, round-3 review). Async on purpose (onload must stay cheap);
+        // epoch-guarded so a clear issued while the file is still loading
+        // wins (adversarial review).
         if (this.settings.behavior.durableHistory && !this.historyLoaded) {
             this.historyLoaded = true
             const epoch = this.historyEpoch
