@@ -106,7 +106,7 @@ function pendingExecutor(runId: string) {
 }
 
 async function tick(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Bun.sleep(0)
 }
 
 // ---------------------------------------------------------------------------

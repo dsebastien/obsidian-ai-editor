@@ -6,6 +6,7 @@ import type { KillEscalationInput, KillResult } from './kill'
 import { DEFAULT_KILL_GRACE_MS, DEFAULT_KILL_POLL_MS, runKillEscalation } from './kill'
 import { nodeExecutableProbe } from './node-fs'
 import type { CliPlatform } from './platform'
+import { sleep } from '../../../../utils/timers'
 
 /**
  * The process half of the CLI boundary's Node glue: creating a child, and
@@ -242,7 +243,7 @@ export async function killProcessTree(input: KillProcessTreeInput): Promise<Kill
         isAlive: () => isTreeAlive(platform, pid),
         graceMs: input.graceMs ?? DEFAULT_KILL_GRACE_MS,
         pollMs: input.pollMs ?? DEFAULT_KILL_POLL_MS,
-        sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+        sleep
     }
     return runKillEscalation(escalation)
 }

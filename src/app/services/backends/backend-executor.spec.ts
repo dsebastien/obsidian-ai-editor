@@ -17,6 +17,13 @@ import {
 } from './backend-executor'
 
 const API_KEY = 'sk-secret-value'
+
+// These specs only exercise label/timeout/redaction helpers — none of them
+// dispatches. The executor still requires a transport, so give it one that
+// fails loudly if a test ever starts making a real request.
+const neverCalledFetch = (): Promise<Response> => {
+    throw new Error('backend-executor spec: no request should be dispatched here')
+}
 const behavior = DEFAULT_PLUGIN_SETTINGS.behavior
 
 function apiBackend(): ApiBackend {
@@ -87,7 +94,7 @@ describe('createBackendExecutor', () => {
             model: 'claude-test-1',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         expect(executor.redactError(`401 echoing ${API_KEY}`)).toBe('401 echoing [redacted]')
     })
@@ -98,7 +105,7 @@ describe('createBackendExecutor', () => {
             model: '',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         expect(executor.redactError('The tool exited with status 1.')).toBe(
             'The tool exited with status 1.'
@@ -117,7 +124,7 @@ describe('createBackendExecutor', () => {
             model: '',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         const events: OperationEvent[] = []
         for await (const event of executor.execute(operation(), new AbortController().signal)) {
@@ -146,7 +153,7 @@ describe('createBackendExecutor', () => {
             model: '',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         const events: OperationEvent[] = []
         for await (const event of executor.execute(operation(), new AbortController().signal)) {
@@ -170,7 +177,7 @@ describe('createBackendExecutor', () => {
             model: '',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         const events: OperationEvent[] = []
         for await (const event of executor.execute(operation(), new AbortController().signal)) {
@@ -190,7 +197,7 @@ describe('createBackendExecutor', () => {
             model: '',
             systemPrompt: 'Be harsh.',
             behavior,
-            fetchImpl: globalThis.fetch
+            fetchImpl: neverCalledFetch
         })
         const events: OperationEvent[] = []
         for await (const event of executor.execute(operation(), controller.signal)) {

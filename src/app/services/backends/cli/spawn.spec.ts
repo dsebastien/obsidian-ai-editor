@@ -1,3 +1,4 @@
+import { setTimeout as setNodeTimer } from 'node:timers'
 import { existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -315,7 +316,7 @@ describe('spawnCliProcess — bounds', () => {
     it('cancels on the caller signal', async () => {
         const controller = new AbortController()
         const pending = run(SLEEP_FOREVER, { signal: controller.signal, killGraceMs: 1_000 })
-        setTimeout(() => controller.abort(), 200)
+        setNodeTimer(() => controller.abort(), 200)
         const outcome = await pending
         expect(outcome.ok ? '' : outcome.code).toBe('cancelled')
     })
@@ -366,7 +367,7 @@ describe('spawnCliProcess — bounds', () => {
             createRunDir: tracked.create
         })
         // Give the child time to report its pids, then cancel.
-        setTimeout(() => controller.abort(), 700)
+        setNodeTimer(() => controller.abort(), 700)
         const outcome = await pending
 
         expect(outcome.ok ? '' : outcome.code).toBe('cancelled')
@@ -433,7 +434,7 @@ describe('spawnCliProcess — bounds', () => {
             killGraceMs: 1_000,
             createRunDir: tracked.create
         })
-        setTimeout(() => controller.abort(), 200)
+        setNodeTimer(() => controller.abort(), 200)
         await pending
         expect(existsSync(tracked.paths[0] ?? '')).toBe(false)
     })

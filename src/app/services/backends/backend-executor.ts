@@ -11,6 +11,8 @@ import { backendHealth, type BackendHealthRegistry } from './backend-health'
 import { cliTimeoutMs, createCliEditorExecutor, getCliToolAdapter } from './cli'
 import { redactSecret } from './providers'
 import { decideRetry } from './retry-policy'
+import type { FetchFn } from './resolve-fetch'
+import { setTimer, clearTimer } from '../../../utils/timers'
 
 /**
  * The one place a resolved backend becomes something the orchestrator can
@@ -74,7 +76,7 @@ export interface CreateBackendExecutorInput {
     readonly systemPrompt: string
     readonly behavior: BehaviorSettings
     /** Transport for API backends; ignored by CLI backends. */
-    readonly fetchImpl: typeof fetch
+    readonly fetchImpl: FetchFn
     /**
      * Replaces the family's normal timeout. The one legitimate caller is the
      * health probe, which must stay a check rather than inheriting a ten-minute
@@ -215,10 +217,10 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
             return
         }
         const onAbort = (): void => {
-            clearTimeout(timer)
+            clearTimer(timer)
             resolve()
         }
-        const timer = setTimeout(() => {
+        const timer = setTimer(() => {
             signal.removeEventListener('abort', onAbort)
             resolve()
         }, ms)

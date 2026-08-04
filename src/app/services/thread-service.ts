@@ -10,6 +10,8 @@ import type { RunController, ThreadTurnResolution } from './orchestration/run-co
 import { noteRuleOutcome } from './rules/note-rules'
 import type { EditorSkip } from './review-service'
 import { buildEditorPrompt, resolveEditorBackend } from './review-service'
+import { resolveFetchImpl } from './backends/resolve-fetch'
+import type { FetchFn } from './backends/resolve-fetch'
 
 /**
  * Push-back entry point: turns a user message on one finding into a
@@ -70,13 +72,13 @@ export interface StartThreadTurnServiceInput {
      */
     readonly currentText: string
     /** Injected network seam; defaults to the runtime's `fetch`. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
 }
 
 export async function startThreadTurn(input: StartThreadTurnServiceInput): Promise<ThreadStart> {
     const { settings, vault, runController, findingId } = input
     const behavior = settings.behavior
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = resolveFetchImpl(input.fetchImpl)
 
     const run = runController.findRunWithFinding(findingId)
     const finding = run?.findings.get(findingId) ?? null

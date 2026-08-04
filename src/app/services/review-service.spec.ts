@@ -1918,7 +1918,7 @@ describe('startReview — one view of the vault per run', () => {
 describe('addEditorToRun (joining a run, 2026-08-04)', () => {
     async function waitUntil(condition: () => boolean): Promise<void> {
         for (let i = 0; i < 200 && !condition(); i++) {
-            await new Promise((resolve) => setTimeout(resolve, 1))
+            await Bun.sleep(1)
         }
         expect(condition()).toBeTrue()
     }

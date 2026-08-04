@@ -1,3 +1,4 @@
+import { clearTimeout as clearNodeTimer, setTimeout as setNodeTimer } from 'node:timers'
 import { describe, expect, it } from 'bun:test'
 import { marginCommentSchema } from '../../domain/comments/margin-comment'
 import type { MarginComment } from '../../domain/comments/margin-comment'
@@ -150,9 +151,9 @@ function setup(): Harness {
     const gate = new BackgroundRequestGate({
         gate: new Semaphore(() => Number.POSITIVE_INFINITY),
         getLimit: () => Number.POSITIVE_INFINITY,
-        setTimer: (callback, ms) => Number(setTimeout(callback, ms)),
+        setTimer: (callback, ms) => Number(setNodeTimer(callback, ms)),
         clearTimer: (handle) => {
-            clearTimeout(handle)
+            clearNodeTimer(handle)
         },
         pollIntervalMs: 1
     })
@@ -167,7 +168,7 @@ function setup(): Harness {
 }
 
 function settle(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 10))
+    return Bun.sleep(10)
 }
 
 function baseInput(harness: Harness, overrides: Record<string, unknown> = {}) {

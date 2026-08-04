@@ -17,6 +17,8 @@ import { noteRuleOutcome } from '../rules/note-rules'
 import type { EditorSkip } from '../review-service'
 import { buildEditorPrompt, countWords, resolveEditorBackend } from '../review-service'
 import type { CommentJobRegistry } from './comment-job-registry'
+import { resolveFetchImpl } from '../backends/resolve-fetch'
+import type { FetchFn } from '../backends/resolve-fetch'
 
 /**
  * Dispatch for BACKGROUND margin comments (plan §5.5 / M8, slice 2).
@@ -102,7 +104,7 @@ interface CommonInput {
     /** Set after the user confirmed the size warning. */
     readonly confirmedLargeNote?: boolean
     /** Injected network seam; defaults to the runtime's `fetch`. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
     /** Clock seam. */
     readonly now?: () => number
 }
@@ -207,7 +209,7 @@ async function dispatch(
 ): Promise<CommentJobStarted> {
     const { settings, vault, notePath } = input
     const behavior = settings.behavior
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = resolveFetchImpl(input.fetchImpl)
 
     // -- Exclusions come first: fail closed before anything is read ----------
     if (isExcluded(notePath, vault.getNoteMetadata(notePath), behavior)) {

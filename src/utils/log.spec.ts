@@ -1,12 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test'
 import { log } from './log'
 
+/**
+ * `ReturnType<typeof spyOn>` widens to `any`, which trips the reviewer's
+ * `no-unsafe-*` rules on every `.mockRestore()`. Only restoration is needed
+ * here, so name exactly that.
+ */
+type RestorableSpy = { mockRestore: () => void }
+
 describe('log', () => {
-    let debugSpy: ReturnType<typeof spyOn>
-    let infoSpy: ReturnType<typeof spyOn>
-    let warnSpy: ReturnType<typeof spyOn>
-    let errorSpy: ReturnType<typeof spyOn>
-    let logSpy: ReturnType<typeof spyOn>
+    let debugSpy: RestorableSpy
+    let infoSpy: RestorableSpy
+    let warnSpy: RestorableSpy
+    let errorSpy: RestorableSpy
+    let logSpy: RestorableSpy
 
     beforeEach(() => {
         debugSpy = spyOn(console, 'debug').mockImplementation(() => {})

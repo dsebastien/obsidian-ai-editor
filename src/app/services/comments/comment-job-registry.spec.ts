@@ -1,3 +1,4 @@
+import { clearTimeout as clearNodeTimer, setTimeout as setNodeTimer } from 'node:timers'
 import { describe, expect, it } from 'bun:test'
 import { marginCommentSchema } from '../../domain/comments/margin-comment'
 import type { MarginComment } from '../../domain/comments/margin-comment'
@@ -95,7 +96,7 @@ function errorExecutor(runId: string, message: string) {
 
 /** Lets the gate, the executor and the settle handlers all run. */
 function settle(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 5))
+    return Bun.sleep(5)
 }
 
 function hangingExecutor(): () => AsyncIterable<OperationEvent> {
@@ -119,9 +120,9 @@ function setup(clock = { value: 5_000 }): Harness {
     const gate = new BackgroundRequestGate({
         gate: new Semaphore(() => Number.POSITIVE_INFINITY),
         getLimit: () => Number.POSITIVE_INFINITY,
-        setTimer: (callback, ms) => Number(setTimeout(callback, ms)),
+        setTimer: (callback, ms) => Number(setNodeTimer(callback, ms)),
         clearTimer: (handle) => {
-            clearTimeout(handle)
+            clearNodeTimer(handle)
         },
         pollIntervalMs: 1
     })

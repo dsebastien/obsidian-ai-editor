@@ -15,6 +15,7 @@ import { createTempRunDir, nodeExecutableProbe } from './node-fs'
 import { createCliChild, killProcessTree } from './node-process'
 import type { CliPlatform } from './platform'
 import { currentCliPlatform } from './platform'
+import { setTimer, clearTimer } from '../../../../utils/timers'
 
 /**
  * The process seam: the ONE place in the plugin where a local program is
@@ -367,7 +368,7 @@ async function runChild(context: RunChildInput): Promise<CliProcessOutcome> {
         // `close` is preferred (it means the pipes drained too) but a
         // grandchild can hold them open indefinitely, so `exit` starts a
         // bounded drain and settles regardless.
-        setTimeout(settle, STDIO_DRAIN_MS)
+        setTimer(settle, STDIO_DRAIN_MS)
     })
     child.on('close', (code, signal) => {
         ending.exitCode = ending.exitCode ?? code
@@ -387,7 +388,7 @@ async function runChild(context: RunChildInput): Promise<CliProcessOutcome> {
     // is the tool's business, not a plugin crash.
     child.stdin?.on('error', () => undefined)
 
-    const timer = setTimeout(() => {
+    const timer = setTimer(() => {
         ending.reason = 'timeout'
         settle()
     }, input.timeoutMs)
@@ -408,7 +409,7 @@ async function runChild(context: RunChildInput): Promise<CliProcessOutcome> {
     try {
         await done
     } finally {
-        clearTimeout(timer)
+        clearTimer(timer)
         input.signal?.removeEventListener('abort', onAbort)
     }
 

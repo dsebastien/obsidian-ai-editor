@@ -6,6 +6,8 @@ import { DEFAULT_PLUGIN_SETTINGS } from '../../domain/settings/settings-schema'
 import type { BackendInstance } from '../../domain/settings/settings-schema'
 import { createBackendExecutor } from './backend-executor'
 import { backendHealth } from './backend-health'
+import { resolveFetchImpl } from './resolve-fetch'
+import type { FetchFn } from './resolve-fetch'
 
 /**
  * "Test connection" for one configured backend, API or CLI: ONE cheap real
@@ -90,7 +92,7 @@ export interface CheckBackendHealthInput {
      */
     readonly model: string
     /** Injectable transport (tests); defaults to the renderer's fetch. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
     readonly timeoutMs?: number
 }
 
@@ -183,7 +185,7 @@ export async function checkBackendHealth(
         // A check reports what ONE attempt does — the automatic-retry layer
         // (issue #23) would turn "fails two times out of three" into a pass.
         autoRetry: false,
-        fetchImpl: input.fetchImpl ?? globalThis.fetch
+        fetchImpl: resolveFetchImpl(input.fetchImpl)
     })
     const controller = new AbortController()
     let terminal: OperationEvent | null = null

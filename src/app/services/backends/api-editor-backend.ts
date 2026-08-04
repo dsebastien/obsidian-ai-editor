@@ -5,6 +5,8 @@ import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings
 import { getProviderAdapter, ProviderError } from './providers'
 import type { HttpRequestDescriptor, ProviderAdapter } from './providers'
 import { parseSseJson, SseDecoder, type SseEvent } from './transport/sse'
+import { resolveFetchImpl, type FetchFn } from './resolve-fetch'
+import { setTimer, clearTimer } from '../../../utils/timers'
 
 /**
  * API backend executor: the glue between one configured API backend
@@ -55,7 +57,7 @@ export interface CreateApiEditorExecutorInput {
      */
     readonly timeoutMs: number
     /** Injectable transport for tests; defaults to the global `fetch`. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
 }
 
 export type TransportErrorCode =
@@ -118,7 +120,7 @@ function composeAbort(userSignal: AbortSignal, timeoutMs: number): ComposedAbort
     }
     const controller = new AbortController()
     let timedOut = false
-    const timer = setTimeout(() => {
+    const timer = setTimer(() => {
         timedOut = true
         controller.abort()
     }, timeoutMs)
@@ -134,16 +136,13 @@ function composeAbort(userSignal: AbortSignal, timeoutMs: number): ComposedAbort
         signal: controller.signal,
         timedOut: () => timedOut,
         dispose: () => {
-            clearTimeout(timer)
+            clearTimer(timer)
             userSignal.removeEventListener('abort', onUserAbort)
         }
     }
 }
 
 type OperationErrorDetail = Extract<OperationEvent, { type: 'error' }>['error']
-
-/** Internal callable shape; the global `fetch` satisfies it. */
-type FetchFn = (input: string, init?: RequestInit) => Promise<Response>
 
 /**
  * Builds the `execute` function the `RunController` injects per editor.
@@ -153,7 +152,7 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>
  */
 export function createApiEditorExecutor(input: CreateApiEditorExecutorInput): ApiEditorExecutor {
     const { backendConfig, model, systemPrompt, timeoutMs } = input
-    const fetchFn: FetchFn = input.fetchImpl ?? ((url, init) => globalThis.fetch(url, init))
+    const fetchFn: FetchFn = resolveFetchImpl(input.fetchImpl)
 
     return async function* execute(
         request: OperationRequest,

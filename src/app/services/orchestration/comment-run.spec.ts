@@ -1,3 +1,4 @@
+import { clearTimeout as clearNodeTimer, setTimeout as setNodeTimer } from 'node:timers'
 import { describe, expect, it } from 'bun:test'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import type { OperationEvent, RawFinding, ReviewRequest } from '../../domain/operations/contract'
@@ -64,9 +65,9 @@ function openGate(cap = Number.POSITIVE_INFINITY): BackgroundRequestGate {
     return new BackgroundRequestGate({
         gate: new Semaphore(() => cap),
         getLimit: () => cap,
-        setTimer: (callback, ms) => Number(setTimeout(callback, ms)),
+        setTimer: (callback, ms) => Number(setNodeTimer(callback, ms)),
         clearTimer: (handle) => {
-            clearTimeout(handle)
+            clearNodeTimer(handle)
         },
         pollIntervalMs: 1
     })
@@ -334,16 +335,16 @@ describe('comment run admission', () => {
         const gate = new BackgroundRequestGate({
             gate: semaphore,
             getLimit: () => 2,
-            setTimer: (callback, ms) => Number(setTimeout(callback, ms)),
+            setTimer: (callback, ms) => Number(setNodeTimer(callback, ms)),
             clearTimer: (handle) => {
-                clearTimeout(handle)
+                clearNodeTimer(handle)
             },
             pollIntervalMs: 1
         })
         const foreground = await semaphore.acquire()
         const controller = new CommentRunController(gate)
         const run = controller.start(makeInput())
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         expect(run?.getState().status).toEqual('pending')
         expect(run?.getState().startedAt).toBeNull()
         expect(semaphore.queuedCount()).toEqual(0) // waiting OUTSIDE the queue
@@ -356,9 +357,9 @@ describe('comment run admission', () => {
         const gate = new BackgroundRequestGate({
             gate: semaphore,
             getLimit: () => 1,
-            setTimer: (callback, ms) => Number(setTimeout(callback, ms)),
+            setTimer: (callback, ms) => Number(setNodeTimer(callback, ms)),
             clearTimer: (handle) => {
-                clearTimeout(handle)
+                clearNodeTimer(handle)
             },
             pollIntervalMs: 1
         })

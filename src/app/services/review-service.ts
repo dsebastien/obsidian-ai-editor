@@ -25,6 +25,8 @@ import type {
 } from './orchestration/run-controller'
 import { resolvePanelCharter } from './panels/panel-charter'
 import { noteRuleOutcome } from './rules/note-rules'
+import { resolveFetchImpl } from './backends/resolve-fetch'
+import type { FetchFn } from './backends/resolve-fetch'
 
 /**
  * Review-run entry point: turns settings + a document snapshot into one
@@ -189,7 +191,7 @@ export interface StartReviewInput {
     readonly vault: VaultReader
     readonly runController: RunController
     /** Injected network seam; defaults to the runtime's `fetch`. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
     /** Set after the user explicitly confirmed the size warning. */
     readonly confirmedLargeNote?: boolean
     /**
@@ -577,7 +579,7 @@ export function createEditorSpec(input: {
     readonly model: string
     readonly systemPrompt: string
     readonly behavior: BehaviorSettings
-    readonly fetchImpl: typeof fetch
+    readonly fetchImpl: FetchFn
 }): RunEditorSpec {
     const executor = createBackendExecutor({
         backend: input.backend,
@@ -775,7 +777,7 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
     // `requestUrl` cannot stream; see Architecture — Backends). Callers
     // inside Obsidian pass `window.fetch`; this default covers tests and
     // headless use.
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = resolveFetchImpl(input.fetchImpl)
 
     // -- Exclusions come first: fail closed before anything is read ----------
     if (isExcluded(snapshot.filePath, vault.getNoteMetadata(snapshot.filePath), behavior)) {
@@ -997,7 +999,7 @@ function createPanelSpec(input: {
     readonly charterText: string
     /** The run's freeform instruction, when one exists (issue #27). */
     readonly instructionText?: string
-    readonly fetchImpl: typeof fetch
+    readonly fetchImpl: FetchFn
 }): RunPanelSpec {
     const { panel, settings } = input
     const resolution = resolveBackendRef(settings, panel.aggregationBackend)
@@ -1070,12 +1072,12 @@ export async function addEditorToRun(input: {
     readonly notePath: string
     readonly noteText: string
     readonly refreshText?: () => string | null
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
 }): Promise<AddEditorToRun> {
     const { settings } = input
     const behavior = settings.behavior
     const vault = createCachingVaultReader(input.vault)
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = resolveFetchImpl(input.fetchImpl)
     if (isExcluded(input.notePath, vault.getNoteMetadata(input.notePath), behavior)) {
         return { status: 'excluded' }
     }

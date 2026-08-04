@@ -1,3 +1,4 @@
+import { setTimeout as setNodeTimer } from 'node:timers'
 import { describe, expect, it } from 'bun:test'
 import {
     editorConfigSchema,
@@ -457,7 +458,7 @@ describe('handleReviewCli — panel runs', () => {
                 error: null
             }
         })
-        setTimeout(() => {
+        setNodeTimer(() => {
             run.setPanelState({
                 panelId: 'p-1',
                 panelName: 'Pre-publish review',
@@ -743,7 +744,7 @@ describe('handleReviewCli', () => {
         )
         Object.defineProperty(run, 'settled', {
             value: new Promise<void>((resolve) => {
-                setTimeout(() => {
+                setNodeTimer(() => {
                     settled = true
                     resolve()
                 }, 0)

@@ -1002,7 +1002,7 @@ describe('RunHandle.retryEditor (per-editor retry)', () => {
 
     async function until(predicate: () => boolean): Promise<void> {
         for (let i = 0; i < 50 && !predicate(); i++) {
-            await new Promise((resolve) => setTimeout(resolve, 0))
+            await Bun.sleep(0)
         }
         expect(predicate()).toBeTrue()
     }
@@ -1303,7 +1303,7 @@ describe('RunHandle.retryEditor (per-editor retry)', () => {
 describe('RunController panel runs', () => {
     async function until(predicate: () => boolean): Promise<void> {
         for (let i = 0; i < 100 && !predicate(); i++) {
-            await new Promise((resolve) => setTimeout(resolve, 0))
+            await Bun.sleep(0)
         }
         expect(predicate()).toBeTrue()
     }
@@ -1724,7 +1724,7 @@ describe('RunHandle.continueEditor', () => {
         expect(run.getEditorState('alpha')?.findingIds).toHaveLength(1)
 
         expect(run.continueEditor('alpha', DOC)).toEqual({ ok: true })
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         const state = run.getEditorState('alpha')
         expect(state?.status).toBe('done')
         expect(state?.findingIds).toHaveLength(2)
@@ -1747,7 +1747,7 @@ describe('RunHandle.continueEditor', () => {
         expect(requests[0]?.alreadyReported).toBeUndefined()
 
         run.continueEditor('alpha', DOC)
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         expect(requests[1]?.alreadyReported).toEqual([
             { quote: 'quick brown', critique: 'Too generic' }
         ])
@@ -1763,7 +1763,7 @@ describe('RunHandle.continueEditor', () => {
         const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
         await run.settled
         run.continueEditor('alpha', DOC)
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         expect(run.getEditorState('alpha')?.findingIds).toHaveLength(1)
     })
 
@@ -1776,7 +1776,7 @@ describe('RunHandle.continueEditor', () => {
         const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
         await run.settled
         run.continueEditor('alpha', DOC)
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         expect(run.getEditorState('alpha')?.summary).toBe('The opening is weak')
     })
 
@@ -1789,7 +1789,7 @@ describe('RunHandle.continueEditor', () => {
         const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
         await run.settled
         run.continueEditor('alpha', DOC)
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         const state = run.getEditorState('alpha')
         expect(state?.status).toBe('done')
         expect(state?.error).toBeNull()
@@ -1857,7 +1857,7 @@ describe('RunHandle.continueEditor', () => {
         const run = controller.startRun({ snapshot: snapshot(), editors: [spec] })
         await run.settled
         run.continueEditor('alpha', edited)
-        await new Promise((resolve) => setTimeout(resolve, 5))
+        await Bun.sleep(5)
         const anchored = run.findings.list()[0]
         expect(anchored?.anchor).not.toBeNull()
         expect(edited.slice(anchored?.anchor?.from ?? 0, anchored?.anchor?.to ?? 0)).toBe(
@@ -1905,7 +1905,7 @@ describe('RunHandle.continueEditor', () => {
         // throw away a synthesis the user paid for.
         expect(run.getPanelState()?.result).not.toBeNull()
         expect(run.getPanelState()?.resultStale).toBeTrue()
-        await new Promise((resolve) => setTimeout(resolve, 10))
+        await Bun.sleep(10)
         expect(run.getPanelState()?.status).toBe('done')
         expect(run.getPanelState()?.resultStale).toBeFalse()
     })
@@ -2410,7 +2410,7 @@ describe('RunController cross-run carryover (issue #19)', () => {
         expect(retried.ok).toBeTrue()
         // Wait for the retry loop to settle.
         while (!run2.isSettled()) {
-            await new Promise((resolve) => setTimeout(resolve, 1))
+            await Bun.sleep(1)
         }
         const findings = run2.findings.listByEditor('alpha')
         expect(findings).toHaveLength(1)
@@ -2518,7 +2518,7 @@ describe('RunController history observer (issue #21)', () => {
 describe('RunHandle.addEditor (joining a run, 2026-08-04)', () => {
     async function waitUntil(condition: () => boolean): Promise<void> {
         for (let i = 0; i < 200 && !condition(); i++) {
-            await new Promise((resolve) => setTimeout(resolve, 1))
+            await Bun.sleep(1)
         }
         expect(condition()).toBeTrue()
     }

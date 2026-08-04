@@ -26,6 +26,8 @@ import {
     startReview
 } from './review-service'
 import type { EditorSkip, ReviewStart } from './review-service'
+import { resolveFetchImpl } from './backends/resolve-fetch'
+import type { FetchFn } from './backends/resolve-fetch'
 
 /**
  * Action-run entry point: turns a built-in action verb + a document snapshot
@@ -111,7 +113,7 @@ export interface StartActionInput {
     /** Target editor (resolved from the action binding by the caller). */
     readonly editorId: string
     /** Injected network seam; defaults to the runtime's `fetch`. */
-    readonly fetchImpl?: typeof fetch
+    readonly fetchImpl?: FetchFn
     /** Set after the user explicitly confirmed the size warning. */
     readonly confirmedLargeNote?: boolean
     /**
@@ -201,7 +203,7 @@ export async function startAction(input: StartActionInput): Promise<ActionStart>
 
     const { settings, snapshot, vault } = input
     const behavior = settings.behavior
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = resolveFetchImpl(input.fetchImpl)
 
     // -- Exclusions come first: fail closed before anything is read ----------
     if (isExcluded(snapshot.filePath, vault.getNoteMetadata(snapshot.filePath), behavior)) {
