@@ -1,6 +1,6 @@
 {
     "id": "editor-ai-daemons",
-    "name": "AI Editor",
+    "name": "AI Editors",
     "description": "Review, edit, and draft notes collaboratively with configurable AI editors and panels.",
     "version": "0.3.0",
     "minAppVersion": "1.8.7",
