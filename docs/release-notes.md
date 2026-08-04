@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.4.0 (2026-08-04)
+
+### Features
+
+- **actions:** Find references — sources you can vet, then cite ([#30](https://github.com/dsebastien/obsidian-ai-editor/issues/30))
+
+### Bug Fixes
+
+- **plugin:** rename to "AI Editors" to clear a catalog name collision
+
 ## 0.3.0 (2026-08-04)
 
 ### Features

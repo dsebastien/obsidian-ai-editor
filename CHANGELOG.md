@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.3.0...0.4.0) (2026-08-04)
+
+### Features
+
+* **actions:** Find references — sources you can vet, then cite ([#30](https://github.com/dsebastien/obsidian-ai-editor/issues/30)) ([9faeb54](https://github.com/dsebastien/obsidian-ai-editor/commit/9faeb54c84896879ee308726cb4dc40ca79830f7))
+
+### Bug Fixes
+
+* **plugin:** rename to "AI Editors" to clear a catalog name collision ([e561a9f](https://github.com/dsebastien/obsidian-ai-editor/commit/e561a9f23dedc70a980686f044236f215c488b8a))
+
 ## [0.3.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.2.0...0.3.0) (2026-08-04)
 
 ### Features
@@ -239,5 +249,6 @@ All notable changes to this project will be documented in this file.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
