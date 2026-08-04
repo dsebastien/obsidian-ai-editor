@@ -86,7 +86,7 @@ On top of that, **two separate consents**, both revocable, both recording _which
 
 ## Installation
 
-Requires Obsidian **1.8.7** or newer, on **desktop** (Windows, macOS, Linux). The `editor-ai-daemons:*` command-line integration additionally needs Obsidian 1.12.2.
+Requires Obsidian **1.12.2** or newer, on **desktop** (Windows, macOS, Linux).
 
 ### Community plugins
 
