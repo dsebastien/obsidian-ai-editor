@@ -60,9 +60,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
      * Versioned, immutable settings value. All mutations go through
      * `update` so validation and persistence happen in exactly one place.
      */
-    // No `override`: `Plugin.settings` only exists in API 1.13+ typings and
-    // the plugin supports older public releases.
-    settings: PluginSettingsV1 = DEFAULT_PLUGIN_SETTINGS
+    // `override` since the typings moved to 1.13.1: `Plugin.settings` is
+    // declared as `settings?: unknown` on the base. Narrowing it here is the
+    // intended use; the base is types-only, so nothing changes at runtime and
+    // minAppVersion stays where it is.
+    override settings: PluginSettingsV1 = DEFAULT_PLUGIN_SETTINGS
 
     /**
      * data.json keys unknown to the settings schema, captured at load and
