@@ -261,6 +261,12 @@ export class ReviewSidePanelView extends ItemView {
     private pendingStepEditorId: string | null = null
     /** Active panel tab (issue #21): the review surface or the archive. */
     private activeTab: 'review' | 'history' = 'review'
+    /**
+     * The section the header's up/down cycling last landed on. Survives
+     * rebuilds (the mark is reapplied at render) so repeated presses keep
+     * walking from where the user was, not from the top.
+     */
+    private cycleEditorId: string | null = null
     /** History filters — view state, reset per session like the tab. */
     private historyFilters: HistoryFilters = NO_HISTORY_FILTERS
     /** Set during a render when that editor's section was (re)built. */
@@ -351,8 +357,65 @@ export class ReviewSidePanelView extends ItemView {
             `.editor-ai-daemons-panel-section[data-editor-id="${CSS.escape(editorId)}"]`
         )
         if (section instanceof HTMLElement) {
-            section.scrollIntoView({ block: 'start' })
+            this.scrollSectionIntoView(section)
         }
+    }
+
+    /** All rendered per-editor sections, in document order. */
+    private sectionEls(): HTMLElement[] {
+        return Array.from(
+            this.contentEl.querySelectorAll('.editor-ai-daemons-panel-section')
+        ).filter((el): el is HTMLElement => el.instanceOf(HTMLElement))
+    }
+
+    /**
+     * Scrolls one section to the top of the visible area — which, with the
+     * pinned header, is BELOW the sticky block, not the scrollport edge a
+     * plain `scrollIntoView` would put it under. Instant on purpose: no
+     * smooth animation to be reduced-motion safe without a media query.
+     */
+    private scrollSectionIntoView(section: HTMLElement): void {
+        const sticky = this.contentEl.querySelector('.editor-ai-daemons-panel-sticky')
+        const stickyHeight = sticky instanceof HTMLElement ? sticky.offsetHeight : 0
+        const top =
+            section.getBoundingClientRect().top -
+            this.contentEl.getBoundingClientRect().top +
+            this.contentEl.scrollTop -
+            stickyHeight -
+            4
+        this.contentEl.scrollTo({ top: Math.max(0, top) })
+    }
+
+    /**
+     * Up/down section cycling from the pinned header (live-round feedback,
+     * 2026-08-04): down walks the sections first → last and wraps back to
+     * the first; up walks the other way and wraps to the last. The landed
+     * section is marked so repeated presses read as movement, not jumps.
+     * Acknowledged sections are not rendered, so they are skipped for free.
+     */
+    private cycleSection(direction: 1 | -1): void {
+        const sections = this.sectionEls()
+        if (sections.length === 0) {
+            return
+        }
+        const current = sections.findIndex(
+            (el) => el.getAttribute('data-editor-id') === this.cycleEditorId
+        )
+        const next =
+            current === -1
+                ? direction === 1
+                    ? 0
+                    : sections.length - 1
+                : (current + direction + sections.length) % sections.length
+        const target = sections[next]
+        if (!target) {
+            return
+        }
+        this.cycleEditorId = target.getAttribute('data-editor-id')
+        for (const el of sections) {
+            el.classList.toggle('is-cycle-target', el === target)
+        }
+        this.scrollSectionIntoView(target)
     }
 
     /**
@@ -728,6 +791,48 @@ export class ReviewSidePanelView extends ItemView {
                 jobs.ask()
             })
         }
+        this.renderSectionNav(header, state)
+    }
+
+    /**
+     * Up/down cycling between the rendered editor sections, from the pinned
+     * header (live-round feedback, 2026-08-04). Only rendered when at least
+     * one section will exist below (Business Rules #14 — never a dead
+     * control): the Review tab, a bound run, and not everything acknowledged.
+     */
+    private renderSectionNav(header: HTMLElement, state: SidePanelState): void {
+        const binding = state.binding
+        if (!binding || this.activeTab !== 'review') {
+            return
+        }
+        const acknowledged = new Set(binding.acknowledgedEditors)
+        const sectionCount = binding.run
+            .getEditorStates()
+            .filter((editorState) => !acknowledged.has(editorState.editorId)).length
+        if (sectionCount === 0) {
+            return
+        }
+        const nav = header.createDiv({ cls: 'editor-ai-daemons-panel-section-nav' })
+        const make = (direction: 1 | -1, label: string): void => {
+            const button = nav.createEl('button', {
+                cls: 'editor-ai-daemons-panel-section-nav-button',
+                attr: { type: 'button' }
+            })
+            button
+                .createSpan({
+                    cls: `editor-ai-daemons-panel-nav-chevron ${
+                        direction === 1 ? 'is-down' : 'is-up'
+                    }`
+                })
+                .setAttribute('aria-hidden', 'true')
+            button.setAttribute('aria-label', label)
+            button.title = label
+            button.addEventListener('click', () => {
+                this.cycleSection(direction)
+            })
+        }
+        make(-1, 'Previous editor section (wraps to the last)')
+        make(1, 'Next editor section (wraps to the first)')
     }
 
     /**
@@ -1089,6 +1194,9 @@ export class ReviewSidePanelView extends ItemView {
             cls: `editor-ai-daemons-panel-section${panelName === null ? '' : ' is-panel-member'}`,
             attr: { 'data-editor-id': state.editorId }
         })
+        // Reapply the cycle mark across rebuilds so the header's up/down
+        // walk resumes from where the user was.
+        section.toggleClass('is-cycle-target', state.editorId === this.cycleEditorId)
         // Every section is named, not only a panel member's. The indent that
         // groups members under the scorecard is decoration; the name is what
         // tells assistive tech whose findings these are — and a lone editor's

@@ -1870,6 +1870,52 @@
     color: var(--text-normal);
 }
 
+/* Up/down cycling between editor sections from the pinned header
+   (live-round feedback, 2026-08-04). Same chrome as the Review button so
+   the header reads as one control strip. */
+.editor-ai-daemons-panel-section-nav {
+    @apply flex shrink-0 items-center gap-0.5;
+}
+
+.editor-ai-daemons-panel-section-nav-button {
+    @apply flex cursor-pointer items-center justify-center;
+    min-height: 24px;
+    min-width: 24px;
+    padding: 2px 4px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--interactive-normal);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.editor-ai-daemons-panel-section-nav-button:hover,
+.editor-ai-daemons-panel-section-nav-button:focus-visible {
+    background-color: var(--interactive-hover);
+    color: var(--text-normal);
+}
+
+.editor-ai-daemons-panel-nav-chevron {
+    width: 7px;
+    height: 7px;
+    border-right: 1.75px solid currentColor;
+    border-bottom: 1.75px solid currentColor;
+}
+
+.editor-ai-daemons-panel-nav-chevron.is-down {
+    transform: translateY(-1.5px) rotate(45deg);
+}
+
+.editor-ai-daemons-panel-nav-chevron.is-up {
+    transform: translateY(1.5px) rotate(-135deg);
+}
+
+/* Where the cycle last landed: a quiet accent edge, persistent so the
+   user can see where the walk resumes from. */
+.editor-ai-daemons-panel-section.is-cycle-target {
+    box-shadow: inset 2px 0 0 var(--text-accent);
+}
+
 .editor-ai-daemons-panel-review-button {
     @apply flex shrink-0 cursor-pointer items-center gap-1.5 px-2 py-1 text-xs;
     border-radius: var(--radius-s);
