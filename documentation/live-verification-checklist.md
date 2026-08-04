@@ -548,3 +548,16 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Open **Settings → AI Editor**: the support section (Knowii / GitHub Sponsors / Newsletter + YouTube, then the Buy me a coffee badge) appears below the tab content on every one of the seven tabs, and the badge image renders from the inlined data URL.
 - Keyboard: arrowing across the settings tab bar must still land focus on the tab button, not on the support links now sitting after the panel.
 - In **Settings → Community plugins**, the installed AI Editor entry should show three funding links rather than one.
+
+## Placement verbs — Expand section / Continue the note (issue #31, 2026-08-04) — UNVERIFIED
+
+Bind both verbs to an editor first (Actions tab — they ship unbound).
+
+- [ ] Right-click with NO selection in an editable note: only "Expand section" and "Continue the note" appear (bound ones); with a selection, the usual full menu returns.
+- [ ] Cursor in the middle of a `##` section that has a `###` subsection: Expand section previews an insertion at the END of the whole `##` section (after the subsection's content), not at the cursor.
+- [ ] Right-click a heading line (no selection) → Expand section: targets THAT heading's section.
+- [ ] Cursor above any heading: Expand section inserts before the first heading (preamble is the section).
+- [ ] Continue the note: preview lands at the very end regardless of cursor position; accept appends as one undo step.
+- [ ] A `#`-looking line inside a code fence does not end a section early.
+- [ ] Both verbs appear in the palette while bound and vanish when unbound.
+- [ ] Unbound: right-click without selection shows no plugin entries at all.
