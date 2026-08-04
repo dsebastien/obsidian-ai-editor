@@ -300,6 +300,11 @@ export class ReviewSidePanelView extends ItemView {
     }
 
     override onOpen(): Promise<void> {
+        // The leaf's own padding moves INSIDE the panel (see the
+        // `editor-ai-daemons-panel-content` styles): the pinned header must
+        // span the scroller's full width, or content scrolls visibly through
+        // the padding strip above it and the gutters beside it.
+        this.contentEl.addClass('editor-ai-daemons-panel-content')
         // Scrolling the findings list is user activity for the daemon's idle
         // window (issue #20). One passive listener on the persistent
         // `contentEl` (renders empty its CHILDREN, listeners on it survive);

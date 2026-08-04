@@ -1843,33 +1843,50 @@
    per-editor sections, findings, skip report.
    ======================================== */
 
+/* The leaf's padding is zeroed and recreated INSIDE the panel so the pinned
+   header can span the scroller's whole width: with the padding on the leaf,
+   scrolled content stayed visible in the strip above the sticky block and
+   in the gutters beside it (live-round feedback, 2026-08-04 ×2). */
+.editor-ai-daemons-panel-content {
+    padding: 0;
+}
+
 .editor-ai-daemons-panel {
     @apply flex flex-col gap-3;
+    --editor-ai-daemons-panel-pad-x: 12px;
+    padding: 0 var(--editor-ai-daemons-panel-pad-x) 12px;
 }
 
 /* The panel's control block — note name + Review + Ask for comments, and
    the Review | History tab bar — pins to the top of the scrolling leaf
    (live-round feedback, 2026-08-04). `contentEl` stays the scroller (the
-   daemon-activity scroll listener and scrollIntoView depend on it); the
-   block simply sticks, with the leaf's background so the list slides
-   under it instead of through it. */
+   daemon-activity scroll listener and scrollIntoView depend on it). The
+   block bleeds over the panel's horizontal padding (and re-adds it inside)
+   so it covers the full scrollport width, opaquely: nothing can scroll
+   through it or around it. */
 .editor-ai-daemons-panel-sticky {
     @apply flex flex-col gap-3;
     position: sticky;
     top: 0;
     z-index: 10;
     background-color: var(--background-secondary);
-    /* Cover the leaf's own top padding while pinned, without shifting the
-       resting layout: bleed up by that padding and give it back. */
-    margin-top: calc(-1 * var(--size-4-2, 8px));
-    padding-top: var(--size-4-2, 8px);
-    padding-bottom: 4px;
+    margin: 0 calc(-1 * var(--editor-ai-daemons-panel-pad-x));
+    padding: 8px var(--editor-ai-daemons-panel-pad-x) 6px;
+    border-bottom: 1px solid var(--background-modifier-border);
 }
 
 /* In the main editor area (leaf dragged out of the sidebar or into a popout)
    the leaf background is the primary one. */
 .mod-root .editor-ai-daemons-panel-sticky {
     background-color: var(--background-primary);
+}
+
+/* Inside the pinned block the tab bar drops its own underline — the block's
+   bottom border is the one edge; two hairlines a few pixels apart read as a
+   rendering glitch. The active tab's 2px accent underline stays. */
+.editor-ai-daemons-panel-sticky .editor-ai-daemons-panel-tabs {
+    border-bottom: none;
+    margin-bottom: 0;
 }
 
 .editor-ai-daemons-panel-empty {
