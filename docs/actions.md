@@ -5,7 +5,7 @@ nav_order: 6
 
 # Run actions on a selection
 
-An **action** is a verb you run on selected text. Nine ship with the plugin, and you can add your own.
+An **action** is a verb you run on selected text — or, for the two placement verbs, on where you are in the note. Eleven ship with the plugin, and you can add your own.
 
 Each action is bound to one editor (or, for review-class actions, a panel) in **Settings → AI Editor → Actions**. The starter pack binds sensible defaults, so the selection menu works out of the box.
 
@@ -13,23 +13,27 @@ Each action is bound to one editor (or, for review-class actions, a panel) in **
 
 ## The built-in verbs
 
-| Verb                     | What happens to the answer | Seeded binding   |
-| ------------------------ | -------------------------- | ---------------- |
-| **Rephrase**             | Replaces the selection     | Concision Editor |
-| **Summarize**            | Replaces the selection     | Concision Editor |
-| **Simplify**             | Replaces the selection     | Concision Editor |
-| **Humanize**             | Replaces the selection     | Humanizer        |
-| **Continue writing**     | Inserted at the cursor     | unbound          |
-| **Say more**             | Inserted at the cursor     | unbound          |
-| **Critique**             | Comes back as findings     | Devil's Advocate |
-| **Find evidence**        | Comes back as findings     | Fact Checker     |
-| **Identify assumptions** | Comes back as findings     | Devil's Advocate |
+| Verb                     | What happens to the answer                  | Seeded binding   |
+| ------------------------ | ------------------------------------------- | ---------------- |
+| **Rephrase**             | Replaces the selection                      | Concision Editor |
+| **Summarize**            | Replaces the selection                      | Concision Editor |
+| **Simplify**             | Replaces the selection                      | Concision Editor |
+| **Humanize**             | Replaces the selection                      | Humanizer        |
+| **Continue writing**     | Inserted at the cursor                      | unbound          |
+| **Say more**             | Inserted at the cursor                      | unbound          |
+| **Expand section**       | Inserted at the end of the cursor's section | unbound          |
+| **Continue the note**    | Inserted at the end of the note             | unbound          |
+| **Critique**             | Comes back as findings                      | Devil's Advocate |
+| **Find evidence**        | Comes back as findings                      | Fact Checker     |
+| **Identify assumptions** | Comes back as findings                      | Devil's Advocate |
 
-**Continue writing** and **Say more** are deliberately left unbound: no seeded persona is an authorial voice, so any default would be a bad one. Bind them to an editor whose prompt describes _your_ writing.
+**Continue writing**, **Say more**, **Expand section** and **Continue the note** are deliberately left unbound: no seeded persona is an authorial voice, so any default would be a bad one. Bind them to an editor whose prompt describes _your_ writing.
+
+**Expand section** and **Continue the note** are the placement verbs: they need no selection, because the cursor is the gesture. Expand section develops the section the cursor sits in — from its governing heading to the next one of the same or higher level, nested subsections included — and inserts at that section's end; right-clicking a heading line targets that heading's section. Continue the note always appends at the very end, wherever the cursor is. Both send the whole note as context (through the normal budget), so the continuation knows everything that came before.
 
 ## Running one
 
-- **Right-click a selection**: the bound actions appear at the top of the context menu, with **Review selection**, **Ask for comments…** and **Ask a question…** underneath.
+- **Right-click a selection**: the bound actions appear at the top of the context menu, with **Review selection**, **Ask for comments…** and **Ask a question…** underneath. Right-clicking **without** a selection offers just the bound placement verbs — everything else acts on a selection.
 - **Command palette**: every bound action is also a command (for example "Humanize"), so you can assign it a hotkey in **Settings → Hotkeys**. Commands appear and disappear as you change bindings — no reload needed — and hotkeys survive renames, because command ids are stable.
 
 An action bound to a panel says so in both places: _"Critique (panel: Pre-publish review)"_. One press there is one request per member.
@@ -40,7 +44,7 @@ An action bound to a panel says so in both places: _"Critique (panel: Pre-publis
 
 Accept is a single undo step, and only applies while the selected text is unchanged; editing that text dismisses the proposal as stale rather than applying it somewhere it no longer fits.
 
-**Generate verbs** (continue writing, say more) insert a proposed continuation after the selection or at the cursor, through the same preview and the same Accept/Reject.
+**Generate verbs** (continue writing, say more, expand section, continue the note) insert a proposed continuation through the same preview and the same Accept/Reject — after the selection or at the cursor for the first two, at the computed spot for the placement verbs.
 
 **Review verbs** (critique, find evidence, identify assumptions) run the ordinary review pipeline: findings arrive as highlights, exactly like **Review selection**, and are triaged the same way. These three can also be bound to a **panel**, in which case the whole panel convenes — every member runs the action with the charter in its prompt — and you get a [scorecard](panels.md) on top.
 

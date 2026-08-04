@@ -55,6 +55,10 @@ const CONTINUE_INSTRUCTION = `Continue writing from the insertion point as the a
 
 const SAY_MORE_INSTRUCTION = `Expand on what immediately precedes the insertion point: add the depth the author left implicit. Concrete examples, evidence, implications, edge cases, or the reasoning behind a claim — whichever genuinely adds substance here. Do not restate what is already written and do not pad: every added sentence must carry new information. Match the language, tone, voice, and markdown conventions of the surrounding text, and keep the expansion proportionate — depth, not sprawl.`
 
+const EXPAND_SECTION_INSTRUCTION = `The insertion point sits at the end of one SECTION of the note — everything under the heading that governs it. Expand that section: develop what it already says with the depth the author left implicit — concrete examples, evidence, implications, steps, or the reasoning behind its claims. Stay inside the section's topic; the rest of the note is context for consistency, not territory to write into. Do not restate what the section already says, do not summarize it, and do not open a new heading unless the section's own logic demands a sub-heading. Match the language, tone, voice, and markdown conventions of the section, and keep the expansion proportionate to it.`
+
+const CONTINUE_NOTE_INSTRUCTION = `The insertion point is the END of the note. Continue the piece as the author would: advance it — the next argument, section, step, example, or scene — rather than summarizing or restating what is already written. Read the whole note for where it is heading and pick up from its final thought. Match the language, tone, voice, structure, and markdown conventions of the note; if the note's structure calls for the next heading, write it. Write a natural next passage (typically one to three paragraphs) and stop where the author can take over cleanly.`
+
 const CRITIQUE_INSTRUCTION = `Critique this text: identify the most significant weaknesses in its argument, evidence, clarity, and structure, and report each as a finding anchored to the exact passage where the problem lives. Be direct and specific — name what is weak and why it fails, never that it "could be improved". Prioritize load-bearing problems over cosmetic ones, and propose a concrete fix as the suggestion when one exists. If the text is genuinely strong, say so in the summary instead of manufacturing objections.`
 
 const FIND_EVIDENCE_INSTRUCTION = `Find the claims in this text that need supporting evidence. For each, report a finding quoting the claim, and state in the critique what kind of support it needs — a source, a number, an example, or a qualification. Attach evidence entries: sources you actually consulted during this review marked "verified", suggested places to check marked "requires-verification"; never mark evidence "verified" unless you truly consulted it. Leave opinions and first-person experience alone — flag only claims a skeptical reader would challenge with "says who?".`
@@ -62,8 +66,12 @@ const FIND_EVIDENCE_INSTRUCTION = `Find the claims in this text that need suppor
 const IDENTIFY_ASSUMPTIONS_INSTRUCTION = `Surface the hidden assumptions this text depends on. For each, report a finding anchored to the passage that relies on it, name the assumption explicitly in the critique, and assess whether it holds — safe, contestable, or likely false. Prioritize load-bearing assumptions: the ones that, if wrong, would break the piece's central claim. Include assumptions about the reader (what they know, what they value, what they have access to) as well as assumptions of fact. Do not pad the list with trivial background truths every text shares.`
 
 /**
- * The nine built-in verbs, in gallery order: transform verbs first, then
- * generate, then review-class — the order menus present them in.
+ * The eleven built-in verbs, in gallery order: transform verbs first, then
+ * generate, then review-class — the order menus present them in. The two
+ * placement verbs (issue #31) are generate-class with a COMPUTED insertion
+ * point: `expand-section` inserts at the end of the cursor's section,
+ * `continue-note` at the end of the note — the dispatch surface computes the
+ * caret (`sectionInsertionPoint` / text end), the pipeline is untouched.
  */
 export const BUILT_IN_VERBS: readonly BuiltInVerb[] = [
     {
@@ -103,6 +111,18 @@ export const BUILT_IN_VERBS: readonly BuiltInVerb[] = [
         instruction: SAY_MORE_INSTRUCTION
     },
     {
+        id: 'expand-section',
+        label: 'Expand section',
+        verbClass: 'generate',
+        instruction: EXPAND_SECTION_INSTRUCTION
+    },
+    {
+        id: 'continue-note',
+        label: 'Continue the note',
+        verbClass: 'generate',
+        instruction: CONTINUE_NOTE_INSTRUCTION
+    },
+    {
         id: 'critique',
         label: 'Critique',
         verbClass: 'review',
@@ -125,6 +145,14 @@ export const BUILT_IN_VERBS: readonly BuiltInVerb[] = [
 const VERBS_BY_ID: ReadonlyMap<string, BuiltInVerb> = new Map(
     BUILT_IN_VERBS.map((verb) => [verb.id, verb])
 )
+
+/**
+ * The verbs whose insertion point is COMPUTED by the dispatch surface
+ * (issue #31) rather than read from the cursor/selection. They are also the
+ * only actions the editor context menu offers WITHOUT a selection: their
+ * gesture is "act on where I am", not "act on what I marked".
+ */
+export const PLACEMENT_VERB_IDS: ReadonlySet<string> = new Set(['expand-section', 'continue-note'])
 
 /**
  * Resolves a built-in verb by action id. Returns null for unknown ids —

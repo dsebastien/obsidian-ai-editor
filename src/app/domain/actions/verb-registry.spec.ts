@@ -16,7 +16,12 @@ describe('verb registry', () => {
                 .map((verb) => verb.id)
                 .sort()
         expect(byClass('transform')).toEqual(['humanize', 'rephrase', 'simplify', 'summarize'])
-        expect(byClass('generate')).toEqual(['continue', 'say-more'])
+        expect(byClass('generate')).toEqual([
+            'continue',
+            'continue-note',
+            'expand-section',
+            'say-more'
+        ])
         expect(byClass('review')).toEqual(['critique', 'find-evidence', 'identify-assumptions'])
     })
 

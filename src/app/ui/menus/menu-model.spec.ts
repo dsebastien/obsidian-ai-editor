@@ -15,6 +15,7 @@ import type { BoundActionView, EditorMenuState, FileMenuState } from './menu-mod
 function action(overrides: Partial<BoundActionView> = {}): BoundActionView {
     return {
         bindingId: 'humanize',
+        actionId: 'humanize',
         label: 'Humanize',
         verbClass: 'transform',
         panelName: null,
@@ -126,8 +127,35 @@ describe('editorMenuEntries', () => {
         expect(entryIds(inconsistent)).toEqual([])
     })
 
-    it('offers nothing without a selection', () => {
+    it('offers only the placement verbs without a selection (issue #31)', () => {
+        // Selection-gated actions and the review/ask tail disappear…
         expect(entryIds(editorState({ hasSelection: false, actions: [action()] }))).toEqual([])
+        // …but a bound placement verb stays: its gesture is "act on where I
+        // am", not "act on what I marked".
+        const placement = [
+            action({
+                bindingId: 'expand-section',
+                actionId: 'expand-section',
+                label: 'Expand section',
+                verbClass: 'generate'
+            }),
+            action({
+                bindingId: 'continue-note',
+                actionId: 'continue-note',
+                label: 'Continue the note',
+                verbClass: 'generate'
+            })
+        ]
+        const entries = editorMenuEntries(
+            editorState({ hasSelection: false, actions: [action(), ...placement] })
+        )
+        expect(
+            entries.map((entry) => (entry.kind === 'action' ? entry.action.actionId : entry.kind))
+        ).toEqual(['continue-note', 'expand-section'])
+        // Blocked notes still offer nothing at all.
+        expect(
+            entryIds(editorState({ hasSelection: false, blocked: true, actions: placement }))
+        ).toEqual([])
     })
 
     it('offers nothing in a non-editable (reading) view', () => {

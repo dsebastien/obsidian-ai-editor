@@ -56,7 +56,9 @@ const BUILT_IN_ACTION_LABELS: Record<BuiltInActionId, string> = {
     'identify-assumptions': 'Identify assumptions',
     'simplify': 'Simplify',
     'humanize': 'Humanize',
-    'continue': 'Continue'
+    'continue': 'Continue',
+    'expand-section': 'Expand section',
+    'continue-note': 'Continue the note'
 }
 
 /** Sentence-case display label for a built-in action verb. */

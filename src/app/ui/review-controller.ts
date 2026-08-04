@@ -29,6 +29,7 @@ import {
     planBulkAccept
 } from '../commands/bulk-triage'
 import type { ActionVerb } from '../domain/actions/verb-registry'
+import { sectionInsertionPoint } from '../domain/sections'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
@@ -1064,7 +1065,21 @@ export class ReviewController {
             new Notice('Select the text to transform first.')
             return
         }
-        const selection = { from, to, capturedHash: hashText(editor.getValue()) }
+        const text = editor.getValue()
+        // The placement verbs (issue #31) compute their insertion point from
+        // the document, not the cursor: "Expand section" lands at the end of
+        // the section the cursor is in (right-clicking a heading puts the
+        // cursor on it, so that heading's section is the target), "Continue
+        // the note" at the end of the note. Same synchronous capture-with-
+        // hash contract as every other dispatch.
+        let anchor = { from, to }
+        if (resolved.actionId === 'expand-section') {
+            const point = sectionInsertionPoint(text, to)
+            anchor = { from: point, to: point }
+        } else if (resolved.actionId === 'continue-note') {
+            anchor = { from: text.length, to: text.length }
+        }
+        const selection = { ...anchor, capturedHash: hashText(text) }
         void this.runBoundAction(view, resolved, selection, false)
     }
 

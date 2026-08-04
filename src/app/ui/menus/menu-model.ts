@@ -1,3 +1,4 @@
+import { PLACEMENT_VERB_IDS } from '../../domain/actions/verb-registry'
 import type { VerbClass } from '../../domain/actions/verb-registry'
 import { actionDisplayLabel } from '../entity-label'
 
@@ -24,6 +25,8 @@ export const PLUGIN_MENU_SECTION = 'editor-ai-daemons'
 /** The slice of a resolved bound action the menu model needs. */
 export interface BoundActionView {
     readonly bindingId: string
+    /** Built-in verb id or custom UUID — the placement verbs key off it. */
+    readonly actionId: string
     /** Sentence-case verb label (`Critique`), without the target. */
     readonly label: string
     readonly verbClass: VerbClass
@@ -123,7 +126,7 @@ export function actionMenuIcon(verbClass: VerbClass): string {
  * rather than competing with them.
  */
 export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEntry[] {
-    if (!state.editable || !state.hasSelection) {
+    if (!state.editable) {
         return []
     }
     // Whole-plugin refusal: not one item, review or action (`reviewable` is
@@ -131,6 +134,17 @@ export function editorMenuEntries(state: EditorMenuState): readonly EditorMenuEn
     // inferred from a caller building consistent state).
     if (state.blocked) {
         return []
+    }
+    // Without a selection, only the placement verbs appear (issue #31):
+    // their gesture is "act on where I am" — expand the section under the
+    // cursor, continue at the end of the note — so a right-click with
+    // nothing marked (a heading line, say) still offers them. Everything
+    // else acts on a selection and stays selection-gated.
+    if (!state.hasSelection) {
+        const placement = state.actions.filter((action) => PLACEMENT_VERB_IDS.has(action.actionId))
+        return [...placement]
+            .sort((a, b) => a.label.localeCompare(b.label))
+            .map((action) => ({ kind: 'action', action }))
     }
     const entries: EditorMenuEntry[] = []
     const sorted = [...state.actions].sort((a, b) => a.label.localeCompare(b.label))
