@@ -19,6 +19,14 @@ src/app/
 
 Dependency direction: `ui`/`commands` → `services` → `domain` → `types`. The domain layer never imports from Obsidian or CM6 — editor-position mapping is abstracted behind `TextChange` (adapted from CM6 `ChangeDesc` at the ui boundary).
 
+### Ambient seams (window, timers, transport)
+
+The service layer is Obsidian-free and its specs run headless under `bun test`, where there is no `window` at all. Three tiny modules own every place that tension shows up, so nothing else in the codebase reaches for an ambient global (catalog review 2026-08-04; BR #20):
+
+- `utils/timers.ts` — `setTimer` / `clearTimer` / `sleep`. Production schedules off `window`; headless falls back to `node:timers`, an **import** rather than a global. Deliberately does NOT prefer `activeWindow`: `obsidianmd/prefer-window-timers` wants `window` for timers specifically and reports `activeWindow` just as loudly.
+- `services/backends/resolve-fetch.ts` — the one default `fetch`, and the `FetchFn` type every backend input uses instead of `typeof fetch` (which resolves through whatever ambient types happen to be installed). Prefers `activeWindow` — unlike timers, a popout must dispatch through its own context. Resolution is **lazy**: every service resolves its transport at the top of a function whose next act may be a refusal (excluded note, missing executable, withheld consent), and a path that never dispatches must not require a transport to exist.
+- `obsidian-window.d.ts` — declares `createEl` / `createDiv` / `createSpan` on `Window`. Obsidian installs them as globals and separately puts `win: Window` on `Node`, but never joins the two, so `doc.win.createDiv()` — the popout-correct spelling its own lint rule demands — does not otherwise compile. The UI layer builds every element through it; the alternatives are the bare global (binds to the MAIN document) or `createElement` (rejected by the rule).
+
 ## Core flow (a review run)
 
 1. User triggers Review (command/rail). The active note is snapshotted (`DocumentSnapshot`: text + hash + id).
@@ -98,6 +106,7 @@ A card of NAMED rows mounted in the view's `contentEl` (not a CM6 gutter — gut
 - **Two nested elements per row**: the outer ring is STATUS (idle/pending/busy/done/error/muted) and the inner core is IDENTITY (filled = editor, hollow = panel), which keeps Business Rule #11 true now that every editor has a ring. The three terminal rings differ by thickness and border style rather than hue, because the persona colour is user-configurable and a red persona would otherwise collapse `done` into `error`.
 - **The rail RECONCILES, it does not rebuild.** `render()` is called on every coalesced refresh, i.e. per streamed finding. Replacing the children each time destroyed three things at once: the element holding keyboard focus, the infinite busy-ring sweep (recreated before it could complete a turn), and every one-shot motion cue. The head, the list, the live region and one row per editor id now outlive every render; nodes are only created, removed or moved when the row SET changes, and that path saves the focused control by key and refocuses it with `preventScroll`. Ring classes are re-applied only on a real status change.
 - **Motion is diffed, not declared.** `railMotion(previous, viewModel)` compares one render against the last and emits one-shot cues (stagger a new run, bump a changed count, flash a settling row); stylesheet-only entrances would replay on every render. The stagger key is the run's snapshot id, so a retry — which reuses the snapshot — does not re-stagger. Cues are cleared on their own `animationend`, which keeps them CSS-driven and therefore inside the blanket reduced-motion block.
+- **Split-control state is stated, not queried.** The two split controls (Review | Selection, and a row's row | retry) used to be styled with `:has()`, which the catalog reviewer flags for selector-invalidation cost on a subtree that re-renders per streamed finding. The rail already knows both conditions, so it sets `-split` and `-hover` classes directly (`syncSelectionSegment`, `syncRetry`). One thing `:has()` gave for free has to be done by hand: a retry button removed while the pointer is over it never fires `mouseleave`, so removal clears the hover class explicitly.
 
 ### Adaptive layout
 

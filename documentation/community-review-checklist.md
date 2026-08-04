@@ -18,7 +18,20 @@ Every verdict below carries the command that produced it. Re-run them before sub
 **Lint currency (2026-08-02, later):** `eslint-plugin-obsidianmd` upgraded **0.1.9 → 0.4.1** (the reviewer's own lint moved; the checklist's step 5 exists for exactly this). The new preset surfaced 20 errors + 134 warnings, resolved as:
 
 - **Fixed in code**: two cross-window-unsafe `instanceof HTMLInputElement` checks in the finding card became Obsidian's `.instanceOf` (a REAL popout bug class — a popout's constructor identities differ); perf benchmarks now report via `process.stdout.write` (0.4.1 forbids disabling `no-console` even described); three `require-yield` disables gained the required descriptions; the two sentence-case inline disables became config vocabulary (`AI Editor Review` in `brands` — 0.4.1 forbids inline sentence-case disables).
-- **Config-scoped with documented reasons** (`eslint.config.ts`): `no-unsupported-api` off for the two CLI registration files ONLY (runtime-guarded by `requireApiVersion('1.12.2')`, § minAppVersion); `settings-tab/prefer-setting-definitions` off for the settings tab (declarative settings API tracked as issue #35); `prefer-create-el`, `prefer-window-timers`, `no-global-this` off globally — each conflicts with the documented architecture (plain-DOM UI layer unit-tested against stub documents; Obsidian-free service layer with injected timers; `globalThis.fetch` fallbacks unreachable in production, § 7). A reviewer asking about any of these gets the paragraph above.
+- ~~**Config-scoped with documented reasons**~~ — **SUPERSEDED 2026-08-04.** Five `obsidianmd/*` rules were switched off in `eslint.config.ts` with written rationales. The 0.4.0 catalog review reported every one of them anyway: the reviewer runs **its own** ruleset against the source archive, so a local disable never suppressed anything on their side — it only hid the finding from us until submission. All five are now fixed in code and BR #20 forbids the pattern outright.
+
+**Catalog review of 0.4.0 (2026-08-04)** — first machine review of a submitted release; entry still in draft. Reported 2 errors + ~230 warnings + a failed build. Resolved as:
+
+- **BUILD VERIFICATION (the actual failure)**: `.gitattributes` carried `CHANGELOG.md export-ignore`, and `src/app/whats-new.ts` imports it (`with { type: 'text' }`). The reviewer builds the **git archive**, where `export-ignore` strips the file — so the build failed there and passed everywhere else. `CHANGELOG.md` and `eslint.config.ts` are no longer export-ignored, and `.gitattributes` now carries the rule: never export-ignore a file the build or the lint reads. Verified by building an actual `git archive --worktree-attributes` extract in a clean `bun install`.
+- **`no-unsupported-api` (Error)**: cleared by raising `minAppVersion` 1.8.7 → **1.12.2**, the release that shipped `registerCliHandler`. Latest public is 1.13.4, so the floor is well inside public territory. This also cleared the five CSS `text-decoration` partial-support warnings, which were gated on 1.7.4.
+- **`prefer-create-el` (92)**: `doc.createElement(x)` → `doc.win.createDiv()` / `createSpan()` / `createEl(x)`. The rule's own suggested spelling does not compile against Obsidian's typings — `createEl` is declared as a bare ambient function and `win: Window` separately on `Node`, never joined. `src/obsidian-window.d.ts` joins them. Detachment, ownership and popout correctness are all unchanged; the stub documents in `rail.spec.ts` grew a matching `win`.
+- **`prefer-window-timers` (40) / `no-global-this` (13)**: two new single-purpose modules, `src/utils/timers.ts` and `src/app/services/backends/resolve-fetch.ts`. Production resolves off the window; headless specs fall back to `node:timers` (an import, not a global) or inject. `resolve-fetch` prefers `activeWindow`; `timers` deliberately does not, because the timer rule reports `activeWindow` just as loudly. Resolution is LAZY — every service resolves its transport at the top of a function whose next act may be a refusal, and those paths must not require a transport to exist.
+- **`@typescript-eslint/no-unsafe-*` (~80 on their side, 10 locally)**: the gap was `typeof fetch`, which resolves through whatever ambient types are installed. Replaced with a narrow `FetchFn`; `log.spec.ts` names `{ mockRestore }` instead of `ReturnType<typeof spyOn>`.
+- **CSS `:has` (5)**: three selectors became state classes the rail already knew the answer for (`-split`, `-hover`), set by `syncSelectionSegment` and `syncRetry`. Note what `:has()` gave for free and the class does not: a retry removed mid-hover never fires `mouseleave`, so the hover class is cleared explicitly on removal. Covered by four new specs.
+- **Dependencies**: `brace-expansion` 2.0.3 → 2.1.4 and `js-yaml` 4.2.0 → 4.3.1 in the existing `overrides` block. Both transitive devDependencies; neither ships in `main.js`.
+- **`settings-tab/prefer-setting-definitions` (1) — NOT fixed, tracked as issue #35.** `display()` is **not called at all** when `getSettingDefinitions()` returns a non-empty array (`obsidian.d.ts`, `SettingTab.display`), so there is no partial adoption: a handful of declarative rows would REPLACE the whole 7-tab, ~3000-line settings UI. That is a deliberate port with live verification, not a lint fix. The rule stays enabled and keeps reporting (BR #20); `bun run lint` runs `--max-warnings 1` to admit exactly this one. **If that count ever needs raising, the answer is to fix the new warning, not the number.**
+- **Not defects**: "Dynamic Code Execution" is Zod v4's `new Function("")` CSP capability probe — there is no `eval` or `new Function` in this codebase, and none in `dist/main.js` beyond that probe. "Direct Filesystem Access" and "Shell Execution" are what a CLI backend IS (BR #9); "Vault Enumeration" and "Clipboard" are Recommendations, and the clipboard use is write-only.
+- **Typings**: `obsidian` devDep 1.12.3 → **1.13.1**. 1.13 was Catalyst-only in May but 1.13.4 (2026-07-30) is public, so this respects the "latest public release" rule. It immediately caught one real thing: `Plugin.settings` exists on the 1.13 base, so the plugin's narrowed field now needs `override`.
 
 | Verdict         | Meaning                                                              |
 | --------------- | -------------------------------------------------------------------- |
@@ -109,7 +122,7 @@ jq -r '.[] | select(.name|test("^AI Editor$";"i")) | "\(.id) | \(.name) | \(.rep
 | Manifest ↔ `package.json` consistency         | **PASS**        | `package.json` `name` = `id` = `editor-ai-daemons`; manifest `name` is the display name "AI Editor"; `version` both `0.0.0`; `description` byte-identical. |
 | Required manifest fields present              | **PASS**        | `id`, `name`, `version`, `minAppVersion`, `description`, `isDesktopOnly`, plus `author`, `authorUrl`, `fundingUrl`.                                        |
 | `obsidianmd/validate-manifest`                | **PASS**        | `bun run lint` → 0 problems.                                                                                                                               |
-| `minAppVersion` ≤ latest public release       | **PASS**        | `1.8.7` vs `latestVersion: 1.13.4` in `desktop-releases.json` (fetched 2026-07-30). Not a Catalyst-only version.                                           |
+| `minAppVersion` ≤ latest public release       | **PASS**        | `1.12.2` vs latest public `1.13.4` (2026-07-30). Not a Catalyst-only version.                                                                              |
 | `minAppVersion` high enough for the APIs used | **PASS**        | See below.                                                                                                                                                 |
 | `isDesktopOnly` correct                       | **PASS**        | `true`. The CLI backends spawn child processes through `node:child_process`; Business Rules #5 locks desktop-only as a product rule.                       |
 | `versions.json`                               | **PASS (note)** | `{}` — correct for a plugin that has never released. See below.                                                                                            |
@@ -129,13 +142,17 @@ grep -rn "SettingGroup\|SecretComponent\|secretStorage\|appendBinary\|setCloseCa
 # (no matches)
 ```
 
-Only `registerCliHandler` is used, and it is runtime-guarded rather than gated by the manifest (`src/app/plugin.ts:179`):
+Only `registerCliHandler` is used. It stayed runtime-guarded (`src/app/plugin.ts`):
 
 ```ts
 if (Platform.isDesktop && requireApiVersion('1.12.2')) { … }
 ```
 
-So a user on 1.8.7 gets the whole plugin minus the `editor-ai-daemons:*` terminal commands, which is what `README.md` and `docs/install.md` say. The `obsidian` dev dependency is pinned to `1.12.3` — a public release, never `latest`, never a Catalyst build.
+**Raised 1.8.7 → 1.12.2 on 2026-08-04.** The guard was correct but `obsidianmd/no-unsupported-api` is static, so the 0.4.0 catalog review reported it as an **Error** — the one blocking lint finding. The floor now matches the release that shipped the API. It is a real cost (installs below 1.12.2 lose the plugin) paid because the entry is still in draft with 8 downloads, and 1.12.2 is nearly a year inside public territory. The guard stays: it costs nothing and keeps the failure mode a missing command rather than a crash.
+
+Raising the floor also silenced five CSS `text-decoration` "partially supported by Obsidian 1.7.4" warnings for free.
+
+The `obsidian` dev dependency is pinned to `1.13.1` — the newest typings on npm, and public since 1.13.4 (2026-07-30). Never `latest`, never a Catalyst build.
 
 ### `versions.json` is empty on purpose
 

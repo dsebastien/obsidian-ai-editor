@@ -11,28 +11,6 @@ export default defineConfig([
     ...obsidianmd.configs['recommended'],
     eslintConfigPrettier,
     {
-        // `registerCliHandler` (1.12.2) is RUNTIME-GUARDED at its one
-        // registration site: `Platform.isDesktop &&
-        // requireApiVersion('1.12.2')` in plugin.ts. minAppVersion stays
-        // 1.8.7 so everything else serves older installs — documented in the
-        // community-review checklist § minAppVersion. 0.4.1 forbids inline
-        // obsidianmd disables, so the exemption lives here, scoped to the two
-        // files whose whole purpose is that API.
-        files: ['src/app/cli/register-review-cli.ts', 'src/app/cli/register-run-cli.ts'],
-        rules: {
-            'obsidianmd/no-unsupported-api': 'off'
-        }
-    },
-    {
-        // The declarative settings API (1.13's `getSettingDefinitions`, for
-        // settings search) is tracked as its own backlog issue; the tab
-        // predates it and serves minAppVersion 1.8.7.
-        files: ['src/app/settings/settings-tab.ts'],
-        rules: {
-            'obsidianmd/settings-tab/prefer-setting-definitions': 'off'
-        }
-    },
-    {
         ignores: [
             '**/dist/**',
             '**/node_modules/**',
@@ -55,7 +33,9 @@ export default defineConfig([
                 createFragment: 'readonly',
                 // Obsidian popout-window-aware globals
                 activeWindow: 'readonly',
-                activeDocument: 'readonly'
+                activeDocument: 'readonly',
+                // Bun's global, used by specs for Bun.sleep()
+                Bun: 'readonly'
             },
             parserOptions: {
                 projectService: true,
@@ -75,10 +55,6 @@ export default defineConfig([
             ],
             '@typescript-eslint/ban-ts-comment': 'off',
             '@typescript-eslint/no-deprecated': 'off',
-            // These are too strict for dynamic plugin APIs
-            '@typescript-eslint/no-unsafe-call': 'off',
-            '@typescript-eslint/no-unsafe-member-access': 'off',
-            '@typescript-eslint/no-unsafe-assignment': 'off',
             // Obsidian methods are dynamically added to prototypes
             '@typescript-eslint/no-unsafe-enum-comparison': 'off',
             'no-prototype-builtins': 'off',
@@ -86,31 +62,12 @@ export default defineConfig([
             // anywhere; the rule stays off only because the word "confirm"
             // appears in method names of the Modal subclasses that replace it.
             'no-alert': 'off',
-            // Three 0.4.1 style-preference rules conflict with this repo's
-            // documented architecture and are switched off DELIBERATELY
-            // (community-review checklist § Lint currency, 2026-08-02):
+            // NOTE (BR #20, 2026-08-04): no `obsidianmd/*` rule is disabled
+            // here, per-file, or inline. The catalog reviewer runs its OWN
+            // ruleset against the source archive, so a local disable hides the
+            // finding from us without suppressing anything on their side.
+            // Rules that fire get fixed in the code.
             //
-            // - `prefer-create-el` wants Obsidian's prototype helpers
-            //   (`doc.win.createEl`). The rail, cards, margin column and
-            //   transform preview are deliberately PLAIN DOM: every element
-            //   is created via the owning view's `ownerDocument` (the rule's
-            //   actual popout concern), and the whole UI layer is unit-tested
-            //   against stub documents where Obsidian's prototype extensions
-            //   do not exist. Rewriting to the helpers would trade tested
-            //   code for untestable code.
-            'obsidianmd/prefer-create-el': 'off',
-            // - `prefer-window-timers` fires in the SERVICE layer (retry
-            //   backoff, debounced sidecar writers, abort composition) which
-            //   is Obsidian-free by design and runs in the main window; every
-            //   UI-layer timer already uses `window.*` per AGENTS.md, and the
-            //   services take injected timer functions precisely so specs can
-            //   drive them.
-            'obsidianmd/prefer-window-timers': 'off',
-            // - `no-global-this` fires on the service layer's
-            //   `globalThis.fetch` DEFAULTS, which are unreachable fallbacks
-            //   for headless tests: every production dispatch injects
-            //   `window.fetch.bind(window)` (checklist § Logging/network).
-            'obsidianmd/no-global-this': 'off',
             // Sentence case is a community-review requirement, so the rule is
             // an ERROR here rather than off. It compares every UI string
             // against a word list, so the vocabulary this plugin's copy uses
