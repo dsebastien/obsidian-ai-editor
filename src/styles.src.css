@@ -1476,23 +1476,41 @@
    (bigger would shout next to a row that is only 24px tall) and the ::before
    grows the POINTER TARGET to the WCAG 2.5.8 minimum of 24×24 without moving
    anything. */
+/* Retry as a split segment of its row (live-round feedback, 2026-08-04):
+   the same visual grammar as Review | Selection — one object, shared
+   corners meeting flush at a thin divider — instead of a loose circular
+   icon floating beside the row. */
+.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry) {
+    gap: 0;
+}
+
+.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry) .editor-ai-daemons-rail-row {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
 .editor-ai-daemons-rail-retry {
-    @apply relative shrink-0 cursor-pointer rounded-full p-0;
-    width: 18px;
-    height: 18px;
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-primary);
+    @apply flex shrink-0 cursor-pointer items-center justify-center self-stretch p-0;
+    min-width: 24px;
+    border: 1px solid transparent;
+    border-left: 1px solid var(--background-modifier-border);
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
+    background-color: transparent;
     box-shadow: none;
     color: var(--text-muted);
     font-size: 11px;
     line-height: 1;
+    transition:
+        background-color 120ms ease,
+        color 120ms ease;
 }
 
-.editor-ai-daemons-rail-retry::before {
-    @apply absolute;
-    content: '';
-    inset: -3px;
-    border-radius: inherit;
+/* Hovering EITHER half tints both — one control, two click zones (the
+   split-button grammar); the half under the pointer gets the text
+   emphasis so the zones stay tellable apart. */
+.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry:hover) .editor-ai-daemons-rail-row,
+.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-row:hover) .editor-ai-daemons-rail-retry {
+    background-color: var(--background-modifier-hover);
 }
 
 .editor-ai-daemons-rail-retry:hover {
