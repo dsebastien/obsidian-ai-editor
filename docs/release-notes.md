@@ -1,5 +1,20 @@
 # Release Notes
 
+## 0.5.0 (2026-08-04)
+
+### ⚠ BREAKING CHANGES
+
+- **plugin:** Obsidian 1.12.2 is now the minimum supported version.
+  Installs below it no longer receive the plugin.
+
+### Features
+
+- **plugin:** raise minAppVersion to 1.12.2
+
+### Bug Fixes
+
+- **build:** ship CHANGELOG.md and eslint.config.ts in the source archive
+
 ## 0.4.0 (2026-08-04)
 
 ### Features
