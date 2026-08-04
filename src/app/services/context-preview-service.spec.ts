@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './backends/resolve-fetch'
 import {
     apiBackendSchema,
     editorConfigSchema,
@@ -79,13 +80,13 @@ class FakeVault implements VaultReader {
  * Captures the system prompt of the request a real review dispatch sends. The
  * response body is irrelevant — the assertion is about what went OUT.
  */
-function capturingFetch(sink: { prompt: string | null }): typeof fetch {
+function capturingFetch(sink: { prompt: string | null }): FetchFn {
     return ((_url: string, init?: RequestInit) => {
         const raw = typeof init?.body === 'string' ? init.body : '{}'
         const body = JSON.parse(raw) as Record<string, unknown>
         sink.prompt = typeof body['system'] === 'string' ? body['system'] : null
         return Promise.resolve(new Response('data: {"type":"message_stop"}\n\n', { status: 200 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
 }
 
 describe('previewEditorContext', () => {

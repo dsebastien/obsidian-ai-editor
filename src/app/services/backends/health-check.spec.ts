@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './resolve-fetch'
 import {
     CLI_HEALTH_CHECK_TIMEOUT_MS,
     HEALTH_CHECK_TIMEOUT_MS,
@@ -35,12 +36,12 @@ interface RecordedCall {
     readonly body: string
 }
 
-function makeFetch(body: string, status = 200): { calls: RecordedCall[]; fetchImpl: typeof fetch } {
+function makeFetch(body: string, status = 200): { calls: RecordedCall[]; fetchImpl: FetchFn } {
     const calls: RecordedCall[] = []
     const fetchImpl = ((url: string | URL, init?: RequestInit) => {
         calls.push({ url: String(url), body: typeof init?.body === 'string' ? init.body : '' })
         return Promise.resolve(new Response(body, { status }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { calls, fetchImpl }
 }
 
@@ -234,7 +235,7 @@ describe('checkBackendHealth', () => {
 
     it('reports an unreachable endpoint as a failure', async () => {
         const fetchImpl = (() =>
-            Promise.reject(new TypeError('Failed to fetch'))) as unknown as typeof fetch
+            Promise.reject(new TypeError('Failed to fetch'))) as unknown as FetchFn
         const result = await checkBackendHealth({
             backend: makeConfig(OLLAMA_BACKEND),
             model: 'test-model',
@@ -250,7 +251,7 @@ describe('checkBackendHealth', () => {
         const fetchImpl = (() => {
             called = true
             return Promise.resolve(new Response('{}', { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const result = await checkBackendHealth({
             // Azure without a deployment cannot build a request at all.
             backend: makeConfig({ kind: 'azure-openai', baseUrl: 'https://x.openai.azure.com' }),

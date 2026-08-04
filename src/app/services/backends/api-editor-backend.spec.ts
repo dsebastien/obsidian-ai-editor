@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './resolve-fetch'
 import type { OperationEvent } from '../../domain/operations/contract'
 import type { ApiBackend } from '../../domain/settings/settings-schema'
 import { createApiEditorExecutor } from './api-editor-backend'
@@ -21,7 +22,7 @@ interface RecordedCall {
 function makeStreamingFetch(
     bodyText: string,
     chunkSize: number
-): { calls: RecordedCall[]; fetchImpl: typeof fetch } {
+): { calls: RecordedCall[]; fetchImpl: FetchFn } {
     const calls: RecordedCall[] = []
     const fetchImpl = ((url: string | URL, init?: RequestInit) => {
         calls.push({ url: String(url), init: init ?? {} })
@@ -43,7 +44,7 @@ function makeStreamingFetch(
             }
         })
         return Promise.resolve(new Response(stream, { status: 200 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { calls, fetchImpl }
 }
 
@@ -51,20 +52,16 @@ function makeStreamingFetch(
 function makeBufferedFetch(
     body: string,
     status = 200
-): { calls: RecordedCall[]; fetchImpl: typeof fetch } {
+): { calls: RecordedCall[]; fetchImpl: FetchFn } {
     const calls: RecordedCall[] = []
     const fetchImpl = ((url: string | URL, init?: RequestInit) => {
         calls.push({ url: String(url), init: init ?? {} })
         return Promise.resolve(new Response(body, { status }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { calls, fetchImpl }
 }
 
-function makeExecutor(
-    fetchImpl: typeof fetch,
-    overrides: Partial<ApiBackend> = {},
-    timeoutMs = 5_000
-) {
+function makeExecutor(fetchImpl: FetchFn, overrides: Partial<ApiBackend> = {}, timeoutMs = 5_000) {
     return createApiEditorExecutor({
         backendConfig: makeConfig(overrides),
         model: 'test-model',
@@ -495,7 +492,7 @@ describe('createApiEditorExecutor — cancellation and timeout', () => {
                 }
             })
             return Promise.resolve(new Response(stream, { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const executor = makeExecutor(fetchImpl, { kind: 'openai' })
 
         const abort = new AbortController()
@@ -524,7 +521,7 @@ describe('createApiEditorExecutor — cancellation and timeout', () => {
                     },
                     { once: true }
                 )
-            })) as unknown as typeof fetch
+            })) as unknown as FetchFn
         const executor = makeExecutor(fetchImpl, { kind: 'ollama', apiKey: '' }, 20)
 
         const events = await collect(executor(reviewOperation(), new AbortController().signal))

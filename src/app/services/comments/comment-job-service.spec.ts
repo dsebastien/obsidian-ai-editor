@@ -1,4 +1,5 @@
 import { clearTimeout as clearNodeTimer, setTimeout as setNodeTimer } from 'node:timers'
+import type { FetchFn } from '../backends/resolve-fetch'
 import { describe, expect, it } from 'bun:test'
 import { marginCommentSchema } from '../../domain/comments/margin-comment'
 import type { MarginComment } from '../../domain/comments/margin-comment'
@@ -123,14 +124,14 @@ function anthropicResultBody(): string {
     return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('')
 }
 
-function capturingFetch(): { fetchImpl: typeof fetch; bodies: Record<string, unknown>[] } {
+function capturingFetch(): { fetchImpl: FetchFn; bodies: Record<string, unknown>[] } {
     const bodies: Record<string, unknown>[] = []
     const fetchImpl = ((_url: string, init?: RequestInit) => {
         bodies.push(
             JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>
         )
         return Promise.resolve(new Response(anthropicResultBody(), { status: 200 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { fetchImpl, bodies }
 }
 

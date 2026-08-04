@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './backends/resolve-fetch'
 import { getBuiltInVerb } from '../domain/actions/verb-registry'
 import {
     apiBackendSchema,
@@ -106,7 +107,7 @@ interface CapturedRequest {
 }
 
 /** Fetch fake that records every request body and answers with `body`. */
-function capturingFetch(body: string): { fetchImpl: typeof fetch; requests: CapturedRequest[] } {
+function capturingFetch(body: string): { fetchImpl: FetchFn; requests: CapturedRequest[] } {
     const requests: CapturedRequest[] = []
     const fetchImpl = ((url: string, init?: RequestInit) => {
         requests.push({
@@ -117,7 +118,7 @@ function capturingFetch(body: string): { fetchImpl: typeof fetch; requests: Capt
             >
         })
         return Promise.resolve(new Response(body, { status: 200 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { fetchImpl, requests }
 }
 

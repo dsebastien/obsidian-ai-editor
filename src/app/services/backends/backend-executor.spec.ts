@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './resolve-fetch'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
 import {
@@ -292,7 +293,7 @@ describe('createBackendExecutor — request policy', () => {
         const fetchImpl = ((_url: string | URL, init?: RequestInit) => {
             bodies.push(typeof init?.body === 'string' ? init.body : '')
             return Promise.resolve(new Response('{}', { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const executor = createBackendExecutor({
             backend: apiBackend(),
             model: 'claude-test-1',
@@ -343,7 +344,7 @@ function okOllamaResponse(content = VALID_REVIEW_JSON): Response {
 /** Fetch that answers each call from a script of response builders. */
 function scriptedFetch(script: (() => Response)[]): {
     calls: number[]
-    fetchImpl: typeof fetch
+    fetchImpl: FetchFn
 } {
     const calls: number[] = []
     let index = 0
@@ -352,7 +353,7 @@ function scriptedFetch(script: (() => Response)[]): {
         const build = script[Math.min(index, script.length - 1)]
         index += 1
         return Promise.resolve(build ? build() : new Response('', { status: 500 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { calls, fetchImpl }
 }
 

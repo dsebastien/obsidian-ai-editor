@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './backends/resolve-fetch'
 import {
     apiBackendSchema,
     cliBackendSchema,
@@ -151,8 +152,8 @@ function anthropicReviewBody(): string {
     return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('')
 }
 
-function fetchReturning(body: string, status = 200): typeof fetch {
-    return (() => Promise.resolve(new Response(body, { status }))) as unknown as typeof fetch
+function fetchReturning(body: string, status = 200): FetchFn {
+    return (() => Promise.resolve(new Response(body, { status }))) as unknown as FetchFn
 }
 
 // ---------------------------------------------------------------------------
@@ -537,7 +538,7 @@ describe('createEditorSpec', () => {
                     },
                     { once: true }
                 )
-            })) as unknown as typeof fetch
+            })) as unknown as FetchFn
         const spec = createEditorSpec({
             editor: makeEditor(),
             backend: makeBackend(),
@@ -1026,7 +1027,7 @@ describe('startReview', () => {
             captured.push(init.body)
             void url
             return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const settings = makeSettings({
             editors: [
                 makeEditor({ prompt: { text: 'Persona one.', notePaths: [] } }),
@@ -1068,7 +1069,7 @@ describe('startReview', () => {
             captured.push(init.body)
             void url
             return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const settings = makeSettings({
             editors: [
                 makeEditor({ prompt: { text: 'Persona one.', notePaths: [] } }),
@@ -1259,7 +1260,7 @@ describe('startReview', () => {
             captured.push(init.body)
             void url
             return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const settings = makeSettings({
             voiceProfile: { text: 'Sound like me.', notePaths: ['Voice.md'] },
             editors: [
@@ -1307,7 +1308,7 @@ describe('startReview', () => {
         const fetchImpl = ((): Promise<Response> => {
             fetchCalls += 1
             return Promise.resolve(new Response(anthropicReviewBody(), { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const result = await startReview({
             settings: makeSettings({ backends: [makeBackend({ apiKey: '' })] }),
             snapshot: makeSnapshot(),
@@ -1341,7 +1342,7 @@ describe('startReview', () => {
                     init.signal.addEventListener('abort', onAbort)
                 }
             })
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const result = await startReview({
             settings: makeSettings(),
             snapshot: makeSnapshot(),
@@ -1549,7 +1550,7 @@ function anthropicPanelBody(): string {
  * Records every outbound request body and answers each one with the payload
  * matching the operation it carries (review vs aggregation).
  */
-function recordingFetch(bodies: string[]): typeof fetch {
+function recordingFetch(bodies: string[]): FetchFn {
     return ((_url: string, init?: RequestInit) => {
         const body = typeof init?.body === 'string' ? init.body : ''
         bodies.push(body)
@@ -1559,7 +1560,7 @@ function recordingFetch(bodies: string[]): typeof fetch {
                 { status: 200 }
             )
         )
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
 }
 
 describe('startReview panel runs', () => {
@@ -1796,7 +1797,7 @@ describe('startReview panel runs', () => {
                     ? new Response(anthropicReviewBody(), { status: 200 })
                     : new Response('nope', { status: 401 })
             )
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
 
         const result = await startReview({
             settings,
@@ -1898,11 +1899,11 @@ describe('startReview — one view of the vault per run', () => {
             snapshot: makeSnapshot(),
             vault,
             runController: new RunController(),
-            fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => {
+            fetchImpl: ((input: string, init?: RequestInit) => {
                 const body = init?.body
                 bodies.push(typeof body === 'string' ? body : '')
                 return fetchReturning(anthropicReviewBody())(input, init)
-            }) as typeof fetch
+            }) satisfies FetchFn
         })
         if (result.status !== 'started') {
             throw new Error(`Expected started, got ${result.status}`)

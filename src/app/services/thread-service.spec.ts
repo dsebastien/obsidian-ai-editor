@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { FetchFn } from './backends/resolve-fetch'
 import type { FindingId } from '../domain/ids'
 import { rawFindingSchema } from '../domain/operations/contract'
 import {
@@ -101,7 +102,7 @@ interface CapturedRequest {
     body: Record<string, unknown>
 }
 
-function capturingFetch(body: string): { fetchImpl: typeof fetch; requests: CapturedRequest[] } {
+function capturingFetch(body: string): { fetchImpl: FetchFn; requests: CapturedRequest[] } {
     const requests: CapturedRequest[] = []
     const fetchImpl = ((url: string, init?: RequestInit) => {
         requests.push({
@@ -112,7 +113,7 @@ function capturingFetch(body: string): { fetchImpl: typeof fetch; requests: Capt
             >
         })
         return Promise.resolve(new Response(body, { status: 200 }))
-    }) as unknown as typeof fetch
+    }) as unknown as FetchFn
     return { fetchImpl, requests }
 }
 
@@ -249,7 +250,7 @@ describe('startThreadTurn dispatch', () => {
         const fetchImpl = (() =>
             Promise.resolve(
                 new Response(`{"error":"bad key ${API_KEY}"}`, { status: 401 })
-            )) as unknown as typeof fetch
+            )) as unknown as FetchFn
         const start = await startThreadTurn({
             settings: makeSettings(),
             vault: new FakeVault(),
@@ -322,7 +323,7 @@ describe('startThreadTurn refusals', () => {
         const fetchImpl = (() => {
             calls += 1
             return Promise.resolve(new Response('{}', { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const vault = new FakeVault()
         vault.metadata.set(NOTE_PATH, { tags: ['private'], frontmatter: {} })
         const start = await startThreadTurn({
@@ -345,7 +346,7 @@ describe('startThreadTurn refusals', () => {
         const fetchImpl = (() => {
             calls += 1
             return Promise.resolve(new Response('{}', { status: 200 }))
-        }) as unknown as typeof fetch
+        }) as unknown as FetchFn
         const start = await startThreadTurn({
             settings: makeSettings({
                 rules: [
