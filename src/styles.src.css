@@ -1906,22 +1906,32 @@
 }
 
 /* Up/down cycling between editor sections from the pinned header
-   (live-round feedback, 2026-08-04). Same chrome as the Review button so
-   the header reads as one control strip. */
+   (live-round feedback, 2026-08-04). One SPLIT control in the Review
+   button's exact chrome, stretched to the row's height — two loose
+   mini-buttons sat visibly shorter than their neighbors and read as an
+   alignment bug (live-round feedback, follow-up). */
 .editor-ai-daemons-panel-section-nav {
-    @apply flex shrink-0 items-center gap-0.5;
+    @apply flex shrink-0 items-stretch self-stretch;
 }
 
 .editor-ai-daemons-panel-section-nav-button {
     @apply flex cursor-pointer items-center justify-center;
-    min-height: 24px;
-    min-width: 24px;
-    padding: 2px 4px;
-    border-radius: var(--radius-s);
+    min-width: 26px;
+    padding: 2px 7px;
     border: 1px solid var(--background-modifier-border);
     background-color: var(--interactive-normal);
     color: var(--text-muted);
     box-shadow: none;
+}
+
+.editor-ai-daemons-panel-section-nav-button:first-child {
+    border-radius: var(--radius-s) 0 0 var(--radius-s);
+    /* The pair shares its middle border, split-button style. */
+    border-right-width: 0;
+}
+
+.editor-ai-daemons-panel-section-nav-button:last-child {
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
 }
 
 .editor-ai-daemons-panel-section-nav-button:hover,
