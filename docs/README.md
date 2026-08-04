@@ -8,15 +8,22 @@ permalink: /
 
 AI editing, reviewing and QA **inside the Obsidian editor** — not a chat sidebar. Configurable AI personas ("Editors") and groups of them ("Panels") highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
 
+Writing alone has a blind spot: you. This plugin gives you a bench of reviewers that read your note the way your audience would, before your audience does.
+
 Nothing runs on its own, and nothing is written without a diff. Desktop only. Bring your own backend.
+
+![A note under review: highlighted spans in the text, the persona rail, and the AI Editor Review panel showing each editor's summary, findings and verdict](images/findings.png)
 
 ## Key features
 
 - **Editors** — AI personas you define with a prompt. Six ship with the plugin, all editable.
 - **Panels** — groups of editors that review together and produce one scorecard: overall verdict, per-member verdicts, ranked top fixes, and where they disagreed.
 - **Review loop** — findings anchored to the exact words they quote, triaged from the keyboard, with push-back replies when you disagree.
-- **Actions** — rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions, plus your own custom verbs.
+- **Ask a question** — a freeform question to one editor or a whole panel, answered as findings on your note rather than chat.
+- **Actions** — rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus placement verbs that need no selection (expand the current section, continue at the end of the note) and your own custom verbs.
 - **Margin comments** — park a question on a passage and keep writing; the answer arrives in a column beside the text and survives restarts.
+- **Daemon mode** — opt-in automatic refreshes after you pause editing, off by default, honest about the cost.
+- **History** — the session's findings, replies and scorecards in their own panel tab; durable across restarts if you opt in.
 - **Vault as configuration** — personas, charters and voice profile can live in your own notes, read fresh at every run.
 - **Bring your own backend** — Anthropic, OpenAI, OpenRouter, OpenAI-compatible endpoints, Azure OpenAI, Ollama, or the Claude Code and Codex CLIs running locally.
 
@@ -25,7 +32,7 @@ Nothing runs on its own, and nothing is written without a diff. Desktop only. Br
 1. Install the plugin and enable it (see [Install and quick start](install.md)).
 2. The **setup wizard** opens on first load: add a backend, select **Test connection**, choose your editors, point at a voice profile, decide when editors run. Nothing is saved until the last step.
 3. Open a note and run **Review current note**.
-4. Click a highlight to read a finding; **Accept** or **Dismiss** it.
+4. Click a highlight to read a finding; **Accept** or **Dismiss** it — or push back in the reply box and see whether the editor holds its position.
 
 ## The guide
 

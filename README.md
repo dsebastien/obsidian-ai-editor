@@ -1,6 +1,8 @@
 # AI Editor
 
-An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself** — not a chat sidebar, but configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
+An [Obsidian](https://obsidian.md) plugin that brings AI editing, reviewing, and QA **into the editor itself**. Not a chat sidebar you copy-paste into: configurable AI personas ("Editors") and groups of them ("Panels") that highlight what they care about in your text, argue with you, and propose surgical edits you accept or reject inline.
+
+Writing alone has a blind spot: you. AI Editor gives you a bench of reviewers — a Devil's Advocate, a Fact Checker, a Beginner Reader, whoever you invent — that read your note the way your audience would, before your audience does.
 
 Nothing ever runs on its own: every AI call is something you asked for, and every proposed change goes through a visible diff with **Accept** and **Reject**. There is no code path that writes AI output into a note without your confirmation.
 
@@ -8,12 +10,15 @@ Desktop only. Bring your own backend — a hosted API (Anthropic, OpenAI, OpenRo
 
 ## What it does
 
-You write. When you want a second opinion, you summon your editors. They read the note, come back with findings anchored to the exact words they are about, and you accept, dismiss, or argue with each one.
+You write. When you want a second opinion, you summon your editors — all of them, one of them (click its name on the rail), or a panel. They read the note, come back with findings anchored to the exact words they are about, and you accept, dismiss, or argue with each one.
 
 - **Editors** — AI personas you define with a prompt: a name, a colour, and what they care about. Six ship with the plugin (Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader) and all six are fully editable.
 - **Panels** — groups of editors that review together and are then summed up in one scorecard: an overall verdict, a verdict per member, ranked top fixes, and where the members disagreed.
-- **Actions** — verbs you run on a selection: rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus your own custom actions.
+- **Ask a question** — a freeform question to one editor or a whole panel, answered as findings on your note rather than chat: "is the tone consistent?", "would a beginner follow section 3?".
+- **Actions** — verbs you run on a selection: rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus two placement verbs that need no selection at all (expand the current section, continue at the end of the note), plus your own custom actions.
 - **Margin comments** — park a question on a passage and keep writing; an editor answers it in the background, and the answer waits for you in a column beside the text.
+- **Daemon mode** — an opt-in toggle that lets your editors refresh their findings on their own after you pause editing. Off by default, paused per note when you hide findings, and honest about the cost in its settings copy.
+- **History** — every finding, push-back exchange and scorecard of the session, browsable in its own panel tab after the run that produced them is gone. Durable across restarts if you opt in.
 - **Vault as configuration** — every prompt field accepts direct text _and/or_ references to your own vault notes, resolved fresh at run time. Documenting your assistant in your vault _is_ configuring the plugin.
 
 ## Screenshots
@@ -36,13 +41,17 @@ Enable as many as you want, and group them into panels that review together and 
 
 ## The screens, in words
 
-**The persona rail.** Every markdown editor gets a small card in its top-right corner: a **Review** button and one named row per enabled editor. Each row draws a ring in that editor's colour around its dot, and the ring says what it is doing — dashed while it waits its turn, a sweeping arc while it works, solid when it lands, the error colour when it fails — next to a live finding count. Hover a row for the exact state: "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel is one row with a hollow centre, its name carrying "(panel)", with its members bracketed underneath it.
+**The persona rail.** Every markdown editor gets a small card in its top-right corner: the daemon toggle, a **Review** button (which grows a **Selection** segment while you have text selected), and one named row per enabled editor. Each row draws a ring in that editor's colour around its dot, and the ring says what it is doing — dashed while it waits its turn, a sweeping arc while it works, solid when it lands, the error colour when it fails — next to a live finding count. Hover a row for the exact state: "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel is one row with a hollow centre, its name carrying "(panel)", with its members bracketed underneath it.
+
+Click a row with findings to step through them in the text. Click an idle row and that editor reviews the note on its own — and if a review is already running, it simply joins the queue without disturbing anyone. The rail fades when you are writing, collapses to a single line when you want it gone, and a **Hide findings** button clears every highlight from the note (pausing the daemon for it) without dismissing a thing.
 
 **Findings in the text.** Each finding tints the exact span it quotes in its editor's colour, with a per-editor edge style underneath so the two are never told apart by colour alone. Keep typing: highlights follow your edits. Edit _inside_ a highlighted span and the finding goes stale — dashed and dimmed — because its proposal no longer matches your text.
 
 **The review card.** Click a highlight and a card floats next to it: the critique, the quoted text, and — when the editor proposed changes — a labelled preview per edit (**Replace**, **Insert above**, **Insert below**, **Delete**: an insertion shows only what is added, so it never looks like a rewrite) with **Accept** and **Dismiss**. Accept applies the whole proposal as one undoable edit. Overlapping findings stack in one card, innermost first. Under it, a reply box: type your objection and the editor either withdraws the finding or holds its position and sharpens it.
 
-**The AI Editor Review panel.** A side panel — its tab reads **AI Editor Review** — lists every editor's status, summary, findings and verdict for the note it is bound to, with its own **Review** button and, for panel runs, the scorecard on top. Click a finding to jump to it in the text, or step through one editor's findings with the **‹ 2 of 5 ›** control in its section header — the same stepping the **Next finding** command does, on the same cursor, with the row it points at marked in the list and your keyboard left on the arrow. Findings whose quote could not be located are grouped under "Not anchored" rather than guessed into a position.
+**The AI Editor Review panel.** A side panel — its tab reads **AI Editor Review** — lists every editor's status, summary, findings and verdict for the note it is bound to, under a pinned header that keeps **Review**, **Ask for comments** and section navigation in reach while you scroll. For panel runs the scorecard sits on top. Click a finding to jump to it in the text, or step through one editor's findings with the **‹ 2 of 5 ›** control in its section header — the same stepping the **Next finding** command does, on the same cursor, with the row it points at marked in the list and your keyboard left on the arrow. Findings whose quote could not be located are grouped under "Not anchored" rather than guessed into a position.
+
+**The History tab**, right next to Review in that panel, is the session's archive: every finding, push-back reply and scorecard, grouped by day with filters by type and editor. "What did the Devil's Advocate say before I re-ran it?" has an answer. History lives for the session by default; a setting makes it durable per note, with retention and clearing under your control.
 
 **The margin column.** Comments sit in a column beside the text, each card aligned with the line it is about: who was asked, how long it has been running, and the answer once there is one. Several comments on one line collapse into a chip that expands.
 
