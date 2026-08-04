@@ -880,10 +880,10 @@
     @apply flex w-full items-stretch;
 }
 
-.editor-ai-daemons-rail-button-row:has(
-        .editor-ai-daemons-rail-selection:not(.editor-ai-daemons-hidden)
-    )
-    .editor-ai-daemons-rail-button {
+/* Split corners while the Selection segment is showing. The class is set by
+   `syncSelectionSegment` — `:has()` invalidates a whole subtree on every rail
+   mutation, and the rail already knows the answer. */
+.editor-ai-daemons-rail-button-row-split .editor-ai-daemons-rail-button {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -1537,11 +1537,11 @@
    the same visual grammar as Review | Selection — one object, shared
    corners meeting flush at a thin divider — instead of a loose circular
    icon floating beside the row. */
-.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry) {
+.editor-ai-daemons-rail-slot-split {
     gap: 0;
 }
 
-.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry) .editor-ai-daemons-rail-row {
+.editor-ai-daemons-rail-slot-split .editor-ai-daemons-rail-row {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -1565,8 +1565,8 @@
 /* Hovering EITHER half tints both — one control, two click zones (the
    split-button grammar); the half under the pointer gets the text
    emphasis so the zones stay tellable apart. */
-.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-retry:hover) .editor-ai-daemons-rail-row,
-.editor-ai-daemons-rail-slot:has(.editor-ai-daemons-rail-row:hover) .editor-ai-daemons-rail-retry {
+.editor-ai-daemons-rail-slot-hover .editor-ai-daemons-rail-row,
+.editor-ai-daemons-rail-slot-hover .editor-ai-daemons-rail-retry {
     background-color: var(--background-modifier-hover);
 }
 

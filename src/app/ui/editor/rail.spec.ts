@@ -151,6 +151,18 @@ class StubElement {
 class StubDocument {
     activeElement: StubElement | null = null
 
+    /**
+     * The rail builds every element through `doc.win.createX()` — the
+     * popout-correct spelling `obsidianmd/prefer-create-el` asks for, which
+     * Obsidian installs on each window and binds to that window's document.
+     * The stub mirrors the shape: detached elements, owned by this document.
+     */
+    readonly win = {
+        createDiv: (): StubElement => this.createElement('div'),
+        createSpan: (): StubElement => this.createElement('span'),
+        createEl: (tagName: string): StubElement => this.createElement(tagName)
+    }
+
     createElement(tagName: string): StubElement {
         return new StubElement(tagName, this)
     }
@@ -407,6 +419,72 @@ describe('PersonaRail reconciliation', () => {
         expect(root.find('editor-ai-daemons-rail-retry')).toBeDefined()
         rail.render(state({ editors: [editor({ id: 'a', status: 'running' })] }))
         expect(root.find('editor-ai-daemons-rail-retry')).toBeUndefined()
+    })
+})
+
+/*
+ * These classes replaced three `:has()` selectors the catalog reviewer flags
+ * for selector-invalidation cost. The styling is unchanged; the CONDITION
+ * moved from the engine into the rail, so it is the rail's job to keep it
+ * true — including on the way back down, which `:has()` got for free.
+ */
+describe('PersonaRail split-control state classes', () => {
+    it('marks the button row split only while the Selection segment shows', () => {
+        const { rail, root } = mount()
+        const row = root.find('editor-ai-daemons-rail-button-row') as StubElement
+
+        rail.render(state({ hasSelection: false }))
+        expect(row.classList.contains('editor-ai-daemons-rail-button-row-split')).toBe(false)
+
+        rail.render(state({ hasSelection: true }))
+        expect(row.classList.contains('editor-ai-daemons-rail-button-row-split')).toBe(true)
+
+        rail.render(state({ hasSelection: false }))
+        expect(row.classList.contains('editor-ai-daemons-rail-button-row-split')).toBe(false)
+    })
+
+    it('marks the slot split while a retry sits beside the row, and unmarks it after', () => {
+        const { rail, root } = mount()
+
+        rail.render(state({ editors: [editor({ id: 'a', status: 'error' })] }))
+        const slot = root.find('editor-ai-daemons-rail-slot') as StubElement
+        expect(slot.classList.contains('editor-ai-daemons-rail-slot-split')).toBe(true)
+
+        rail.render(state({ editors: [editor({ id: 'a', status: 'running' })] }))
+        expect(slot.classList.contains('editor-ai-daemons-rail-slot-split')).toBe(false)
+    })
+
+    it('tints both halves from EITHER half, and clears on leave', () => {
+        const { rail, root } = mount()
+        rail.render(state({ editors: [editor({ id: 'a', status: 'error' })] }))
+        const slot = root.find('editor-ai-daemons-rail-slot') as StubElement
+        const retry = root.find('editor-ai-daemons-rail-retry') as StubElement
+        const row = root.find('editor-ai-daemons-rail-row') as StubElement
+        const hovered = (): boolean => slot.classList.contains('editor-ai-daemons-rail-slot-hover')
+
+        retry.dispatch('mouseenter')
+        expect(hovered()).toBe(true)
+        retry.dispatch('mouseleave')
+        expect(hovered()).toBe(false)
+
+        row.dispatch('mouseenter')
+        expect(hovered()).toBe(true)
+        row.dispatch('mouseleave')
+        expect(hovered()).toBe(false)
+    })
+
+    it('drops a stale hover when the retry half is removed under the pointer', () => {
+        const { rail, root } = mount()
+        rail.render(state({ editors: [editor({ id: 'a', status: 'error' })] }))
+        const slot = root.find('editor-ai-daemons-rail-slot') as StubElement
+        const retry = root.find('editor-ai-daemons-rail-retry') as StubElement
+
+        retry.dispatch('mouseenter')
+        expect(slot.classList.contains('editor-ai-daemons-rail-slot-hover')).toBe(true)
+
+        // A retry that vanishes mid-hover never fires `mouseleave`.
+        rail.render(state({ editors: [editor({ id: 'a', status: 'running' })] }))
+        expect(slot.classList.contains('editor-ai-daemons-rail-slot-hover')).toBe(false)
     })
 })
 
