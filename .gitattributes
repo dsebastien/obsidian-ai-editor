@@ -39,12 +39,18 @@
 *.txt text eol=lf
 *.xml text eol=lf
 
-# Don't include in releases
+# Don't include in releases.
+#
+# NOTE: anything listed here is ABSENT from the GitHub source archive, which is
+# what the community-catalog reviewer builds and lints. Never export-ignore a
+# file the build or the lint run reads:
+#   - CHANGELOG.md is imported by src/app/whats-new.ts (`with { type: 'text' }`);
+#     stripping it broke build verification for 0.4.0.
+#   - eslint.config.ts is the lint config; without it the reviewer falls back to
+#     its own ruleset and every local nuance is invisible.
 .github/ export-ignore
 .husky/ export-ignore
-CHANGELOG.md export-ignore
 prettier.config.cjs export-ignore
-eslint.config.ts export-ignore
 commitlint.config.ts export-ignore
 .cz-config.cjs export-ignore
 .editorconfig export-ignore
