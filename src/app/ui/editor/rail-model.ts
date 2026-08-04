@@ -355,15 +355,23 @@ export function buildFindingsToggleViewModel(hidden: boolean): RailFindingsToggl
  *   editor (with the ~2 s highlight emphasis);
  * - `open-panel` — nothing to reveal inline, but the editor has a summary or
  *   a failure to show: open the side panel scrolled to its section;
- * - `none` — chip in flight (tooltip already says so) or nothing to show.
+ * - `start-review` — the chip has nothing to show at all (idle, or done with
+ *   nothing to report) and nothing is running on the note: clicking it
+ *   summons a review with JUST this editor (live-round feedback,
+ *   2026-08-04). Still an explicit user action (Business Rules #1);
+ * - `none` — chip in flight (tooltip already says so), or nothing to show
+ *   while a run is busy (starting one would cancel it).
  */
-export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'none'
+export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'start-review' | 'none'
 
 /**
  * Pure chip-click decision. In-flight statuses (pending/running/
  * transforming) win over everything — findings may already be streaming in,
  * but the locked contract says a running chip is a no-op. After that,
- * revealable findings beat the panel fallback.
+ * revealable findings beat the panel fallback, and an empty chip falls
+ * through to summoning — but only when `canStartReview` says the note has
+ * no busy run and is reviewable at all (the caller's check; the service
+ * re-checks fail-closed either way).
  *
  * `hasSummaryOrError`: the editor's run state carries a non-empty summary,
  * or ended in error/cancelled — i.e. its side-panel section has something
@@ -372,7 +380,8 @@ export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'none'
 export function chipClickAction(
     status: RailEditorStatus,
     revealableCount: number,
-    hasSummaryOrError: boolean
+    hasSummaryOrError: boolean,
+    canStartReview: boolean
 ): ChipClickAction {
     if (status === 'pending' || status === 'running' || status === 'transforming') {
         return 'none'
@@ -380,7 +389,10 @@ export function chipClickAction(
     if (revealableCount > 0) {
         return 'cycle-findings'
     }
-    return hasSummaryOrError ? 'open-panel' : 'none'
+    if (hasSummaryOrError) {
+        return 'open-panel'
+    }
+    return canStartReview ? 'start-review' : 'none'
 }
 
 export interface RailDaemonViewModel {
@@ -587,7 +599,13 @@ function buildDot(editor: RailEditorState, member: boolean, nameBudget: number):
         // visible label absent from the accessible name is exactly the
         // failure WCAG 2.5.3 is about. The full name is one hover away.
         ariaLabel: `${displayName} — ${statusText}`,
-        title: `${editor.name} — ${statusText}`,
+        // The idle chip's tooltip carries the summon affordance (live-round
+        // feedback, 2026-08-04). Tooltip only: statusText also feeds the
+        // live region, where a standing instruction would be noise.
+        title:
+            editor.status === 'idle'
+                ? `${editor.name} — ${statusText}. Click to review with just this editor.`
+                : `${editor.name} — ${statusText}`,
         retryAriaLabel: isRetryable(editor.status) ? `Retry ${editor.name}` : null,
         member
     }

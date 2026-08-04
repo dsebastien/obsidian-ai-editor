@@ -291,8 +291,16 @@ describe('buildRailViewModel', () => {
         })
 
         it('uses the aria-label as the hover title', () => {
-            const vm = buildRailViewModel(state())
+            const vm = buildRailViewModel(state({ editors: [editor({ status: 'done' })] }))
             expect(vm.dots[0]?.title).toBe(vm.dots[0]?.ariaLabel ?? '')
+        })
+
+        it('the idle tooltip carries the summon affordance, the aria-label does not', () => {
+            const vm = buildRailViewModel(state())
+            expect(vm.dots[0]?.title).toBe(
+                'Concision Editor — idle. Click to review with just this editor.'
+            )
+            expect(vm.dots[0]?.ariaLabel).toBe('Concision Editor — idle')
         })
 
         it('offers a retry affordance only on failed and cancelled editors', () => {
@@ -695,28 +703,36 @@ describe('chipClickAction', () => {
 
     it('is a no-op while the chip is in flight, even with revealable findings', () => {
         for (const status of inFlight) {
-            expect(chipClickAction(status, 0, false)).toBe('none')
-            expect(chipClickAction(status, 3, true)).toBe('none')
+            expect(chipClickAction(status, 0, false, true)).toBe('none')
+            expect(chipClickAction(status, 3, true, true)).toBe('none')
         }
     })
 
     it('cycles findings when the editor has revealable findings', () => {
-        expect(chipClickAction('done', 1, false)).toBe('cycle-findings')
-        expect(chipClickAction('done', 5, true)).toBe('cycle-findings')
+        expect(chipClickAction('done', 1, false, true)).toBe('cycle-findings')
+        expect(chipClickAction('done', 5, true, true)).toBe('cycle-findings')
         // Partial results before a failure/cancellation stay revealable.
-        expect(chipClickAction('error', 2, true)).toBe('cycle-findings')
-        expect(chipClickAction('cancelled', 2, false)).toBe('cycle-findings')
+        expect(chipClickAction('error', 2, true, true)).toBe('cycle-findings')
+        expect(chipClickAction('cancelled', 2, false, true)).toBe('cycle-findings')
     })
 
     it('opens the panel with zero revealable findings but a summary or error', () => {
-        expect(chipClickAction('done', 0, true)).toBe('open-panel')
-        expect(chipClickAction('error', 0, true)).toBe('open-panel')
-        expect(chipClickAction('cancelled', 0, true)).toBe('open-panel')
+        expect(chipClickAction('done', 0, true, true)).toBe('open-panel')
+        expect(chipClickAction('error', 0, true, true)).toBe('open-panel')
+        expect(chipClickAction('cancelled', 0, true, true)).toBe('open-panel')
     })
 
-    it('does nothing when there is nothing to show', () => {
-        expect(chipClickAction('idle', 0, false)).toBe('none')
-        expect(chipClickAction('done', 0, false)).toBe('none')
+    it('summons a single-editor review when there is nothing to show (2026-08-04)', () => {
+        expect(chipClickAction('idle', 0, false, true)).toBe('start-review')
+        expect(chipClickAction('done', 0, false, true)).toBe('start-review')
+    })
+
+    it('never summons while the note is busy or unreviewable', () => {
+        expect(chipClickAction('idle', 0, false, false)).toBe('none')
+        expect(chipClickAction('done', 0, false, false)).toBe('none')
+        // Summoning never outranks showing what already exists.
+        expect(chipClickAction('done', 2, false, true)).toBe('cycle-findings')
+        expect(chipClickAction('done', 0, true, true)).toBe('open-panel')
     })
 })
 

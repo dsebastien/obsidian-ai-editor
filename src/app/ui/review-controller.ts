@@ -837,7 +837,8 @@ export class ReviewController {
         requestedSelection?: RequestedSelection,
         scope: SnapshotScope = 'auto',
         instruction?: RunInstruction,
-        panelId?: string
+        panelId?: string,
+        editorIds?: readonly string[]
     ): Promise<void> {
         const file = view.file
         if (!file || this.disposed) {
@@ -878,7 +879,8 @@ export class ReviewController {
                 view.file?.path === file.path ? this.snapshotView(view, file.path, scope) : null,
             ...(requested ? { requestedSelection: requested } : {}),
             ...(instruction ? { instruction } : {}),
-            ...(panelId === undefined ? {} : { panel: { panelId } })
+            ...(panelId === undefined ? {} : { panel: { panelId } }),
+            ...(editorIds ? { editorIds } : {})
         })
 
         switch (result.status) {
@@ -898,7 +900,15 @@ export class ReviewController {
                     // the confirmation delay and falls back to whole-note
                     // scope when the note was edited meanwhile. A per-run
                     // instruction survives the round trip unchanged.
-                    void this.startReview(view, true, requested, scope, instruction, panelId)
+                    void this.startReview(
+                        view,
+                        true,
+                        requested,
+                        scope,
+                        instruction,
+                        panelId,
+                        editorIds
+                    )
                 }).open()
                 return
             case 'no-editors': {
@@ -2027,7 +2037,15 @@ export class ReviewController {
             ((state.summary !== null && state.summary.length > 0) ||
                 state.status === 'error' ||
                 state.status === 'cancelled')
-        switch (chipClickAction(status, revealable.length, hasSummaryOrError)) {
+        // An empty chip summons (live-round feedback, 2026-08-04) — but not
+        // while anything is busy on the note (starting a run would cancel
+        // the one in flight; explicit ≠ destructive), and only when the note
+        // is reviewable at all (fail closed like every other summon surface).
+        const canStartReview =
+            (run === null || !run.isBusy()) &&
+            (transformRun === null || transformRun.isSettled()) &&
+            this.canReview(view)
+        switch (chipClickAction(status, revealable.length, hasSummaryOrError, canStartReview)) {
             case 'cycle-findings': {
                 const last = glue.chipCycle?.editorId === editorId ? glue.chipCycle.findingId : null
                 const target = cycleFinding(revealable, last)
@@ -2052,6 +2070,13 @@ export class ReviewController {
             }
             case 'open-panel':
                 void this.activateSidePanelAtEditor(editorId)
+                return
+            case 'start-review':
+                // A whole-note review with JUST this editor — the chip names
+                // its own pool, exactly like the ask modal's editor pick.
+                void this.startReview(view, false, undefined, 'whole-note', undefined, undefined, [
+                    editorId
+                ])
                 return
             case 'none':
                 return
