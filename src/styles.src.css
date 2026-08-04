@@ -1829,6 +1829,31 @@
     @apply flex flex-col gap-3;
 }
 
+/* The panel's control block — note name + Review + Ask for comments, and
+   the Review | History tab bar — pins to the top of the scrolling leaf
+   (live-round feedback, 2026-08-04). `contentEl` stays the scroller (the
+   daemon-activity scroll listener and scrollIntoView depend on it); the
+   block simply sticks, with the leaf's background so the list slides
+   under it instead of through it. */
+.editor-ai-daemons-panel-sticky {
+    @apply flex flex-col gap-3;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--background-secondary);
+    /* Cover the leaf's own top padding while pinned, without shifting the
+       resting layout: bleed up by that padding and give it back. */
+    margin-top: calc(-1 * var(--size-4-2, 8px));
+    padding-top: var(--size-4-2, 8px);
+    padding-bottom: 4px;
+}
+
+/* In the main editor area (leaf dragged out of the sidebar or into a popout)
+   the leaf background is the primary one. */
+.mod-root .editor-ai-daemons-panel-sticky {
+    background-color: var(--background-primary);
+}
+
 .editor-ai-daemons-panel-empty {
     @apply my-3 text-sm italic;
     color: var(--text-muted);

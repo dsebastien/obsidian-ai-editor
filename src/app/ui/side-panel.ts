@@ -438,11 +438,17 @@ export class ReviewSidePanelView extends ItemView {
         if (!state) {
             return
         }
-        this.renderHeader(root, state)
+        // The header (note name, Review, Ask for comments) and the tab bar
+        // stay pinned while the list scrolls (live-round feedback,
+        // 2026-08-04): they are the panel's controls, not part of the
+        // content, and losing Review to a long findings list meant
+        // scrolling all the way back up to use it.
+        const sticky = root.createDiv({ cls: 'editor-ai-daemons-panel-sticky' })
+        this.renderHeader(sticky, state)
         // Tab bar (issue #21): the live review surface and the archive
         // behind it. Only rendered when history is wired at all.
         if (state.history !== null) {
-            this.renderTabBar(root)
+            this.renderTabBar(sticky)
             if (this.activeTab === 'history') {
                 this.renderHistoryTab(root, state.history)
                 return
