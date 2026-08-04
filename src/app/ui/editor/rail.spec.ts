@@ -630,11 +630,11 @@ describe('PersonaRail collapse (issue #28)', () => {
         rail.render(state({ collapsed: true }))
         expect(root.classList.contains('is-collapsed')).toBe(true)
         const chevron = root.find('editor-ai-daemons-rail-collapse')
-        expect(chevron?.textContent).toBe('▸')
+        expect(chevron?.classList.contains('is-rail-collapsed')).toBe(true)
         expect(chevron?.attributes.get('aria-expanded')).toBe('false')
         rail.render(state({ collapsed: false }))
         expect(root.classList.contains('is-collapsed')).toBe(false)
-        expect(chevron?.textContent).toBe('▾')
+        expect(chevron?.classList.contains('is-rail-collapsed')).toBe(false)
         expect(chevron?.attributes.get('aria-expanded')).toBe('true')
     })
 
@@ -679,10 +679,16 @@ describe('PersonaRail findings-visibility toggle (issue #29)', () => {
         const { rail, root, clicks } = mount()
         rail.render(state({ findingsHidden: false }))
         const toggle = root.find('editor-ai-daemons-rail-findings-toggle')
-        expect(toggle?.textContent).toBe('▣')
+        expect(root.find('editor-ai-daemons-rail-findings-glyph')?.textContent).toBe('▣')
+        expect(root.find('editor-ai-daemons-rail-findings-label')?.textContent).toBe(
+            'Hide findings'
+        )
         expect(toggle?.attributes.get('aria-pressed')).toBe('false')
         rail.render(state({ findingsHidden: true }))
-        expect(toggle?.textContent).toBe('▢')
+        expect(root.find('editor-ai-daemons-rail-findings-glyph')?.textContent).toBe('▢')
+        expect(root.find('editor-ai-daemons-rail-findings-label')?.textContent).toBe(
+            'Show findings'
+        )
         expect(toggle?.attributes.get('aria-pressed')).toBe('true')
         expect(toggle?.classList.contains('is-findings-hidden')).toBe(true)
         toggle?.dispatch('click')

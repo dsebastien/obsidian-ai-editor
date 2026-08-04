@@ -905,25 +905,22 @@
 }
 
 /* The head's utility row (live-round feedback, 2026-08-04): the findings
-   toggle, the collapsed count and the chevron share one centered row instead
-   of stacking one tiny glyph per line. */
+   toggle fills the row (~80%), the chevron takes the rest — one control
+   strip, not two glyphs stranded on their own lines. The collapsed count
+   sits between them. */
 .editor-ai-daemons-rail-controls {
-    @apply flex items-center justify-center;
+    @apply flex w-full items-stretch justify-end;
     gap: 4px;
 }
 
-/* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
-   hidden — the daemon toggle's convention, and the daemon toggle's chrome
-   reset too: without `box-shadow: none`, Obsidian's global button styling
-   leaves each glyph floating in a raised input-shadow box. */
+/* Shared chrome reset for both controls: without `box-shadow: none`,
+   Obsidian's global button styling leaves each one floating in a raised
+   input-shadow box. */
 .editor-ai-daemons-rail-findings-toggle,
 .editor-ai-daemons-rail-collapse {
     @apply flex cursor-pointer items-center justify-center leading-none;
-    padding: 2px 6px;
-    /* WCAG 2.5.8, same as the daemon toggle: a 24px target around a glyph
-       that stays the size it looks. */
+    /* WCAG 2.5.8, same as the daemon toggle: a 24px minimum target. */
     min-height: 24px;
-    min-width: 24px;
     border-radius: var(--radius-s);
     border: 1px solid transparent;
     background-color: transparent;
@@ -942,8 +939,53 @@
     box-shadow: none;
 }
 
+/* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
+   hidden — the daemon toggle's convention, glyph + words like the daemon
+   toggle too. It owns the row's width. */
+.editor-ai-daemons-rail-findings-toggle {
+    @apply min-w-0 flex-1 gap-1.5;
+    padding: 2px 6px;
+}
+
+.editor-ai-daemons-rail-findings-glyph {
+    @apply shrink-0 leading-none;
+    font-size: 1em;
+}
+
+.editor-ai-daemons-rail-findings-label {
+    @apply truncate;
+}
+
 .editor-ai-daemons-rail-findings-toggle.is-findings-hidden {
     color: var(--text-accent);
+}
+
+/* Collapse control (issue #28): a real chevron, drawn as a stroked corner
+   and rotated by state — down while expanded (press to fold), right while
+   collapsed (press to open). */
+.editor-ai-daemons-rail-collapse {
+    @apply shrink-0;
+    min-width: 24px;
+    padding: 2px 4px;
+}
+
+.editor-ai-daemons-rail-chevron {
+    width: 7px;
+    height: 7px;
+    border-right: 1.75px solid currentColor;
+    border-bottom: 1.75px solid currentColor;
+    transform: translateY(-1.5px) rotate(45deg);
+    transition: transform 120ms ease;
+}
+
+.editor-ai-daemons-rail-collapse.is-rail-collapsed .editor-ai-daemons-rail-chevron {
+    transform: translateX(-1.5px) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .editor-ai-daemons-rail-chevron {
+        transition: none;
+    }
 }
 
 .editor-ai-daemons-rail-collapsed-count {

@@ -182,11 +182,13 @@ export class PersonaRail {
     private readonly collapseEl: HTMLButtonElement
     private readonly countEl: HTMLElement
     private readonly findingsEl: HTMLButtonElement
+    private readonly findingsGlyphEl: HTMLElement
+    private readonly findingsLabelEl: HTMLElement
     private readonly selectionEl: HTMLButtonElement
     private selectionTooltip = ''
-    private collapsedGlyph = ''
     private countText = ''
     private findingsGlyph = ''
+    private findingsLabel = ''
     private findingsTooltip = ''
     /**
      * What the previous render showed, so `railMotion` can tell a new run from
@@ -296,12 +298,18 @@ export class PersonaRail {
         controlsEl.classList.add('editor-ai-daemons-rail-controls')
 
         // Findings visibility toggle (issue #29): filled = shown, hollow =
-        // hidden — the daemon toggle's convention. Always present, like the
-        // daemon toggle: a control that only appeared once something was
-        // hidden could never be the thing that hides it.
+        // hidden — the daemon toggle's convention, glyph + words like the
+        // daemon toggle too. Always present: a control that only appeared
+        // once something was hidden could never be the thing that hides it.
         this.findingsEl = this.doc.createElement('button')
         this.findingsEl.classList.add('editor-ai-daemons-rail-findings-toggle')
         this.findingsEl.type = 'button'
+        this.findingsGlyphEl = this.doc.createElement('span')
+        this.findingsGlyphEl.classList.add('editor-ai-daemons-rail-findings-glyph')
+        this.findingsLabelEl = this.doc.createElement('span')
+        this.findingsLabelEl.classList.add('editor-ai-daemons-rail-findings-label')
+        this.findingsEl.appendChild(this.findingsGlyphEl)
+        this.findingsEl.appendChild(this.findingsLabelEl)
         this.findingsEl.addEventListener('click', () => {
             this.callbacks.onToggleFindings()
         })
@@ -317,10 +325,15 @@ export class PersonaRail {
         controlsEl.appendChild(this.countEl)
 
         // Collapse/expand chevron (issue #28): always visible, so a lone
-        // daemon toggle still hints that a rail is folded behind it.
+        // daemon toggle still hints that a rail is folded behind it. The
+        // chevron itself is a CSS-drawn stroke (an empty span rotated by the
+        // button's is-rail-collapsed class), not a triangle glyph.
         this.collapseEl = this.doc.createElement('button')
         this.collapseEl.classList.add('editor-ai-daemons-rail-collapse')
         this.collapseEl.type = 'button'
+        const chevronEl = this.doc.createElement('span')
+        chevronEl.classList.add('editor-ai-daemons-rail-chevron')
+        this.collapseEl.appendChild(chevronEl)
         this.collapseEl.addEventListener('click', () => {
             this.callbacks.onToggleCollapsed()
         })
@@ -460,8 +473,12 @@ export class PersonaRail {
     private syncFindingsToggle(viewModel: RailViewModel): void {
         const toggle = viewModel.findingsToggle
         if (this.findingsGlyph !== toggle.text) {
-            this.findingsEl.textContent = toggle.text
+            this.findingsGlyphEl.textContent = toggle.text
             this.findingsGlyph = toggle.text
+        }
+        if (this.findingsLabel !== toggle.label) {
+            this.findingsLabelEl.textContent = toggle.label
+            this.findingsLabel = toggle.label
         }
         this.findingsEl.setAttribute('aria-pressed', String(toggle.hidden))
         this.findingsEl.classList.toggle('is-findings-hidden', toggle.hidden)
@@ -473,11 +490,9 @@ export class PersonaRail {
 
     /** Patches the chevron + collapsed count in place (issue #28). */
     private syncCollapse(viewModel: RailViewModel): void {
-        const glyph = viewModel.collapsed ? '▸' : '▾'
-        if (this.collapsedGlyph !== glyph) {
-            this.collapseEl.textContent = glyph
-            this.collapsedGlyph = glyph
-        }
+        // The class rotates the CSS-drawn chevron: down while expanded
+        // (press to fold), right while collapsed (press to open).
+        this.collapseEl.classList.toggle('is-rail-collapsed', viewModel.collapsed)
         this.collapseEl.setAttribute('aria-expanded', String(!viewModel.collapsed))
         const label = viewModel.collapsed ? 'Expand the review rail' : 'Collapse the review rail'
         if (this.collapseEl.getAttribute('aria-label') !== label) {

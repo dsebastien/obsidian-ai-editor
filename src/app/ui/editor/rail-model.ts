@@ -319,6 +319,12 @@ export interface RailSelectionSegmentViewModel {
 export interface RailFindingsToggleViewModel {
     readonly hidden: boolean
     readonly text: string
+    /**
+     * The words on the button (live-round feedback, 2026-08-04): a lone
+     * glyph next to the named rows was the one unreadable control on the
+     * rail — the button says what pressing it does.
+     */
+    readonly label: string
     readonly ariaLabel: string
     readonly tooltip: string
 }
@@ -328,6 +334,7 @@ export function buildFindingsToggleViewModel(hidden: boolean): RailFindingsToggl
         ? {
               hidden: true,
               text: '▢',
+              label: 'Show findings',
               ariaLabel: 'Findings hidden — show them',
               tooltip:
                   'Findings are hidden in this note and the daemon is paused for it. Click to show them again.'
@@ -335,6 +342,7 @@ export function buildFindingsToggleViewModel(hidden: boolean): RailFindingsToggl
         : {
               hidden: false,
               text: '▣',
+              label: 'Hide findings',
               ariaLabel: 'Findings shown — hide them',
               tooltip:
                   'Hide the findings in this note (they stay in the review panel) and pause the daemon for it.'
