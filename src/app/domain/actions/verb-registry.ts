@@ -63,10 +63,12 @@ const CRITIQUE_INSTRUCTION = `Critique this text: identify the most significant 
 
 const FIND_EVIDENCE_INSTRUCTION = `Find the claims in this text that need supporting evidence. For each, report a finding quoting the claim, and state in the critique what kind of support it needs — a source, a number, an example, or a qualification. Attach evidence entries: sources you actually consulted during this review marked "verified", suggested places to check marked "requires-verification"; never mark evidence "verified" unless you truly consulted it. Leave opinions and first-person experience alone — flag only claims a skeptical reader would challenge with "says who?".`
 
+const FIND_REFERENCES_INSTRUCTION = `Find the sources this text should cite. For each claim that deserves a reference, report a finding quoting the claim, and attach evidence entries carrying the source: a precise title, the URL when the source is online, and one sentence on what it supports. Verification discipline is absolute: mark a source "verified" ONLY when you actually consulted it during this review; a source you recall or infer is "requires-verification" — never guess a URL into existence. Prefer primary sources over aggregators, and one strong source over three weak ones. Leave opinions and first-person experience alone; reference the claims a reader would want to check or read more about.`
+
 const IDENTIFY_ASSUMPTIONS_INSTRUCTION = `Surface the hidden assumptions this text depends on. For each, report a finding anchored to the passage that relies on it, name the assumption explicitly in the critique, and assess whether it holds — safe, contestable, or likely false. Prioritize load-bearing assumptions: the ones that, if wrong, would break the piece's central claim. Include assumptions about the reader (what they know, what they value, what they have access to) as well as assumptions of fact. Do not pad the list with trivial background truths every text shares.`
 
 /**
- * The eleven built-in verbs, in gallery order: transform verbs first, then
+ * The twelve built-in verbs, in gallery order: transform verbs first, then
  * generate, then review-class — the order menus present them in. The two
  * placement verbs (issue #31) are generate-class with a COMPUTED insertion
  * point: `expand-section` inserts at the end of the cursor's section,
@@ -133,6 +135,12 @@ export const BUILT_IN_VERBS: readonly BuiltInVerb[] = [
         label: 'Find evidence',
         verbClass: 'review',
         instruction: FIND_EVIDENCE_INSTRUCTION
+    },
+    {
+        id: 'find-references',
+        label: 'Find references',
+        verbClass: 'review',
+        instruction: FIND_REFERENCES_INSTRUCTION
     },
     {
         id: 'identify-assumptions',

@@ -29,6 +29,7 @@ import {
     planBulkAccept
 } from '../commands/bulk-triage'
 import type { ActionVerb } from '../domain/actions/verb-registry'
+import { referenceFootnote, referenceSectionInsertion } from '../domain/references'
 import { sectionInsertionPoint } from '../domain/sections'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
@@ -3099,7 +3100,9 @@ export class ReviewController {
                 this.dismissFinding(findingId)
             },
             pushBack: (findingId, message): Promise<boolean> =>
-                this.pushBackOnFinding(findingId, message)
+                this.pushBackOnFinding(findingId, message),
+            addReference: (findingId, evidenceIndex, placement): boolean =>
+                this.addReferenceFromCard(findingId, evidenceIndex, placement)
         }
     }
 
@@ -3146,8 +3149,74 @@ export class ReviewController {
             invalidProposal: finding.raw.invalidProposal,
             acceptable: run.findings.isActionable(id),
             thread: finding.thread,
-            threadTurn: finding.threadTurn
+            threadTurn: finding.threadTurn,
+            // Sources (issue #30): the card offers Add controls only for
+            // entries the editor actually consulted.
+            evidence: finding.raw.evidence.map((entry) => ({
+                title: entry.title,
+                url: entry.url ?? null,
+                claim: entry.claim ?? null,
+                verified: entry.verification === 'verified'
+            })),
+            anchoredSpan: finding.anchor !== null
         }
+    }
+
+    /**
+     * Writes one verified source into the note (issue #30, the card's Add
+     * controls): an inline `^[…]` footnote right after the finding's CURRENT
+     * span, or a bullet under the References section (created at the note's
+     * end when missing). Re-checks everything the card showed — the source
+     * must still be verified, the note open, the anchor live for a footnote —
+     * because the card renders from a snapshot of state that may have moved.
+     * One dispatch, one undo step; the resulting doc change closes the card.
+     */
+    private addReferenceFromCard(
+        rawId: string,
+        evidenceIndex: number,
+        placement: 'footnote' | 'section'
+    ): boolean {
+        const id = asFindingId(rawId)
+        const run = this.deps.runController.findRunWithFinding(id)
+        const finding = run?.findings.get(id)
+        const evidence = finding?.raw.evidence[evidenceIndex]
+        if (!run || !finding || !evidence) {
+            new Notice('That source is no longer available.')
+            return false
+        }
+        if (evidence.verification !== 'verified') {
+            return false
+        }
+        const glue = this.canonicalGlueFor(run.snapshot.filePath)
+        const editorView = glue ? editorViewOf(glue.view) : null
+        if (!glue || !editorView || glue.view.file?.path !== run.snapshot.filePath) {
+            new Notice('Open the note in an editor to add the reference.')
+            return false
+        }
+        const text = editorView.state.doc.toString()
+        let change: { from: number; to: number; insert: string }
+        if (placement === 'footnote') {
+            const anchor = finding.anchor
+            if (!anchor || anchor.to > text.length) {
+                new Notice(
+                    'The finding is no longer anchored in the text, so a footnote has ' +
+                        'nowhere to land — add the source to the references section instead.'
+                )
+                return false
+            }
+            change = { from: anchor.to, to: anchor.to, insert: referenceFootnote(evidence) }
+        } else {
+            const target = referenceSectionInsertion(text, evidence)
+            change = { from: target.offset, to: target.offset, insert: target.insert }
+        }
+        editorView.dispatch({ changes: change })
+        this.noteDaemonActivity(run.snapshot.filePath)
+        new Notice(
+            placement === 'footnote'
+                ? 'Reference added as a footnote.'
+                : 'Reference added under References.'
+        )
+        return true
     }
 
     /**

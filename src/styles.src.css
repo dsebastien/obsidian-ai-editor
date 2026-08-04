@@ -1046,6 +1046,63 @@
     background: var(--background-modifier-hover);
 }
 
+/* The Sources block (issue #30): one row per attached source, with the Add
+   controls on verified entries and the not-consulted label on the rest. */
+.editor-ai-daemons-finding-card-sources {
+    @apply mt-2 flex flex-col gap-1.5;
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 6px;
+}
+
+.editor-ai-daemons-finding-card-sources-heading {
+    @apply text-xs font-medium uppercase;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-finding-card-source {
+    @apply flex flex-col gap-0.5 text-xs;
+}
+
+.editor-ai-daemons-finding-card-source-title {
+    @apply font-medium;
+    color: var(--text-normal);
+}
+
+.editor-ai-daemons-finding-card-source-url {
+    @apply break-all;
+    color: var(--text-faint);
+}
+
+.editor-ai-daemons-finding-card-source-claim {
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-finding-card-source-controls {
+    @apply mt-0.5 flex items-center gap-1.5;
+}
+
+.editor-ai-daemons-finding-card-source-add {
+    @apply cursor-pointer px-1.5 py-0.5 text-xs;
+    color: var(--text-normal);
+    background-color: var(--interactive-normal);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    box-shadow: none;
+}
+
+.editor-ai-daemons-finding-card-source-add:hover:not(:disabled) {
+    background-color: var(--interactive-hover);
+}
+
+.editor-ai-daemons-finding-card-source-add:disabled {
+    @apply cursor-default opacity-60;
+}
+
+.editor-ai-daemons-finding-card-source-unverified {
+    @apply text-xs italic;
+    color: var(--text-muted);
+}
+
 /* Narrow pane: ONLY the scale changes. Same rules, same shapes, less room. */
 .editor-ai-daemons-rail-compact {
     --editor-ai-daemons-rail-pad: 5px;

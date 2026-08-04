@@ -25,6 +25,7 @@ Each action is bound to one editor (or, for review-class actions, a panel) in **
 | **Continue the note**    | Inserted at the end of the note             | unbound          |
 | **Critique**             | Comes back as findings                      | Devil's Advocate |
 | **Find evidence**        | Comes back as findings                      | Fact Checker     |
+| **Find references**      | Findings with addable sources               | Fact Checker     |
 | **Identify assumptions** | Comes back as findings                      | Devil's Advocate |
 
 **Continue writing**, **Say more**, **Expand section** and **Continue the note** are deliberately left unbound: no seeded persona is an authorial voice, so any default would be a bad one. Bind them to an editor whose prompt describes _your_ writing.
@@ -46,7 +47,9 @@ Accept is a single undo step, and only applies while the selected text is unchan
 
 **Generate verbs** (continue writing, say more, expand section, continue the note) insert a proposed continuation through the same preview and the same Accept/Reject — after the selection or at the cursor for the first two, at the computed spot for the placement verbs.
 
-**Review verbs** (critique, find evidence, identify assumptions) run the ordinary review pipeline: findings arrive as highlights, exactly like **Review selection**, and are triaged the same way. These three can also be bound to a **panel**, in which case the whole panel convenes — every member runs the action with the charter in its prompt — and you get a [scorecard](panels.md) on top.
+**Review verbs** (critique, find evidence, find references, identify assumptions) run the ordinary review pipeline: findings arrive as highlights, exactly like **Review selection**, and are triaged the same way. They can also be bound to a **panel**, in which case the whole panel convenes — every member runs the action with the charter in its prompt — and you get a [scorecard](panels.md) on top.
+
+**Find references** goes one step further: each finding's card lists the sources the editor attached, and every source the editor **actually consulted** carries two buttons — **Add as footnote** (an inline `^[…]` footnote right after the claim) and **Add to References** (a bullet under your `## References` section, created at the end of the note if it does not exist). A source the editor merely suggests is labeled "Not consulted — verify before citing" and gets no buttons: the plugin never writes an unconsulted citation into your note. Copy gives you the markdown either way. Editors on backends that cannot browse (most API backends) will mostly produce suggestions; a research-capable backend (a CLI agent with web access) is where this verb earns its keep.
 
 ## Custom actions
 

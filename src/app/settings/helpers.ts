@@ -58,7 +58,8 @@ const BUILT_IN_ACTION_LABELS: Record<BuiltInActionId, string> = {
     'humanize': 'Humanize',
     'continue': 'Continue',
     'expand-section': 'Expand section',
-    'continue-note': 'Continue the note'
+    'continue-note': 'Continue the note',
+    'find-references': 'Find references'
 }
 
 /** Sentence-case display label for a built-in action verb. */

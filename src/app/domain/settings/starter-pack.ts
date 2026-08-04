@@ -205,6 +205,7 @@ export const STARTER_ACTION_BINDINGS: readonly {
     { actionId: 'humanize', editorName: 'Humanizer' },
     { actionId: 'critique', editorName: "Devil's Advocate" },
     { actionId: 'find-evidence', editorName: 'Fact Checker' },
+    { actionId: 'find-references', editorName: 'Fact Checker' },
     { actionId: 'identify-assumptions', editorName: "Devil's Advocate" }
 ]
 

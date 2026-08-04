@@ -39,7 +39,8 @@ const BUILT_IN_ACTION_DESCRIPTIONS: Record<BuiltInActionId, string> = {
     'humanize': 'Remove AI-sounding patterns; restore a human voice.',
     'continue': 'Draft a continuation at the cursor.',
     'expand-section': "Develop the cursor's section; inserts at its end. No selection needed.",
-    'continue-note': 'Continue at the very end of the note. No selection needed.'
+    'continue-note': 'Continue at the very end of the note. No selection needed.',
+    'find-references': 'Find sources for the claims; add vetted ones as footnotes or references.'
 }
 
 /**

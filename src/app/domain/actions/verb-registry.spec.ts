@@ -22,7 +22,12 @@ describe('verb registry', () => {
             'expand-section',
             'say-more'
         ])
-        expect(byClass('review')).toEqual(['critique', 'find-evidence', 'identify-assumptions'])
+        expect(byClass('review')).toEqual([
+            'critique',
+            'find-evidence',
+            'find-references',
+            'identify-assumptions'
+        ])
     })
 
     it('gives every verb a sentence-case label and a substantial instruction', () => {

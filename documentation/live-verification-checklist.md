@@ -568,3 +568,15 @@ Bind both verbs to an editor first (Actions tab — they ship unbound).
 - [ ] Ctrl/Cmd+click on the same spot follows the link (no card).
 - [ ] Same for an external/markdown link inside a finding span.
 - [ ] Links OUTSIDE any finding still open on plain click as before.
+
+## Find references (issue #30, 2026-08-04) — UNVERIFIED
+
+Best tested with a research-capable backend (CLI agent) so verified sources exist; an API backend exercises the unverified path.
+
+- [ ] Run "Find references" on a note with checkable claims: findings anchor to the claims, cards show a Sources block.
+- [ ] A verified source shows "Add as footnote" + "Add to References"; an unverified one shows the "Not consulted" label and NO add buttons (Copy still there).
+- [ ] Add as footnote: `^[[Title](url)]` lands right after the claim's span, one undo step, card closes.
+- [ ] Add to References with an existing `## References` section: bullet appended at the section's end (after existing bullets, before any later heading).
+- [ ] Add to References with NO such section: `## References` created at the end of the note with the bullet.
+- [ ] Unanchored finding (edit the claim's text first): footnote button disabled with the reason; Add to References still works.
+- [ ] Verb appears in menu/palette bound to Fact Checker out of the box (fresh vault) — existing vaults keep their bindings.

@@ -83,6 +83,28 @@ export interface FindingCardData {
     readonly thread: readonly ThreadMessage[]
     /** In-flight or failed push-back turn; `null` when the thread is idle. */
     readonly threadTurn: ThreadTurn | null
+    /**
+     * Sources attached to the finding (issue #30): shown as a Sources block
+     * with Add-as-footnote / Add-to-References controls — enabled only for
+     * entries the editor actually consulted (`verified`), because the plugin
+     * must never write an unconsulted citation into a note.
+     */
+    readonly evidence: readonly CardEvidenceData[]
+    /**
+     * Whether the finding's span is currently anchored in the text — the
+     * footnote add needs a place to land; the References add does not.
+     */
+    readonly anchoredSpan: boolean
+}
+
+/** One source shown in the card's Sources block (issue #30). */
+export interface CardEvidenceData {
+    readonly title: string
+    readonly url: string | null
+    /** What the source supports, per the editor. */
+    readonly claim: string | null
+    /** True when the editor actually consulted it during the review. */
+    readonly verified: boolean
 }
 
 /** One rendered edit of a finding's proposal. */
@@ -132,6 +154,19 @@ export interface FindingLookup {
      * message on `false`.
      */
     pushBack(findingId: string, message: string): Promise<boolean>
+    /**
+     * Writes one VERIFIED source into the note (issue #30): an inline
+     * footnote right after the finding's span, or a bullet under the
+     * References section (created at the end when missing). The controller
+     * re-checks the verification label and the anchor before writing —
+     * `false` means nothing was written. A successful add edits the
+     * document, which closes the card (`docChanged`), exactly like Accept.
+     */
+    addReference(
+        findingId: string,
+        evidenceIndex: number,
+        placement: 'footnote' | 'section'
+    ): boolean
 }
 
 /**
@@ -896,12 +931,106 @@ class FindingCardPlugin implements PluginValue {
         for (const edit of data.edits) {
             section.appendChild(this.renderEdit(edit))
         }
+        if (data.evidence.length > 0) {
+            section.appendChild(this.renderEvidence(data))
+        }
 
         section.appendChild(this.renderActions(data))
         for (const element of this.renderThread(data)) {
             section.appendChild(element)
         }
         return section
+    }
+
+    /**
+     * The Sources block (issue #30): one row per evidence entry — the
+     * source, its verification label, and the two Add controls. Adds are
+     * offered ONLY for verified sources (the plugin never writes an
+     * unconsulted citation); an unverified row says so instead of showing
+     * dead buttons, and the footnote add additionally needs the finding's
+     * span to still be anchored somewhere to land.
+     */
+    private renderEvidence(data: FindingCardData): HTMLElement {
+        const doc = this.view.dom.ownerDocument
+        const block = doc.createElement('div')
+        block.classList.add('editor-ai-daemons-finding-card-sources')
+        const heading = doc.createElement('span')
+        heading.classList.add('editor-ai-daemons-finding-card-sources-heading')
+        heading.textContent = 'Sources'
+        block.appendChild(heading)
+        data.evidence.forEach((entry, index) => {
+            const row = doc.createElement('div')
+            row.classList.add('editor-ai-daemons-finding-card-source')
+            const title = doc.createElement('span')
+            title.classList.add('editor-ai-daemons-finding-card-source-title')
+            title.textContent = entry.title
+            row.appendChild(title)
+            if (entry.url !== null) {
+                const url = doc.createElement('span')
+                url.classList.add('editor-ai-daemons-finding-card-source-url')
+                url.textContent = entry.url
+                row.appendChild(url)
+            }
+            if (entry.claim !== null) {
+                const claim = doc.createElement('span')
+                claim.classList.add('editor-ai-daemons-finding-card-source-claim')
+                claim.textContent = entry.claim
+                row.appendChild(claim)
+            }
+            const controls = doc.createElement('div')
+            controls.classList.add('editor-ai-daemons-finding-card-source-controls')
+            if (entry.verified) {
+                controls.appendChild(
+                    this.addReferenceButton(doc, data, index, 'footnote', 'Add as footnote')
+                )
+                controls.appendChild(
+                    this.addReferenceButton(doc, data, index, 'section', 'Add to References')
+                )
+            } else {
+                const badge = doc.createElement('span')
+                badge.classList.add('editor-ai-daemons-finding-card-source-unverified')
+                badge.textContent = 'Not consulted — verify before citing'
+                badge.title =
+                    'The editor suggests this source but did not consult it during the ' +
+                    'review, so the plugin will not cite it for you. Check it yourself, ' +
+                    'then add it by hand (Copy gives you the markdown).'
+                controls.appendChild(badge)
+            }
+            controls.appendChild(
+                this.copyButton(doc, 'Copy this source as markdown', () =>
+                    entry.url === null ? entry.title : `[${entry.title}](${entry.url})`
+                )
+            )
+            row.appendChild(controls)
+            block.appendChild(row)
+        })
+        return block
+    }
+
+    private addReferenceButton(
+        doc: Document,
+        data: FindingCardData,
+        index: number,
+        placement: 'footnote' | 'section',
+        label: string
+    ): HTMLElement {
+        const button = doc.createElement('button')
+        button.classList.add('editor-ai-daemons-finding-card-source-add')
+        button.textContent = label
+        const blocked = placement === 'footnote' && !data.anchoredSpan
+        if (blocked) {
+            button.disabled = true
+            button.title =
+                'The finding is no longer anchored in the text, so there is no place ' +
+                'to attach the footnote — use Add to References instead.'
+        }
+        button.addEventListener('click', () => {
+            // A successful add edits the note, which closes the card.
+            if (!this.lookup.addReference(data.findingId, index, placement)) {
+                button.disabled = true
+            }
+        })
+        return button
     }
 
     /**
