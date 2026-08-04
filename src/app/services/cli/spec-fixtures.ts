@@ -155,6 +155,11 @@ export class FakeRunHandle implements RunHandle {
         return { ok: false, reason: 'not-retryable' }
     }
 
+    addEditor(): { ok: false; reason: 'already-in-run' } {
+        // Joining a run is a UI affordance too; fixture refuses.
+        return { ok: false, reason: 'already-in-run' }
+    }
+
     continueEditor(): { ok: false; reason: 'not-continuable' } {
         // "Generate more" is a UI affordance too; fixture refuses.
         return { ok: false, reason: 'not-continuable' }

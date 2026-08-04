@@ -703,36 +703,46 @@ describe('chipClickAction', () => {
 
     it('is a no-op while the chip is in flight, even with revealable findings', () => {
         for (const status of inFlight) {
-            expect(chipClickAction(status, 0, false, true)).toBe('none')
-            expect(chipClickAction(status, 3, true, true)).toBe('none')
+            expect(chipClickAction(status, 0, false, true, false)).toBe('none')
+            expect(chipClickAction(status, 3, true, true, false)).toBe('none')
         }
     })
 
     it('cycles findings when the editor has revealable findings', () => {
-        expect(chipClickAction('done', 1, false, true)).toBe('cycle-findings')
-        expect(chipClickAction('done', 5, true, true)).toBe('cycle-findings')
+        expect(chipClickAction('done', 1, false, true, false)).toBe('cycle-findings')
+        expect(chipClickAction('done', 5, true, true, false)).toBe('cycle-findings')
         // Partial results before a failure/cancellation stay revealable.
-        expect(chipClickAction('error', 2, true, true)).toBe('cycle-findings')
-        expect(chipClickAction('cancelled', 2, false, true)).toBe('cycle-findings')
+        expect(chipClickAction('error', 2, true, true, false)).toBe('cycle-findings')
+        expect(chipClickAction('cancelled', 2, false, true, false)).toBe('cycle-findings')
     })
 
     it('opens the panel with zero revealable findings but a summary or error', () => {
-        expect(chipClickAction('done', 0, true, true)).toBe('open-panel')
-        expect(chipClickAction('error', 0, true, true)).toBe('open-panel')
-        expect(chipClickAction('cancelled', 0, true, true)).toBe('open-panel')
+        expect(chipClickAction('done', 0, true, true, false)).toBe('open-panel')
+        expect(chipClickAction('error', 0, true, true, false)).toBe('open-panel')
+        expect(chipClickAction('cancelled', 0, true, true, false)).toBe('open-panel')
     })
 
     it('summons a single-editor review when there is nothing to show (2026-08-04)', () => {
-        expect(chipClickAction('idle', 0, false, true)).toBe('start-review')
-        expect(chipClickAction('done', 0, false, true)).toBe('start-review')
+        expect(chipClickAction('idle', 0, false, true, false)).toBe('start-review')
+        expect(chipClickAction('done', 0, false, true, false)).toBe('start-review')
+    })
+
+    it('an idle chip JOINS an existing run — busy or settled (2026-08-04 ×2)', () => {
+        // canStartReview false (run busy) + canJoinRun true: the run is
+        // never cancelled, the editor queues onto it.
+        expect(chipClickAction('idle', 0, false, false, true)).toBe('join-run')
+        // Join outranks a fresh summon when both are possible (settled run).
+        expect(chipClickAction('idle', 0, false, true, true)).toBe('join-run')
+        // Only an IDLE chip joins: a done editor is already in the run.
+        expect(chipClickAction('done', 0, false, false, true)).toBe('none')
     })
 
     it('never summons while the note is busy or unreviewable', () => {
-        expect(chipClickAction('idle', 0, false, false)).toBe('none')
-        expect(chipClickAction('done', 0, false, false)).toBe('none')
+        expect(chipClickAction('idle', 0, false, false, false)).toBe('none')
+        expect(chipClickAction('done', 0, false, false, false)).toBe('none')
         // Summoning never outranks showing what already exists.
-        expect(chipClickAction('done', 2, false, true)).toBe('cycle-findings')
-        expect(chipClickAction('done', 0, true, true)).toBe('open-panel')
+        expect(chipClickAction('done', 2, false, true, false)).toBe('cycle-findings')
+        expect(chipClickAction('done', 0, true, true, false)).toBe('open-panel')
     })
 })
 

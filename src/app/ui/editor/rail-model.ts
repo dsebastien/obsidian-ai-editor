@@ -355,14 +355,18 @@ export function buildFindingsToggleViewModel(hidden: boolean): RailFindingsToggl
  *   editor (with the ~2 s highlight emphasis);
  * - `open-panel` — nothing to reveal inline, but the editor has a summary or
  *   a failure to show: open the side panel scrolled to its section;
- * - `start-review` — the chip has nothing to show at all (idle, or done with
- *   nothing to report) and nothing is running on the note: clicking it
- *   summons a review with JUST this editor (live-round feedback,
- *   2026-08-04). Still an explicit user action (Business Rules #1);
+ * - `join-run` — the chip is idle (this editor is NOT part of the note's
+ *   run) and a run exists: clicking it adds the editor to that run through
+ *   the same concurrency queue — busy or settled, the run is never
+ *   cancelled or replaced (live-round feedback, 2026-08-04 ×2);
+ * - `start-review` — the chip has nothing to show at all (idle with no run,
+ *   or done with nothing to report) and nothing is running on the note:
+ *   clicking it summons a review with JUST this editor (live-round
+ *   feedback, 2026-08-04). Still an explicit user action (Business Rules #1);
  * - `none` — chip in flight (tooltip already says so), or nothing to show
  *   while a run is busy (starting one would cancel it).
  */
-export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'start-review' | 'none'
+export type ChipClickAction = 'cycle-findings' | 'open-panel' | 'join-run' | 'start-review' | 'none'
 
 /**
  * Pure chip-click decision. In-flight statuses (pending/running/
@@ -381,7 +385,8 @@ export function chipClickAction(
     status: RailEditorStatus,
     revealableCount: number,
     hasSummaryOrError: boolean,
-    canStartReview: boolean
+    canStartReview: boolean,
+    canJoinRun: boolean
 ): ChipClickAction {
     if (status === 'pending' || status === 'running' || status === 'transforming') {
         return 'none'
@@ -391,6 +396,11 @@ export function chipClickAction(
     }
     if (hasSummaryOrError) {
         return 'open-panel'
+    }
+    // Only an IDLE chip can join: any other terminal status means the editor
+    // is already in the run, where the gesture is retry or Generate more.
+    if (status === 'idle' && canJoinRun) {
+        return 'join-run'
     }
     return canStartReview ? 'start-review' : 'none'
 }

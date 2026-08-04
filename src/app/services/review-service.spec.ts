@@ -11,6 +11,7 @@ import { RunController } from './orchestration/run-controller'
 import { reviewGate } from './reviewability'
 import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import {
+    addEditorToRun,
     augmentPanelCharter,
     augmentResponseLanguage,
     augmentSystemPrompt,
@@ -1911,5 +1912,73 @@ describe('startReview — one view of the vault per run', () => {
         for (const body of bodies) {
             expect(body).toContain('REFERENCE CONTENT')
         }
+    })
+})
+
+describe('addEditorToRun (joining a run, 2026-08-04)', () => {
+    async function waitUntil(condition: () => boolean): Promise<void> {
+        for (let i = 0; i < 200 && !condition(); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 1))
+        }
+        expect(condition()).toBeTrue()
+    }
+
+    it('adds a second editor to an existing run, then refuses the duplicate', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor({ id: 'e-1' }), makeEditor({ id: 'e-2', name: 'Second' })]
+        })
+        const snapshot = makeSnapshot()
+        const started = await startReview({
+            settings,
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            editorIds: ['e-1']
+        })
+        if (started.status !== 'started') {
+            throw new Error(`Expected started, got ${started.status}`)
+        }
+        const join = {
+            settings,
+            vault: new FakeVault(),
+            run: started.run,
+            editorId: 'e-2',
+            notePath: snapshot.filePath,
+            noteText: snapshot.text,
+            fetchImpl: fetchReturning(anthropicReviewBody())
+        }
+        expect(await addEditorToRun(join)).toEqual({ status: 'added' })
+        expect(started.run.getEditorState('e-2')).not.toBeNull()
+        await waitUntil(() => started.run.getEditorState('e-2')?.status === 'done')
+        expect(await addEditorToRun(join)).toEqual({ status: 'already-in-run' })
+    })
+
+    it('refuses an editor that cannot run, with the skip report', async () => {
+        const settings = makeSettings({
+            editors: [makeEditor({ id: 'e-1' }), makeEditor({ id: 'e-2', enabled: false })]
+        })
+        const snapshot = makeSnapshot()
+        const started = await startReview({
+            settings,
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            editorIds: ['e-1']
+        })
+        if (started.status !== 'started') {
+            throw new Error(`Expected started, got ${started.status}`)
+        }
+        const result = await addEditorToRun({
+            settings,
+            vault: new FakeVault(),
+            run: started.run,
+            editorId: 'e-2',
+            notePath: snapshot.filePath,
+            noteText: snapshot.text,
+            fetchImpl: fetchReturning(anthropicReviewBody())
+        })
+        expect(result.status).toBe('editor-unavailable')
     })
 })

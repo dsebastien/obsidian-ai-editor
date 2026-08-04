@@ -67,7 +67,12 @@ import type {
     TransformOutcome,
     TransformRunHandle
 } from '../services/orchestration/transform-run'
-import { countWords, skipReasonLabel, startReview } from '../services/review-service'
+import {
+    addEditorToRun,
+    countWords,
+    skipReasonLabel,
+    startReview
+} from '../services/review-service'
 import type { EditorSkip, RunInstruction } from '../services/review-service'
 import { startThreadTurn } from '../services/thread-service'
 import { startAction } from '../services/transform-service'
@@ -2051,15 +2056,31 @@ export class ReviewController {
             ((state.summary !== null && state.summary.length > 0) ||
                 state.status === 'error' ||
                 state.status === 'cancelled')
-        // An empty chip summons (live-round feedback, 2026-08-04) — but not
-        // while anything is busy on the note (starting a run would cancel
-        // the one in flight; explicit ≠ destructive), and only when the note
-        // is reviewable at all (fail closed like every other summon surface).
+        // An empty chip summons (live-round feedback, 2026-08-04) — but a
+        // fresh RUN only when nothing is busy on the note (starting one
+        // would cancel the run in flight; explicit ≠ destructive), and only
+        // when the note is reviewable at all (fail closed like every other
+        // summon surface). When a run EXISTS and this editor is not in it,
+        // the summon JOINS that run instead — busy or settled, it is never
+        // cancelled or replaced (live-round feedback ×2).
+        const reviewable = this.canReview(view)
+        const canJoinRun = run !== null && state === null && reviewable
+        // Still offered for a done-with-nothing editor ALREADY in a settled
+        // run: re-summoning replaces the run and carryover keeps the other
+        // editors' findings (BR #17). Join handles the not-in-run case above.
         const canStartReview =
             (run === null || !run.isBusy()) &&
             (transformRun === null || transformRun.isSettled()) &&
-            this.canReview(view)
-        switch (chipClickAction(status, revealable.length, hasSummaryOrError, canStartReview)) {
+            reviewable
+        switch (
+            chipClickAction(
+                status,
+                revealable.length,
+                hasSummaryOrError,
+                canStartReview,
+                canJoinRun
+            )
+        ) {
             case 'cycle-findings': {
                 const last = glue.chipCycle?.editorId === editorId ? glue.chipCycle.findingId : null
                 const target = cycleFinding(revealable, last)
@@ -2085,6 +2106,45 @@ export class ReviewController {
             case 'open-panel':
                 void this.activateSidePanelAtEditor(editorId)
                 return
+            case 'join-run': {
+                if (!run) {
+                    return
+                }
+                void addEditorToRun({
+                    settings: this.deps.getSettings(),
+                    vault: this.vaultReader,
+                    run,
+                    editorId,
+                    notePath: path,
+                    noteText: view.editor.getValue(),
+                    // Re-read right before the add: the persona-prompt vault
+                    // reads await, and the joiner must anchor against the
+                    // buffer as it reads THEN. Same view/run identity checks
+                    // as the retry path.
+                    refreshText: () =>
+                        view.file?.path === path && this.deps.runController.getRun(path) === run
+                            ? view.editor.getValue()
+                            : null,
+                    fetchImpl: window.fetch.bind(window)
+                }).then((result) => {
+                    if (this.disposed) {
+                        return
+                    }
+                    if (result.status === 'rule-disabled') {
+                        new Notice(
+                            `AI Editor is turned off for this note by the rule ${result.ruleLabel}.`
+                        )
+                    } else if (result.status === 'editor-unavailable') {
+                        new Notice('This editor cannot run right now — check its backend.')
+                    } else if (result.status === 'excluded') {
+                        new Notice('This note is excluded from AI review by your privacy settings.')
+                    }
+                    // 'added' needs no Notice: the chip flips to its queued
+                    // ring via the run notification. 'already-in-run' means a
+                    // parallel gesture beat this one — the run shows it.
+                })
+                return
+            }
             case 'start-review':
                 // A whole-note review with JUST this editor — the chip names
                 // its own pool, exactly like the ask modal's editor pick.

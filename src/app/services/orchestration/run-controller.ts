@@ -71,6 +71,11 @@ export type ContinueEditorResult =
     | { readonly ok: true }
     | { readonly ok: false; readonly reason: 'unknown-editor' | 'not-continuable' }
 
+/** Outcome of `RunHandle.addEditor` (joining a run, 2026-08-04). */
+export type AddEditorResult =
+    | { readonly ok: true }
+    | { readonly ok: false; readonly reason: 'already-in-run' }
+
 /** One editor persona participating in a run, with its backend injected. */
 export interface RunEditorSpec {
     readonly editorId: string
@@ -370,6 +375,26 @@ export interface RunHandle {
      * backend request the user pays for, so it stays an explicit action.
      */
     continueEditor(editorId: string, freshText: string): ContinueEditorResult
+    /**
+     * Adds one MORE editor to this run and dispatches it immediately through
+     * the same concurrency gate (live-round feedback, 2026-08-04): summoning
+     * an editor that is not part of the note's run must QUEUE onto it, never
+     * cancel it. The editor enters as a first attempt — 'pending', its
+     * findings anchoring against `freshText` (the live buffer at call time,
+     * Business Rules #3/#4) — and every run surface picks it up through the
+     * derived `isSettled()`, exactly like a retry after settle.
+     *
+     * Boundaries, stated because they are all deliberate:
+     * - an editor already in the run (any status) is refused — that gesture
+     *   is retry, Generate more, or nothing;
+     * - joining a PANEL run does not touch the roster: the scorecard stays a
+     *   statement about the members, the joiner reports as a loose editor
+     *   (its findings simply do not enter the member reconciliation);
+     * - the original `settled` promise is NOT reset (it cannot un-resolve);
+     * - `cancelRun` aborts a joined attempt like any other (per-attempt
+     *   controller, same as retries).
+     */
+    addEditor(spec: RunEditorSpec, freshText: string): AddEditorResult
     /**
      * Sends one push-back turn on a finding of this run (plan M4 threads).
      * Lives on the run handle because the run owns the findings the thread
@@ -1013,6 +1038,47 @@ class ReviewRunHandle implements RunHandle {
         this.reopenPanel({ keepResult: true })
         const attempt = new AbortController()
         state.attemptAbort = attempt
+        void this.consume(spec, state, attempt.signal)
+        this.notify()
+        return { ok: true }
+    }
+
+    addEditor(spec: RunEditorSpec, freshText: string): AddEditorResult {
+        if (this.states.has(spec.editorId)) {
+            return { ok: false, reason: 'already-in-run' }
+        }
+        this.specs.set(spec.editorId, spec)
+        const state: InternalEditorState = {
+            editorId: spec.editorId,
+            editorName: spec.editorName,
+            runId: asRunId(generateId()),
+            status: 'pending',
+            findingIds: [],
+            summary: null,
+            verdict: null,
+            lastProgress: null,
+            error: null,
+            salvage: null,
+            terminal: false,
+            seenFindingKeys: new Set(),
+            releasePermit: null,
+            // A late joiner anchors against the live buffer it was summoned
+            // on, exactly like a retry — never the run's original snapshot,
+            // which may be many edits old (Business Rules #3/#4).
+            anchorBase: createAnchorBase(freshText),
+            attemptAbort: null,
+            continuing: false,
+            continuationError: null
+        }
+        this.states.set(spec.editorId, state)
+        // Per-attempt controller (the retry pattern): the run-level signal
+        // may already be aborted by an earlier cancel, and `cancelRun` aborts
+        // this attempt through `state.attemptAbort` like any other.
+        const attempt = new AbortController()
+        state.attemptAbort = attempt
+        // Not tracked by `settled` (may already be resolved); `isSettled()`
+        // derives from the states and reports the run as in progress until
+        // this stream terminates the editor.
         void this.consume(spec, state, attempt.signal)
         this.notify()
         return { ok: true }

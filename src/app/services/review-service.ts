@@ -1035,3 +1035,88 @@ function createPanelSpec(input: {
         aggregate: executor.execute
     }
 }
+
+// ---------------------------------------------------------------------------
+// Joining a run (live-round feedback, 2026-08-04)
+// ---------------------------------------------------------------------------
+
+/** Outcome of `addEditorToRun`. */
+export type AddEditorToRun =
+    | { readonly status: 'added' }
+    | { readonly status: 'excluded' }
+    | { readonly status: 'rule-disabled'; readonly ruleLabel: string }
+    /** The editor cannot run: disabled, review off, or no usable backend. */
+    | { readonly status: 'editor-unavailable'; readonly skips: readonly EditorSkip[] }
+    | { readonly status: 'already-in-run' }
+
+/**
+ * Adds ONE more editor to an existing run and dispatches it through the
+ * run's own machinery (`RunHandle.addEditor`): summoning an editor that is
+ * not part of the note's run queues onto that run — it must never cancel or
+ * replace it. The same fail-closed gates as `startReview` apply (privacy
+ * exclusion, rule kill switch, editor/backend resolution); the size guard
+ * deliberately does not — the note was priced when its run started, and a
+ * joiner is one more request on it, exactly like retry and Generate more.
+ *
+ * `refreshText` is read right before the add so the joiner anchors against
+ * the buffer as it reads THEN (the awaits here are vault reads for the
+ * persona prompt); it falls back to `noteText` when absent.
+ */
+export async function addEditorToRun(input: {
+    readonly settings: PluginSettingsV1
+    readonly vault: VaultReader
+    readonly run: RunHandle
+    readonly editorId: string
+    readonly notePath: string
+    readonly noteText: string
+    readonly refreshText?: () => string | null
+    readonly fetchImpl?: typeof fetch
+}): Promise<AddEditorToRun> {
+    const { settings } = input
+    const behavior = settings.behavior
+    const vault = createCachingVaultReader(input.vault)
+    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    if (isExcluded(input.notePath, vault.getNoteMetadata(input.notePath), behavior)) {
+        return { status: 'excluded' }
+    }
+    const ruleOutcome = noteRuleOutcome(input.notePath, vault, settings)
+    if (ruleOutcome.kind === 'disabled') {
+        return { status: 'rule-disabled', ruleLabel: ruleOutcome.ruleLabel }
+    }
+    // The explicit editor id outranks any assign rule, exactly like a named
+    // pool in `startReview` — the user pointed at this editor.
+    const { participants, skips } = resolveReviewParticipants(settings, ruleOutcome, {
+        editorIds: [input.editorId]
+    })
+    const participant = participants.find((entry) => entry.editor.id === input.editorId)
+    if (!participant) {
+        return { status: 'editor-unavailable', skips }
+    }
+    let systemPrompt: string
+    try {
+        const built = await buildEditorPrompt({
+            editor: participant.editor,
+            settings,
+            vault,
+            notePath: input.notePath,
+            noteText: input.noteText
+        })
+        systemPrompt = built.systemPrompt
+    } catch (cause) {
+        if (cause instanceof ExcludedTargetError) {
+            return { status: 'excluded' }
+        }
+        throw cause
+    }
+    const spec = createEditorSpec({
+        editor: participant.editor,
+        backend: participant.backend,
+        model: participant.model,
+        systemPrompt,
+        behavior,
+        fetchImpl
+    })
+    const fresh = input.refreshText?.() ?? null
+    const result = input.run.addEditor(spec, fresh ?? input.noteText)
+    return result.ok ? { status: 'added' } : { status: 'already-in-run' }
+}

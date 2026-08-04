@@ -2514,3 +2514,82 @@ describe('RunController history observer (issue #21)', () => {
         expect(settled).toHaveLength(2)
     })
 })
+
+describe('RunHandle.addEditor (joining a run, 2026-08-04)', () => {
+    async function waitUntil(condition: () => boolean): Promise<void> {
+        for (let i = 0; i < 200 && !condition(); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 1))
+        }
+        expect(condition()).toBeTrue()
+    }
+
+    it('queues onto a BUSY run without disturbing the editor in flight', async () => {
+        const gate = deferred()
+        const alpha: RunEditorSpec = {
+            editorId: 'alpha',
+            editorName: 'Alpha',
+            execute: async function* (request) {
+                await gate.promise
+                yield result(request.runId, [])
+            }
+        }
+        const run = new RunController().startRun({ snapshot: snapshot(), editors: [alpha] })
+        const beta = scriptedEditor('beta', (runId) => [finding(runId, raw()), result(runId, [])])
+        expect(run.addEditor(beta, DOC)).toEqual({ ok: true })
+        await waitUntil(() => run.getEditorState('beta')?.status === 'done')
+        // Beta landed its finding while alpha is STILL working: nothing was
+        // cancelled, and the run stays unsettled until alpha finishes.
+        expect(run.findings.listByEditor('beta')).toHaveLength(1)
+        expect(run.isSettled()).toBeFalse()
+        gate.resolve()
+        await waitUntil(() => run.isSettled())
+        expect(run.getEditorState('alpha')?.status).toBe('done')
+    })
+
+    it('joins a SETTLED run and flips it back to in-progress', async () => {
+        const alpha = scriptedEditor('alpha', (runId) => [result(runId, [])])
+        const run = new RunController().startRun({ snapshot: snapshot(), editors: [alpha] })
+        await run.settled
+        expect(run.isSettled()).toBeTrue()
+        const beta = scriptedEditor('beta', (runId) => [result(runId, [], 'Beta summary')])
+        expect(run.addEditor(beta, DOC)).toEqual({ ok: true })
+        expect(run.isSettled()).toBeFalse()
+        await waitUntil(() => run.isSettled())
+        expect(run.getEditorState('beta')?.summary).toBe('Beta summary')
+    })
+
+    it('refuses an editor already in the run, whatever its status', async () => {
+        const alpha = scriptedEditor('alpha', (runId) => [result(runId, [])])
+        const run = new RunController().startRun({ snapshot: snapshot(), editors: [alpha] })
+        await run.settled
+        expect(
+            run.addEditor(
+                scriptedEditor('alpha', () => []),
+                DOC
+            )
+        ).toEqual({
+            ok: false,
+            reason: 'already-in-run'
+        })
+    })
+
+    it('cancelRun aborts a joined attempt like any other', async () => {
+        const gate = deferred()
+        const alpha = scriptedEditor('alpha', (runId) => [result(runId, [])])
+        const run = new RunController().startRun({ snapshot: snapshot(), editors: [alpha] })
+        await run.settled
+        const beta: RunEditorSpec = {
+            editorId: 'beta',
+            editorName: 'Beta',
+            execute: async function* (request) {
+                await gate.promise
+                yield result(request.runId, [])
+            }
+        }
+        expect(run.addEditor(beta, DOC)).toEqual({ ok: true })
+        run.cancelRun()
+        expect(run.getEditorState('beta')?.status).toBe('cancelled')
+        expect(run.isSettled()).toBeTrue()
+        gate.resolve()
+    })
+})
