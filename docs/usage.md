@@ -59,6 +59,8 @@ If your operating system is set to reduce motion, nothing on the rail animates a
 
 A finding highlights the **exact span it quotes**, tinted with its editor's colour and carrying a per-editor edge style, so two editors are never distinguished by colour alone. Hovering one names the editor, its panel if it has one, the severity, and whether it is stale.
 
+When a highlight covers a **link**, a plain click opens the finding's card — the highlight is why you clicked — and `Ctrl`/`Cmd`+click follows the link as usual.
+
 Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its proposal was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again.
 
 Severities are **warning**, **suggestion** and **info**. In the AI Editor Review panel each carries a shaped glyph, not just a colour.

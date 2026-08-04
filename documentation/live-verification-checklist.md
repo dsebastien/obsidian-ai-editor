@@ -561,3 +561,10 @@ Bind both verbs to an editor first (Actions tab — they ship unbound).
 - [ ] A `#`-looking line inside a code fence does not end a section early.
 - [ ] Both verbs appear in the palette while bound and vanish when unbound.
 - [ ] Unbound: right-click without selection shows no plugin entries at all.
+
+## Finding over a link (2026-08-04) — UNVERIFIED
+
+- [ ] A finding whose span covers a wikilink: plain click on the link text opens the CARD, does not navigate.
+- [ ] Ctrl/Cmd+click on the same spot follows the link (no card).
+- [ ] Same for an external/markdown link inside a finding span.
+- [ ] Links OUTSIDE any finding still open on plain click as before.

@@ -456,10 +456,51 @@ class FindingCardPlugin implements PluginValue {
         this.closeCard()
     }
 
+    /**
+     * Capture-phase guard for findings that overlap a LINK (live-round
+     * feedback, 2026-08-04): Obsidian's link handling runs in ITS editor
+     * extensions — before this plugin's click handler — so a plain click on
+     * a highlighted link navigated away instead of opening the card. In the
+     * capture phase this listener runs first: when the click lands inside
+     * both a finding mark and a link, the finding wins the PLAIN click
+     * (block navigation on mousedown + click, open the card), while any
+     * modifier click — Ctrl/Cmd, the standard "really follow this link"
+     * gesture — is left entirely to Obsidian. Middle/right clicks too.
+     */
+    private readonly onLinkGuard = (event: MouseEvent): void => {
+        if (
+            event.button !== 0 ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            event.shiftKey
+        ) {
+            return
+        }
+        const target = event.target
+        if (
+            !(target instanceof Element) ||
+            !target.closest('.editor-ai-daemons-finding') ||
+            !target.closest('.cm-link, .cm-hmd-internal-link, .cm-url, a')
+        ) {
+            return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        // The mousedown half only blocks; the click half opens the card, so
+        // the gesture stays one click = one card.
+        if (event.type === 'click') {
+            this.handleClick(event, this.view)
+        }
+    }
+
     constructor(
         private readonly view: EditorView,
         private readonly lookup: FindingLookup
-    ) {}
+    ) {
+        view.dom.addEventListener('mousedown', this.onLinkGuard, true)
+        view.dom.addEventListener('click', this.onLinkGuard, true)
+    }
 
     /**
      * CM6 content click handler. Only clicks landing on a finding highlight
@@ -518,6 +559,8 @@ class FindingCardPlugin implements PluginValue {
     }
 
     destroy(): void {
+        this.view.dom.removeEventListener('mousedown', this.onLinkGuard, true)
+        this.view.dom.removeEventListener('click', this.onLinkGuard, true)
         this.closeCard()
     }
 
