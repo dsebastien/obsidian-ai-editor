@@ -1,5 +1,27 @@
 # Release Notes
 
+## 0.3.0 (2026-08-04)
+
+### Features
+
+- **actions:** Expand section and Continue the note — the placement verbs ([#31](https://github.com/dsebastien/obsidian-ai-editor/issues/31))
+- **ask:** panels join the picker, and the ask becomes 'Ask a question' ([#27](https://github.com/dsebastien/obsidian-ai-editor/issues/27))
+- **panel:** up/down section cycling from the pinned header
+- **rail:** an empty editor chip summons a review with just that editor
+- **rail:** summoning an idle editor JOINS the note's run instead of being blocked by it
+
+### Bug Fixes
+
+- **editor:** a finding over a link opens the card on plain click, not the link
+- **panel:** pin the header and tab bar while the findings list scrolls
+- **panel:** the pinned header owns the leaf padding so nothing scrolls through it
+- **panel:** the section-nav pair aligns with its neighbors as one split control
+- **rail:** findings toggle becomes a labelled button owning the row; collapse becomes a drawn chevron
+- **rail:** give the head's utility buttons real button chrome, on one row [#28](https://github.com/dsebastien/obsidian-ai-editor/issues/28)
+- **rail:** retry joins its row as a split segment
+- **review:** size guard prices the selection, not the note around it
+- round-3 adversarial review — non-destructive hydrate, submit-time panel re-check, deduped request count
+
 ## 0.2.0 (2026-08-02)
 
 ### ⚠ BREAKING CHANGES

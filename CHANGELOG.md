@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.2.0...0.3.0) (2026-08-04)
+
+### Features
+
+* **actions:** Expand section and Continue the note — the placement verbs ([#31](https://github.com/dsebastien/obsidian-ai-editor/issues/31)) ([e64b90c](https://github.com/dsebastien/obsidian-ai-editor/commit/e64b90cefbcd3867d4f45ba0c3d3c8a810798db0))
+* **ask:** panels join the picker, and the ask becomes 'Ask a question' ([#27](https://github.com/dsebastien/obsidian-ai-editor/issues/27)) ([c601b8e](https://github.com/dsebastien/obsidian-ai-editor/commit/c601b8ebac150794c8828ed0d37fa54913a7ace2)), closes [#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14)
+* **panel:** up/down section cycling from the pinned header ([41be75c](https://github.com/dsebastien/obsidian-ai-editor/commit/41be75c315eeb3556a1722125db86bc4e65fde08)), closes [#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14)
+* **rail:** an empty editor chip summons a review with just that editor ([4bbb2e0](https://github.com/dsebastien/obsidian-ai-editor/commit/4bbb2e06be542195d70742cdb24e0d57d4ae3a10))
+* **rail:** summoning an idle editor JOINS the note's run instead of being blocked by it ([b971f2a](https://github.com/dsebastien/obsidian-ai-editor/commit/b971f2ad76f3537e30a75e95e88bf2ee455a839c))
+
+### Bug Fixes
+
+* **editor:** a finding over a link opens the card on plain click, not the link ([a50cb99](https://github.com/dsebastien/obsidian-ai-editor/commit/a50cb99f4010e29e612d9c6dfac9e1cd14b43d9a))
+* **panel:** pin the header and tab bar while the findings list scrolls ([d1fe519](https://github.com/dsebastien/obsidian-ai-editor/commit/d1fe51976bc26bd7fa245c1b9f0b53f724678839))
+* **panel:** the pinned header owns the leaf padding so nothing scrolls through it ([fdeccee](https://github.com/dsebastien/obsidian-ai-editor/commit/fdecceeae44ae3ad1d1231c035f45bdca1d48b1c))
+* **panel:** the section-nav pair aligns with its neighbors as one split control ([056e9f8](https://github.com/dsebastien/obsidian-ai-editor/commit/056e9f811d19be260b62906839b7f513e153b199))
+* **rail:** findings toggle becomes a labelled button owning the row; collapse becomes a drawn chevron ([b9ad535](https://github.com/dsebastien/obsidian-ai-editor/commit/b9ad53521de7cb69c403d06d61117c90bd48a490))
+* **rail:** give the head's utility buttons real button chrome, on one row ([4ea0c62](https://github.com/dsebastien/obsidian-ai-editor/commit/4ea0c62fd4631c4320736032d70ddfdd9f49bb0a)), closes [#29](https://github.com/dsebastien/obsidian-ai-editor/issues/29) [#28](https://github.com/dsebastien/obsidian-ai-editor/issues/28)
+* **rail:** retry joins its row as a split segment ([53db919](https://github.com/dsebastien/obsidian-ai-editor/commit/53db91912b35214167f9fc5c08153d95cdc7a331))
+* **review:** size guard prices the selection, not the note around it ([81fd819](https://github.com/dsebastien/obsidian-ai-editor/commit/81fd8190f661917a31901d12015cf89c94e0645c))
+* round-3 adversarial review — non-destructive hydrate, submit-time panel re-check, deduped request count ([2a64321](https://github.com/dsebastien/obsidian-ai-editor/commit/2a64321889fed8403861d8ac3f584e3eaebb00ac)), closes [#19](https://github.com/dsebastien/obsidian-ai-editor/issues/19)
+
 ## [0.2.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.1.0...0.2.0) (2026-08-02)
 
 ### ⚠ BREAKING CHANGES
@@ -217,4 +239,5 @@ All notable changes to this project will be documented in this file.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
