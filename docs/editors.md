@@ -9,7 +9,11 @@ An **editor** is an AI persona: a name, a colour, and a prompt saying what it ca
 
 **Settings → AI Editor → Editors → Add editor**, or select an existing one to open the same dialog.
 
+![The Editors settings tab: six editor cards with enable toggles, capabilities, and edit and delete buttons](images/editors-tab.png)
+
 ## The fields
+
+![The edit-editor dialog for Devil's Advocate: name, colour presets, persona prompt, prompt notes, backend override, and toggles for linked notes and the voice profile](images/edit-editor.png)
 
 | Field                         | What it does                                                                                 |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |

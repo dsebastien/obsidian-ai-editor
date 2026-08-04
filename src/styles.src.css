@@ -904,30 +904,46 @@
     background-color: var(--interactive-accent-hover, var(--interactive-accent));
 }
 
-/* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
-   hidden — the daemon toggle's convention. */
-.editor-ai-daemons-rail-findings-toggle {
-    @apply shrink-0 cursor-pointer self-center border-none bg-transparent p-0 leading-none;
-    color: var(--text-muted);
-    font-size: var(--editor-ai-daemons-rail-font);
+/* The head's utility row (live-round feedback, 2026-08-04): the findings
+   toggle, the collapsed count and the chevron share one centered row instead
+   of stacking one tiny glyph per line. */
+.editor-ai-daemons-rail-controls {
+    @apply flex items-center justify-center;
+    gap: 4px;
 }
 
-.editor-ai-daemons-rail-findings-toggle:hover {
+/* Findings visibility toggle (issue #29): filled glyph = shown, hollow =
+   hidden — the daemon toggle's convention, and the daemon toggle's chrome
+   reset too: without `box-shadow: none`, Obsidian's global button styling
+   leaves each glyph floating in a raised input-shadow box. */
+.editor-ai-daemons-rail-findings-toggle,
+.editor-ai-daemons-rail-collapse {
+    @apply flex cursor-pointer items-center justify-center leading-none;
+    padding: 2px 6px;
+    /* WCAG 2.5.8, same as the daemon toggle: a 24px target around a glyph
+       that stays the size it looks. */
+    min-height: 24px;
+    min-width: 24px;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background-color: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: var(--editor-ai-daemons-rail-font);
+    transition:
+        color 120ms ease,
+        background-color 120ms ease;
+}
+
+.editor-ai-daemons-rail-findings-toggle:hover,
+.editor-ai-daemons-rail-collapse:hover {
+    background-color: var(--background-modifier-hover);
     color: var(--text-normal);
+    box-shadow: none;
 }
 
 .editor-ai-daemons-rail-findings-toggle.is-findings-hidden {
     color: var(--text-accent);
-}
-
-.editor-ai-daemons-rail-collapse {
-    @apply shrink-0 cursor-pointer self-center border-none bg-transparent p-0 leading-none;
-    color: var(--text-muted);
-    font-size: var(--editor-ai-daemons-rail-font);
-}
-
-.editor-ai-daemons-rail-collapse:hover {
-    color: var(--text-normal);
 }
 
 .editor-ai-daemons-rail-collapsed-count {

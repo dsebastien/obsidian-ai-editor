@@ -289,6 +289,12 @@ export class PersonaRail {
         buttonRowEl.appendChild(this.selectionEl)
         headEl.appendChild(buttonRowEl)
 
+        // The head's utility controls share ONE row (live-round feedback,
+        // 2026-08-04): two glyph buttons each floating on their own line
+        // read as debris, not as controls.
+        const controlsEl = this.doc.createElement('div')
+        controlsEl.classList.add('editor-ai-daemons-rail-controls')
+
         // Findings visibility toggle (issue #29): filled = shown, hollow =
         // hidden — the daemon toggle's convention. Always present, like the
         // daemon toggle: a control that only appeared once something was
@@ -299,7 +305,7 @@ export class PersonaRail {
         this.findingsEl.addEventListener('click', () => {
             this.callbacks.onToggleFindings()
         })
-        headEl.appendChild(this.findingsEl)
+        controlsEl.appendChild(this.findingsEl)
 
         // Collapsed finding count (issue #28): the one number that makes a
         // user expand again. Hidden unless collapsed with findings.
@@ -308,7 +314,7 @@ export class PersonaRail {
             'editor-ai-daemons-rail-collapsed-count',
             'editor-ai-daemons-hidden'
         )
-        headEl.appendChild(this.countEl)
+        controlsEl.appendChild(this.countEl)
 
         // Collapse/expand chevron (issue #28): always visible, so a lone
         // daemon toggle still hints that a rail is folded behind it.
@@ -318,7 +324,8 @@ export class PersonaRail {
         this.collapseEl.addEventListener('click', () => {
             this.callbacks.onToggleCollapsed()
         })
-        headEl.appendChild(this.collapseEl)
+        controlsEl.appendChild(this.collapseEl)
+        headEl.appendChild(controlsEl)
         this.rootEl.appendChild(headEl)
 
         this.listEl = this.doc.createElement('div')

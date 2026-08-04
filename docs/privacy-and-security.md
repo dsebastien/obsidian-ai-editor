@@ -51,7 +51,7 @@ Run **Preview what will be sent** to see the exact assembly for one editor and o
 
 ## Review history
 
-The History tab keeps clipped records of what your editors said — including **quoted text from your notes**. Session history lives in memory only. With **Durable history** on (off by default), it persists to `history.json` in the plugin folder: note content in a plugin file, which may travel with anything that syncs your vault. It is excluded from settings export, expires automatically (90 days / 100 entries per note), and is clearable per note or entirely. Notes excluded by your privacy settings, and notes a rule disabled the plugin for, are never recorded.
+The History tab keeps clipped records of what your editors said — including **quoted text from your notes**. Session history lives in memory only. With **Durable history** on (off by default), it persists to `history.json` in the plugin folder: note content in a plugin file, which may travel with anything that syncs your vault. It is excluded from settings export, expires automatically (90 days / 100 entries per note), and is clearable per note or entirely. Notes excluded by your privacy settings, and notes a rule disabled the plugin for, are never recorded — and never shown: exclude a note later and its already-archived entries go dark in the History tab (without being deleted — un-exclude it and they are back; use **Clear** if you want them gone).
 
 ## Where API keys live
 

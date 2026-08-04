@@ -9,6 +9,8 @@ An **action** is a verb you run on selected text. Nine ship with the plugin, and
 
 Each action is bound to one editor (or, for review-class actions, a panel) in **Settings → AI Editor → Actions**. The starter pack binds sensible defaults, so the selection menu works out of the box.
 
+![The Actions settings tab: one row per built-in verb with its description and a binding dropdown](images/actions-tab.png)
+
 ## The built-in verbs
 
 | Verb                     | What happens to the answer | Seeded binding   |

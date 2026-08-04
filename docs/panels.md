@@ -20,6 +20,8 @@ A **panel** is a group of editors that review together and are then summed up. I
 | **Aggregation backend**        | Which backend writes the summary                                  |
 | **Aggregation model override** | Only shown when a backend is set                                  |
 
+![The Panels settings tab: the Pre-publish Review panel card listing its four members and aggregation backend, with an enable toggle](images/panels-tab.png)
+
 The starter pack ships **Pre-publish review**: Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer, behind one question — _is this ready to publish under the author's name, to a smart audience that did not ask to read it?_
 
 ## The charter does two jobs

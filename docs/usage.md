@@ -7,6 +7,8 @@ nav_order: 4
 
 The review loop is the heart of the plugin: summon your editors, read what they found, judge each finding, move on. It is meant to feel like resolving merge conflicts, not like chatting.
 
+![A note under review: highlighted spans in the text, the persona rail, and the AI Editor Review panel showing each editor's summary, findings and verdict](images/findings.png)
+
 ## Start a review
 
 | How                        | What it does                                                             |
@@ -71,6 +73,8 @@ Click a highlight to open a floating card:
 - an old/new preview with **Accept** and **Dismiss** when the editor proposed a replacement;
 - a reply box for [pushing back](#pushing-back-on-a-finding).
 
+![A review card: the critique, the quoted line, and a Replace preview showing the old text struck through and the proposed text underneath, with Accept and Dismiss buttons](images/review-card.png)
+
 Overlapping findings stack in one card, innermost first. A proposal is one or more labelled edits — **Replace**, **Insert above**, **Insert below**, **Delete** — each previewed in its own shape: an insertion shows only what is added (your text stays), a delete shows only what goes. **Accept** applies the whole proposal as a single undoable edit — all of it or none, and only while the text still matches exactly what it was computed against; otherwise the finding is stale and must be re-reviewed. A proposal the plugin could not validate is removed and the card says so — you still get the critique, never a wrong write. Escape, clicking away, scrolling, or editing closes the card.
 
 Opening a card deliberately does **not** move focus: triage is driven from the keyboard and stealing focus would break the loop that opened the card.
@@ -117,7 +121,7 @@ The **status bar** shows the number of open findings for the active note, and di
 
 The panel has two tabs: **Review** (everything above) and **History** — the archive behind it. Every finding, push-back reply and panel scorecard lands there as it is produced, grouped by day (newest first) with filter chips by type and by editor, so "what did the Hater say before I re-ran it?" and "what did I dismiss ten minutes ago?" have answers. Entries are clipped records, selectable and copyable; a verbatim repeat of what an editor already said is not recorded twice.
 
-By default history lives for the session. Turn on **Durable history** (Behavior settings) to keep it across restarts, per note — it is stored in the plugin folder and **contains quoted text from your notes**, which is why it is off by default, excluded from settings export, and clearable: per note from the tab's footer, entirely from the settings. Old entries expire on their own (90 days, at most 100 per note). Excluded notes and notes a rule switched the plugin off for never get history at all — the same absolute rule as requests.
+By default history lives for the session. Turn on **Durable history** (Behavior settings) to keep it across restarts, per note — it is stored in the plugin folder and **contains quoted text from your notes**, which is why it is off by default, excluded from settings export, and clearable: per note from the tab's footer, entirely from the settings. Old entries expire on their own (90 days, at most 100 per note). Excluded notes and notes a rule switched the plugin off for never get history at all — the same absolute rule as requests — and excluding a note later hides its already-archived entries without deleting them: un-exclude it and they are back.
 
 ## Pushing back on a finding
 

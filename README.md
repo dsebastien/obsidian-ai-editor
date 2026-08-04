@@ -16,6 +16,24 @@ You write. When you want a second opinion, you summon your editors. They read th
 - **Margin comments** — park a question on a passage and keep writing; an editor answers it in the background, and the answer waits for you in a column beside the text.
 - **Vault as configuration** — every prompt field accepts direct text _and/or_ references to your own vault notes, resolved fresh at run time. Documenting your assistant in your vault _is_ configuring the plugin.
 
+## Screenshots
+
+Findings anchored in the text, each tinted in its editor's colour, with the persona rail in the corner and every editor's verdict in the side panel:
+
+![A note under review: highlighted spans in the text, the persona rail with a Review button, and the AI Editor Review panel showing each editor's summary, findings and verdict](docs/images/findings.png)
+
+Click a highlight for the critique, the quote, and a labelled diff you accept or dismiss — or push back in the reply box:
+
+![A review card: the critique, the quoted line, and a Replace preview showing the old text struck through and the proposed text underneath, with Accept and Dismiss buttons](docs/images/review-card.png)
+
+Editors are personas you define — a name, a colour, a prompt, optionally backed by your own vault notes:
+
+![The edit-editor dialog: name, colour presets, persona prompt, prompt notes from the vault, backend override, and capability toggles](docs/images/edit-editor.png)
+
+Enable as many as you want, and group them into panels that review together and produce one scorecard:
+
+![The Editors settings tab: six editor cards with enable toggles, capabilities, and edit and delete buttons](docs/images/editors-tab.png)
+
 ## The screens, in words
 
 **The persona rail.** Every markdown editor gets a small card in its top-right corner: a **Review** button and one named row per enabled editor. Each row draws a ring in that editor's colour around its dot, and the ring says what it is doing — dashed while it waits its turn, a sweeping arc while it works, solid when it lands, the error colour when it fails — next to a live finding count. Hover a row for the exact state: "Concision Editor — 3 findings", "Devil's Advocate — waiting", "Fact Checker — failed (timeout)". A panel is one row with a hollow centre, its name carrying "(panel)", with its members bracketed underneath it.

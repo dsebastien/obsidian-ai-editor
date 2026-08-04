@@ -164,6 +164,8 @@ See [Run actions on a selection](actions.md).
 
 ## Voice & style tab
 
+![The Voice & style settings tab: the voice profile textarea and an ordered list of voice profile notes resolved from the vault](images/voice-and-style-tab.png)
+
 | Field                   | Type      | Default |
 | ----------------------- | --------- | ------- |
 | **Voice profile**       | textarea  | empty   |
