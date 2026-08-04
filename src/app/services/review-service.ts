@@ -164,13 +164,17 @@ export type ReviewStart =
           readonly reason: 'panel-missing' | 'panel-disabled'
       }
     /**
-     * The note exceeds `behavior.sizeWarningWords`; the caller must show a
-     * confirmation dialog and retry with `confirmedLargeNote: true`.
+     * What will be reviewed exceeds `behavior.sizeWarningWords`; the caller
+     * must show a confirmation dialog and retry with `confirmedLargeNote:
+     * true`. `scope` says what `wordCount` measured — a selection review is
+     * priced by the SELECTION, not the note around it (live-round feedback,
+     * 2026-08-04), so the dialog can say which it is warning about.
      */
     | {
           readonly status: 'needs-confirmation'
           readonly wordCount: number
           readonly limit: number
+          readonly scope: 'note' | 'selection'
       }
     /**
      * `abortWhen` returned true right before the run would have started: no
@@ -817,10 +821,34 @@ export async function startReview(input: StartReviewInput): Promise<ReviewStart>
         }
     }
 
-    // -- Size guard: oversized notes need an explicit user confirmation ------
-    const wordCount = countWords(snapshot.text)
+    // -- Size guard: oversized requests need an explicit user confirmation ---
+    // Measures what will actually be reviewed (live-round feedback,
+    // 2026-08-04): a selection review of a long note is priced by the
+    // selection, not the note around it. Priority mirrors the scope
+    // resolution further down — a requested selection still valid against
+    // THIS snapshot, then the snapshot's own embedded selection, then the
+    // whole note. A requested selection that has already gone stale falls
+    // back to whole-note pricing, which is exactly the scope the run would
+    // fall back to.
+    const guardSelection =
+        input.requestedSelection &&
+        isRequestedSelectionValid(
+            input.requestedSelection,
+            input.requestedSelection.capturedHash,
+            snapshot
+        )
+            ? input.requestedSelection
+            : (snapshot.selection ?? null)
+    const wordCount = countWords(
+        guardSelection ? snapshot.text.slice(guardSelection.from, guardSelection.to) : snapshot.text
+    )
     if (wordCount > behavior.sizeWarningWords && input.confirmedLargeNote !== true) {
-        return { status: 'needs-confirmation', wordCount, limit: behavior.sizeWarningWords }
+        return {
+            status: 'needs-confirmation',
+            wordCount,
+            limit: behavior.sizeWarningWords,
+            scope: guardSelection ? 'selection' : 'note'
+        }
     }
 
     // -- Resolve participants -------------------------------------------------

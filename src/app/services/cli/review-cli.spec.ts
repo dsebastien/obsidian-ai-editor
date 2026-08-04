@@ -700,7 +700,12 @@ describe('handleReviewCli', () => {
     it('returns needs-confirmation with counts for oversized notes', async () => {
         const deps = makeDeps({
             runReview: () =>
-                Promise.resolve({ status: 'needs-confirmation', wordCount: 12000, limit: 5000 })
+                Promise.resolve({
+                    status: 'needs-confirmation' as const,
+                    wordCount: 12000,
+                    limit: 5000,
+                    scope: 'note' as const
+                })
         })
         const output = parseOutput(await handleReviewCli({ file: 'Notes/Test.md' }, deps))
         expect(output.error?.code).toBe('needs-confirmation')

@@ -217,19 +217,23 @@ class SizeConfirmModal extends Modal {
     private readonly limit: number
     private readonly onConfirm: () => void
     private readonly labels: SizeConfirmLabels
+    /** What `wordCount` measured — the dialog names what it warns about. */
+    private readonly subject: 'note' | 'selection'
 
     constructor(
         app: App,
         wordCount: number,
         limit: number,
         onConfirm: () => void,
-        labels: SizeConfirmLabels = REVIEW_SIZE_LABELS
+        labels: SizeConfirmLabels = REVIEW_SIZE_LABELS,
+        subject: 'note' | 'selection' = 'note'
     ) {
         super(app)
         this.wordCount = wordCount
         this.limit = limit
         this.onConfirm = onConfirm
         this.labels = labels
+        this.subject = subject
     }
 
     override onOpen(): void {
@@ -237,9 +241,10 @@ class SizeConfirmModal extends Modal {
         this.modalEl.addClass('editor-ai-daemons-modal')
         this.contentEl.createEl('p', {
             text:
-                `This note has about ${this.wordCount} words — above your size warning ` +
-                `threshold of ${this.limit}. ${this.labels.action} sends the full text to ` +
-                'your configured AI backends, which may be slow or costly.'
+                `This ${this.subject} has about ${this.wordCount} words — above your size ` +
+                `warning threshold of ${this.limit}. ${this.labels.action} sends ` +
+                (this.subject === 'selection' ? 'the selected text' : 'the full text') +
+                ' to your configured AI backends, which may be slow or costly.'
         })
         new Setting(this.contentEl)
             .addButton((button) => {
@@ -894,22 +899,31 @@ export class ReviewController {
                 new Notice(`AI Editor is turned off for this note by the rule ${result.ruleLabel}.`)
                 return
             case 'needs-confirmation':
-                new SizeConfirmModal(this.deps.app, result.wordCount, result.limit, () => {
-                    // The originally captured selection rides along WITH its
-                    // capture-time hash; the service re-validates it after
-                    // the confirmation delay and falls back to whole-note
-                    // scope when the note was edited meanwhile. A per-run
-                    // instruction survives the round trip unchanged.
-                    void this.startReview(
-                        view,
-                        true,
-                        requested,
-                        scope,
-                        instruction,
-                        panelId,
-                        editorIds
-                    )
-                }).open()
+                new SizeConfirmModal(
+                    this.deps.app,
+                    result.wordCount,
+                    result.limit,
+                    () => {
+                        // The originally captured selection rides along WITH
+                        // its capture-time hash; the service re-validates it
+                        // after the confirmation delay and falls back to
+                        // whole-note scope when the note was edited meanwhile
+                        // (a selection collapsed by the modal's focus shift
+                        // does not matter — the captured range is what runs).
+                        // A per-run instruction survives the round trip.
+                        void this.startReview(
+                            view,
+                            true,
+                            requested,
+                            scope,
+                            instruction,
+                            panelId,
+                            editorIds
+                        )
+                    },
+                    REVIEW_SIZE_LABELS,
+                    result.scope
+                ).open()
                 return
             case 'no-editors': {
                 const details = result.skips

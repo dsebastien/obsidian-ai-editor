@@ -26,7 +26,7 @@ None of the commands ships a default hotkey. Assign your own in **Settings → H
 
 Who takes part: every enabled editor, unless a [binding rule](rules.md) assigns a specific editor or panel to that note. Editors that cannot run — no backend, disabled backend, no model, review capability off — are **reported, never silently skipped**.
 
-Notes above your **Size warning threshold** (default 8000 words) ask for confirmation before anything is sent.
+Notes above your **Size warning threshold** (default 8000 words) ask for confirmation before anything is sent. The guard prices what will actually be reviewed: a selection review counts the selection's words, not the note's, so reviewing a short passage of a long note never warns. Confirming never loses your captured selection — it rides through the dialog.
 
 **Reviewing again does not throw your work away.** Starting a new review of a note that already has findings keeps them on screen — dimmed — while the new round runs, and everything you decided carries over: a finding the editor raises again keeps its identity and your verdict (a dismissed objection stays dismissed, even reworded), a finding the editor no longer raises disappears when that editor finishes, and if the new round fails or you cancel it, the previous findings simply return to normal. Reviewing a selection only ever replaces findings inside that selection.
 

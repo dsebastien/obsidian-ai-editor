@@ -835,10 +835,61 @@ describe('startReview', () => {
             fetchImpl: fetchReturning(anthropicReviewBody())
         }
         const refused = await startReview(input)
-        expect(refused).toEqual({ status: 'needs-confirmation', wordCount: 101, limit: 100 })
+        expect(refused).toEqual({
+            status: 'needs-confirmation',
+            wordCount: 101,
+            limit: 100,
+            scope: 'note'
+        })
 
         const confirmed = await startReview({ ...input, confirmedLargeNote: true })
         expect(confirmed.status).toBe('started')
+    })
+
+    it('prices a selection review by the selection, not the note (2026-08-04)', async () => {
+        const settings = makeSettings({ behavior: { sizeWarningWords: 100 } })
+        const bigText = Array.from({ length: 500 }, (_, i) => `word${i}`).join(' ')
+        const snapshot = makeSnapshot(bigText)
+        // A small selection inside a note far above the threshold: no
+        // confirmation — the selection is what will be sent.
+        const small = await startReview({
+            settings,
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: 41, capturedHash: snapshot.hash }
+        })
+        expect(small.status).toBe('started')
+        // An oversized selection still warns — priced and NAMED as one.
+        const large = await startReview({
+            settings,
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: bigText.length - 10, capturedHash: snapshot.hash }
+        })
+        if (large.status !== 'needs-confirmation') {
+            throw new Error(`Expected needs-confirmation, got ${large.status}`)
+        }
+        expect(large.scope).toBe('selection')
+        expect(large.wordCount).toBeLessThan(500)
+        // A stale captured selection falls back to whole-note pricing,
+        // matching the whole-note scope the run itself would fall back to.
+        const stale = await startReview({
+            settings,
+            snapshot,
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            requestedSelection: { from: 0, to: 41, capturedHash: 'other-text' }
+        })
+        if (stale.status !== 'needs-confirmation') {
+            throw new Error(`Expected needs-confirmation, got ${stale.status}`)
+        }
+        expect(stale.scope).toBe('note')
+        expect(stale.wordCount).toBe(500)
     })
 
     it('returns no-editors with a full skip report when nobody can run', async () => {
