@@ -197,7 +197,7 @@ export class SetupWizardModal extends Modal {
     private renderWelcome(contentEl: HTMLElement): void {
         const callout = contentEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
         callout.createEl('strong', { text: 'Where your API keys are stored' })
-        callout.createEl('div', { text: KEY_STORAGE_DISCLOSURE })
+        callout.createDiv({ text: KEY_STORAGE_DISCLOSURE })
     }
 
     // -- Step 2: backend ------------------------------------------------------

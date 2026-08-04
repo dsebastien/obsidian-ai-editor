@@ -3561,7 +3561,7 @@ export class ReviewController {
         // Popout safety: every element is created via the view's own document.
         const doc = view.contentEl.ownerDocument
         view.contentEl.addClass('editor-ai-daemons-rail-host')
-        const railWrapperEl = doc.createElement('div')
+        const railWrapperEl = doc.win.createDiv()
         railWrapperEl.classList.add('editor-ai-daemons-rail-wrapper')
         view.contentEl.appendChild(railWrapperEl)
         const rail = new PersonaRail(

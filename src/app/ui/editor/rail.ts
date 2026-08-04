@@ -184,6 +184,7 @@ export class PersonaRail {
     private readonly findingsEl: HTMLButtonElement
     private readonly findingsGlyphEl: HTMLElement
     private readonly findingsLabelEl: HTMLElement
+    private readonly buttonRowEl: HTMLElement
     private readonly selectionEl: HTMLButtonElement
     private selectionTooltip = ''
     private countText = ''
@@ -211,10 +212,10 @@ export class PersonaRail {
         private readonly tooltipSetter?: RailTooltipSetter
     ) {
         this.doc = doc ?? containerEl.ownerDocument
-        this.rootEl = this.doc.createElement('div')
+        this.rootEl = this.doc.win.createDiv()
         this.rootEl.classList.add('editor-ai-daemons-rail')
 
-        this.statusEl = this.doc.createElement('div')
+        this.statusEl = this.doc.win.createDiv()
         this.statusEl.classList.add('editor-ai-daemons-rail-status')
         this.statusEl.setAttribute('role', 'status')
         this.statusEl.setAttribute('aria-live', 'polite')
@@ -231,15 +232,15 @@ export class PersonaRail {
          * present in BOTH states; a control that only appeared once daemon
          * mode was on could never be the thing that turns it on.
          */
-        const headEl = this.doc.createElement('div')
+        const headEl = this.doc.win.createDiv()
         headEl.classList.add('editor-ai-daemons-rail-head')
 
-        this.daemonEl = this.doc.createElement('button')
+        this.daemonEl = this.doc.win.createEl('button')
         this.daemonEl.classList.add('editor-ai-daemons-rail-daemon')
         this.daemonEl.type = 'button'
-        this.daemonGlyphEl = this.doc.createElement('span')
+        this.daemonGlyphEl = this.doc.win.createSpan()
         this.daemonGlyphEl.classList.add('editor-ai-daemons-rail-daemon-glyph')
-        this.daemonLabelEl = this.doc.createElement('span')
+        this.daemonLabelEl = this.doc.win.createSpan()
         this.daemonLabelEl.classList.add('editor-ai-daemons-rail-daemon-label')
         this.daemonEl.appendChild(this.daemonGlyphEl)
         this.daemonEl.appendChild(this.daemonLabelEl)
@@ -248,7 +249,7 @@ export class PersonaRail {
         })
         headEl.appendChild(this.daemonEl)
 
-        this.buttonEl = this.doc.createElement('button')
+        this.buttonEl = this.doc.win.createEl('button')
         this.buttonEl.classList.add('editor-ai-daemons-rail-button')
         this.buttonEl.type = 'button'
         this.buttonEl.addEventListener('click', () => {
@@ -263,10 +264,11 @@ export class PersonaRail {
         // Split-button row (issue #26): Review plus its appearing
         // "Selection" segment share one visual object; the segment exists
         // only while a stable selection makes it dispatchable.
-        const buttonRowEl = this.doc.createElement('div')
+        const buttonRowEl = this.doc.win.createDiv()
         buttonRowEl.classList.add('editor-ai-daemons-rail-button-row')
         buttonRowEl.appendChild(this.buttonEl)
-        this.selectionEl = this.doc.createElement('button')
+        this.buttonRowEl = buttonRowEl
+        this.selectionEl = this.doc.win.createEl('button')
         this.selectionEl.classList.add(
             'editor-ai-daemons-rail-selection',
             'editor-ai-daemons-hidden'
@@ -294,19 +296,19 @@ export class PersonaRail {
         // The head's utility controls share ONE row (live-round feedback,
         // 2026-08-04): two glyph buttons each floating on their own line
         // read as debris, not as controls.
-        const controlsEl = this.doc.createElement('div')
+        const controlsEl = this.doc.win.createDiv()
         controlsEl.classList.add('editor-ai-daemons-rail-controls')
 
         // Findings visibility toggle (issue #29): filled = shown, hollow =
         // hidden — the daemon toggle's convention, glyph + words like the
         // daemon toggle too. Always present: a control that only appeared
         // once something was hidden could never be the thing that hides it.
-        this.findingsEl = this.doc.createElement('button')
+        this.findingsEl = this.doc.win.createEl('button')
         this.findingsEl.classList.add('editor-ai-daemons-rail-findings-toggle')
         this.findingsEl.type = 'button'
-        this.findingsGlyphEl = this.doc.createElement('span')
+        this.findingsGlyphEl = this.doc.win.createSpan()
         this.findingsGlyphEl.classList.add('editor-ai-daemons-rail-findings-glyph')
-        this.findingsLabelEl = this.doc.createElement('span')
+        this.findingsLabelEl = this.doc.win.createSpan()
         this.findingsLabelEl.classList.add('editor-ai-daemons-rail-findings-label')
         this.findingsEl.appendChild(this.findingsGlyphEl)
         this.findingsEl.appendChild(this.findingsLabelEl)
@@ -317,7 +319,7 @@ export class PersonaRail {
 
         // Collapsed finding count (issue #28): the one number that makes a
         // user expand again. Hidden unless collapsed with findings.
-        this.countEl = this.doc.createElement('span')
+        this.countEl = this.doc.win.createSpan()
         this.countEl.classList.add(
             'editor-ai-daemons-rail-collapsed-count',
             'editor-ai-daemons-hidden'
@@ -328,10 +330,10 @@ export class PersonaRail {
         // daemon toggle still hints that a rail is folded behind it. The
         // chevron itself is a CSS-drawn stroke (an empty span rotated by the
         // button's is-rail-collapsed class), not a triangle glyph.
-        this.collapseEl = this.doc.createElement('button')
+        this.collapseEl = this.doc.win.createEl('button')
         this.collapseEl.classList.add('editor-ai-daemons-rail-collapse')
         this.collapseEl.type = 'button'
-        const chevronEl = this.doc.createElement('span')
+        const chevronEl = this.doc.win.createSpan()
         chevronEl.classList.add('editor-ai-daemons-rail-chevron')
         this.collapseEl.appendChild(chevronEl)
         this.collapseEl.addEventListener('click', () => {
@@ -341,7 +343,7 @@ export class PersonaRail {
         headEl.appendChild(controlsEl)
         this.rootEl.appendChild(headEl)
 
-        this.listEl = this.doc.createElement('div')
+        this.listEl = this.doc.win.createDiv()
         this.listEl.classList.add('editor-ai-daemons-rail-list')
         this.listEl.setAttribute('role', 'group')
         this.listEl.setAttribute('aria-label', 'Editors')
@@ -457,6 +459,12 @@ export class PersonaRail {
     private syncSelectionSegment(viewModel: RailViewModel): void {
         const segment = viewModel.selectionSegment
         this.selectionEl.classList.toggle('editor-ai-daemons-hidden', segment === null)
+        // Drives the shared-corner styling that used to be a `:has()`
+        // on the row — same condition, no selector invalidation.
+        this.buttonRowEl.classList.toggle(
+            'editor-ai-daemons-rail-button-row-split',
+            segment !== null
+        )
         if (segment === null) {
             return
         }
@@ -653,7 +661,7 @@ export class PersonaRail {
             return
         }
         if (els.badgeEl === null) {
-            const badgeEl = this.doc.createElement('span')
+            const badgeEl = this.doc.win.createSpan()
             badgeEl.classList.add('editor-ai-daemons-rail-badge', spec.badgeClass)
             badgeEl.setAttribute('aria-hidden', 'true')
             els.rowEl.appendChild(badgeEl)
@@ -676,10 +684,16 @@ export class PersonaRail {
             els.retryEl?.remove()
             els.retryEl = null
             els.retryLabel = null
+            // The slot is no longer split, and cannot still be hovered
+            // through a control that has just been removed.
+            els.slotEl.classList.remove(
+                'editor-ai-daemons-rail-slot-split',
+                'editor-ai-daemons-rail-slot-hover'
+            )
             return
         }
         if (els.retryEl === null) {
-            const retryEl = this.doc.createElement('button')
+            const retryEl = this.doc.win.createEl('button')
             retryEl.type = 'button'
             retryEl.classList.add('editor-ai-daemons-rail-retry')
             // Text glyph on purpose: the rail is Obsidian-free DOM (no
@@ -691,6 +705,22 @@ export class PersonaRail {
                     this.callbacks.onRetry(editorId)
                 }
             })
+            // Split grammar + cross-hover used to be three `:has()` rules on
+            // the slot. The rail already owns both halves, so it states the
+            // condition directly instead of asking the engine to re-check a
+            // subtree on every mutation.
+            els.slotEl.classList.add('editor-ai-daemons-rail-slot-split')
+            const setHover = (hovered: boolean): void => {
+                els.slotEl.classList.toggle('editor-ai-daemons-rail-slot-hover', hovered)
+            }
+            for (const half of [retryEl, els.rowEl]) {
+                half.addEventListener('mouseenter', () => {
+                    setHover(true)
+                })
+                half.addEventListener('mouseleave', () => {
+                    setHover(false)
+                })
+            }
             els.slotEl.appendChild(retryEl)
             els.retryEl = retryEl
         }
@@ -713,21 +743,21 @@ export class PersonaRail {
      * name, and an unnamed decorative span would otherwise be announced.
      */
     private createRow(spec: RailRowSpec): RailRowEls {
-        const slotEl = this.doc.createElement('div')
+        const slotEl = this.doc.win.createDiv()
         slotEl.classList.add('editor-ai-daemons-rail-slot')
 
-        const rowEl = this.doc.createElement('button')
+        const rowEl = this.doc.win.createEl('button')
         rowEl.type = 'button'
         rowEl.classList.add('editor-ai-daemons-rail-row')
 
-        const ringEl = this.doc.createElement('span')
+        const ringEl = this.doc.win.createSpan()
         ringEl.classList.add('editor-ai-daemons-rail-ring')
         ringEl.setAttribute('aria-hidden', 'true')
-        const coreEl = this.doc.createElement('span')
+        const coreEl = this.doc.win.createSpan()
         coreEl.classList.add('editor-ai-daemons-rail-core')
         ringEl.appendChild(coreEl)
 
-        const nameEl = this.doc.createElement('span')
+        const nameEl = this.doc.win.createSpan()
         nameEl.classList.add('editor-ai-daemons-rail-name')
 
         const editorId = spec.editorId
@@ -779,13 +809,13 @@ export class PersonaRail {
         const focusKey = this.focusedKey()
         this.listEl.replaceChildren()
         if (panel !== null) {
-            const groupEl = this.groupEl ?? this.doc.createElement('div')
+            const groupEl = this.groupEl ?? this.doc.win.createDiv()
             if (this.groupEl === null) {
                 groupEl.classList.add('editor-ai-daemons-rail-group')
                 groupEl.setAttribute('role', 'group')
                 this.groupEl = groupEl
             }
-            const membersEl = this.membersEl ?? this.doc.createElement('div')
+            const membersEl = this.membersEl ?? this.doc.win.createDiv()
             if (this.membersEl === null) {
                 membersEl.classList.add('editor-ai-daemons-rail-members')
                 this.membersEl = membersEl

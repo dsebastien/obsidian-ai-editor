@@ -144,7 +144,7 @@ class TransformPreviewWidget extends WidgetType {
     override toDOM(view: EditorView): HTMLElement {
         const doc = view.dom.ownerDocument
         const spec = this.spec
-        const root = doc.createElement('div')
+        const root = doc.win.createDiv()
         root.classList.add('editor-ai-daemons-transform-preview')
         root.style.setProperty(
             '--editor-ai-daemons-editor-color',
@@ -154,22 +154,22 @@ class TransformPreviewWidget extends WidgetType {
         root.setAttribute('aria-label', previewAriaLabel(spec))
         root.tabIndex = 0
 
-        const header = doc.createElement('div')
+        const header = doc.win.createDiv()
         header.classList.add('editor-ai-daemons-transform-preview-header')
-        const dot = doc.createElement('span')
+        const dot = doc.win.createSpan()
         dot.classList.add('editor-ai-daemons-transform-preview-dot')
         dot.setAttribute('aria-hidden', 'true')
         header.appendChild(dot)
-        const title = doc.createElement('span')
+        const title = doc.win.createSpan()
         title.classList.add('editor-ai-daemons-transform-preview-title')
         title.textContent = spec.title
         header.appendChild(title)
         root.appendChild(header)
 
-        const diff = doc.createElement('div')
+        const diff = doc.win.createDiv()
         diff.classList.add('editor-ai-daemons-transform-preview-diff')
         for (const segment of spec.segments) {
-            const el = doc.createElement(SEGMENT_TAGS[segment.kind])
+            const el = doc.win.createEl(SEGMENT_TAGS[segment.kind])
             el.classList.add(`editor-ai-daemons-transform-preview-${segment.kind}`)
             el.textContent = segment.text
             diff.appendChild(el)
@@ -177,25 +177,25 @@ class TransformPreviewWidget extends WidgetType {
         root.appendChild(diff)
 
         if (spec.rationale !== null && spec.rationale.length > 0) {
-            const rationale = doc.createElement('p')
+            const rationale = doc.win.createEl('p')
             rationale.classList.add('editor-ai-daemons-transform-preview-rationale')
             rationale.textContent = spec.rationale
             root.appendChild(rationale)
         }
 
-        const actions = doc.createElement('div')
+        const actions = doc.win.createDiv()
         actions.classList.add('editor-ai-daemons-transform-preview-actions')
-        const accept = doc.createElement('button')
+        const accept = doc.win.createEl('button')
         accept.classList.add('editor-ai-daemons-transform-preview-accept', 'mod-cta')
         accept.textContent = 'Accept'
         accept.addEventListener('click', () => spec.actions.onAccept())
         actions.appendChild(accept)
-        const reject = doc.createElement('button')
+        const reject = doc.win.createEl('button')
         reject.classList.add('editor-ai-daemons-transform-preview-reject')
         reject.textContent = 'Reject'
         reject.addEventListener('click', () => spec.actions.onReject())
         actions.appendChild(reject)
-        const hint = doc.createElement('span')
+        const hint = doc.win.createSpan()
         hint.classList.add('editor-ai-daemons-transform-preview-hint')
         hint.textContent = 'Enter to accept · Esc to reject'
         hint.setAttribute('aria-hidden', 'true')

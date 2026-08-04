@@ -643,7 +643,7 @@ class FindingCardPlugin implements PluginValue {
     private openCard(sections: readonly FindingCardData[], anchor: CardAnchorRect): void {
         this.closeCard()
         const doc = this.view.dom.ownerDocument
-        const card = doc.createElement('div')
+        const card = doc.win.createDiv()
         card.classList.add('editor-ai-daemons-finding-card')
         card.setAttribute('role', 'dialog')
         // Programmatically focusable (never in the tab order): focus parks
@@ -877,7 +877,7 @@ class FindingCardPlugin implements PluginValue {
 
     private renderSection(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
-        const section = doc.createElement('section')
+        const section = doc.win.createEl('section')
         section.classList.add('editor-ai-daemons-finding-card-section')
         section.dataset['findingId'] = data.findingId
         if (data.panelName !== null) {
@@ -888,18 +888,18 @@ class FindingCardPlugin implements PluginValue {
             )
         }
 
-        const header = doc.createElement('header')
+        const header = doc.win.createEl('header')
         header.classList.add('editor-ai-daemons-finding-card-header')
-        const dot = doc.createElement('span')
+        const dot = doc.win.createSpan()
         dot.classList.add('editor-ai-daemons-finding-card-dot')
         dot.style.setProperty('--editor-ai-daemons-editor-color', data.editorColor)
         dot.setAttribute('aria-hidden', 'true')
         header.appendChild(dot)
-        const name = doc.createElement('span')
+        const name = doc.win.createSpan()
         name.classList.add('editor-ai-daemons-finding-card-name')
         name.textContent = data.editorName
         header.appendChild(name)
-        const severity = doc.createElement('span')
+        const severity = doc.win.createSpan()
         severity.classList.add(
             'editor-ai-daemons-finding-card-severity',
             `editor-ai-daemons-finding-card-severity-${data.severity}`
@@ -908,12 +908,12 @@ class FindingCardPlugin implements PluginValue {
         header.appendChild(severity)
         section.appendChild(header)
 
-        const critique = doc.createElement('p')
+        const critique = doc.win.createEl('p')
         critique.classList.add('editor-ai-daemons-finding-card-critique')
         critique.textContent = data.critique
         section.appendChild(critique)
 
-        const quote = doc.createElement('blockquote')
+        const quote = doc.win.createEl('blockquote')
         quote.classList.add('editor-ai-daemons-finding-card-quote')
         quote.textContent = data.quote
         section.appendChild(quote)
@@ -922,7 +922,7 @@ class FindingCardPlugin implements PluginValue {
         section.appendChild(this.copyButton(doc, 'Copy the quoted text', () => data.quote))
 
         if (data.invalidProposal) {
-            const marker = doc.createElement('p')
+            const marker = doc.win.createEl('p')
             marker.classList.add('editor-ai-daemons-finding-card-invalid-proposal')
             marker.textContent =
                 'The proposed change could not be validated and was removed — only the critique is shown.'
@@ -952,32 +952,32 @@ class FindingCardPlugin implements PluginValue {
      */
     private renderEvidence(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
-        const block = doc.createElement('div')
+        const block = doc.win.createDiv()
         block.classList.add('editor-ai-daemons-finding-card-sources')
-        const heading = doc.createElement('span')
+        const heading = doc.win.createSpan()
         heading.classList.add('editor-ai-daemons-finding-card-sources-heading')
         heading.textContent = 'Sources'
         block.appendChild(heading)
         data.evidence.forEach((entry, index) => {
-            const row = doc.createElement('div')
+            const row = doc.win.createDiv()
             row.classList.add('editor-ai-daemons-finding-card-source')
-            const title = doc.createElement('span')
+            const title = doc.win.createSpan()
             title.classList.add('editor-ai-daemons-finding-card-source-title')
             title.textContent = entry.title
             row.appendChild(title)
             if (entry.url !== null) {
-                const url = doc.createElement('span')
+                const url = doc.win.createSpan()
                 url.classList.add('editor-ai-daemons-finding-card-source-url')
                 url.textContent = entry.url
                 row.appendChild(url)
             }
             if (entry.claim !== null) {
-                const claim = doc.createElement('span')
+                const claim = doc.win.createSpan()
                 claim.classList.add('editor-ai-daemons-finding-card-source-claim')
                 claim.textContent = entry.claim
                 row.appendChild(claim)
             }
-            const controls = doc.createElement('div')
+            const controls = doc.win.createDiv()
             controls.classList.add('editor-ai-daemons-finding-card-source-controls')
             if (entry.verified) {
                 controls.appendChild(
@@ -987,7 +987,7 @@ class FindingCardPlugin implements PluginValue {
                     this.addReferenceButton(doc, data, index, 'section', 'Add to References')
                 )
             } else {
-                const badge = doc.createElement('span')
+                const badge = doc.win.createSpan()
                 badge.classList.add('editor-ai-daemons-finding-card-source-unverified')
                 badge.textContent = 'Not consulted — verify before citing'
                 badge.title =
@@ -1014,7 +1014,7 @@ class FindingCardPlugin implements PluginValue {
         placement: 'footnote' | 'section',
         label: string
     ): HTMLElement {
-        const button = doc.createElement('button')
+        const button = doc.win.createEl('button')
         button.classList.add('editor-ai-daemons-finding-card-source-add')
         button.textContent = label
         const blocked = placement === 'footnote' && !data.anchoredSpan
@@ -1042,20 +1042,20 @@ class FindingCardPlugin implements PluginValue {
      */
     private renderEdit(edit: CardEditData): HTMLElement {
         const doc = this.view.dom.ownerDocument
-        const diff = doc.createElement('div')
+        const diff = doc.win.createDiv()
         diff.classList.add('editor-ai-daemons-finding-card-diff')
-        const label = doc.createElement('span')
+        const label = doc.win.createSpan()
         label.classList.add('editor-ai-daemons-finding-card-diff-op')
         label.textContent = EDIT_OP_LABELS[edit.op]
         diff.appendChild(label)
         if (edit.op === 'replace' || edit.op === 'delete') {
-            const oldEl = doc.createElement('del')
+            const oldEl = doc.win.createEl('del')
             oldEl.classList.add('editor-ai-daemons-finding-card-diff-old')
             oldEl.textContent = edit.target
             diff.appendChild(oldEl)
         }
         if (edit.op !== 'delete') {
-            const newEl = doc.createElement('ins')
+            const newEl = doc.win.createEl('ins')
             newEl.classList.add('editor-ai-daemons-finding-card-diff-new')
             newEl.textContent = edit.text
             diff.appendChild(newEl)
@@ -1075,7 +1075,7 @@ class FindingCardPlugin implements PluginValue {
      * rather than throw inside the card.
      */
     private copyButton(doc: Document, label: string, text: () => string): HTMLElement {
-        const button = doc.createElement('button')
+        const button = doc.win.createEl('button')
         button.classList.add('editor-ai-daemons-finding-card-copy')
         button.textContent = 'Copy'
         button.setAttribute('aria-label', label)
@@ -1102,11 +1102,11 @@ class FindingCardPlugin implements PluginValue {
 
     private renderActions(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
-        const actions = doc.createElement('div')
+        const actions = doc.win.createDiv()
         actions.classList.add('editor-ai-daemons-finding-card-actions')
 
         if (data.edits.length > 0) {
-            const accept = doc.createElement('button')
+            const accept = doc.win.createEl('button')
             accept.classList.add('editor-ai-daemons-finding-card-accept', 'mod-cta')
             accept.textContent = 'Accept'
             accept.disabled = !data.acceptable
@@ -1120,7 +1120,7 @@ class FindingCardPlugin implements PluginValue {
             actions.appendChild(accept)
         }
 
-        const dismiss = doc.createElement('button')
+        const dismiss = doc.win.createEl('button')
         dismiss.classList.add('editor-ai-daemons-finding-card-dismiss')
         dismiss.textContent = 'Dismiss'
         dismiss.addEventListener('click', () => {
@@ -1154,7 +1154,7 @@ class FindingCardPlugin implements PluginValue {
         const elements: HTMLElement[] = []
 
         if (view.rows.length > 0) {
-            const list = doc.createElement('div')
+            const list = doc.win.createDiv()
             list.classList.add('editor-ai-daemons-finding-card-thread')
             // Scrollable region inside a dialog: keyboard-reachable so the
             // exchange can be scrolled back through without a mouse (WCAG
@@ -1166,7 +1166,7 @@ class FindingCardPlugin implements PluginValue {
             list.setAttribute('aria-live', 'polite')
             list.setAttribute('aria-label', `Push-back thread with ${data.editorName}`)
             for (const row of view.rows) {
-                const message = doc.createElement('div')
+                const message = doc.win.createDiv()
                 message.classList.add(
                     'editor-ai-daemons-finding-card-thread-message',
                     `editor-ai-daemons-finding-card-thread-${row.role}`
@@ -1174,11 +1174,11 @@ class FindingCardPlugin implements PluginValue {
                 if (row.state !== 'settled') {
                     message.classList.add(`editor-ai-daemons-finding-card-thread-${row.state}`)
                 }
-                const who = doc.createElement('span')
+                const who = doc.win.createSpan()
                 who.classList.add('editor-ai-daemons-finding-card-thread-who')
                 who.textContent = row.role === 'user' ? 'You' : data.editorName
                 message.appendChild(who)
-                const body = doc.createElement('span')
+                const body = doc.win.createSpan()
                 body.classList.add('editor-ai-daemons-finding-card-thread-body')
                 body.textContent = row.content
                 message.appendChild(body)
@@ -1188,16 +1188,16 @@ class FindingCardPlugin implements PluginValue {
         }
 
         if (view.failure !== null) {
-            const failure = doc.createElement('p')
+            const failure = doc.win.createEl('p')
             failure.classList.add('editor-ai-daemons-finding-card-thread-failure')
             failure.setAttribute('role', 'alert')
             failure.textContent = `Push-back failed: ${view.failure}`
             elements.push(failure)
         }
 
-        const row = doc.createElement('div')
+        const row = doc.win.createDiv()
         row.classList.add('editor-ai-daemons-finding-card-pushback')
-        const input = doc.createElement('input')
+        const input = doc.win.createEl('input')
         input.classList.add('editor-ai-daemons-finding-card-pushback-input')
         input.type = 'text'
         input.dataset['findingId'] = data.findingId
@@ -1205,7 +1205,7 @@ class FindingCardPlugin implements PluginValue {
         input.placeholder = view.placeholder
         input.setAttribute('aria-label', `Push back to ${data.editorName}`)
         input.value = replyInputValue(this.drafts.get(data.findingId), view.restoreDraft)
-        const send = doc.createElement('button')
+        const send = doc.win.createEl('button')
         send.classList.add('editor-ai-daemons-finding-card-pushback-send')
         send.textContent = 'Send'
         send.disabled = !view.inputEnabled

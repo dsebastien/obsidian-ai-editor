@@ -53,7 +53,7 @@ export function renderBackendsTab(containerEl: HTMLElement, ctx: TabContext): vo
 
     const callout = containerEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
     callout.createEl('strong', { text: 'API keys are stored in plain text' })
-    callout.createEl('div', {
+    callout.createDiv({
         text: 'Keys live in this plugin’s data.json inside your vault. If the vault syncs (Obsidian Sync, iCloud, Git…), the keys travel with it. Use minimal-scope keys and rotate them if the vault ever leaks.'
     })
 

@@ -103,7 +103,7 @@ export class CliBackendModal extends Modal {
 
         const callout = contentEl.createDiv({ cls: 'editor-ai-daemons-settings-callout' })
         callout.createEl('strong', { text: 'This backend runs a program on your computer' })
-        callout.createEl('div', {
+        callout.createDiv({
             text: 'Your note is sent to it on standard input. It runs with no shell, in a temporary folder outside your vault, with a minimal environment — and only when you ask for a review or an action.'
         })
 

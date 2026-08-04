@@ -70,15 +70,15 @@ export class MarginColumn {
         private readonly tooltipSetter?: MarginTooltipSetter
     ) {
         this.doc = doc ?? containerEl.ownerDocument
-        this.rootEl = this.doc.createElement('div')
+        this.rootEl = this.doc.win.createDiv()
         this.rootEl.classList.add('editor-ai-daemons-margin')
         this.rootEl.setAttribute('role', 'complementary')
         this.rootEl.setAttribute('aria-label', 'Margin comments')
         // Orphans are pinned at the top of the column; anchored groups are
         // positioned individually against the lines they belong to.
-        this.orphansEl = this.doc.createElement('div')
+        this.orphansEl = this.doc.win.createDiv()
         this.orphansEl.classList.add('editor-ai-daemons-margin-orphans')
-        this.groupsEl = this.doc.createElement('div')
+        this.groupsEl = this.doc.win.createDiv()
         this.groupsEl.classList.add('editor-ai-daemons-margin-groups')
         this.rootEl.appendChild(this.orphansEl)
         this.rootEl.appendChild(this.groupsEl)
@@ -120,9 +120,9 @@ export class MarginColumn {
 
         if (model.orphans !== null) {
             const orphans = model.orphans
-            const box = this.doc.createElement('div')
+            const box = this.doc.win.createDiv()
             box.classList.add('editor-ai-daemons-margin-orphan-box')
-            const toggle = this.doc.createElement('button')
+            const toggle = this.doc.win.createEl('button')
             toggle.classList.add('editor-ai-daemons-margin-orphan-toggle')
             toggle.type = 'button'
             // Text glyph, not an icon font: this file is Obsidian-free DOM.
@@ -144,7 +144,7 @@ export class MarginColumn {
         }
 
         for (const group of model.groups) {
-            const groupEl = this.doc.createElement('div')
+            const groupEl = this.doc.win.createDiv()
             groupEl.classList.add('editor-ai-daemons-margin-group')
             groupEl.dataset['groupKey'] = group.key
             if (group.collapsed && group.chipLabel !== null) {
@@ -242,7 +242,7 @@ export class MarginColumn {
 
     /** A line with several comments: one chip that expands to all of them. */
     private renderChip(group: MarginGroupView, label: string): HTMLElement {
-        const chip = this.doc.createElement('button')
+        const chip = this.doc.win.createEl('button')
         chip.classList.add('editor-ai-daemons-margin-chip')
         chip.type = 'button'
         chip.textContent = label
@@ -255,7 +255,7 @@ export class MarginColumn {
     }
 
     private renderCard(card: MarginCardView): HTMLElement {
-        const cardEl = this.doc.createElement('div')
+        const cardEl = this.doc.win.createDiv()
         cardEl.classList.add('editor-ai-daemons-margin-card')
         if (card.orphaned) {
             cardEl.classList.add('editor-ai-daemons-margin-card-orphaned')
@@ -270,13 +270,13 @@ export class MarginColumn {
         cardEl.setAttribute('role', 'group')
         cardEl.setAttribute('aria-label', card.accessibleName)
 
-        const head = this.doc.createElement('div')
+        const head = this.doc.win.createDiv()
         head.classList.add('editor-ai-daemons-margin-head')
-        const name = this.doc.createElement('span')
+        const name = this.doc.win.createSpan()
         name.classList.add('editor-ai-daemons-margin-editor')
         name.textContent = card.editorName
         head.appendChild(name)
-        const status = this.doc.createElement('span')
+        const status = this.doc.win.createSpan()
         status.classList.add('editor-ai-daemons-margin-status')
         status.textContent = marginCardStatusText(card)
         // The card's own name already announces the editor and the state.
@@ -288,7 +288,7 @@ export class MarginColumn {
         // named by its own visible text. A card whose span is gone has nothing
         // to reveal, so it is plain text instead.
         if (card.actions.canReveal) {
-            const reveal = this.doc.createElement('button')
+            const reveal = this.doc.win.createEl('button')
             reveal.classList.add(
                 'editor-ai-daemons-margin-question',
                 'editor-ai-daemons-margin-reveal'
@@ -301,31 +301,31 @@ export class MarginColumn {
             })
             cardEl.appendChild(reveal)
         } else {
-            const question = this.doc.createElement('div')
+            const question = this.doc.win.createDiv()
             question.classList.add('editor-ai-daemons-margin-question')
             question.textContent = card.question
             cardEl.appendChild(question)
         }
 
         if (card.quote !== null) {
-            const quote = this.doc.createElement('blockquote')
+            const quote = this.doc.win.createEl('blockquote')
             quote.classList.add('editor-ai-daemons-margin-quote')
             quote.textContent = card.quote
             cardEl.appendChild(quote)
         }
         if (card.drifted) {
-            const drift = this.doc.createElement('div')
+            const drift = this.doc.win.createDiv()
             drift.classList.add('editor-ai-daemons-margin-drift')
             drift.textContent = 'The text has changed slightly since this was asked.'
             cardEl.appendChild(drift)
         }
         if (card.body !== null) {
-            const body = this.doc.createElement('div')
+            const body = this.doc.win.createDiv()
             body.classList.add('editor-ai-daemons-margin-body')
             body.textContent = card.body
             cardEl.appendChild(body)
             if (card.truncated) {
-                const more = this.doc.createElement('button')
+                const more = this.doc.win.createEl('button')
                 more.classList.add('editor-ai-daemons-margin-more')
                 more.type = 'button'
                 more.textContent = card.expanded ? 'Show less' : 'Show more'
@@ -342,7 +342,7 @@ export class MarginColumn {
             }
         }
 
-        const actions = this.doc.createElement('div')
+        const actions = this.doc.win.createDiv()
         actions.classList.add('editor-ai-daemons-margin-actions')
         if (card.actions.canRetry) {
             this.addAction(actions, card, 'Retry', () => this.callbacks.onRetry(card.commentId))
@@ -370,7 +370,7 @@ export class MarginColumn {
         label: string,
         onClick: () => void
     ): void {
-        const button = this.doc.createElement('button')
+        const button = this.doc.win.createEl('button')
         button.classList.add('editor-ai-daemons-margin-action')
         button.type = 'button'
         button.textContent = label
