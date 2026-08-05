@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.6.0...0.6.1) (2026-08-05)
+
+### Bug Fixes
+
+* **plugin:** classify Claude Code's not-logged-in envelope as auth ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)) ([67a5692](https://github.com/dsebastien/obsidian-ai-editor/commit/67a56922d929e348cdc64d8f7a496801ad8079c0))
+* **plugin:** forward USER/LOGNAME to CLI children — the macOS Keychain lookup key ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)) ([b10c9d4](https://github.com/dsebastien/obsidian-ai-editor/commit/b10c9d49e002de833c3a805537a7c8923d448693))
+
 ## [0.6.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.2...0.6.0) (2026-08-05)
 
 ### Features
@@ -290,6 +297,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 

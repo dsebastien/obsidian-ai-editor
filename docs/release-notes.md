@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.6.1 (2026-08-05)
+
+### Bug Fixes
+
+- **plugin:** classify Claude Code's not-logged-in envelope as auth ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39))
+- **plugin:** forward USER/LOGNAME to CLI children — the macOS Keychain lookup key ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39))
+
 ## 0.6.0 (2026-08-05)
 
 ### Features

@@ -1,6 +1,6 @@
 {
     "name": "editor-ai-daemons",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "description": "Review, edit, and draft notes collaboratively with configurable AI editors and panels.",
     "author": {
         "name": "Sébastien Dubois",
