@@ -2,6 +2,18 @@
     "compilerOptions": {
         "baseUrl": ".",
         "lib": ["DOM", "ESNext"],
+        // Ambient type packages, named EXPLICITLY rather than left to
+        // TypeScript's automatic `node_modules/@types` scan.
+        //
+        // The scan only looks at the TOP LEVEL, and `@types/node` used to
+        // arrive here transitively (via `@types/bun` -> `bun-types`), which a
+        // package manager is free to nest instead of hoist. When that happened
+        // in the community-catalog reviewer's install, every `node:*` import
+        // silently became an `error` type and produced ~80 `no-unsafe-*`
+        // warnings we could not see locally (0.5.0 review). Both packages are
+        // now direct, pinned devDependencies and named here, so a missing one
+        // is a hard tsc failure instead of a silent degradation to `any`.
+        "types": ["bun", "node"],
         "target": "ESNext",
         "module": "ESNext",
         "moduleDetection": "force",

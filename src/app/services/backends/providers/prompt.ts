@@ -48,7 +48,7 @@ const RESULT_SCHEMAS = {
  * prompt instructions.
  */
 export function resultJsonSchema(kind: OperationRequest['kind']): Record<string, unknown> {
-    return z.toJSONSchema(RESULT_SCHEMAS[kind], { io: 'input' }) as Record<string, unknown>
+    return z.toJSONSchema(RESULT_SCHEMAS[kind], { io: 'input' })
 }
 
 function tag(name: string, content: string): string {
