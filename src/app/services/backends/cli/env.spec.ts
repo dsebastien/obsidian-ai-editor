@@ -11,6 +11,7 @@ const SOURCE = {
     HOME: '/home/seb',
     PATH: '/usr/bin:/bin',
     LANG: 'en_US.UTF-8',
+    USER: 'seb',
     // Everything below must NOT be forwarded.
     AWS_SECRET_ACCESS_KEY: 'aws-secret',
     GITHUB_TOKEN: 'gh-secret',
@@ -29,12 +30,27 @@ describe('buildCliEnv', () => {
             'NO_COLOR',
             'PATH',
             'TERM',
-            'TMPDIR'
+            'TMPDIR',
+            'USER'
         ])
         expect(JSON.stringify(env)).not.toContain('aws-secret')
         expect(JSON.stringify(env)).not.toContain('gh-secret')
         expect(env['NODE_OPTIONS']).toBeUndefined()
         expect(env['SSH_AUTH_SOCK']).toBeUndefined()
+    })
+
+    it('forwards USER — the macOS Keychain lookup key for Claude Code logins (issue #39)', () => {
+        // Bisected in the field: with USER scrubbed, a fully logged-in CLI
+        // answers "Not logged in" because the Keychain item's account
+        // attribute is $USER. LOGNAME rides along as its POSIX twin.
+        const env = buildCliEnv({ platform: 'posix', sourceEnv: SOURCE, runDir: '/tmp/run-1' })
+        expect(env['USER']).toBe('seb')
+        const withLogname = buildCliEnv({
+            platform: 'posix',
+            sourceEnv: { ...SOURCE, LOGNAME: 'seb' },
+            runDir: '/tmp/run-1'
+        })
+        expect(withLogname['LOGNAME']).toBe('seb')
     })
 
     it('has no way to add a variable: the input carries nothing user-supplied', () => {

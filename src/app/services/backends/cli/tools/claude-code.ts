@@ -213,9 +213,7 @@ function parseEnvelope(stdout: string): CliEnvelope {
                 code: 'auth',
                 message:
                     'The Claude Code CLI is not logged in. Run claude in a terminal, use ' +
-                    '/login, then try again. (If the terminal says you ARE logged in, run one ' +
-                    'interactive prompt there first — after an update, macOS may need to ' +
-                    're-authorize Keychain access, which a headless run cannot do.)'
+                    '/login, then try again.'
             }
         }
         const reason = safeStatusToken(envelope['terminal_reason'])

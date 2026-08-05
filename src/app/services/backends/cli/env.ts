@@ -53,7 +53,19 @@ const POSIX_ALLOWLIST = [
     /** Text encoding of the child's output; a wrong locale mangles UTF-8. */
     'LANG',
     'LC_ALL',
-    'LC_CTYPE'
+    'LC_CTYPE',
+    /**
+     * The credential-store KEY, not just an identity nicety (issue #39,
+     * root-caused and bisected by the reporter): on macOS, Claude Code looks
+     * up its OAuth token in the login Keychain with the account attribute set
+     * to `$USER` — without it the lookup misses and a fully logged-in CLI
+     * answers "Not logged in · Please run /login". The value is the login
+     * name the `HOME` path already spells out, so nothing new is exposed.
+     * `LOGNAME` is its POSIX twin; tools that read one often fall back to
+     * the other, and it carries the same already-visible value.
+     */
+    'USER',
+    'LOGNAME'
 ] as const
 
 const WINDOWS_ALLOWLIST = [
