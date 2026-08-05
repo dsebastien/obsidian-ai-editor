@@ -16,7 +16,7 @@ Nothing runs on its own, and nothing is written without a diff. Desktop only. Br
 
 ## Key features
 
-- **Editors** — AI personas you define with a prompt. Six ship with the plugin, all editable.
+- **Editors** — AI personas you define with a prompt. Seven ship with the plugin, all editable.
 - **Panels** — groups of editors that review together and produce one scorecard: overall verdict, per-member verdicts, ranked top fixes, and where they disagreed.
 - **Review loop** — findings anchored to the exact words they quote, triaged from the keyboard, with push-back replies when you disagree.
 - **Ask a question** — a freeform question to one editor or a whole panel, answered as findings on your note rather than chat.

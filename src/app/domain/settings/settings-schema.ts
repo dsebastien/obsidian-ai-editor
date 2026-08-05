@@ -383,8 +383,16 @@ export const pluginSettingsSchema = z.object({
     /** Follow-links defaults ON here — see `promptSourceSchema.followLinks`. */
     voiceProfile: promptSourceSchema.default({ text: '', notePaths: [], followLinks: true }),
     behavior: behaviorSettingsSchema.default(behaviorSettingsSchema.parse({})),
-    /** True once the starter pack has been seeded (idempotence). */
-    starterPackSeeded: z.boolean().default(false),
+    /**
+     * Highest starter-pack revision seeded so far (idempotence). 0 = never
+     * seeded; at load, revisions above it are seeded once and the field
+     * advances (issue #37 — the pack can grow after installs exist).
+     * Replaces the retired boolean `starterPackSeeded`; a persisted `true`
+     * is read as revision 1 (see `normalizeLegacyStarterFlag`) so an
+     * existing vault receives later additions without re-seeding — or
+     * resurrecting — the original pack.
+     */
+    starterPackVersion: z.number().int().min(0).default(0),
     /** True once the setup wizard completed or was skipped. */
     onboarded: z.boolean().default(false)
 })
@@ -487,8 +495,28 @@ export function resolveIdCollisions(
  * throws. Unknown future versions are kept as-is data-wise but validated
  * against the current schema (migrations hook in here as versions grow).
  */
+/**
+ * Reads the retired boolean `starterPackSeeded` (≤0.3.x) as starter-pack
+ * revision 1. Pre-parse on purpose: the happy path strips unknown keys, so
+ * without this the legacy flag would read as "never seeded" and the original
+ * six personas would be seeded again into a vault that already has them.
+ * The legacy key itself is left in place — `collectForeignKeys` carries it
+ * through saves, which keeps a downgrade to 0.3.x from re-seeding either.
+ */
+function normalizeLegacyStarterFlag(raw: unknown): unknown {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return raw
+    }
+    const source = raw as Record<string, unknown>
+    if (source['starterPackVersion'] !== undefined || source['starterPackSeeded'] !== true) {
+        return raw
+    }
+    return { ...source, starterPackVersion: 1 }
+}
+
 export function loadSettingsDetailed(raw: unknown): LoadedSettings {
-    const whole = pluginSettingsSchema.safeParse(raw)
+    const normalized = normalizeLegacyStarterFlag(raw)
+    const whole = pluginSettingsSchema.safeParse(normalized)
     if (whole.success) {
         const resolved = resolveIdCollisions(whole.data)
         return {
@@ -497,14 +525,14 @@ export function loadSettingsDetailed(raw: unknown): LoadedSettings {
             regeneratedIds: resolved.regenerated
         }
     }
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    if (typeof normalized !== 'object' || normalized === null || Array.isArray(normalized)) {
         return {
             settings: DEFAULT_PLUGIN_SETTINGS,
             dropped: ['(all settings)'],
             regeneratedIds: []
         }
     }
-    const source = raw as Record<string, unknown>
+    const source = normalized as Record<string, unknown>
     const salvaged: Record<string, unknown> = { schemaVersion: SETTINGS_SCHEMA_VERSION }
     const dropped: string[] = []
     const sections: readonly (keyof PluginSettingsV1)[] = [
@@ -516,7 +544,7 @@ export function loadSettingsDetailed(raw: unknown): LoadedSettings {
         'rules',
         'voiceProfile',
         'behavior',
-        'starterPackSeeded',
+        'starterPackVersion',
         'onboarded'
     ]
     /** Whether the value is valid as this section within otherwise-default settings. */

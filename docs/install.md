@@ -66,12 +66,12 @@ The check uses a 60-second timeout of its own rather than your configured reques
 
 1. **Settings → AI Editor → Backends → Add backend**. Pick a provider, fill in what it needs, save. See [Set up a backend](backends.md).
 2. Set it as the **Global default backend**, or assign it to individual editors.
-3. Make sure at least one editor is enabled under **Editors** — six are seeded on first load.
+3. Make sure at least one editor is enabled under **Editors** — seven are seeded on first load.
 4. Open a note and run **Review current note** from the command palette, or select **Review** on the persona rail in the top-right corner of the editor.
 
 ## What gets seeded on first load
 
-Six editors, one panel, and default action bindings — all fully editable, all deletable.
+Seven editors, one panel, and default action bindings — all fully editable, all deletable.
 
 | Editor                  | What it looks for                                                 |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -81,12 +81,13 @@ Six editors, one panel, and default action bindings — all fully editable, all 
 | Flow & Structure Editor | Order, transitions, paragraphs that fight the reader              |
 | Humanizer               | Machine-generated fingerprints: uniform rhythm, inflated phrasing |
 | Beginner Reader         | Undefined jargon, skipped reasoning steps, unstated prerequisites |
+| Grammar Editor          | Typos, wrong homophones, agreement errors, broken punctuation     |
 
 The **Pre-publish review** panel bundles Devil's Advocate, Flow & Structure Editor, Beginner Reader and Humanizer behind one charter: _is this ready to publish under the author's name?_
 
 Default action bindings: rephrase, summarize and simplify → Concision Editor; humanize → Humanizer; critique and identify assumptions → Devil's Advocate; find evidence → Fact Checker. **Continue writing** and **Say more** are deliberately left unbound — no seeded persona is an authorial voice, so any default would be a bad one.
 
-Seeding happens once and never overwrites anything you already configured.
+Seeding happens once per pack revision and never overwrites anything you already configured: when an update ships a new starter editor (the Grammar Editor arrived this way), you receive just that editor — nothing you renamed, edited or deleted comes back.
 
 ## Next
 

@@ -11,19 +11,29 @@ import {
 } from './settings-schema'
 
 /**
- * Starter pack: six shipped editor personas + one panel, seeded exactly once
- * (plan §5.8, review major #9 "idempotent starter-pack seeding").
+ * Starter pack: the shipped editor personas + one panel, seeded in numbered
+ * revisions (plan §5.8, review major #9 "idempotent starter-pack seeding";
+ * revisioning added for issue #37 so the pack can grow after installs
+ * exist). Revision 1 is the original six personas, the pre-publish panel and
+ * the default action bindings; revision 2 adds the Grammar Editor.
  *
  * Constraints:
  * - Pure function: never mutates the input settings; seeding is expressed as
  *   a new settings value with the starter entities appended.
- * - Idempotent: `starterPackSeeded` guards re-runs — reinstalls, migrations,
- *   or repeated wizard passes never duplicate the pack.
+ * - Idempotent: `starterPackVersion` guards re-runs — each revision seeds at
+ *   most once, and reinstalls, migrations, or repeated wizard passes never
+ *   duplicate the pack.
+ * - Renames and deletions are respected: a revision never seeds a persona
+ *   whose name already exists, and a revision at or below the stored version
+ *   never runs again — so a starter persona the user deleted stays deleted.
  * - Every persona prompt instructs verbatim quoting (Business Rule #4): the
  *   quote is the anchor, so paraphrased quotes make findings unusable.
  * - All starter entities are ordinary, fully editable settings entities with
  *   generated UUIDs — nothing references them by name or hardcoded id.
  */
+
+/** Highest pack revision this build ships. Bump when a revision is added. */
+export const STARTER_PACK_VERSION = 2
 
 interface StarterEditorSpec {
     readonly name: string
@@ -112,6 +122,24 @@ For every finding, quote the offending text verbatim — the exact characters fr
 
 Restraint rules, equally binding: do NOT over-polish — natural disfluency and idiosyncratic word choices are what keep text human; sanding off every irregularity pushes it TOWARD a machine profile. Respect the author's actual voice: a voice/style profile in your context is AUTHORITATIVE — any phrase or pattern it sanctions as the author's signature must never be flagged, even if it matches a category above. Humans also use these words occasionally — flag density, not existence. If the text shows 5+ vocabulary tells across categories AND uniform rhythm AND uniform paragraphs, say plainly in your summary that patching will not work and a ground-up rewrite from the core point is needed. Genuinely human text should pass with few or no findings.`
 
+const GRAMMAR_PROMPT = `You are the Grammar Editor, the last line of defense against the mechanical errors that make careful writing look careless. Your subject is correctness — grammar, spelling, punctuation — never style, never taste.
+
+Hunt for:
+- Spelling errors and typos, including the ones a spellchecker misses: doubled words ("the the"), dropped words, transposed letters forming real words ("form" for "from", "casual" for "causal").
+- Wrong homophones and near-homophones: "its"/"it's", "their"/"there"/"they're", "affect"/"effect", "lose"/"loose", "then"/"than", "complement"/"compliment".
+- Agreement errors: subject-verb ("the list of items were"), pronoun-antecedent, and mismatched singular/plural across a sentence.
+- Tense and aspect inconsistencies: narration that drifts between past and present without reason.
+- Broken sentence mechanics: run-ons and comma splices, dangling and misplaced modifiers, sentences that lost their main verb mid-edit.
+- Punctuation errors: missing or extra commas that change the reading, apostrophes in plurals, unpaired quotes/parentheses/brackets, hyphens where the compound needs one ("well known author" as a modifier).
+- Capitalization errors: sentence starts, proper nouns, and inconsistent casing of the same term across the document.
+- Common non-native patterns: missing or extra articles ("a"/"an"/"the"), wrong prepositions ("different than", "depends of"), false friends.
+
+For every finding, quote the erroneous text verbatim — copy it character for character from the document exactly as it appears, including the error itself. Never fix the error inside the quote; the quote is used to locate the exact span, and a corrected quote makes the finding unusable. Put the correction in the suggestion, changing only what is wrong — never rewrite the sentence around it.
+
+Stay in your lane: word choice, concision, flow, tone, argument, and facts belong to other editors. Deliberate fragments, one-word sentences, informal constructions, and idiosyncratic voice are choices, not errors — a rule broken on purpose, consistently, is style. Markdown syntax, code blocks, URLs, and wikilinks are not prose: never flag their internal spelling or punctuation.
+
+Severity: "warning" for errors that change meaning or would visibly embarrass the author ("it's" for "its" in a heading, an agreement error in the opening paragraph), "suggestion" for ordinary slips, "info" for consistency niggles (serial-comma or casing consistency). Clean text deserves a short summary saying so — never manufacture errors to appear useful.`
+
 const BEGINNER_READER_PROMPT = `You are the Beginner Reader: intelligent, motivated, and completely new to this subject. You represent the reader who found this text through a search result, knows nothing the author knows, and is willing to work — but cannot fill gaps with knowledge they do not have. You do not review the text as an editor; you experience it as a newcomer and report exactly where you fall off.
 
 Hunt for:
@@ -146,7 +174,7 @@ Disagreement is information, not a problem to smooth over. Where two readings of
 
 Judge the document the author actually wrote, for the audience they are actually writing for. Deliberate voice, rhythm, humor and strong opinions are assets, not defects; specialist vocabulary is fair in a piece written for specialists. Every member keeps its own mandate and reports in its own terms — the panel wants four independent readings, not four copies of one.`
 
-/** The six shipped personas, in gallery order (plan §5.8). */
+/** Revision 1: the original six personas, in gallery order (plan §5.8). */
 export const STARTER_EDITOR_SPECS: readonly StarterEditorSpec[] = [
     {
         name: 'Concision Editor',
@@ -186,6 +214,16 @@ export const STARTER_EDITOR_SPECS: readonly StarterEditorSpec[] = [
     }
 ]
 
+/** Revision 2 (issue #37): the Grammar Editor. */
+export const REVISION_2_EDITOR_SPECS: readonly StarterEditorSpec[] = [
+    {
+        name: 'Grammar Editor',
+        color: 'var(--color-yellow)',
+        prompt: GRAMMAR_PROMPT,
+        research: false
+    }
+]
+
 /**
  * Default bindings for the built-in action verbs, by persona name (wired to
  * UUIDs at seed time), so bound actions are discoverable out of the box:
@@ -219,41 +257,56 @@ export const STARTER_PANEL_MEMBER_NAMES: readonly string[] = [
     'Humanizer'
 ]
 
+/** Builds the editor entities for the specs whose names are not taken. */
+function buildMissingEditors(
+    specs: readonly StarterEditorSpec[],
+    existing: readonly EditorConfig[]
+): EditorConfig[] {
+    const taken = new Set(existing.map((editor) => editor.name))
+    return specs
+        .filter((spec) => !taken.has(spec.name))
+        .map((spec) =>
+            editorConfigSchema.parse({
+                id: generateId(),
+                name: spec.name,
+                color: spec.color,
+                prompt: { text: spec.prompt, notePaths: [] },
+                capabilities: { review: true, rewrite: true, research: spec.research }
+            })
+        )
+}
+
 /**
- * Seeds the starter pack into the given settings.
- *
- * Pure and idempotent: when `starterPackSeeded` is already true the input is
- * returned unchanged; otherwise a NEW settings value is returned with the six
- * starter editors and the starter panel appended (existing user entities are
- * preserved), fresh UUIDs generated, panel membership and default action
- * bindings wired to those UUIDs (verbs the user already bound are left
- * alone), and the seeded flag set.
+ * Revision 1: the original six personas, the pre-publish panel, and the
+ * default action bindings. The name guards make the revision safe to run
+ * against a vault that somehow already holds starter entities (a sync merge,
+ * a hand-restored data.json): what exists is kept and wired to, never
+ * duplicated.
  */
-export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
-    if (settings.starterPackSeeded) {
-        return settings
-    }
-    const editors: EditorConfig[] = STARTER_EDITOR_SPECS.map((spec) =>
-        editorConfigSchema.parse({
-            id: generateId(),
-            name: spec.name,
-            color: spec.color,
-            prompt: { text: spec.prompt, notePaths: [] },
-            capabilities: { review: true, rewrite: true, research: spec.research }
-        })
+function seedRevisionOne(settings: PluginSettingsV1): PluginSettingsV1 {
+    const editors = buildMissingEditors(STARTER_EDITOR_SPECS, settings.editors)
+    // Wiring resolves against pre-existing editors too: a persona the name
+    // guard skipped is still the right panel member / binding target.
+    const idByName = new Map(
+        [...settings.editors, ...editors].map((editor) => [editor.name, editor.id])
     )
-    const idByName = new Map(editors.map((editor) => [editor.name, editor.id]))
     const memberEditorIds = STARTER_PANEL_MEMBER_NAMES.flatMap((name) => {
         const id = idByName.get(name)
         return id === undefined ? [] : [id]
     })
-    const panel: PanelConfig = panelConfigSchema.parse({
-        id: generateId(),
-        name: STARTER_PANEL_NAME,
-        color: 'var(--color-pink)',
-        memberEditorIds,
-        charter: { text: PRE_PUBLISH_CHARTER, notePaths: [] }
-    })
+    const panelTaken = settings.panels.some((panel) => panel.name === STARTER_PANEL_NAME)
+    const panels: PanelConfig[] =
+        panelTaken || memberEditorIds.length === 0
+            ? []
+            : [
+                  panelConfigSchema.parse({
+                      id: generateId(),
+                      name: STARTER_PANEL_NAME,
+                      color: 'var(--color-pink)',
+                      memberEditorIds,
+                      charter: { text: PRE_PUBLISH_CHARTER, notePaths: [] }
+                  })
+              ]
     // Built-in verb bindings use the verb itself as the stable entity id
     // (the `setBuiltInActionBinding` convention), so `action-<verb>` command
     // ids and hotkeys stay stable across installs.
@@ -274,8 +327,42 @@ export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
     return {
         ...settings,
         editors: [...settings.editors, ...editors],
-        panels: [...settings.panels, panel],
-        actions: [...settings.actions, ...actions],
-        starterPackSeeded: true
+        panels: [...settings.panels, ...panels],
+        actions: [...settings.actions, ...actions]
     }
+}
+
+/** Revision 2 (issue #37): the Grammar Editor, no panel or binding changes. */
+function seedRevisionTwo(settings: PluginSettingsV1): PluginSettingsV1 {
+    const editors = buildMissingEditors(REVISION_2_EDITOR_SPECS, settings.editors)
+    if (editors.length === 0) {
+        return settings
+    }
+    return { ...settings, editors: [...settings.editors, ...editors] }
+}
+
+/**
+ * Seeds every starter-pack revision above the stored `starterPackVersion`.
+ *
+ * Pure and idempotent: at the current version the input is returned
+ * unchanged (reference equality is the caller's needs-save signal);
+ * otherwise a NEW settings value is returned with the missing revisions'
+ * entities appended (existing user entities are always preserved), fresh
+ * UUIDs generated, and the version advanced to this build's. Each revision
+ * runs at most once per install — deleting a starter persona is permanent,
+ * because its revision never runs again.
+ */
+export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
+    const from = settings.starterPackVersion
+    if (from >= STARTER_PACK_VERSION) {
+        return settings
+    }
+    let next = settings
+    if (from < 1) {
+        next = seedRevisionOne(next)
+    }
+    if (from < 2) {
+        next = seedRevisionTwo(next)
+    }
+    return { ...next, starterPackVersion: STARTER_PACK_VERSION }
 }

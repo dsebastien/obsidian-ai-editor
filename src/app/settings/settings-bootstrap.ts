@@ -35,9 +35,10 @@ export interface SettingsBootstrap {
 
 /**
  * Parses persisted settings defensively (per-entity salvage, never throws)
- * and seeds the starter pack exactly once (`starterPackSeeded` idempotence
- * lives in `seedStarterPack`). Pure — the caller persists when `needsSave`
- * is set and surfaces `dropped` when non-empty.
+ * and seeds any starter-pack revisions this install has not seen yet
+ * (`starterPackVersion` idempotence lives in `seedStarterPack`). Pure — the
+ * caller persists when `needsSave` is set and surfaces `dropped` when
+ * non-empty.
  */
 export function bootstrapSettings(raw: unknown): SettingsBootstrap {
     const loaded = loadSettingsDetailed(raw)

@@ -12,7 +12,7 @@ Desktop only. Bring your own backend — a hosted API (Anthropic, OpenAI, OpenRo
 
 You write. When you want a second opinion, you summon your editors — all of them, one of them (click its name on the rail), or a panel. They read the note, come back with findings anchored to the exact words they are about, and you accept, dismiss, or argue with each one.
 
-- **Editors** — AI personas you define with a prompt: a name, a colour, and what they care about. Six ship with the plugin (Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader) and all six are fully editable.
+- **Editors** — AI personas you define with a prompt: a name, a colour, and what they care about. Seven ship with the plugin (Concision Editor, Devil's Advocate, Fact Checker, Flow & Structure Editor, Humanizer, Beginner Reader, Grammar Editor) and all seven are fully editable.
 - **Panels** — groups of editors that review together and are then summed up in one scorecard: an overall verdict, a verdict per member, ranked top fixes, and where the members disagreed.
 - **Ask a question** — a freeform question to one editor or a whole panel, answered as findings on your note rather than chat: "is the tone consistent?", "would a beginner follow section 3?".
 - **Actions** — verbs you run on a selection: rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus two placement verbs that need no selection at all (expand the current section, continue at the end of the note), plus your own custom actions.
@@ -37,7 +37,7 @@ Editors are personas you define — a name, a colour, a prompt, optionally backe
 
 Enable as many as you want, and group them into panels that review together and produce one scorecard:
 
-![The Editors settings tab: six editor cards with enable toggles, capabilities, and edit and delete buttons](docs/images/editors-tab.png)
+![The Editors settings tab: the seeded editor cards with enable toggles, capabilities, and edit and delete buttons](docs/images/editors-tab.png)
 
 ## The screens, in words
 
@@ -116,7 +116,7 @@ Once the plugin is available in the community catalog:
 The **setup wizard** opens by itself the first time the plugin loads and walks you through everything. Nothing is saved until the last step, so you can leave at any point without changing a thing, and you can re-run it whenever you like from **Settings → AI Editor → Behavior → Setup** or the **Run setup wizard** command.
 
 1. **Add a backend** — pick a provider, paste a key, name a model. Select **Test connection**: it sends one small real request through the same path a review takes, so a green light means reviews will actually work.
-2. **Choose your editors** — six are seeded and enabled; turn off the ones you do not want paying for.
+2. **Choose your editors** — seven are seeded and enabled; turn off the ones you do not want paying for.
 3. **Point at your voice profile** (optional) — a vault note describing how you write, injected into every editor's prompt.
 4. **Decide when editors run** — summoned only (the default), or daemon mode.
 5. Open a note and run **Review current note**.

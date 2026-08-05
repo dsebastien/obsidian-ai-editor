@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 import {
+    REVISION_2_EDITOR_SPECS,
     STARTER_ACTION_BINDINGS,
     STARTER_EDITOR_SPECS,
+    STARTER_PACK_VERSION,
     STARTER_PANEL_MEMBER_NAMES,
     STARTER_PANEL_NAME,
     seedStarterPack
@@ -20,11 +22,11 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const wordCount = (text: string): number => text.trim().split(/\s+/).length
 
 describe('seedStarterPack', () => {
-    it('appends 6 editors and 1 panel and sets the seeded flag', () => {
+    it('appends 7 editors and 1 panel and advances the pack version', () => {
         const seeded = seedStarterPack(freshSettings())
-        expect(seeded.editors).toHaveLength(6)
+        expect(seeded.editors).toHaveLength(7)
         expect(seeded.panels).toHaveLength(1)
-        expect(seeded.starterPackSeeded).toEqual(true)
+        expect(seeded.starterPackVersion).toEqual(STARTER_PACK_VERSION)
     })
 
     it('produces settings that satisfy the plugin settings schema', () => {
@@ -45,18 +47,18 @@ describe('seedStarterPack', () => {
         seedStarterPack(input)
         expect(input.editors).toHaveLength(0)
         expect(input.panels).toHaveLength(0)
-        expect(input.starterPackSeeded).toEqual(false)
+        expect(input.starterPackVersion).toEqual(0)
     })
 
     it('is idempotent: seeded settings pass through unchanged', () => {
         const seeded = seedStarterPack(freshSettings())
         const again = seedStarterPack(seeded)
         expect(again).toBe(seeded)
-        expect(again.editors).toHaveLength(6)
+        expect(again.editors).toHaveLength(7)
         expect(again.panels).toHaveLength(1)
     })
 
-    it('never duplicates when the flag is set, even with entities removed', () => {
+    it('never duplicates at the current version, even with entities removed', () => {
         const seeded = seedStarterPack(freshSettings())
         const pruned: PluginSettingsV1 = { ...seeded, editors: [], panels: [] }
         const again = seedStarterPack(pruned)
@@ -71,8 +73,43 @@ describe('seedStarterPack', () => {
             editors: [{ id: 'user-editor', name: 'Mine' }]
         })
         const seeded = seedStarterPack(withUser)
-        expect(seeded.editors).toHaveLength(7)
+        expect(seeded.editors).toHaveLength(8)
         expect(seeded.editors[0]?.id).toEqual('user-editor')
+    })
+
+    it('seeds ONLY the revisions above the stored version (issue #37)', () => {
+        // A vault seeded at revision 1 (the retired boolean read as 1) gains
+        // exactly the Grammar Editor: no re-seeded personas, no second
+        // panel, no re-wired bindings — deletions and edits stay respected.
+        const revisionOne: PluginSettingsV1 = pluginSettingsSchema.parse({
+            ...seedStarterPack(freshSettings()),
+            starterPackVersion: 1
+        })
+        const withoutGrammar: PluginSettingsV1 = {
+            ...revisionOne,
+            editors: revisionOne.editors.filter((editor) => editor.name !== 'Grammar Editor'),
+            panels: [],
+            actions: []
+        }
+        const seeded = seedStarterPack(withoutGrammar)
+        expect(seeded.editors.map((editor) => editor.name)).toContain('Grammar Editor')
+        expect(seeded.editors).toHaveLength(7)
+        expect(seeded.panels).toHaveLength(0)
+        expect(seeded.actions).toHaveLength(0)
+        expect(seeded.starterPackVersion).toEqual(STARTER_PACK_VERSION)
+    })
+
+    it('never seeds a persona whose name the user already holds', () => {
+        const base = pluginSettingsSchema.parse({
+            ...freshSettings(),
+            editors: [{ id: 'user-grammar', name: 'Grammar Editor' }],
+            starterPackVersion: 1
+        })
+        const seeded = seedStarterPack(base)
+        const grammar = seeded.editors.filter((editor) => editor.name === 'Grammar Editor')
+        expect(grammar).toHaveLength(1)
+        expect(grammar[0]?.id).toEqual('user-grammar')
+        expect(seeded.starterPackVersion).toEqual(STARTER_PACK_VERSION)
     })
 
     it('generates unique UUID v4 ids for every seeded entity', () => {
@@ -92,7 +129,7 @@ describe('seedStarterPack', () => {
         expect(first.editors[0]?.id).not.toEqual(second.editors[0]?.id)
     })
 
-    it('ships the six planned personas in order', () => {
+    it('ships the seven planned personas in order', () => {
         const seeded = seedStarterPack(freshSettings())
         expect(seeded.editors.map((editor) => editor.name)).toEqual([
             'Concision Editor',
@@ -100,7 +137,8 @@ describe('seedStarterPack', () => {
             'Fact Checker',
             'Flow & Structure Editor',
             'Humanizer',
-            'Beginner Reader'
+            'Beginner Reader',
+            'Grammar Editor'
         ])
     })
 
@@ -263,6 +301,15 @@ describe('STARTER_EDITOR_SPECS', () => {
         const editorNames = new Set(STARTER_EDITOR_SPECS.map((spec) => spec.name))
         for (const binding of STARTER_ACTION_BINDINGS) {
             expect(editorNames.has(binding.editorName)).toEqual(true)
+        }
+    })
+})
+
+describe('REVISION_2_EDITOR_SPECS', () => {
+    it('adds personas whose names collide with no earlier revision', () => {
+        const earlier = new Set(STARTER_EDITOR_SPECS.map((spec) => spec.name))
+        for (const spec of REVISION_2_EDITOR_SPECS) {
+            expect(earlier.has(spec.name)).toEqual(false)
         }
     })
 })

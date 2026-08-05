@@ -86,9 +86,9 @@ describe('createSettingsFacade (fallback over loadData/saveData)', () => {
         await ready
         expect(facade.getSettings()).toEqual(DEFAULT_PLUGIN_SETTINGS)
         await facade.update((draft) => {
-            draft.starterPackSeeded = true
+            draft.onboarded = true
         })
-        expect((saved as Record<string, unknown>)['starterPackSeeded']).toBe(true)
+        expect((saved as Record<string, unknown>)['onboarded']).toBe(true)
         void getStored
     })
 
@@ -152,7 +152,7 @@ describe('createSettingsFacade (fallback over loadData/saveData)', () => {
         })
         expect(notifications).toBe(1)
         await facade.update((draft) => {
-            draft.starterPackSeeded = true
+            draft.onboarded = true
         })
         expect(notifications).toBe(2)
     })
@@ -183,11 +183,11 @@ describe('createSettingsFacade (fallback over loadData/saveData)', () => {
             notifications += 1
         })
         await facade.update((draft) => {
-            draft.starterPackSeeded = true
+            draft.onboarded = true
         })
         unsubscribe()
         await facade.update((draft) => {
-            draft.starterPackSeeded = false
+            draft.onboarded = false
         })
         expect(notifications).toBe(1)
     })
@@ -204,10 +204,10 @@ describe('createSettingsFacade (fallback over loadData/saveData)', () => {
             secondRan = true
         })
         await facade.update((draft) => {
-            draft.starterPackSeeded = true
+            draft.onboarded = true
         })
         expect(secondRan).toBe(true)
-        expect(facade.getSettings().starterPackSeeded).toBe(true)
+        expect(facade.getSettings().onboarded).toBe(true)
     })
 
     test('successive updates compound', async () => {
@@ -228,7 +228,7 @@ describe('createSettingsFacade (host-provided facade)', () => {
     test('delegates to the host when it implements the facade', async () => {
         const settings: PluginSettingsV1 = {
             ...DEFAULT_PLUGIN_SETTINGS,
-            starterPackSeeded: true
+            onboarded: true
         }
         let updateCalls = 0
         const host: SettingsHost = {
@@ -242,7 +242,7 @@ describe('createSettingsFacade (host-provided facade)', () => {
         }
         const { facade, ready } = createSettingsFacade(host)
         await ready
-        expect(facade.getSettings().starterPackSeeded).toBe(true)
+        expect(facade.getSettings().onboarded).toBe(true)
         await facade.update(() => {})
         expect(updateCalls).toBe(1)
     })

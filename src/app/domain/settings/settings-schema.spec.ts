@@ -75,8 +75,8 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         ).toBe(false)
     })
 
-    it('defaults the first-run flags to false', () => {
-        expect(DEFAULT_PLUGIN_SETTINGS.starterPackSeeded).toEqual(false)
+    it('defaults the first-run markers to never-seeded and not-onboarded', () => {
+        expect(DEFAULT_PLUGIN_SETTINGS.starterPackVersion).toEqual(0)
         expect(DEFAULT_PLUGIN_SETTINGS.onboarded).toEqual(false)
     })
 
@@ -164,11 +164,25 @@ describe('loadSettings', () => {
             defaultBackend: { backendId: 'b1' },
             editors: [validEditor('e1')],
             panels: [{ id: 'p1', name: 'Panel', memberEditorIds: ['e1'] }],
-            starterPackSeeded: true,
+            starterPackVersion: 2,
             onboarded: true
         })
         const loaded = loadSettings(JSON.parse(JSON.stringify(settings)))
         expect(loaded).toEqual(settings)
+    })
+
+    it('reads the retired starterPackSeeded boolean as pack revision 1', () => {
+        // A ≤0.3.x vault persisted `starterPackSeeded: true`; without the
+        // mapping the happy path strips the unknown key and the original six
+        // personas would seed AGAIN on the next load.
+        const loaded = loadSettings({ starterPackSeeded: true, onboarded: true })
+        expect(loaded.starterPackVersion).toEqual(1)
+        // The legacy flag never wins over an explicit version.
+        const explicit = loadSettings({ starterPackSeeded: true, starterPackVersion: 2 })
+        expect(explicit.starterPackVersion).toEqual(2)
+        // And a legacy `false` means what it always meant: never seeded.
+        const unseeded = loadSettings({ starterPackSeeded: false })
+        expect(unseeded.starterPackVersion).toEqual(0)
     })
 
     it('applies schema defaults to a minimal valid object', () => {
@@ -199,13 +213,13 @@ describe('loadSettings', () => {
             schemaVersion: 1,
             editors: [validEditor('e1')],
             backends: [validApiBackend('b1')],
-            starterPackSeeded: true,
+            starterPackVersion: 2,
             behavior: { sizeWarningWords: 'many' }
         })
         expect(loaded.editors).toHaveLength(1)
         expect(loaded.editors[0]?.id).toEqual('e1')
         expect(loaded.backends).toHaveLength(1)
-        expect(loaded.starterPackSeeded).toEqual(true)
+        expect(loaded.starterPackVersion).toEqual(2)
         // Corrupt section falls back to defaults instead of wiping everything.
         expect(loaded.behavior).toEqual(DEFAULT_PLUGIN_SETTINGS.behavior)
     })
@@ -546,10 +560,10 @@ describe('loadSettingsDetailed id collisions', () => {
             schemaVersion: SETTINGS_SCHEMA_VERSION,
             editors: [validEditor('dup'), validEditor('dup')],
             // Corrupt scalar forces the salvage path.
-            starterPackSeeded: 'not-a-boolean'
+            starterPackVersion: 'not-a-number'
         }
         const loaded = loadSettingsDetailed(raw)
-        expect(loaded.dropped).toContain('starterPackSeeded')
+        expect(loaded.dropped).toContain('starterPackVersion')
         expect(loaded.regeneratedIds).toEqual(['editors[1]'])
         const ids = loaded.settings.editors.map((editor) => editor.id)
         expect(new Set(ids).size).toEqual(2)
