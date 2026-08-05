@@ -1951,15 +1951,32 @@
     color: var(--text-muted);
 }
 
-/* Header row: bound note name + the Review button (issue #16). The name
-   truncates rather than wrapping, so the button never moves as notes change. */
+/* Header: bound note name on its own line, controls on the next (issue #16;
+   stacked 2026-08-05). One shared row made the name and the buttons compete
+   for the same width — in a narrow panel the name truncated early and the
+   buttons were still cramped. The name still truncates rather than wrapping,
+   so the controls row never moves as notes change. */
 .editor-ai-daemons-panel-header {
-    @apply flex items-center gap-2;
+    @apply flex flex-col gap-1.5;
 }
 
 .editor-ai-daemons-panel-file {
-    @apply min-w-0 flex-1 truncate text-sm font-medium;
+    @apply min-w-0 truncate text-sm font-medium;
     color: var(--text-normal);
+}
+
+/* The controls row. Review and Ask sit together on the left; the section
+   nav is pushed to the trailing edge, where it was before the split.
+   WRAPS on purpose: the old shared row absorbed a narrow panel by shrinking
+   the note name, and the buttons never had to fit. On their own row they do,
+   and a pane dragged narrow enough would otherwise clip "Ask for comments"
+   off the edge. Wrapping costs a line; clipping costs the control. */
+.editor-ai-daemons-panel-header-actions {
+    @apply flex w-full flex-wrap items-center gap-2;
+}
+
+.editor-ai-daemons-panel-header-actions .editor-ai-daemons-panel-section-nav {
+    @apply ml-auto;
 }
 
 /* Up/down cycling between editor sections from the pinned header

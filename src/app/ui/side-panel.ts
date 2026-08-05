@@ -755,12 +755,18 @@ export class ReviewSidePanelView extends ItemView {
             cls: 'editor-ai-daemons-panel-file',
             text: state.review.noteName ?? 'No note'
         })
+        // The controls get a row to themselves, under the note name rather
+        // than beside it (Sébastien, 2026-08-05). Sharing one line meant the
+        // name and the buttons competed for the same width in a panel that is
+        // often narrow: the name truncated early AND the buttons stayed
+        // cramped. Stacking gives each the full width.
+        const actions = header.createDiv({ cls: 'editor-ai-daemons-panel-header-actions' })
         const vm = panelReviewButtonState({
             noteName: state.review.noteName,
             gate: state.review.gate,
             busy: state.review.isBusy()
         })
-        const button = header.createEl('button', {
+        const button = actions.createEl('button', {
             cls: 'editor-ai-daemons-panel-review-button',
             attr: { type: 'button' }
         })
@@ -785,7 +791,7 @@ export class ReviewSidePanelView extends ItemView {
             // Next to Review because it is the same kind of thing — an ask
             // about the note in front of you — and the only difference is
             // that its answer arrives later, in the margin.
-            const ask = header.createEl('button', {
+            const ask = actions.createEl('button', {
                 cls: 'editor-ai-daemons-panel-comment-ask',
                 text: 'Ask for comments',
                 attr: { type: 'button' }
@@ -796,7 +802,7 @@ export class ReviewSidePanelView extends ItemView {
                 jobs.ask()
             })
         }
-        this.renderSectionNav(header, state)
+        this.renderSectionNav(actions, state)
     }
 
     /**
