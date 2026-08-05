@@ -580,3 +580,13 @@ Best tested with a research-capable backend (CLI agent) so verified sources exis
 - [ ] Add to References with NO such section: `## References` created at the end of the note with the bullet.
 - [ ] Unanchored finding (edit the claim's text first): footnote button disabled with the reason; Add to References still works.
 - [ ] Verb appears in menu/palette bound to Fact Checker out of the box (fresh vault) — existing vaults keep their bindings.
+
+## Grammar Editor + revisioned starter pack (issue #37, 2026-08-05) — UNVERIFIED
+
+The seeding change matters more than the persona: this is the first pack revision shipped into an existing install.
+
+- [ ] THIS vault (seeded ≤0.3.x under the boolean flag): after reload, exactly ONE new editor appears — Grammar Editor, yellow, enabled — and nothing else changes: no duplicate personas, no second Pre-publish review panel, no re-wired action bindings, edits/renames/deletions of the original six intact.
+- [ ] `data.json` afterwards: `starterPackVersion: 2` present, the old `starterPackSeeded: true` still there (foreign-key carry).
+- [ ] A grammar review on a note with planted errors (its/it's, "the the", subject-verb disagreement, a comma splice) anchors findings to the exact spans; suggestions correct only the error, not the sentence around it.
+- [ ] Planted style bait (a deliberate fragment, an informal "gonna", a wikilink, a code block with odd spelling) produces NO findings — lane discipline.
+- [ ] Fresh vault (rename `data.json` away, reload): seven editors seed, one panel, bindings as documented; `starterPackVersion: 2` from the start.
