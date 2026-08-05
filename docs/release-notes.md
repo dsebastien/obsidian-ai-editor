@@ -1,5 +1,18 @@
 # Release Notes
 
+## 0.6.0 (2026-08-05)
+
+### Features
+
+- **plugin:** add the Grammar Editor starter persona ([#37](https://github.com/dsebastien/obsidian-ai-editor/issues/37))
+- **plugin:** motion where state used to teleport ([#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14))
+
+### Bug Fixes
+
+- **plugin:** adversarial round fixes for the [#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)/[#37](https://github.com/dsebastien/obsidian-ai-editor/issues/37)/[#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14) batch
+- **plugin:** classify Anthropic's empty-credit 400 as quota; document the Claude Code version floor ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39))
+- **plugin:** make backend failures diagnosable ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39))
+
 ## 0.5.2 (2026-08-05)
 
 ### Bug Fixes

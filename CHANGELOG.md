@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.2...0.6.0) (2026-08-05)
+
+### Features
+
+* **plugin:** add the Grammar Editor starter persona ([#37](https://github.com/dsebastien/obsidian-ai-editor/issues/37)) ([6ad308f](https://github.com/dsebastien/obsidian-ai-editor/commit/6ad308ffbbe8c90c049ab2159c8c15568079b1d8)), closes [#4](https://github.com/dsebastien/obsidian-ai-editor/issues/4)
+* **plugin:** motion where state used to teleport ([#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14)) ([660e74d](https://github.com/dsebastien/obsidian-ai-editor/commit/660e74dcc0c935da8e1c2d994d69bc0b2af2b44e))
+
+### Bug Fixes
+
+* **plugin:** adversarial round fixes for the [#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)/[#37](https://github.com/dsebastien/obsidian-ai-editor/issues/37)/[#14](https://github.com/dsebastien/obsidian-ai-editor/issues/14) batch ([ad19bc2](https://github.com/dsebastien/obsidian-ai-editor/commit/ad19bc2d917c4273b2fd86ef9995b293ca3cd194))
+* **plugin:** classify Anthropic's empty-credit 400 as quota; document the Claude Code version floor ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)) ([0242d0a](https://github.com/dsebastien/obsidian-ai-editor/commit/0242d0aaaa9c253e66a1af9a0acb337e5c11f029))
+* **plugin:** make backend failures diagnosable ([#39](https://github.com/dsebastien/obsidian-ai-editor/issues/39)) ([6bb4bdd](https://github.com/dsebastien/obsidian-ai-editor/commit/6bb4bddb18ed7afd1d16f3e7dde1ed551f4b709f))
+
 ## [0.5.2](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.1...0.5.2) (2026-08-05)
 
 ### Bug Fixes
@@ -277,6 +290,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
