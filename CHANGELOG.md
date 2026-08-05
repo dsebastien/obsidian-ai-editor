@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.1...0.5.2) (2026-08-05)
+
+### Bug Fixes
+
+* **plugin:** give the panel's note name its own line, above the controls ([4df2a1a](https://github.com/dsebastien/obsidian-ai-editor/commit/4df2a1ac6a857a01045a8f55c44f7f97c61ea403))
+
 ## [0.5.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.0...0.5.1) (2026-08-05)
 
 ### Bug Fixes
@@ -271,6 +277,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 

@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.5.2 (2026-08-05)
+
+### Bug Fixes
+
+- **plugin:** give the panel's note name its own line, above the controls
+
 ## 0.5.1 (2026-08-05)
 
 ### Bug Fixes
