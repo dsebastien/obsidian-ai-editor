@@ -351,6 +351,13 @@
     border: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
     box-shadow: var(--shadow-s, 0 2px 8px rgb(0 0 0 / 0.15));
+    /* Entrance (issue #14): the card is a fixed popover that appeared at
+       full size in one frame. A short fade + rise reads as "opened from the
+       text it annotates". Plays once per open — refreshes re-render INTO the
+       surviving element (see `refreshCard`) — and cannot skew placement:
+       `positionCard` measures offsetWidth/offsetHeight, which ignore
+       transforms. Ends on the resting frame for the reduced-motion collapse. */
+    animation: editor-ai-daemons-card-in 160ms ease-out;
 }
 
 .editor-ai-daemons-finding-card-section {
@@ -1579,6 +1586,13 @@
    All of these END on the resting style, so the blanket reduced-motion block
    (which collapses durations rather than removing animations) lands every one
    of them on its final frame instead of freezing a half-played state. */
+
+@keyframes editor-ai-daemons-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px) scale(0.985);
+    }
+}
 
 @keyframes editor-ai-daemons-pulse {
     0%,
@@ -2936,6 +2950,43 @@
    reduced motion would hide content instead
    of calming it.
    ======================================== */
+
+/* Press feedback (issue #14): the plugin's own chrome had no `:active`
+   state anywhere — a press looked identical to a hover until the result
+   arrived. A 3% scale is the answer, applied INSTANTLY on purpose: a
+   `transition` shorthand here would silently overwrite the background/color
+   transition lists several of these controls already carry, and a pressed
+   state that lags its press is worse feedback than one that snaps. The
+   rail chevron is deliberately absent — its transform carries the
+   open/closed rotation, which a scale here would clobber. Obsidian-native
+   surfaces (settings tabs, modals' own buttons) keep platform behavior. */
+.editor-ai-daemons-rail-row:active,
+.editor-ai-daemons-rail-retry:active,
+.editor-ai-daemons-rail-button:active,
+.editor-ai-daemons-rail-findings-toggle:active,
+.editor-ai-daemons-panel-review-button:active,
+.editor-ai-daemons-panel-nav-button:active,
+.editor-ai-daemons-panel-section-nav-button:active,
+.editor-ai-daemons-panel-bulk-button:active,
+.editor-ai-daemons-panel-retry:active,
+.editor-ai-daemons-panel-acknowledge:active,
+.editor-ai-daemons-panel-acknowledged-show:active,
+.editor-ai-daemons-panel-filter-button:active,
+.editor-ai-daemons-panel-error-details:active,
+.editor-ai-daemons-panel-more-button:active,
+.editor-ai-daemons-scorecard-fix-button:active,
+.editor-ai-daemons-finding-card-actions button:active,
+.editor-ai-daemons-finding-card-copy:active,
+.editor-ai-daemons-finding-card-pushback-send:active,
+.editor-ai-daemons-finding-card-source-add:active,
+.editor-ai-daemons-history-chip:active,
+.editor-ai-daemons-history-clear:active,
+.editor-ai-daemons-margin-chip:active,
+.editor-ai-daemons-margin-more:active,
+.editor-ai-daemons-margin-orphan-toggle:active,
+.editor-ai-daemons-diagnostics-copy:active {
+    transform: scale(0.97);
+}
 
 @media (prefers-reduced-motion: reduce) {
     [class*='editor-ai-daemons-'] {
