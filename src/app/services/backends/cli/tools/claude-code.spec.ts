@@ -159,6 +159,27 @@ describe('claudeCodeAdapter.parseEnvelope', () => {
         expect(parsed.ok === false && parsed.message).toContain('max_turns')
     })
 
+    it('classifies not-logged-in as auth with the /login fix in the message (issue #39)', () => {
+        // Field-observed on 2.1.220: no structured marker at all —
+        // terminal_reason is the generic 'api_error', api_error_status is
+        // null, and the failure is named only in the free-text result. The
+        // result is sniffed for classification; the message echoes none of it.
+        const envelope = JSON.stringify({
+            type: 'result',
+            subtype: 'success',
+            is_error: true,
+            terminal_reason: 'api_error',
+            api_error_status: null,
+            result: 'Not logged in · Please run /login',
+            session_id: 'secret-session-1401ec1c'
+        })
+        const parsed = claudeCodeAdapter.parseEnvelope(envelope)
+        expect(parsed.ok).toBe(false)
+        expect(parsed.ok === false && parsed.code).toBe('auth')
+        expect(parsed.ok === false && parsed.message).toContain('/login')
+        expect(parsed.ok === false && parsed.message).not.toContain('secret-session')
+    })
+
     it('drops a terminal reason that does not look like a status token', () => {
         const parsed = claudeCodeAdapter.parseEnvelope(
             claudeErrorEnvelope(null, 'sk-live-abcdef0123456789 leaked into the reason')

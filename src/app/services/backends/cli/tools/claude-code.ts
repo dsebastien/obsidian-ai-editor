@@ -197,6 +197,27 @@ function parseEnvelope(stdout: string): CliEnvelope {
                 message: `The Claude Code CLI reported an API error (HTTP ${String(status)}).`
             }
         }
+        // Not-logged-in ships with NO structured marker (observed on 2.1.220,
+        // issue #39): `terminal_reason` is the generic 'api_error' and
+        // `api_error_status` is null — the only place the failure is named is
+        // the free-text `result` ("Not logged in · Please run /login"). Same
+        // narrow exception as the API transport's credit-balance sniff: the
+        // text is read for CLASSIFICATION only, and the fixed message echoes
+        // none of it. This is the single most common CLI-backend failure, and
+        // "reported an error (api_error)" sent a real user hunting for API
+        // credits a subscription login does not need.
+        const result = envelope['result']
+        if (typeof result === 'string' && /not logged in|\/login/i.test(result)) {
+            return {
+                ok: false,
+                code: 'auth',
+                message:
+                    'The Claude Code CLI is not logged in. Run claude in a terminal, use ' +
+                    '/login, then try again. (If the terminal says you ARE logged in, run one ' +
+                    'interactive prompt there first — after an update, macOS may need to ' +
+                    're-authorize Keychain access, which a headless run cannot do.)'
+            }
+        }
         const reason = safeStatusToken(envelope['terminal_reason'])
         return {
             ok: false,
