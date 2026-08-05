@@ -239,6 +239,28 @@ describe('createApiEditorExecutor — buffered', () => {
         expect(terminal.error.message).not.toContain('sk-super-secret')
     })
 
+    it('classifies an Anthropic empty-credit 400 as quota, not invalid-request', async () => {
+        // The single most common failure for a user whose Claude app works
+        // but whose API account was never funded (issue #39): Anthropic
+        // answers with a plain invalid_request_error over HTTP 400, and only
+        // the message names the real problem. Classification only — the body
+        // text itself must never surface.
+        const { fetchImpl } = makeBufferedFetch(
+            '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing."}}',
+            400
+        )
+        const executor = makeExecutor(fetchImpl, { kind: 'ollama', apiKey: '' })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        const terminal = expectProtocol(events)
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('quota')
+        expect(terminal.error.message).not.toContain('Plans & Billing')
+    })
+
     it('maps HTTP 404 to a check-the-model message', async () => {
         const { fetchImpl } = makeBufferedFetch('{"error":"not found"}', 404)
         const executor = makeExecutor(fetchImpl, { kind: 'ollama', apiKey: '' })

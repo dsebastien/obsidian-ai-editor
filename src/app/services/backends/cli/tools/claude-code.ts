@@ -21,6 +21,14 @@ import type {
  * symptom will be an immediate non-zero exit with the unknown option named on
  * stderr — a loud failure, not a silent behavioural change.
  *
+ * The same failure shape exists BACKWARDS (issue #39, observed in the field):
+ * 2.1.153 rejects `--permission-mode manual` ("Allowed choices are
+ * acceptEdits, auto, bypassPermissions, default, dontAsk, plan") and exits 1
+ * — the mode was added between 2.1.153 and 2.1.220. The docs name 2.1.220 as
+ * the verified floor and `claude update` as the first thing to try; no
+ * fallback to a weaker mode is emitted, because `default` on an old build
+ * does not promise what `manual` promises.
+ *
  * ```
  * claude --print --output-format json --no-session-persistence \
  *        --strict-mcp-config --permission-mode manual \

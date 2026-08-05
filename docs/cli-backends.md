@@ -55,9 +55,10 @@ The second consent is offered only where the plugin can actually enforce the off
 
 ## Limits worth knowing
 
+- **Keep the tool current.** The invocation contract was verified against Claude Code **2.1.220**; older builds miss flags this plugin passes — 2.1.153, for example, rejects `--permission-mode manual` and exits with status 1 before doing anything. If a run fails immediately, check `claude --version` and run `claude update` first.
 - **Windows**: both tools install as `.cmd` shims, which this plugin refuses to run — running one means running `cmd.exe`, which reintroduces exactly the quoting problems the no-shell rule avoids. Point the setting at a real `.exe` if you have one, or use an API backend.
 - **No streaming.** A CLI run is read after the process ends, so findings appear all at once rather than trickling in.
-- **Errors are status-only.** The plugin never shows you the tool's own error text: an agent CLI echoes its configuration when it fails, and configuration contains credentials. You get the status, the byte count of anything written to the error stream, and — when it applies — the fact that something could not be stopped.
+- **Error messages are status-only — details are behind a click.** The message itself never carries the tool's own error text: an agent CLI echoes its configuration when it fails, and configuration contains credentials. When a run fails, **Show details** (on the failed editor's section, and on a failed Test connection) opens the captured output — exit status, error stream, output tail — with a caveat to check it before sharing, because that text is yours to read, not the plugin's to broadcast.
 
 ## Common refusals
 

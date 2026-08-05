@@ -632,6 +632,13 @@ async function assertOkStatus(response: Response): Promise<void> {
     // problem that did not exist). Still status-only — the body is never
     // echoed, for the same reason as above.
     if (status === 400 || status === 422) {
+        // Anthropic answers an EMPTY API-credit balance with a 400, not a
+        // 402/429 (issue #39) — for a user whose Claude app works but whose
+        // API account was never funded, "request invalid" would send them
+        // chasing settings that are fine.
+        if (await bodySaysQuotaExhausted(response)) {
+            throw new TransportError('quota', QUOTA_MESSAGE)
+        }
         throw new TransportError(
             'unknown',
             `The provider rejected the request as invalid (HTTP ${status}) — usually a ` +
@@ -662,11 +669,16 @@ const QUOTA_MESSAGE =
 const ERROR_BODY_SNIFF_MAX = 262_144
 
 /**
- * Whether a 429 body says "out of credit" rather than "slow down" (issue
- * #23): OpenAI-family uses `error.code`/`error.type` `insufficient_quota`;
- * other providers use billing/credit wordings in the same fields. Only the
- * structured code/type fields are inspected — never free-form messages —
- * and nothing read here reaches a user-visible string.
+ * Whether an error body says "out of credit" rather than what its status
+ * suggests (issue #23; extended for #39): OpenAI-family uses
+ * `error.code`/`error.type` `insufficient_quota` on 429; other providers use
+ * billing/credit wordings in the same fields. One narrow exception to the
+ * structured-fields-only rule: Anthropic reports an EMPTY API-credit balance
+ * as a plain `invalid_request_error` over HTTP 400 — "Your credit balance is
+ * too low…" in the message is the only place that failure is named, and it
+ * is the single most common failure for a user whose Claude app works but
+ * whose API account was never funded. The message is read for
+ * CLASSIFICATION only; nothing read here reaches a user-visible string.
  */
 async function bodySaysQuotaExhausted(response: Response): Promise<boolean> {
     let text: string
@@ -696,10 +708,12 @@ async function bodySaysQuotaExhausted(response: Response): Promise<boolean> {
         .filter((value): value is string => typeof value === 'string')
         .join(' ')
         .toLowerCase()
+    const message = typeof record['message'] === 'string' ? record['message'].toLowerCase() : ''
     return (
         token.includes('insufficient_quota') ||
         token.includes('billing') ||
-        token.includes('credit')
+        token.includes('credit') ||
+        message.includes('credit balance')
     )
 }
 
