@@ -2453,12 +2453,12 @@
 
 /* Failure-details modal: raw tool output, scrollable, never wrapped into
    prose — it is a transcript, not a message. */
-.editor-ai-diagnostics-caveat {
+.editor-ai-daemons-diagnostics-caveat {
     @apply text-xs;
     color: var(--text-muted);
 }
 
-.editor-ai-diagnostics-content {
+.editor-ai-daemons-diagnostics-content {
     @apply text-xs;
     max-height: 50vh;
     overflow: auto;
@@ -2471,7 +2471,7 @@
     color: var(--text-normal);
 }
 
-.editor-ai-diagnostics-copy {
+.editor-ai-daemons-diagnostics-copy {
     @apply cursor-pointer text-xs;
 }
 

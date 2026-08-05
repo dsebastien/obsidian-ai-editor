@@ -29,27 +29,37 @@ export class ErrorDiagnosticsModal extends Modal {
 
     override onOpen(): void {
         this.titleEl.setText(`Failure details — ${this.sourceLabel}`)
-        this.modalEl.addClass('editor-ai-diagnostics-modal')
+        this.modalEl.addClass('editor-ai-daemons-diagnostics-modal')
         const content = this.diagnostics.reveal()
         this.contentEl.createEl('p', {
-            cls: 'editor-ai-diagnostics-caveat',
+            cls: 'editor-ai-daemons-diagnostics-caveat',
             text:
                 'This is the raw output of the tool that failed. It can include the ' +
                 'configuration the tool was given — check for anything sensitive before ' +
                 'sharing it.'
         })
         this.contentEl.createEl('pre', {
-            cls: 'editor-ai-diagnostics-content',
+            cls: 'editor-ai-daemons-diagnostics-content',
             text: content
         })
         const copyEl = this.contentEl.createEl('button', {
-            cls: 'editor-ai-diagnostics-copy',
+            cls: 'editor-ai-daemons-diagnostics-copy',
             text: 'Copy details'
         })
         copyEl.addEventListener('click', () => {
-            void navigator.clipboard.writeText(content).then(() => {
-                new Notice('Failure details copied.')
-            })
+            // The modal's own window: in a popout, the main window's
+            // clipboard is not the one the user is looking at. Denied or
+            // unavailable clipboard access is reported, never an unhandled
+            // rejection (adversarial review, 2026-08-05).
+            const win = this.contentEl.ownerDocument.defaultView ?? window
+            void (async (): Promise<void> => {
+                try {
+                    await win.navigator.clipboard.writeText(content)
+                    new Notice('Failure details copied.')
+                } catch {
+                    new Notice('Could not access the clipboard — select the text and copy it.')
+                }
+            })()
         })
     }
 

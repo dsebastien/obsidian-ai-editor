@@ -2,6 +2,9 @@ import { generateId } from '../ids'
 import {
     actionBindingSchema,
     editorConfigSchema,
+    MAX_ACTIONS,
+    MAX_EDITORS,
+    MAX_PANELS,
     panelConfigSchema,
     type ActionBinding,
     type BuiltInActionId,
@@ -281,9 +284,10 @@ function buildMissingEditors(
  * default action bindings. The name guards make the revision safe to run
  * against a vault that somehow already holds starter entities (a sync merge,
  * a hand-restored data.json): what exists is kept and wired to, never
- * duplicated.
+ * duplicated. Returns null when the vault lacks capacity — see
+ * `seedStarterPack` for why a partial install is never persisted.
  */
-function seedRevisionOne(settings: PluginSettingsV1): PluginSettingsV1 {
+function seedRevisionOne(settings: PluginSettingsV1): PluginSettingsV1 | null {
     const editors = buildMissingEditors(STARTER_EDITOR_SPECS, settings.editors)
     // Wiring resolves against pre-existing editors too: a persona the name
     // guard skipped is still the right panel member / binding target.
@@ -324,6 +328,13 @@ function seedRevisionOne(settings: PluginSettingsV1): PluginSettingsV1 {
             })
         ]
     })
+    if (
+        settings.editors.length + editors.length > MAX_EDITORS ||
+        settings.panels.length + panels.length > MAX_PANELS ||
+        settings.actions.length + actions.length > MAX_ACTIONS
+    ) {
+        return null
+    }
     return {
         ...settings,
         editors: [...settings.editors, ...editors],
@@ -332,11 +343,17 @@ function seedRevisionOne(settings: PluginSettingsV1): PluginSettingsV1 {
     }
 }
 
-/** Revision 2 (issue #37): the Grammar Editor, no panel or binding changes. */
-function seedRevisionTwo(settings: PluginSettingsV1): PluginSettingsV1 {
+/**
+ * Revision 2 (issue #37): the Grammar Editor, no panel or binding changes.
+ * Returns null when the editor collection is at its cap.
+ */
+function seedRevisionTwo(settings: PluginSettingsV1): PluginSettingsV1 | null {
     const editors = buildMissingEditors(REVISION_2_EDITOR_SPECS, settings.editors)
     if (editors.length === 0) {
         return settings
+    }
+    if (settings.editors.length + editors.length > MAX_EDITORS) {
+        return null
     }
     return { ...settings, editors: [...settings.editors, ...editors] }
 }
@@ -348,9 +365,16 @@ function seedRevisionTwo(settings: PluginSettingsV1): PluginSettingsV1 {
  * unchanged (reference equality is the caller's needs-save signal);
  * otherwise a NEW settings value is returned with the missing revisions'
  * entities appended (existing user entities are always preserved), fresh
- * UUIDs generated, and the version advanced to this build's. Each revision
- * runs at most once per install — deleting a starter persona is permanent,
- * because its revision never runs again.
+ * UUIDs generated, and the version advanced to the highest revision that
+ * fully installed. Each revision runs at most once per install — deleting a
+ * starter persona is permanent, because its revision never runs again.
+ *
+ * Capacity (adversarial review, 2026-08-05): a revision that would push a
+ * collection past its schema cap does NOT install and does NOT advance the
+ * version — an over-cap append would parse in memory but fail whole-object
+ * validation on the next load, where salvage drops the entire oversized
+ * section. Skipping leaves the version where it was, so the revision simply
+ * retries on a later load once the user has made room.
  */
 export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
     const from = settings.starterPackVersion
@@ -358,11 +382,22 @@ export function seedStarterPack(settings: PluginSettingsV1): PluginSettingsV1 {
         return settings
     }
     let next = settings
-    if (from < 1) {
-        next = seedRevisionOne(next)
+    let achieved = from
+    if (achieved < 1) {
+        const seeded = seedRevisionOne(next)
+        if (seeded === null) {
+            return settings
+        }
+        next = seeded
+        achieved = 1
     }
-    if (from < 2) {
-        next = seedRevisionTwo(next)
+    if (achieved < 2) {
+        const seeded = seedRevisionTwo(next)
+        if (seeded === null) {
+            return achieved === from ? settings : { ...next, starterPackVersion: achieved }
+        }
+        next = seeded
+        achieved = 2
     }
-    return { ...next, starterPackVersion: STARTER_PACK_VERSION }
+    return { ...next, starterPackVersion: achieved }
 }

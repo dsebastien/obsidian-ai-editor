@@ -306,6 +306,59 @@ describe('createCliEditorExecutor — boundary failures', () => {
         }
         expect(event.error.diagnostics).toBeUndefined()
     })
+
+    it('keeps the surviving-process warning when the envelope is trusted', async () => {
+        // A valid 401 envelope from a tree that ignored SIGKILL must not read
+        // cleaner than one from a tree that died: the containment warning is
+        // the consent dialog's promise (adversarial review, 2026-08-05).
+        const { events } = await run(
+            failedOutcome('nonzero-exit', {
+                stdout: claudeErrorEnvelope(401),
+                kill: 'survived'
+            })
+        )
+        const event = events[0]
+        expect(event?.type === 'error' && event.error.code).toBe('auth')
+        const message = event?.type === 'error' ? event.error.message : ''
+        expect(message).toContain('HTTP 401')
+        expect(message).toContain('may still be running')
+    })
+
+    it('attaches diagnostics to a clean-exit error envelope (Show details works)', async () => {
+        // Claude Code exits 0 on an upstream API failure; the sanitized
+        // message names the status, and the captured output is still
+        // reachable behind the explicit gesture.
+        const { events } = await run(okOutcome(claudeErrorEnvelope(500)))
+        const event = events[0]
+        if (event?.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(event.error.code).toBe('network')
+        expect(event.error.diagnostics?.reveal()).toContain('api_error')
+        expect(event.error.diagnostics?.reveal()).toContain('Exit status: 0')
+    })
+
+    it('attaches diagnostics when a clean run violates the contract', async () => {
+        const { events } = await run(
+            okOutcome(claudeSuccessEnvelope("Sure! Here's what I found: the opening is weak."))
+        )
+        const event = events[0]
+        if (event?.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(event.error.code).toBe('invalid-output')
+        expect(event.error.diagnostics?.reveal()).toContain('opening is weak')
+    })
+
+    it('attaches diagnostics to stdout that is not the tool protocol', async () => {
+        const { events } = await run(okOutcome('bash: claude: command not found\n'))
+        const event = events[0]
+        if (event?.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(event.error.code).toBe('invalid-output')
+        expect(event.error.diagnostics?.reveal()).toContain('command not found')
+    })
 })
 
 describe('createCliEditorExecutor — envelope failures', () => {

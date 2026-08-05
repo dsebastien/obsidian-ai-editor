@@ -99,6 +99,47 @@ describe('seedStarterPack', () => {
         expect(seeded.starterPackVersion).toEqual(STARTER_PACK_VERSION)
     })
 
+    it('refuses to seed past the editor cap, and does not advance the version', () => {
+        // 200 editors at revision 1: appending the Grammar Editor would make
+        // 201, which parses in memory but fails whole-object validation on
+        // the NEXT load — where salvage drops the entire editors section
+        // (adversarial review, 2026-08-05). The revision must wait instead.
+        const editors = Array.from({ length: 200 }, (_, index) => ({
+            id: `user-${String(index)}`,
+            name: `Editor ${String(index)}`
+        }))
+        const full = pluginSettingsSchema.parse({ editors, starterPackVersion: 1 })
+        const seeded = seedStarterPack(full)
+        expect(seeded).toBe(full)
+        expect(seeded.editors).toHaveLength(200)
+        expect(seeded.starterPackVersion).toEqual(1)
+        // The result must stay loadable.
+        expect(pluginSettingsSchema.safeParse(seeded).success).toEqual(true)
+        // Once the user makes room, the waiting revision seeds.
+        const withRoom = pluginSettingsSchema.parse({
+            ...full,
+            editors: full.editors.slice(0, 150)
+        })
+        const retried = seedStarterPack(withRoom)
+        expect(retried.editors.map((editor) => editor.name)).toContain('Grammar Editor')
+        expect(retried.starterPackVersion).toEqual(STARTER_PACK_VERSION)
+    })
+
+    it('stops at the last revision that fully fits (revision 1 too big)', () => {
+        // 199 free slots would fit revision 2's single persona but not
+        // revision 1's six: seeding stops BEFORE revision 1 and the version
+        // stays 0 — revisions are ordered, and skipping one to apply a later
+        // one would record a pack state that never existed.
+        const editors = Array.from({ length: 197 }, (_, index) => ({
+            id: `user-${String(index)}`,
+            name: `Editor ${String(index)}`
+        }))
+        const nearlyFull = pluginSettingsSchema.parse({ editors, starterPackVersion: 0 })
+        const seeded = seedStarterPack(nearlyFull)
+        expect(seeded).toBe(nearlyFull)
+        expect(seeded.starterPackVersion).toEqual(0)
+    })
+
     it('never seeds a persona whose name the user already holds', () => {
         const base = pluginSettingsSchema.parse({
             ...freshSettings(),

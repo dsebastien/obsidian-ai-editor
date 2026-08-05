@@ -10,6 +10,7 @@ import {
     validateOperationResult,
     type ValidatedOperationResult
 } from '../providers/result'
+import type { StderrDiagnostics } from './capture'
 import { spawnCliProcess } from './spawn'
 import type { CliProcessFailureCode, CliProcessOutcome, SpawnCliProcessInput } from './spawn'
 import { getCliToolAdapter } from './tools'
@@ -174,40 +175,46 @@ function messageForFailure(outcome: Extract<CliProcessOutcome, { ok: false }>): 
  */
 const DIAGNOSTICS_STDOUT_TAIL_MAX = 16_384
 
+/** What `capturedDiagnostics` reads off any outcome, ok or failed. */
+interface CapturedStreams {
+    readonly stdout: string
+    readonly stderr: StderrDiagnostics
+    readonly exitCode: number | null
+    readonly termSignal: string | null
+}
+
 /**
  * Packages what the boundary captured for the explicit-gesture reveal path
- * (issue #39). The content — stderr, and on a failure the stdout tail — can
- * quote the tool's configuration and therefore its credentials, so it goes
- * behind `reveal()` per the contract field's rule, never into the message.
- * Returns undefined when both streams were empty: a "Show details" affordance
- * with nothing behind it would teach users the button is noise.
+ * (issue #39). The content — stderr, and the stdout tail — can quote the
+ * tool's configuration and therefore its credentials, so it goes behind
+ * `reveal()` per the contract field's rule, never into the message. Returns
+ * undefined when both streams were empty: a "Show details" affordance with
+ * nothing behind it would teach users the button is noise.
  */
-function failureDiagnostics(
-    outcome: Extract<CliProcessOutcome, { ok: false }>
-): OperationErrorDiagnostics | undefined {
-    const stderrText = outcome.stderr.reveal()
-    const stdoutTail = outcome.stdout.slice(-DIAGNOSTICS_STDOUT_TAIL_MAX)
+function capturedDiagnostics(streams: CapturedStreams): OperationErrorDiagnostics | undefined {
+    const stderrText = streams.stderr.reveal()
+    const stdoutTail = streams.stdout.slice(-DIAGNOSTICS_STDOUT_TAIL_MAX)
     if (stderrText.length === 0 && stdoutTail.length === 0) {
         return undefined
     }
     const sections: string[] = []
-    if (outcome.exitCode !== null) {
-        sections.push(`Exit status: ${String(outcome.exitCode)}`)
+    if (streams.exitCode !== null) {
+        sections.push(`Exit status: ${String(streams.exitCode)}`)
     }
-    if (outcome.termSignal !== null) {
-        sections.push(`Stopped by signal: ${outcome.termSignal}`)
+    if (streams.termSignal !== null) {
+        sections.push(`Stopped by signal: ${streams.termSignal}`)
     }
     if (stderrText.length > 0) {
-        const marker = outcome.stderr.truncated ? ' (tail — earlier output was dropped)' : ''
+        const marker = streams.stderr.truncated ? ' (tail — earlier output was dropped)' : ''
         sections.push(`--- error stream${marker} ---\n${stderrText}`)
     }
     if (stdoutTail.length > 0) {
-        const marker = stdoutTail.length < outcome.stdout.length ? ' (tail)' : ''
+        const marker = stdoutTail.length < streams.stdout.length ? ' (tail)' : ''
         sections.push(`--- output stream${marker} ---\n${stdoutTail}`)
     }
     const text = sections.join('\n')
     return {
-        summary: outcome.stderr.summary,
+        summary: streams.stderr.summary,
         reveal: () => text
     }
 }
@@ -222,21 +229,23 @@ function failureDiagnostics(
  * envelope names the problem where "exited with status 1" cannot. The
  * envelope is trusted only when it parsed into a tool-reported failure: an
  * 'invalid-output' from `parseEnvelope` on this path means stdout was noise,
- * not an envelope, and the exit status remains the story. The exit-status
- * sentence stays appended either way, because "the CLI reported an error" and
- * "the process died" are both true and the user deserves both facts.
+ * not an envelope, and the exit status remains the story. The FULL boundary
+ * message stays appended either way — not just the exit-status sentence but
+ * the stderr summary and, above all, the surviving-process warning: a valid
+ * envelope from a tree that ignored SIGKILL must not read cleaner than one
+ * from a tree that died (adversarial review, 2026-08-05).
  */
 function failureError(
     outcome: Extract<CliProcessOutcome, { ok: false }>,
     adapter: CliToolAdapter
 ): OperationErrorDetail {
-    const diagnostics = failureDiagnostics(outcome)
+    const diagnostics = capturedDiagnostics(outcome)
     if (outcome.code === 'nonzero-exit' && outcome.stdout.length > 0) {
         const envelope = adapter.parseEnvelope(outcome.stdout)
         if (!envelope.ok && envelope.code !== 'invalid-output') {
             return {
                 code: envelope.code,
-                message: `${envelope.message} ${outcome.message}`,
+                message: `${envelope.message} ${messageForFailure(outcome)}`,
                 ...(diagnostics !== undefined ? { diagnostics } : {})
             }
         }
@@ -303,6 +312,17 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                 }
                 return
             }
+            // Captured streams for every failure below this point: a clean
+            // exit whose OUTPUT is the problem (an error envelope, a protocol
+            // violation, a contract violation) deserves the same "Show
+            // details" a dirty exit gets (adversarial review, 2026-08-05).
+            const diagnostics = capturedDiagnostics({
+                stdout: outcome.stdout,
+                stderr: outcome.stderr,
+                // The boundary only returns ok on a clean exit.
+                exitCode: 0,
+                termSignal: null
+            })
             if (outcome.kill === 'survived') {
                 // The tool answered, and the boundary could not clean up after
                 // it: something in its tree ignored SIGKILL (or taskkill could
@@ -319,13 +339,16 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                 yield {
                     type: 'error',
                     runId,
-                    error: {
-                        code: 'unknown',
-                        message:
-                            `${adapter.displayName} answered, but some of its processes could ` +
-                            'not be stopped and may still be running. Check them before running ' +
-                            'this backend again.'
-                    }
+                    error: withDiagnostics(
+                        {
+                            code: 'unknown',
+                            message:
+                                `${adapter.displayName} answered, but some of its processes could ` +
+                                'not be stopped and may still be running. Check them before running ' +
+                                'this backend again.'
+                        },
+                        diagnostics
+                    )
                 }
                 return
             }
@@ -338,11 +361,29 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                     // contract's, so this assignment is the type-level proof
                     // that a tool failure and a provider failure are told
                     // apart the same way downstream.
-                    error: { code: envelope.code, message: envelope.message }
+                    error: withDiagnostics(
+                        { code: envelope.code, message: envelope.message },
+                        diagnostics
+                    )
                 }
                 return
             }
-            const validated = toOperationResult(envelope.text)
+            let validated: ValidatedOperationResult
+            try {
+                validated = toOperationResult(envelope.text)
+            } catch (cause) {
+                // Contract violation on a clean run: the one failure where
+                // the captured output IS the whole story.
+                yield {
+                    type: 'error',
+                    runId,
+                    error: withDiagnostics(
+                        normalizeCliError(cause, adapter.displayName),
+                        diagnostics
+                    )
+                }
+                return
+            }
             yield {
                 type: 'result',
                 runId,
@@ -353,6 +394,14 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
             yield { type: 'error', runId, error: normalizeCliError(cause, adapter.displayName) }
         }
     }
+}
+
+/** Attaches diagnostics when there are any; exact-optional safe. */
+function withDiagnostics(
+    error: OperationErrorDetail,
+    diagnostics: OperationErrorDiagnostics | undefined
+): OperationErrorDetail {
+    return diagnostics === undefined ? error : { ...error, diagnostics }
 }
 
 function cancelled(): OperationErrorDetail {

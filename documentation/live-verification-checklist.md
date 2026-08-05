@@ -590,3 +590,22 @@ The seeding change matters more than the persona: this is the first pack revisio
 - [ ] A grammar review on a note with planted errors (its/it's, "the the", subject-verb disagreement, a comma splice) anchors findings to the exact spans; suggestions correct only the error, not the sentence around it.
 - [ ] Planted style bait (a deliberate fragment, an informal "gonna", a wikilink, a code block with odd spelling) produces NO findings — lane discipline.
 - [ ] Fresh vault (rename `data.json` away, reload): seven editors seed, one panel, bindings as documented; `starterPackVersion: 2` from the start.
+
+## Failure diagnostics — Show details (issue #39, 2026-08-05) — UNVERIFIED
+
+Needs a deliberately broken CLI backend (point the path at a script that exits 1 after echoing to stderr; log out of `claude` for the real case) and a broken API backend (wrong model).
+
+- [ ] CLI backend, logged out: the daemons panel / run error names the tool-reported failure (e.g. "reported an API error (HTTP 401)"), not just "exited with status 1".
+- [ ] The error row shows **Show details**; the modal opens with the caveat line, exit status, and the captured streams; text is selectable.
+- [ ] **Copy details** puts the content on the clipboard and shows the Notice; with clipboard denied it shows the failure Notice instead of nothing.
+- [ ] The details content NEVER appears in a Notice or the error row itself — only inside the modal after the click.
+- [ ] CLI backend "Test connection" failure in the backend dialog offers the same Show details.
+- [ ] A clean-exit protocol failure (tool answers prose) also offers Show details.
+- [ ] Popout window: modal opens in the right window; copy targets that window's clipboard.
+- [ ] API backend with a model that rejects the request: HTTP 400 message names thinking/output-budget/model as the things to check; 404 says check the model name.
+
+## Motion (issue #14, 2026-08-05) — UNVERIFIED
+
+- [ ] Opening a finding card: one short fade/rise (~160ms); no flicker, no replay when a push-back reply refreshes the open card; placement identical to before.
+- [ ] Press feedback: rail rows/buttons, panel buttons (retry, acknowledge, filter, nav, Show details), card actions/copy visibly depress (~3% scale) on mousedown; the rail chevron still rotates correctly (no scale clobber).
+- [ ] With system reduced-motion on: card appears instantly (no half-played frame); pressed state still visible.

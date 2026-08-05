@@ -183,6 +183,15 @@ describe('loadSettings', () => {
         // And a legacy `false` means what it always meant: never seeded.
         const unseeded = loadSettings({ starterPackSeeded: false })
         expect(unseeded.starterPackVersion).toEqual(0)
+        // A CORRUPT version must not outrank the legacy flag: salvage drops
+        // the corrupt value, and if its mere presence suppressed the mapping,
+        // the vault would read as never-seeded and revision 1 would resurrect
+        // starters the user deleted (adversarial review, 2026-08-05).
+        const corrupt = loadSettingsDetailed({
+            starterPackSeeded: true,
+            starterPackVersion: 'corrupt'
+        })
+        expect(corrupt.settings.starterPackVersion).toEqual(1)
     })
 
     it('applies schema defaults to a minimal valid object', () => {

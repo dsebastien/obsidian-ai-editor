@@ -371,14 +371,24 @@ export type BehaviorSettings = z.infer<typeof behaviorSettingsSchema>
 // Root settings
 // ---------------------------------------------------------------------------
 
+/**
+ * Schema caps on the entity collections, exported because the starter-pack
+ * seeder must respect them: an append past a cap parses fine in memory but
+ * fails whole-object validation on the NEXT load, where salvage drops the
+ * whole oversized section (adversarial review, 2026-08-05).
+ */
+export const MAX_EDITORS = 200
+export const MAX_PANELS = 50
+export const MAX_ACTIONS = 200
+
 export const pluginSettingsSchema = z.object({
     schemaVersion: z.number().int().min(1).default(SETTINGS_SCHEMA_VERSION),
     backends: z.array(backendInstanceSchema).max(50).default([]),
     /** Global default backend for editors/panels set to inherit. */
     defaultBackend: backendRefSchema.nullable().default(null),
-    editors: z.array(editorConfigSchema).max(200).default([]),
-    panels: z.array(panelConfigSchema).max(50).default([]),
-    actions: z.array(actionBindingSchema).max(200).default([]),
+    editors: z.array(editorConfigSchema).max(MAX_EDITORS).default([]),
+    panels: z.array(panelConfigSchema).max(MAX_PANELS).default([]),
+    actions: z.array(actionBindingSchema).max(MAX_ACTIONS).default([]),
     rules: z.array(bindingRuleSchema).max(200).default([]),
     /** Follow-links defaults ON here — see `promptSourceSchema.followLinks`. */
     voiceProfile: promptSourceSchema.default({ text: '', notePaths: [], followLinks: true }),
@@ -502,13 +512,20 @@ export function resolveIdCollisions(
  * six personas would be seeded again into a vault that already has them.
  * The legacy key itself is left in place — `collectForeignKeys` carries it
  * through saves, which keeps a downgrade to 0.3.x from re-seeding either.
+ *
+ * Only a VALID version outranks the legacy flag (adversarial review,
+ * 2026-08-05): a corrupt `starterPackVersion` is dropped by salvage, and if
+ * its mere presence suppressed the mapping, the corrupt value would read as
+ * "never seeded" and revision 1 would resurrect starters the user deleted.
  */
 function normalizeLegacyStarterFlag(raw: unknown): unknown {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         return raw
     }
     const source = raw as Record<string, unknown>
-    if (source['starterPackVersion'] !== undefined || source['starterPackSeeded'] !== true) {
+    const version = source['starterPackVersion']
+    const versionIsValid = typeof version === 'number' && Number.isInteger(version) && version >= 0
+    if (versionIsValid || source['starterPackSeeded'] !== true) {
         return raw
     }
     return { ...source, starterPackVersion: 1 }
