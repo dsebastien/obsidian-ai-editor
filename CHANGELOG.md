@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.5.0...0.5.1) (2026-08-05)
+
+### Bug Fixes
+
+* **deps:** pin Node/Bun types directly so they cannot go missing ([0bba8f9](https://github.com/dsebastien/obsidian-ai-editor/commit/0bba8f94b4d2505f3afcabf7ca695620bbce8cce))
+* **release:** map 1.12.2 to 0.5.0 in versions.json, not a phantom 0.4.1 ([3ed08c2](https://github.com/dsebastien/obsidian-ai-editor/commit/3ed08c2f75c12d3f9e358b970d46fb734c23d4a1))
+
 ## [0.5.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.4.0...0.5.0) (2026-08-04)
 
 ### ⚠ BREAKING CHANGES
@@ -264,6 +271,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 

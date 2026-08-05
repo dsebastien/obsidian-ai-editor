@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.5.1 (2026-08-05)
+
+### Bug Fixes
+
+- **deps:** pin Node/Bun types directly so they cannot go missing
+- **release:** map 1.12.2 to 0.5.0 in versions.json, not a phantom 0.4.1
+
 ## 0.5.0 (2026-08-04)
 
 ### ⚠ BREAKING CHANGES
