@@ -1,4 +1,4 @@
-import type { OperationEvent } from '../../domain/operations/contract'
+import type { OperationErrorDiagnostics, OperationEvent } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
 import { generateId } from '../../domain/ids'
 import { hashText } from '../../domain/snapshot'
@@ -46,6 +46,12 @@ export interface BackendHealthResult {
     readonly code: string
     /** One sentence the settings UI shows verbatim. Never contains the key. */
     readonly message: string
+    /**
+     * Captured tool output behind the failure, when the executor attached any
+     * (issue #39). Same rule as the contract field it comes from: shown only
+     * behind an explicit user gesture, never inlined into the result line.
+     */
+    readonly diagnostics?: OperationErrorDiagnostics
 }
 
 /**
@@ -133,6 +139,11 @@ export function classifyHealthEvent(
         }
     }
     const { code, message } = event.error
+    // Ride along on every failure shape below: which sentence describes the
+    // failure is decided here, but what the tool actually wrote is the same
+    // capture regardless.
+    const carried =
+        event.error.diagnostics !== undefined ? { diagnostics: event.error.diagnostics } : {}
     if (code === 'invalid-output') {
         return {
             status: 'unusable',
@@ -142,7 +153,8 @@ export function classifyHealthEvent(
                     ? 'The tool ran and answered, but not with the structured result the plugin ' +
                       `needs — an agent that wraps its answer in prose looks like this. Try a stronger model. (${message})`
                     : 'The endpoint answered, but not in a usable shape — the model ignored the ' +
-                      `requested structure. Try a stronger model. (${message})`
+                      `requested structure. Try a stronger model. (${message})`,
+            ...carried
         }
     }
     if (code === 'timeout') {
@@ -158,10 +170,11 @@ export function classifyHealthEvent(
                     ? `No answer within ${String(seconds)} s. An agent that ` +
                       'goes exploring can be slower — raise ‘Timeout’ for this backend and try a review.'
                     : `No answer within ${String(seconds)} s. A slow local model may ` +
-                      'still work for real runs — raise ‘Request timeout’ in the Behavior tab and try a review.'
+                      'still work for real runs — raise ‘Request timeout’ in the Behavior tab and try a review.',
+            ...carried
         }
     }
-    return { status: 'failed', code, message }
+    return { status: 'failed', code, message, ...carried }
 }
 
 /**

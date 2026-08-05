@@ -2421,6 +2421,46 @@
     overflow-wrap: anywhere;
 }
 
+/* Reveal affordance for captured tool output (issue #39): content stays
+   behind an explicit click, so the row shows only a small button. */
+.editor-ai-daemons-panel-error-details {
+    @apply ml-2 cursor-pointer px-2 py-0.5 text-xs;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--background-modifier-border);
+    background-color: transparent;
+    color: var(--text-normal);
+    box-shadow: none;
+}
+
+.editor-ai-daemons-panel-error-details:hover,
+.editor-ai-daemons-panel-error-details:focus-visible {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Failure-details modal: raw tool output, scrollable, never wrapped into
+   prose — it is a transcript, not a message. */
+.editor-ai-diagnostics-caveat {
+    @apply text-xs;
+    color: var(--text-muted);
+}
+
+.editor-ai-diagnostics-content {
+    @apply text-xs;
+    max-height: 50vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    padding: var(--size-4-2);
+    border-radius: var(--radius-s);
+    background-color: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.editor-ai-diagnostics-copy {
+    @apply cursor-pointer text-xs;
+}
+
 /* Salvage report line: validation losses are stated, never silent. */
 .editor-ai-daemons-panel-salvage {
     @apply text-xs italic;

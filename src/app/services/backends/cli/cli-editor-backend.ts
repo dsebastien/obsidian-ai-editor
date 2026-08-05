@@ -1,4 +1,8 @@
-import type { OperationEvent, OperationRequest } from '../../../domain/operations/contract'
+import type {
+    OperationErrorDiagnostics,
+    OperationEvent,
+    OperationRequest
+} from '../../../domain/operations/contract'
 import type { BackendRef, CliBackend } from '../../../domain/settings/settings-schema'
 import { ProviderError } from '../providers'
 import {
@@ -164,6 +168,87 @@ function messageForFailure(outcome: Extract<CliProcessOutcome, { ok: false }>): 
 }
 
 /**
+ * Bounds the stdout excerpt inside the diagnostics reveal. stdout is capped
+ * at megabytes for the protocol's sake; a human reading a failure needs the
+ * end of it, where a tool that died mid-run says why.
+ */
+const DIAGNOSTICS_STDOUT_TAIL_MAX = 16_384
+
+/**
+ * Packages what the boundary captured for the explicit-gesture reveal path
+ * (issue #39). The content — stderr, and on a failure the stdout tail — can
+ * quote the tool's configuration and therefore its credentials, so it goes
+ * behind `reveal()` per the contract field's rule, never into the message.
+ * Returns undefined when both streams were empty: a "Show details" affordance
+ * with nothing behind it would teach users the button is noise.
+ */
+function failureDiagnostics(
+    outcome: Extract<CliProcessOutcome, { ok: false }>
+): OperationErrorDiagnostics | undefined {
+    const stderrText = outcome.stderr.reveal()
+    const stdoutTail = outcome.stdout.slice(-DIAGNOSTICS_STDOUT_TAIL_MAX)
+    if (stderrText.length === 0 && stdoutTail.length === 0) {
+        return undefined
+    }
+    const sections: string[] = []
+    if (outcome.exitCode !== null) {
+        sections.push(`Exit status: ${String(outcome.exitCode)}`)
+    }
+    if (outcome.termSignal !== null) {
+        sections.push(`Stopped by signal: ${outcome.termSignal}`)
+    }
+    if (stderrText.length > 0) {
+        const marker = outcome.stderr.truncated ? ' (tail — earlier output was dropped)' : ''
+        sections.push(`--- error stream${marker} ---\n${stderrText}`)
+    }
+    if (stdoutTail.length > 0) {
+        const marker = stdoutTail.length < outcome.stdout.length ? ' (tail)' : ''
+        sections.push(`--- output stream${marker} ---\n${stdoutTail}`)
+    }
+    const text = sections.join('\n')
+    return {
+        summary: outcome.stderr.summary,
+        reveal: () => text
+    }
+}
+
+/**
+ * The terminal error for a boundary failure.
+ *
+ * One recovery is attempted first (issue #39): on a nonzero exit the tool may
+ * still have written its structured envelope to stdout before failing —
+ * Claude Code reports a missing login and upstream API failures exactly this
+ * way, with nothing on stderr — and the adapter's sanitized reading of that
+ * envelope names the problem where "exited with status 1" cannot. The
+ * envelope is trusted only when it parsed into a tool-reported failure: an
+ * 'invalid-output' from `parseEnvelope` on this path means stdout was noise,
+ * not an envelope, and the exit status remains the story. The exit-status
+ * sentence stays appended either way, because "the CLI reported an error" and
+ * "the process died" are both true and the user deserves both facts.
+ */
+function failureError(
+    outcome: Extract<CliProcessOutcome, { ok: false }>,
+    adapter: CliToolAdapter
+): OperationErrorDetail {
+    const diagnostics = failureDiagnostics(outcome)
+    if (outcome.code === 'nonzero-exit' && outcome.stdout.length > 0) {
+        const envelope = adapter.parseEnvelope(outcome.stdout)
+        if (!envelope.ok && envelope.code !== 'invalid-output') {
+            return {
+                code: envelope.code,
+                message: `${envelope.message} ${outcome.message}`,
+                ...(diagnostics !== undefined ? { diagnostics } : {})
+            }
+        }
+    }
+    return {
+        code: codeForFailure(outcome.code),
+        message: messageForFailure(outcome),
+        ...(diagnostics !== undefined ? { diagnostics } : {})
+    }
+}
+
+/**
  * Validates the tool's final message against the operation contract.
  *
  * Exactly the API path: tolerate a whole-string markdown fence, then Zod.
@@ -214,12 +299,7 @@ export function createCliEditorExecutor(input: CreateCliEditorExecutorInput): Cl
                 yield {
                     type: 'error',
                     runId,
-                    error: signal.aborted
-                        ? cancelled()
-                        : {
-                              code: codeForFailure(outcome.code),
-                              message: messageForFailure(outcome)
-                          }
+                    error: signal.aborted ? cancelled() : failureError(outcome, adapter)
                 }
                 return
             }

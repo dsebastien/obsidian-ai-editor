@@ -106,6 +106,26 @@ describe('classifyHealthEvent', () => {
         expect(result.message).toBe('Provider rejected the credentials (HTTP 401)')
     })
 
+    it('carries the executor diagnostics through, still behind reveal() (issue #39)', () => {
+        // The probe is where a misconfigured CLI backend fails first; dropping
+        // the captured output here would leave "Test connection" as opaque as
+        // the run it is supposed to explain.
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const result = classifyHealthEvent(
+            {
+                type: 'error',
+                runId: 'r',
+                error: { code: 'unknown', message: 'The tool exited with status 1.', diagnostics }
+            },
+            'cli',
+            CLI_HEALTH_CHECK_TIMEOUT_MS
+        )
+        expect(result.status).toBe('failed')
+        expect(result.diagnostics).toBe(diagnostics)
+        // The result line itself never absorbs the content.
+        expect(result.message).not.toContain('stderr text')
+    })
+
     it('tells the user a slow local model may still work when the probe times out', () => {
         const result = classifyHealthEvent(
             {

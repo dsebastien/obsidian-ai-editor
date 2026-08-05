@@ -460,5 +460,28 @@ export type OperationEvent =
                * automatic retry policy (issue #23).
                */
               readonly retryAfterMs?: number
+              /**
+               * What the failure boundary captured but must not show
+               * unprompted (issue #39). `summary` is status-only and safe
+               * anywhere; the content behind `reveal()` is a CLI tool's raw
+               * output and can quote back the configuration it was given —
+               * including credentials — so a UI may render it ONLY behind an
+               * explicit user gesture, never in a Notice or an error report
+               * (Business Rules #12). The shape matches the CLI boundary's
+               * `StderrDiagnostics` on purpose.
+               */
+              readonly diagnostics?: OperationErrorDiagnostics
           }
       }
+
+/**
+ * Captured failure detail an error event may carry. See the field's own
+ * comment for the reveal-only-on-gesture rule; this type exists so UI code
+ * can name the shape without importing the CLI boundary.
+ */
+export interface OperationErrorDiagnostics {
+    /** Status-only sentence, safe to show anywhere. */
+    readonly summary: string
+    /** The captured content. Explicit user gesture only. */
+    reveal(): string
+}

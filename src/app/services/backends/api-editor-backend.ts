@@ -626,6 +626,26 @@ async function assertOkStatus(response: Response): Promise<void> {
     if (status >= 500) {
         throw new TransportError('network', `Provider is unavailable (HTTP ${status})`)
     }
+    // The remaining 4xx are configuration mismatches, and the two the
+    // providers actually send deserve a sentence that names the settings to
+    // check (issue #39: a bare "HTTP 400" sent a user hunting for a firewall
+    // problem that did not exist). Still status-only — the body is never
+    // echoed, for the same reason as above.
+    if (status === 400 || status === 422) {
+        throw new TransportError(
+            'unknown',
+            `The provider rejected the request as invalid (HTTP ${status}) — usually a ` +
+                'thinking mode or output budget this model does not support, or a malformed ' +
+                "model name. Try 'Thinking: off' and re-check the model in the Backends settings tab."
+        )
+    }
+    if (status === 404) {
+        throw new TransportError(
+            'unknown',
+            'The provider does not recognize the endpoint or model (HTTP 404) — check the ' +
+                'model name and base URL in the Backends settings tab.'
+        )
+    }
     throw new TransportError('unknown', `Provider request failed (HTTP ${status})`)
 }
 

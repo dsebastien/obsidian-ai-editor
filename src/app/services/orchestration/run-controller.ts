@@ -1481,7 +1481,15 @@ class ReviewRunHandle implements RunHandle {
                 } else {
                     this.terminate(state, 'error', {
                         code: event.error.code,
-                        message: redactMessage(spec, event.error.message)
+                        message: redactMessage(spec, event.error.message),
+                        // Captured tool output rides along untouched (issue
+                        // #39): redaction guards the MESSAGE because it is
+                        // shown unprompted; the diagnostics content is only
+                        // ever shown behind the contract field's explicit
+                        // gesture, caveat attached.
+                        ...(event.error.diagnostics !== undefined
+                            ? { diagnostics: event.error.diagnostics }
+                            : {})
                     })
                 }
                 return

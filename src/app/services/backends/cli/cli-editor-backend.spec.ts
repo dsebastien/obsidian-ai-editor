@@ -242,6 +242,70 @@ describe('createCliEditorExecutor — boundary failures', () => {
             'may still be running'
         )
     })
+
+    it('reads the error envelope a tool wrote to stdout before dying (issue #39)', async () => {
+        // Claude Code reports a missing login and upstream API failures as a
+        // JSON envelope on stdout AND a nonzero exit, with nothing on stderr.
+        // "Exited with status 1" is true but useless; the envelope names it.
+        const { events } = await run(
+            failedOutcome('nonzero-exit', { stdout: claudeErrorEnvelope(401) })
+        )
+        const event = events[0]
+        expect(event?.type === 'error' && event.error.code).toBe('auth')
+        const message = event?.type === 'error' ? event.error.message : ''
+        expect(message).toContain('HTTP 401')
+        // Both facts are true, so both are stated.
+        expect(message).toContain('Boundary message.')
+        // The envelope's own text quotes configuration — never forwarded.
+        expect(message).not.toContain('no-such-model-xyz')
+    })
+
+    it('keeps the exit-status story when stdout is not an envelope', async () => {
+        const { events } = await run(
+            failedOutcome('nonzero-exit', { stdout: 'error: unknown option --frobnicate\n' })
+        )
+        const event = events[0]
+        expect(event?.type === 'error' && event.error.code).toBe('unknown')
+        expect(event?.type === 'error' && event.error.message).toBe('Boundary message.')
+    })
+
+    it('never parses stdout for failures other than a nonzero exit', async () => {
+        // A timeout with a complete-looking envelope on stdout is still a
+        // timeout: the envelope was written by a process that was killed, and
+        // trusting it would misreport what ended the run.
+        const { events } = await run(failedOutcome('timeout', { stdout: claudeErrorEnvelope(401) }))
+        expect(events[0]?.type === 'error' && events[0].error.code).toBe('timeout')
+    })
+
+    it('attaches captured output as reveal-only diagnostics (issue #39)', async () => {
+        const { events } = await run(
+            failedOutcome('nonzero-exit', {
+                stdout: 'partial output',
+                stderr: stderr(30, 'key=sk-live-SECRET failed')
+            })
+        )
+        const event = events[0]
+        if (event?.type !== 'error') {
+            throw new Error('expected error')
+        }
+        const diagnostics = event.error.diagnostics
+        expect(diagnostics).toBeDefined()
+        // The summary is safe anywhere; the content only behind reveal().
+        expect(diagnostics?.summary).toContain('error stream')
+        expect(diagnostics?.summary).not.toContain('SECRET')
+        expect(diagnostics?.reveal()).toContain('sk-live-SECRET')
+        expect(diagnostics?.reveal()).toContain('partial output')
+        expect(diagnostics?.reveal()).toContain('Exit status: 1')
+    })
+
+    it('attaches no diagnostics when the tool wrote nothing', async () => {
+        const { events } = await run(failedOutcome('spawn-failed', { exitCode: null }))
+        const event = events[0]
+        if (event?.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(event.error.diagnostics).toBeUndefined()
+    })
 })
 
 describe('createCliEditorExecutor — envelope failures', () => {

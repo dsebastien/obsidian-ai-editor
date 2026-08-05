@@ -217,6 +217,43 @@ describe('createApiEditorExecutor — buffered', () => {
         expect(terminal.error.message).not.toContain('sk-super-secret')
     })
 
+    it('maps HTTP 400 to an actionable invalid-request message without echoing the body', async () => {
+        // The provider names the real problem in the body (issue #39), but the
+        // body can quote the request — the message must instead point at the
+        // settings that cause a 400.
+        const { fetchImpl } = makeBufferedFetch(
+            '{"error":{"type":"invalid_request_error","message":"max_tokens: too large; key sk-super-secret"}}',
+            400
+        )
+        const executor = makeExecutor(fetchImpl, { kind: 'ollama', apiKey: '' })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        const terminal = expectProtocol(events)
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('unknown')
+        expect(terminal.error.message).toContain('HTTP 400')
+        expect(terminal.error.message).toContain('Thinking')
+        expect(terminal.error.message).not.toContain('sk-super-secret')
+    })
+
+    it('maps HTTP 404 to a check-the-model message', async () => {
+        const { fetchImpl } = makeBufferedFetch('{"error":"not found"}', 404)
+        const executor = makeExecutor(fetchImpl, { kind: 'ollama', apiKey: '' })
+
+        const events = await collect(executor(reviewOperation(), new AbortController().signal))
+
+        const terminal = expectProtocol(events)
+        if (terminal.type !== 'error') {
+            throw new Error('expected error')
+        }
+        expect(terminal.error.code).toBe('unknown')
+        expect(terminal.error.message).toContain('HTTP 404')
+        expect(terminal.error.message).toContain('model name')
+    })
+
     it('maps an invalid backend configuration to a single error event without any fetch', async () => {
         const { calls, fetchImpl } = makeBufferedFetch('{}')
         const executor = makeExecutor(fetchImpl, { kind: 'anthropic', apiKey: '' })

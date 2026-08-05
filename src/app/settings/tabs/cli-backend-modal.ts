@@ -29,6 +29,7 @@ import {
     toolsConsentCopy,
     toolsConsentLine
 } from '../cli-consent-copy'
+import { ErrorDiagnosticsModal } from '../../ui/error-diagnostics-modal'
 import { ConfirmModal } from '../components'
 import { backendKindLabel } from '../helpers'
 import { healthResultClass, healthResultLine } from '../setup-wizard-model'
@@ -369,6 +370,20 @@ export class CliBackendModal extends Modal {
         if (this.health !== null) {
             resultEl.className = healthResultClass(this.health)
             resultEl.setText(healthResultLine(this.health))
+            // The probe's captured tool output, behind an explicit click
+            // (issue #39) — the one place a user can read WHY the tool
+            // failed, and the rule that keeps it out of the result line is
+            // the contract field's own.
+            const diagnostics = this.health.diagnostics
+            if (diagnostics !== undefined) {
+                const detailsEl = resultEl.createEl('button', {
+                    cls: 'editor-ai-daemons-panel-error-details',
+                    text: 'Show details'
+                })
+                detailsEl.addEventListener('click', () => {
+                    new ErrorDiagnosticsModal(this.app, this.draft.label, diagnostics).open()
+                })
+            }
         }
         setting.addButton((button) => {
             button.setButtonText(this.healthRunning ? 'Testing…' : 'Test connection')

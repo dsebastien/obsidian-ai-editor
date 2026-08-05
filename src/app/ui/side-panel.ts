@@ -10,6 +10,7 @@ import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import type { CommentJobRow, CommentJobsSection } from './comment-jobs-model'
 import { undecoratedNoticeText } from './editor/decoration-budget'
+import { ErrorDiagnosticsModal } from './error-diagnostics-modal'
 import { SEVERITY_WORDS } from './editor/finding-identity'
 import { memberSectionName } from './entity-label'
 import { generateMoreView } from './generate-more'
@@ -1281,10 +1282,26 @@ export class ReviewSidePanelView extends ItemView {
         this.renderSectionNavigation(header, binding, state, findings, currentFindingId)
 
         if (state.error !== null) {
-            section.createDiv({
+            const errorEl = section.createDiv({
                 cls: 'editor-ai-daemons-panel-error',
                 text: `${state.error.code}: ${state.error.message}`
             })
+            // Captured tool output stays behind an explicit gesture (issue
+            // #39) — see the contract's `diagnostics` field for why it is
+            // never inlined here.
+            const diagnostics = state.error.diagnostics
+            if (diagnostics !== undefined) {
+                const detailsLabel = `Show failure details for ${state.editorName}`
+                const detailsEl = errorEl.createEl('button', {
+                    cls: 'editor-ai-daemons-panel-error-details',
+                    text: 'Show details'
+                })
+                detailsEl.setAttribute('aria-label', detailsLabel)
+                detailsEl.title = detailsLabel
+                detailsEl.addEventListener('click', () => {
+                    new ErrorDiagnosticsModal(this.app, state.editorName, diagnostics).open()
+                })
+            }
         }
 
         // Salvage report (contract v2 design §5): what validation removed from
