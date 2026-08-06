@@ -60,8 +60,8 @@ export interface SetupWizardDraft {
     readonly editors: readonly SetupEditorChoice[]
     readonly voiceNotePaths: readonly string[]
     readonly voiceFollowLinks: boolean
-    /** false = summon only (default), true = daemon mode. */
-    readonly daemonMode: boolean
+    /** false = summon only (default), true = daemon mode on for every note. */
+    readonly daemonAlwaysOn: boolean
 }
 
 export interface SetupWizardState {
@@ -99,7 +99,7 @@ export function initialSetupDraft(settings: PluginSettingsV1): SetupWizardDraft 
         })),
         voiceNotePaths: [...settings.voiceProfile.notePaths],
         voiceFollowLinks: settings.voiceProfile.followLinks,
-        daemonMode: settings.behavior.daemonMode
+        daemonAlwaysOn: settings.behavior.daemonAlwaysOn
     }
 }
 
@@ -214,7 +214,7 @@ export function applySetupWizard(
             notePaths: [...draft.voiceNotePaths],
             followLinks: draft.voiceFollowLinks
         },
-        behavior: { ...settings.behavior, daemonMode: draft.daemonMode },
+        behavior: { ...settings.behavior, daemonAlwaysOn: draft.daemonAlwaysOn },
         onboarded: true
     }
 }
@@ -240,7 +240,7 @@ export interface SetupOutcome {
     readonly hasBackend: boolean
     readonly enabledEditorCount: number
     readonly voiceNoteCount: number
-    readonly daemonMode: boolean
+    readonly daemonAlwaysOn: boolean
 }
 
 /** Summarizes a draft against the settings it would be applied to. */
@@ -252,6 +252,6 @@ export function setupOutcome(settings: PluginSettingsV1, draft: SetupWizardDraft
         hasBackend: backendAdded || settings.backends.length > 0,
         enabledEditorCount: draft.editors.filter((choice) => choice.enabled).length,
         voiceNoteCount: draft.voiceNotePaths.length,
-        daemonMode: draft.daemonMode
+        daemonAlwaysOn: draft.daemonAlwaysOn
     }
 }

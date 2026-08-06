@@ -1,7 +1,7 @@
 import { MarkdownView, Modal, Notice, Setting, setTooltip } from 'obsidian'
 import type { App, Editor, EditorPosition, Plugin, WorkspaceLeaf } from 'obsidian'
 import { isolateHistory } from '@codemirror/commands'
-import { Prec } from '@codemirror/state'
+import { ChangeSet, Prec } from '@codemirror/state'
 import type { Extension, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { ViewUpdate } from '@codemirror/view'
@@ -29,7 +29,12 @@ import {
     planBulkAccept
 } from '../commands/bulk-triage'
 import type { ActionVerb } from '../domain/actions/verb-registry'
-import { referenceFootnote, referenceSectionInsertion } from '../domain/references'
+import {
+    referenceFootnote,
+    referenceSectionInsertion,
+    getSourceAddedPlacement
+} from '../domain/references'
+import { planEditChanges } from '../domain/operations/edit-apply'
 import { sectionInsertionPoint } from '../domain/sections'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
@@ -91,7 +96,12 @@ import {
     showFindingCardEffect,
     threadRefusalNotice
 } from './editor/finding-card'
-import type { CardAcceptOutcome, FindingCardData, FindingLookup } from './editor/finding-card'
+import type {
+    AddAllReferencesOutcome,
+    CardAcceptOutcome,
+    FindingCardData,
+    FindingLookup
+} from './editor/finding-card'
 import {
     clearFindingsEffect,
     emphasizeEditorEffect,
@@ -100,10 +110,12 @@ import {
     setFindingsEffect
 } from './editor/finding-decorations'
 import type { FindingDecorationSpec } from './editor/finding-decorations'
+import { isTriageOnlyEdit, triageEditAnnotation } from './editor/triage-edit'
 import { findingEdgeIndex } from './editor/finding-identity'
 import { nextLayoutMode } from './editor/layout-mode'
 import type { PaneLayoutMode } from './editor/layout-mode'
 import { MarginColumn } from './editor/margin-column'
+import { removeStrayMounts } from './editor/mount-guard'
 import { clusterByLine, marginColumnPlacement, stackMarginSlots } from './editor/margin-layout'
 import type { MarginPlacementMode } from './editor/margin-layout'
 import { isMarginVisible, marginColumnModel } from './editor/margin-model'
@@ -116,10 +128,15 @@ import { clearTransformPreviewEffect, showTransformPreviewEffect } from './edito
 import type { TransformPreviewSpec } from './editor/transform-preview'
 import { PersonaRail } from './editor/rail'
 import type { HistoryService } from '../services/history/history-service'
+import { transformHistoryRecord } from '../services/history/history-recorder'
+import type { TransformDecision } from '../services/history/history-recorder'
 import { pruneAcknowledged } from './acknowledged-editors'
-import { chipClickAction, railErrorReason } from './editor/rail-model'
+import { disabledEditorIds, withoutDisabledEditors } from './editor-visibility'
+import { ErrorDiagnosticsModal } from './error-diagnostics-modal'
+import { chipClickAction, railEligibleEditors, railErrorReason } from './editor/rail-model'
 import type { RailEditorState, RailEditorStatus, RailPanelState } from './editor/rail-model'
 import { ObsidianVaultReader } from './obsidian-vault-reader'
+import { log } from '../../utils/log'
 import { SeverityFilterStore, passesSeverityFilter, severityFilterNotice } from './severity-filter'
 import type { SeverityFilterMode } from './severity-filter'
 import { scorecardStatusKind } from './panel-scorecard'
@@ -143,8 +160,9 @@ import { retryCommentJob, startCommentJob } from '../services/comments/comment-j
  *
  * Everything here is user-authorized (Business Rules #1): the paths into
  * `startReview` are the Review command/rail button/menus/CLI — plus daemon
- * refreshes via `startDaemonReview`, authorized by the explicit
- * `behavior.daemonMode` opt-in (the rule's documented carve-out).
+ * refreshes via `startDaemonReview`, authorized by the explicit per-note
+ * daemon enable (rail toggle / command) or the `behavior.daemonAlwaysOn`
+ * opt-in (the rule's documented carve-out).
  */
 
 // ---------------------------------------------------------------------------
@@ -330,15 +348,18 @@ export interface ReviewControllerDeps {
     readonly plugin: Plugin
     readonly getSettings: () => PluginSettingsV1
     /**
-     * Flips `behavior.daemonMode` from the rail's toggle. A narrow seam
-     * rather than the whole settings facade: this is the only setting any
-     * editor-surface control writes, and the controller has no business
-     * being able to write the rest.
+     * Persists `behavior.daemonAlwaysOn` OFF — only the issue #23
+     * auto-disable writes it (repeated failed refreshes must stop the
+     * always-on loop durably). The rail toggle and palette command flip
+     * per-note RUNTIME state on the daemon controller instead and persist
+     * nothing. A narrow seam rather than the whole settings facade: this is
+     * the only setting any editor-surface path writes, and the controller
+     * has no business being able to write the rest.
      */
-    readonly setDaemonMode?: (enabled: boolean) => Promise<void>
+    readonly setDaemonAlwaysOn?: (enabled: boolean) => Promise<void>
     /**
      * Persists `behavior.railCollapsed` from the rail's chevron (issue #28).
-     * Same narrow-seam rationale as `setDaemonMode`.
+     * Same narrow-seam rationale as `setDaemonAlwaysOn`.
      */
     readonly setRailCollapsed?: (collapsed: boolean) => Promise<void>
     readonly runController: RunController
@@ -547,6 +568,25 @@ export class ReviewController {
      * only — nothing is hidden tomorrow that was not hidden today.
      */
     private readonly acknowledgedAllGood = new Map<string, Set<string>>()
+    /**
+     * Findings (by id) whose Accept failed because the proposal went stale
+     * against the live text (`accept` → `stale-proposal`): the card shows a
+     * badge and a Regenerate action instead of a dead disabled Accept
+     * button. Runtime-only, self-healing: the marker is dropped when the
+     * proposal verifies again (undo restored the text, or a regeneration
+     * re-anchored the edits) and when the finding disappears.
+     */
+    private readonly staleProposalIds = new Set<string>()
+    /**
+     * True while `revealRange` moves the selection programmatically: the CM6
+     * update listener must NOT report that move as EDITOR-tier activity —
+     * reveals are triage (issue #20 two-tier carve-out), and every triage
+     * step reveals, so recording them would postpone a pending daemon
+     * refresh for the whole triage session. Set-and-restored synchronously
+     * around each plugin-originated `setSelection` (CM6 dispatch runs its
+     * update listeners synchronously).
+     */
+    private suppressSelectionActivity = false
     /** Unsubscribes the background-comment registry listener on dispose. */
     private commentJobsUnsubscribe: (() => void) | null = null
     /** Sticky: survives focus moving to the side panel itself. */
@@ -573,17 +613,29 @@ export class ReviewController {
     }
 
     /**
-     * Reports a non-edit interaction with `path` to the daemon (issue #20):
-     * the idle window answers "has the user paused?", so triage, navigation,
-     * panel/card interactions, threads, modals and cursor movement all
-     * postpone a pending refresh — only an edit can arm one. Every
-     * interaction surface below funnels through a handful of controller
-     * methods, and each of those calls this. Nearly free while daemon mode
-     * is off or nothing is armed.
+     * Reports an EDITOR-tier non-edit interaction with `path` to the daemon
+     * (issue #20, narrowed to two tiers 2026-08-06): cursor/selection
+     * movement and the modals that compose the next explicit request
+     * postpone a pending refresh — only an edit can arm one. Nearly free
+     * while daemon mode is off or nothing is armed.
      */
-    private noteDaemonActivity(path: string | null | undefined): void {
+    private noteDaemonEditorActivity(path: string | null | undefined): void {
         if (path != null) {
-            this.daemon?.recordActivity(path)
+            this.daemon?.recordEditorActivity(path)
+        }
+    }
+
+    /**
+     * Reports a TRIAGE-tier interaction with `path` (accept/dismiss —
+     * single and bulk — panel scrolls/clicks, acknowledgements, severity
+     * lens, reveals, threads, reference adds, regeneration): deliberately
+     * does NOT postpone a pending refresh. Triaging findings is working
+     * WITH the review; postponing for it used to delay the re-review by
+     * the whole triage session (two-tier carve-out, 2026-08-06).
+     */
+    private noteDaemonTriageActivity(path: string | null | undefined): void {
+        if (path != null) {
+            this.daemon?.recordTriageActivity(path)
         }
     }
 
@@ -639,6 +691,13 @@ export class ReviewController {
         plugin.registerEvent(
             app.vault.on('rename', (file, oldPath) => {
                 this.discardFileState(oldPath)
+                // The daemon REMAPS rather than discards: a rename closes
+                // nothing — the views follow the file — so the per-note
+                // enablement override and any pending arm must follow too.
+                // Discarding them silently flipped an explicitly
+                // disabled/enabled note back to the `daemonAlwaysOn` default
+                // (adversarial review 2026-08-06).
+                this.daemon?.filesRenamedUnder(oldPath, file.path)
                 if (this.lastActiveMarkdownFile !== null) {
                     const moved = remapPathUnder(this.lastActiveMarkdownFile, oldPath, file.path)
                     if (moved !== null) {
@@ -651,6 +710,10 @@ export class ReviewController {
         plugin.registerEvent(
             app.vault.on('delete', (file) => {
                 this.discardFileState(file.path)
+                // Deletion IS a close: every per-note daemon state under the
+                // path dies with the notes (the rename hook above remaps
+                // instead).
+                this.daemon?.filesClosedUnder(file.path)
                 if (
                     this.lastActiveMarkdownFile !== null &&
                     isPathUnder(this.lastActiveMarkdownFile, file.path)
@@ -675,6 +738,11 @@ export class ReviewController {
      * snapshot is about a file that no longer exists at that path), so keeping
      * a triage cursor or a severity filter pointed at findings that are gone
      * would only be state pretending to be useful.
+     *
+     * The DAEMON is the exception and is handled by each hook itself: its
+     * per-note state (enablement override, pending arm, timer) is about the
+     * NOTE, not about a run's findings — a rename remaps it
+     * (`filesRenamedUnder`), only a delete discards it (`filesClosedUnder`).
      */
     private discardFileState(path: string): void {
         this.deps.runController.discardUnder(path)
@@ -685,7 +753,6 @@ export class ReviewController {
         this.severityFilters.clearUnder(path)
         deleteKeysUnder(this.hiddenFindings, path)
         deleteKeysUnder(this.acknowledgedAllGood, path)
-        this.daemon?.filesClosedUnder(path)
     }
 
     /**
@@ -753,7 +820,15 @@ export class ReviewController {
         }
         this.pendingTimers.clear()
         for (const glue of this.glues.values()) {
-            this.destroyGlue(glue)
+            // Exception-isolated: one bad glue (a detached popout document, a
+            // throwing observer disconnect) must not strand every OTHER
+            // glue's rail in the DOM — a stranded rail resurfaces as a
+            // double-mount on the next plugin enable.
+            try {
+                this.destroyGlue(glue)
+            } catch (error) {
+                log('Failed to destroy a view glue during dispose — continuing', 'error', error)
+            }
         }
         this.glues.clear()
         this.triageCursors.clearAll()
@@ -1276,7 +1351,7 @@ export class ReviewController {
         if (!file || this.disposed || !this.deps.commentJobs) {
             return
         }
-        this.noteDaemonActivity(file.path)
+        this.noteDaemonEditorActivity(file.path)
         if (this.deps.commentJobs.isReadOnly()) {
             // The store could not be preserved at load, so nothing written
             // this session survives it. Refusing here is the honest answer:
@@ -1442,7 +1517,7 @@ export class ReviewController {
             return
         }
         const capturedPath = view.file.path
-        this.noteDaemonActivity(capturedPath)
+        this.noteDaemonEditorActivity(capturedPath)
         const settings = this.deps.getSettings()
         const editorChoices = reviewCapableEditors(settings).map((candidate) => ({
             id: candidate.id,
@@ -1556,7 +1631,7 @@ export class ReviewController {
             return
         }
         const notePath = file.path
-        this.noteDaemonActivity(notePath)
+        this.noteDaemonEditorActivity(notePath)
         const choices = previewEditorChoices(this.deps.getSettings())
         if (choices.length === 0) {
             return // unreachable behind `canPreviewContext`; fail closed
@@ -1710,7 +1785,9 @@ export class ReviewController {
                     ? this.snapshotView(view, filePath, 'whole-note')
                     : null,
             abortWhen: (): boolean => {
-                if (this.disposed || !this.deps.getSettings().behavior.daemonMode) {
+                // Per-note daemon state: the dispatch dies if the user turned
+                // the daemon off for THIS note (or everywhere) mid-await.
+                if (this.disposed || !(this.daemon?.isEnabledFor(filePath) ?? false)) {
                     return true
                 }
                 // Findings hidden AFTER the timer fired but before the run
@@ -1813,15 +1890,26 @@ export class ReviewController {
     /**
      * Daemon port: switches the mode off after repeated failed automatic
      * refreshes (issue #23) and says why — loudly, because daemon runs are
-     * the ones nobody is watching. Manual reviews stay available, and the
-     * toggle (rail or command) is the "I fixed it, try again" gesture.
+     * the ones nobody is watching. Off means off EVERYWHERE: every per-note
+     * session enable is dropped and the controller's runtime suspension
+     * latch stops the always-on default synchronously (so the kill holds
+     * even if persisting the setting fails), and when `daemonAlwaysOn`
+     * drove the loop it is persisted off too (the durable half). Manual
+     * reviews stay available, and re-enabling (rail toggle, command, or the
+     * always-on setting) is the "I fixed it, try again" gesture.
      */
     disableDaemonMode(reason: string): void {
-        const setDaemonMode = this.deps.setDaemonMode
-        if (!setDaemonMode || this.disposed) {
+        if (this.disposed) {
             return
         }
-        void setDaemonMode(false)
+        this.daemon?.disableAllNotes()
+        const setDaemonAlwaysOn = this.deps.setDaemonAlwaysOn
+        if (!this.deps.getSettings().behavior.daemonAlwaysOn || !setDaemonAlwaysOn) {
+            new Notice(`Daemon mode turned off: ${reason}.`, 0)
+            this.scheduleRefresh()
+            return
+        }
+        void setDaemonAlwaysOn(false)
             .then(() => {
                 if (!this.disposed) {
                     new Notice(`Daemon mode turned off: ${reason}.`, 0)
@@ -1855,34 +1943,25 @@ export class ReviewController {
     }
 
     /**
-     * Flips daemon mode from the rail's toggle. The Notice is not optional
-     * chrome: this control sits next to Review, so a mis-click is plausible,
-     * and switching ON starts spending money on a timer the user did not
-     * type a number into (Business Rules #1). Saying what just changed is
-     * how that stays consented rather than merely permitted.
+     * Flips daemon mode for ONE note (rail toggle and palette command) —
+     * runtime state on the daemon controller, never persisted: the choice
+     * lasts while the note stays open, and a reopened note starts from the
+     * `daemonAlwaysOn` default again (Sébastien, 2026-08-06). The Notice is
+     * not optional chrome: the rail control sits next to Review, so a
+     * mis-click is plausible, and switching ON starts spending money on a
+     * timer the user did not type a number into (Business Rules #1). Saying
+     * what just changed is how that stays consented rather than merely
+     * permitted.
      */
-    private toggleDaemonMode(): void {
-        const setDaemonMode = this.deps.setDaemonMode
-        if (!setDaemonMode) {
+    toggleDaemonModeFor(path: string): void {
+        const daemon = this.daemon
+        if (!daemon || this.disposed) {
             return
         }
-        const settings = this.deps.getSettings()
-        const next = !settings.behavior.daemonMode
-        void setDaemonMode(next)
-            .then(() => {
-                if (this.disposed) {
-                    return
-                }
-                new Notice(
-                    daemonToggleNotice(next, this.deps.getSettings().behavior.daemonIdleSeconds)
-                )
-                this.scheduleRefresh()
-            })
-            .catch(() => {
-                if (!this.disposed) {
-                    new Notice('AI Editor: failed to change daemon mode.')
-                }
-            })
+        const next = !daemon.isEnabledFor(path)
+        daemon.setEnabledFor(path, next)
+        new Notice(daemonToggleNotice(next, this.deps.getSettings().behavior.daemonIdleSeconds))
+        this.scheduleRefresh()
     }
 
     /**
@@ -2434,7 +2513,7 @@ export class ReviewController {
                 insert: change.insert
             })),
             effects: removeFindingsEffect.of([context.current.id]),
-            annotations: isolateHistory.of('full')
+            annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
         })
         this.advanceTriage(context.path, context.run, context.current)
     }
@@ -2529,23 +2608,33 @@ export class ReviewController {
     // -- Severity filter (plan M4 "Bulk triage") ------------------------------
 
     /**
-     * The findings the file's severity filter lets the interaction surfaces
-     * see. Everything stays in the store — this is a lens, not a mutation.
+     * The findings the interaction surfaces see: the disabled-editor lens
+     * first (an editor switched OFF in the settings vanishes from every
+     * surface — hide, never purge; see `editor-visibility.ts`), then the
+     * file's severity filter. Everything stays in the store — this is a
+     * lens, not a mutation, and re-enabling the editor brings its findings
+     * straight back without a re-review.
      */
     private visibleFindings(filePath: string, run: RunHandle): readonly TrackedFinding[] {
+        const findings = withoutDisabledEditors(run.findings.list(), this.disabledEditorSet())
         const mode = this.severityFilters.get(filePath)
         if (mode === 'all') {
-            return run.findings.list()
+            return findings
         }
-        return run.findings
-            .list()
-            .filter((finding) => passesSeverityFilter(mode, finding.raw.severity))
+        return findings.filter((finding) => passesSeverityFilter(mode, finding.raw.severity))
     }
 
-    /** How many of the run's live findings the given mode hides. */
+    /** Editors present in the settings but switched off (view lens input). */
+    private disabledEditorSet(): ReadonlySet<string> {
+        return disabledEditorIds(this.deps.getSettings().editors)
+    }
+
+    /** How many of the run's live findings the given mode hides. Counted
+     * over the enabled editors only: a disabled editor's findings are
+     * already invisible for a different reason, and counting them here
+     * would make the severity filter's "N hidden" lie. */
     private hiddenFindingCount(run: RunHandle, mode: SeverityFilterMode): number {
-        return run.findings
-            .list()
+        return withoutDisabledEditors(run.findings.list(), this.disabledEditorSet())
             .filter((finding) => finding.status === 'open' || finding.status === 'preview')
             .filter((finding) => !passesSeverityFilter(mode, finding.raw.severity)).length
     }
@@ -2556,9 +2645,9 @@ export class ReviewController {
         if (!context) {
             return false
         }
-        return context.run.findings
-            .list()
-            .some((finding) => finding.status === 'open' || finding.status === 'preview')
+        return withoutDisabledEditors(context.run.findings.list(), this.disabledEditorSet()).some(
+            (finding) => finding.status === 'open' || finding.status === 'preview'
+        )
     }
 
     /**
@@ -2572,7 +2661,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
-        this.noteDaemonActivity(context.path)
+        this.noteDaemonTriageActivity(context.path)
         const mode = this.severityFilters.cycle(context.path)
         new Notice(severityFilterNotice(mode, this.hiddenFindingCount(context.run, mode)))
         this.scheduleRefresh()
@@ -2635,7 +2724,7 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
-        this.noteDaemonActivity(context.path)
+        this.noteDaemonTriageActivity(context.path)
         const editorView = this.editorViewFor(context.path)
         if (!editorView) {
             new Notice('Open the note in an editor to apply findings.')
@@ -2652,6 +2741,12 @@ export class ReviewController {
         const applied = plan.findings.filter(
             (finding) => context.run.findings.accept(asFindingId(finding.findingId), currentText).ok
         )
+        // Terminal findings never render a card again, so their runtime
+        // stale-proposal markers would linger for the session — drop them
+        // here like the single-finding accept path does.
+        for (const finding of applied) {
+            this.staleProposalIds.delete(finding.findingId)
+        }
         if (applied.length > 0) {
             editorView.dispatch({
                 changes: applied.flatMap((finding) =>
@@ -2662,7 +2757,7 @@ export class ReviewController {
                     }))
                 ),
                 effects: removeFindingsEffect.of(applied.map((finding) => finding.findingId)),
-                annotations: isolateHistory.of('full')
+                annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
             })
         }
         new Notice(bulkAcceptNotice(applied.length, plan))
@@ -2682,10 +2777,12 @@ export class ReviewController {
         if (!context || this.disposed) {
             return
         }
-        this.noteDaemonActivity(context.path)
+        this.noteDaemonTriageActivity(context.path)
         const ids = dismissableFindingIds(this.bulkCandidates(context.path, context.run, editorId))
         for (const id of ids) {
             context.run.findings.dismiss(asFindingId(id))
+            // Same marker pruning as the single-finding dismiss path.
+            this.staleProposalIds.delete(id)
         }
         if (ids.length > 0) {
             this.editorViewFor(context.path)?.dispatch({
@@ -2813,6 +2910,9 @@ export class ReviewController {
                         this.deps.getSettings().editors.find((entry) => entry.id === editorId)
                             ?.name ?? null
                 }),
+            // Session-held capture of a failed job's tool output (issue #42);
+            // the panel renders content only behind its explicit gesture.
+            diagnosticsFor: (commentId: string) => registry.diagnosticsFor(commentId),
             retry: (commentId: string): void => {
                 void this.retryComment(notePath, commentId)
             },
@@ -3041,18 +3141,26 @@ export class ReviewController {
             acceptAll: (editorId: string): void => {
                 this.acceptAllFindings(editorId, path)
             },
-            dismissAll: (editorId: string): void => {
+            // `null` = every editor of the run (the panel's run-level
+            // "Dismiss all findings" row) — same scope contract as
+            // `dismissAllFindings` itself.
+            dismissAll: (editorId: string | null): void => {
                 this.dismissAllFindings(editorId, path)
             },
             noteActivity: (): void => {
-                this.noteDaemonActivity(path)
+                this.noteDaemonTriageActivity(path)
             },
+            // The disabled-editor lens (hide, never purge): the panel skips
+            // these editors' sections and findings entirely. Resolved at
+            // BINDING time from the live settings, so a toggle flip reaches
+            // the panel on the settings-observer refresh.
+            disabledEditors: [...this.disabledEditorSet()],
             // Pruned at BINDING time (issue #24): an acknowledged editor with
             // live findings again is un-acknowledged before the panel renders,
             // so the render stays a pure projection.
             acknowledgedEditors: [...this.pruneAcknowledgements(path, run)],
             acknowledgeEditor: (editorId: string): void => {
-                this.noteDaemonActivity(path)
+                this.noteDaemonTriageActivity(path)
                 let set = this.acknowledgedAllGood.get(path)
                 if (!set) {
                     set = new Set()
@@ -3062,7 +3170,7 @@ export class ReviewController {
                 this.scheduleRefresh()
             },
             clearAcknowledgements: (): void => {
-                this.noteDaemonActivity(path)
+                this.noteDaemonTriageActivity(path)
                 this.acknowledgedAllGood.delete(path)
                 this.scheduleRefresh()
             }
@@ -3102,7 +3210,12 @@ export class ReviewController {
             pushBack: (findingId, message): Promise<boolean> =>
                 this.pushBackOnFinding(findingId, message),
             addReference: (findingId, evidenceIndex, placement): boolean =>
-                this.addReferenceFromCard(findingId, evidenceIndex, placement)
+                this.addReferenceFromCard(findingId, evidenceIndex, placement),
+            addAllReferences: (findingId): AddAllReferencesOutcome =>
+                this.addAllReferencesForCard(findingId),
+            regenerateFinding: (findingId): void => {
+                this.regenerateFinding(findingId)
+            }
         }
     }
 
@@ -3112,9 +3225,11 @@ export class ReviewController {
         const run = this.deps.runController.findRunWithFinding(id)
         const finding = run?.findings.get(id)
         if (!run || !finding) {
+            this.staleProposalIds.delete(rawId) // finding gone: marker with it
             return null
         }
         if (finding.status !== 'open' && finding.status !== 'preview') {
+            this.staleProposalIds.delete(rawId)
             return null
         }
         // Kill switch / exclusion (plan §4b): no card can open, and an open
@@ -3125,6 +3240,36 @@ export class ReviewController {
         const editor = this.deps
             .getSettings()
             .editors.find((candidate) => candidate.id === finding.editorId)
+        // Disabled-editor lens (hide, never purge): an open card whose editor
+        // was just switched off closes itself on the settings-observer
+        // refresh, like the kill-switch case above. A DELETED editor keeps
+        // its card — see `editor-visibility.ts` for the distinction.
+        if (editor !== undefined && !editor.enabled) {
+            return null
+        }
+        // Live buffer of the note (falling back to the run snapshot when no
+        // view is mounted): reference dedup and the stale-proposal
+        // self-check both verify against what the user actually sees.
+        const liveText = ((): string => {
+            const glue = this.canonicalGlueFor(run.snapshot.filePath)
+            const view = glue ? editorViewOf(glue.view) : null
+            return view?.state.doc.toString() ?? run.snapshot.text
+        })()
+        // Stale proposal (BR #16): derived from the LIVE plan, not only the
+        // runtime marker — the ordinary stale case (editing inside the span
+        // marks the edits stale, so the disabled Accept can never be clicked
+        // and never sets the marker) must still surface the badge and
+        // Regenerate instead of a dead button. The marker covers the
+        // remaining accept-time failure (precondition drift without remap,
+        // e.g. external sync); both self-heal when the plan verifies again.
+        const livePlanStale = ((): boolean => {
+            if (finding.edits.length === 0) {
+                return false
+            }
+            const plan = planEditChanges(finding.edits, liveText)
+            return !plan.ok && (plan.reason === 'stale' || plan.reason === 'precondition-failed')
+        })()
+        const staleProposal = this.staleProposalPersists(rawId, finding, liveText) || livePlanStale
         return {
             findingId: finding.id,
             editorName:
@@ -3147,19 +3292,92 @@ export class ReviewController {
                 text: edit.text
             })),
             invalidProposal: finding.raw.invalidProposal,
-            acceptable: run.findings.isActionable(id),
+            acceptable: run.findings.isActionable(id) && !staleProposal,
+            staleProposal,
+            carryover: finding.carryover,
             thread: finding.thread,
             threadTurn: finding.threadTurn,
             // Sources (issue #30): the card offers Add controls only for
-            // entries the editor actually consulted.
+            // entries the editor actually consulted. Compute added placement for dedup.
             evidence: finding.raw.evidence.map((entry) => ({
                 title: entry.title,
                 url: entry.url ?? null,
                 claim: entry.claim ?? null,
-                verified: entry.verification === 'verified'
+                verified: entry.verification === 'verified',
+                addedPlacement: getSourceAddedPlacement(liveText, entry)
             })),
             anchoredSpan: finding.anchor !== null
         }
+    }
+
+    /**
+     * Whether the finding's stale-proposal marker still holds against the
+     * live text. Self-healing: an undo that restored the text (or a
+     * regeneration that re-anchored the edits through carryover adoption)
+     * makes the full edit plan verify again — the marker is then dropped so
+     * the card goes back to a working Accept button instead of nagging
+     * about a staleness that no longer exists.
+     */
+    private staleProposalPersists(
+        rawId: string,
+        finding: TrackedFinding,
+        liveText: string
+    ): boolean {
+        if (!this.staleProposalIds.has(rawId)) {
+            return false
+        }
+        if (planEditChanges(finding.edits, liveText).ok) {
+            this.staleProposalIds.delete(rawId)
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Regenerates a stale-proposal finding (card "Regenerate" button): clears
+     * the runtime marker and re-dispatches the note's review through the
+     * regular `startReview` pipeline with the run's OWN editor set and panel
+     * identity — a run scoped to just the finding's editor would kill every
+     * other editor's findings (issue #19 carries only participating
+     * editors). Carryover findings never reach this path (badge only): the
+     * refused cases each surface as a Notice because a silent button is a
+     * dead button.
+     *
+     * Deliberately DIRECT — never routed through the daemon scheduler — so a
+     * pending idle window cannot delay or swallow the explicit user action.
+     */
+    private regenerateFinding(rawId: string): void {
+        if (this.disposed) {
+            return
+        }
+        const id = asFindingId(rawId)
+        const run = this.deps.runController.findRunWithFinding(id)
+        const finding = run?.findings.get(id)
+        if (!run || !finding) {
+            new Notice('That finding is no longer available.')
+            return
+        }
+        const filePath = run.snapshot.filePath
+        this.noteDaemonTriageActivity(filePath)
+        // A disabled editor must not be re-dispatched on its stale finding's
+        // behalf: the toggle is the user's word that this persona stays
+        // quiet until re-enabled.
+        const editor = this.deps
+            .getSettings()
+            .editors.find((candidate) => candidate.id === finding.editorId)
+        if (!editor || !editor.enabled) {
+            new Notice('This finding’s editor is disabled, so it cannot regenerate the proposal.')
+            return
+        }
+        const view = this.findMarkdownView(filePath)
+        if (!view || view.file?.path !== filePath) {
+            new Notice('Open the note in an editor to regenerate the finding.')
+            return
+        }
+        this.staleProposalIds.delete(rawId)
+        const editorIds = run.getEditorStates().map((state) => state.editorId)
+        const panelId = run.getPanelState()?.panelId
+        void this.startReview(view, false, undefined, 'whole-note', undefined, panelId, editorIds)
     }
 
     /**
@@ -3194,6 +3412,13 @@ export class ReviewController {
             return false
         }
         const text = editorView.state.doc.toString()
+        // Re-check dedup against the LIVE document: the card rendered from a
+        // snapshot, and the user may have added the source (by hand or via
+        // another card) between render time and this click.
+        if (getSourceAddedPlacement(text, evidence) !== null) {
+            new Notice('This source has already been added to the note.')
+            return false
+        }
         let change: { from: number; to: number; insert: string }
         if (placement === 'footnote') {
             const anchor = finding.anchor
@@ -3209,14 +3434,91 @@ export class ReviewController {
             const target = referenceSectionInsertion(text, evidence)
             change = { from: target.offset, to: target.offset, insert: target.insert }
         }
-        editorView.dispatch({ changes: change })
-        this.noteDaemonActivity(run.snapshot.filePath)
+        // One undo step, isolated from adjacent typing (Architecture:
+        // "Undo isolation is explicit everywhere an edit is applied").
+        editorView.dispatch({
+            changes: change,
+            annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
+        })
+        this.noteDaemonTriageActivity(run.snapshot.filePath)
         new Notice(
             placement === 'footnote'
                 ? 'Reference added as a footnote.'
                 : 'Reference added under References.'
         )
         return true
+    }
+
+    /**
+     * Adds all verified, unadded sources to the References section (issue #30, §5).
+     * Batches all additions into a single dispatch for one undo step.
+     * `'failed'` when the finding or editor is no longer available; `'noop'`
+     * when every source is already in the live text (nothing dispatched);
+     * `'added'` when a dispatch happened. The card arms suppressNextAutoClose
+     * only around a real add — the distinction exists so a no-op cannot leave
+     * the flag armed (which would hijack the user's next unrelated edit).
+     */
+    private addAllReferencesForCard(rawId: string): AddAllReferencesOutcome {
+        const id = asFindingId(rawId)
+        const run = this.deps.runController.findRunWithFinding(id)
+        const finding = run?.findings.get(id)
+        if (!run || !finding) {
+            new Notice('That finding is no longer available.')
+            return 'failed'
+        }
+
+        const glue = this.canonicalGlueFor(run.snapshot.filePath)
+        const editorView = glue ? editorViewOf(glue.view) : null
+        if (!glue || !editorView || glue.view.file?.path !== run.snapshot.filePath) {
+            new Notice('Open the note in an editor to add the references.')
+            return 'failed'
+        }
+
+        // Each insertion is computed against a simulated working text that
+        // already contains the previous insertions — computing every offset
+        // against the original text would create the References section once
+        // per source (duplicate headings) and reverse same-offset bullets.
+        // The per-step changes are composed into a single ChangeSet so the
+        // dispatch is still one transaction, one undo step.
+        let workingText = editorView.state.doc.toString()
+        let composed: ChangeSet | null = null
+        let added = 0
+        for (const evidence of finding.raw.evidence) {
+            if (
+                evidence.verification !== 'verified' ||
+                getSourceAddedPlacement(workingText, evidence) !== null
+            ) {
+                continue
+            }
+            const target = referenceSectionInsertion(workingText, evidence)
+            const step = ChangeSet.of(
+                { from: target.offset, insert: target.insert },
+                workingText.length
+            )
+            composed = composed === null ? step : composed.compose(step)
+            workingText =
+                workingText.slice(0, target.offset) +
+                target.insert +
+                workingText.slice(target.offset)
+            added += 1
+        }
+
+        if (composed === null) {
+            // All already added: silent, and explicitly NOT 'added' — no
+            // dispatch means no docChanged, so the card must not arm its
+            // auto-close suppression.
+            return 'noop'
+        }
+
+        // One undo step, isolated from adjacent typing (Architecture:
+        // "Undo isolation is explicit everywhere an edit is applied").
+        editorView.dispatch({
+            changes: composed,
+            annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
+        })
+        this.noteDaemonTriageActivity(run.snapshot.filePath)
+        new Notice(`Added ${added} reference${added === 1 ? '' : 's'} to the note.`)
+        return 'added'
     }
 
     /**
@@ -3243,7 +3545,7 @@ export class ReviewController {
             new Notice('That finding is no longer available.')
             return false
         }
-        this.noteDaemonActivity(run.snapshot.filePath)
+        this.noteDaemonTriageActivity(run.snapshot.filePath)
         const finding = run.findings.get(id)
         const editorName =
             finding === null
@@ -3345,12 +3647,20 @@ export class ReviewController {
         if (!run) {
             return { ok: false }
         }
-        this.noteDaemonActivity(run.snapshot.filePath)
+        this.noteDaemonTriageActivity(run.snapshot.filePath)
         const result = run.findings.accept(id, currentText)
         if (!result.ok) {
+            if (result.reason === 'stale-proposal') {
+                // The proposal no longer applies to the live text: mark the
+                // finding so the refreshed card offers Regenerate instead of
+                // a dead disabled Accept button (the finding itself stays
+                // open — BR #16/#17, never silently dropped).
+                this.staleProposalIds.add(rawId)
+            }
             this.scheduleRefresh()
             return { ok: false }
         }
+        this.staleProposalIds.delete(rawId)
         // The store verified every edit against the live text and returned
         // the full change set — ONE dispatch, one undo step (design §4).
         return { ok: true, changes: result.changes }
@@ -3363,7 +3673,8 @@ export class ReviewController {
         if (!run) {
             return
         }
-        this.noteDaemonActivity(run.snapshot.filePath)
+        this.noteDaemonTriageActivity(run.snapshot.filePath)
+        this.staleProposalIds.delete(rawId)
         run.findings.dismiss(id)
     }
 
@@ -3400,12 +3711,18 @@ export class ReviewController {
             )
         }
         if (!update.docChanged) {
-            // Pure cursor/selection movement: reading the note is activity
-            // (issue #20) — it postpones a pending daemon refresh without
-            // arming one. Recorded from ANY pane of the file (activity is
-            // per file, and double-reporting is harmless), then done: none
-            // of the edit forwarding below applies.
-            this.daemon?.recordActivity(glue.filePath)
+            // Pure cursor/selection movement: reading the note is
+            // EDITOR-tier activity (issue #20) — it postpones a pending
+            // daemon refresh without arming one. Recorded from ANY pane of
+            // the file (activity is per file, and double-reporting is
+            // harmless), then done: none of the edit forwarding below
+            // applies. Plugin-originated reveals are exempt: `revealRange`
+            // moves the selection on the user's behalf during triage, and
+            // triage never postpones (the reveal already recorded
+            // TRIAGE-tier activity in `revealFinding`).
+            if (!this.suppressSelectionActivity) {
+                this.daemon?.recordEditorActivity(glue.filePath)
+            }
             return
         }
         // A presented transform preview may go stale with this edit: defer a
@@ -3422,8 +3739,18 @@ export class ReviewController {
         // Daemon mode reuses this exact-once-per-file edit stream — no second
         // CM6 listener exists. Fires for files WITHOUT a run too (a
         // never-reviewed note arms just as well); near-zero cost while the
-        // daemon toggle is off.
-        this.daemon?.recordEdit(glue.filePath)
+        // daemon toggle is off. Plugin-originated TRIAGE dispatches (accepts,
+        // reference adds — marked by `triageEditAnnotation`) take the
+        // triage-edit path: the doc change still counts (arms an unarmed
+        // note, is folded into a pending refresh) but never RESTARTS an armed
+        // idle window the way a keystroke does — accepting the last finding
+        // at the end of a quiet window must not postpone the refresh by the
+        // full delay (two-tier carve-out, adversarial review 2026-08-06).
+        if (isTriageOnlyEdit(update.transactions)) {
+            this.daemon?.recordTriageEdit(glue.filePath)
+        } else {
+            this.daemon?.recordEdit(glue.filePath)
+        }
         // Margin comments are anchored to text, so an edit moves them — and
         // may take their quote away entirely. Both paths below return early
         // (no run at all, or a run where nothing went stale), so this is the
@@ -3543,7 +3870,16 @@ export class ReviewController {
                 if (glue.filePath !== null) {
                     removedPaths.add(glue.filePath)
                 }
-                this.destroyGlue(glue)
+                // Exception-isolated like `dispose`: a throwing teardown (a
+                // detached popout document) must not escape `refreshAll` —
+                // that would skip every later refresh AND leave the glue in
+                // the map, re-throwing on every subsequent cycle. The delete
+                // stays unconditional so a bad glue is dropped exactly once.
+                try {
+                    this.destroyGlue(glue)
+                } catch (error) {
+                    log('Failed to destroy a removed view glue — continuing', 'error', error)
+                }
                 this.glues.delete(view)
             }
         }
@@ -3561,6 +3897,16 @@ export class ReviewController {
         // Popout safety: every element is created via the view's own document.
         const doc = view.contentEl.ownerDocument
         view.contentEl.addClass('editor-ai-daemons-rail-host')
+        // Cross-generation idempotence: if a previous plugin generation's
+        // `onunload` aborted before `dispose()` ran, its wrapper is still in
+        // this contentEl — and this (fresh) controller's empty glue map
+        // cannot see it. Remove strays rather than adopting them: they belong
+        // to a dead controller. Without this, the next enable double-mounts
+        // ("two rails, one frozen at its last collapsed state").
+        const strayRails = removeStrayMounts(view.contentEl, 'editor-ai-daemons-rail-wrapper')
+        if (strayRails > 0) {
+            log(`Removed ${strayRails} stray rail wrapper(s) left by an aborted teardown`, 'warn')
+        }
         const railWrapperEl = doc.win.createDiv()
         railWrapperEl.classList.add('editor-ai-daemons-rail-wrapper')
         view.contentEl.appendChild(railWrapperEl)
@@ -3574,7 +3920,13 @@ export class ReviewController {
                     this.cancelReview(view)
                 },
                 onToggleDaemon: (): void => {
-                    this.toggleDaemonMode()
+                    // Scoped to the rail's view, like the findings toggle:
+                    // the control was clicked on THIS pane's rail, and
+                    // daemon mode is per note.
+                    const path = view.file?.path
+                    if (path) {
+                        this.toggleDaemonModeFor(path)
+                    }
                 },
                 onToggleCollapsed: (): void => {
                     this.toggleRailCollapsed()
@@ -3668,6 +4020,16 @@ export class ReviewController {
         if (!this.deps.commentJobs) {
             return
         }
+        // Same cross-generation guard as the rail wrapper in `createGlue`: a
+        // margin column stranded by an aborted teardown must be removed, never
+        // adopted, before the live one mounts into the same contentEl.
+        const strayMargins = removeStrayMounts(glue.view.contentEl, 'editor-ai-daemons-margin')
+        if (strayMargins > 0) {
+            log(
+                `Removed ${strayMargins} stray margin column(s) left by an aborted teardown`,
+                'warn'
+            )
+        }
         glue.marginColumn = new MarginColumn(
             glue.view.contentEl,
             {
@@ -3693,6 +4055,26 @@ export class ReviewController {
                 },
                 onDelete: (commentId) => {
                     this.confirmDeleteComment(glue, commentId)
+                },
+                onShowDetails: (commentId) => {
+                    // The explicit gesture the diagnostics contract demands
+                    // (issue #42): content renders in the modal, never on the
+                    // card.
+                    const registry = this.deps.commentJobs
+                    const diagnostics = registry?.diagnosticsFor(commentId) ?? null
+                    if (!registry || diagnostics === null) {
+                        return
+                    }
+                    const path = glue.view.file?.path ?? null
+                    const comment = path === null ? null : registry.commentFor(path, commentId)
+                    const editorName =
+                        (comment
+                            ? (this.deps
+                                  .getSettings()
+                                  .editors.find((entry) => entry.id === comment.editorId)?.name ??
+                              comment.editorName)
+                            : '') || 'Editor'
+                    new ErrorDiagnosticsModal(this.deps.app, editorName, diagnostics).open()
                 },
                 onToggleBody: (commentId) => {
                     toggleMember(glue.marginExpandedBodies, commentId)
@@ -3916,7 +4298,12 @@ export class ReviewController {
                 !pluginDisabled &&
                 ((run !== null && run.isBusy()) ||
                     (transformRun !== null && !transformRun.isSettled())),
-            daemonMode: this.deps.getSettings().behavior.daemonMode,
+            // Per-note daemon state: the toggle shows and flips THIS note's
+            // mode (default = `behavior.daemonAlwaysOn`).
+            daemonMode:
+                filePath !== null &&
+                (this.daemon?.isEnabledFor(filePath) ??
+                    this.deps.getSettings().behavior.daemonAlwaysOn),
             daemonArmed:
                 !pluginDisabled && filePath !== null && (this.daemon?.isArmed(filePath) ?? false),
             collapsed: this.deps.getSettings().behavior.railCollapsed,
@@ -4045,7 +4432,10 @@ export class ReviewController {
                 editorName:
                     names.get(entry.comment.editorId) ??
                     (entry.comment.editorName || 'Unknown editor'),
-                expanded: glue.marginExpandedBodies.has(entry.comment.id)
+                expanded: glue.marginExpandedBodies.has(entry.comment.id),
+                // Session-held capture of a failed job's tool output (issue
+                // #42): drives the card's "Show details" affordance only.
+                hasDiagnostics: registry.diagnosticsFor(entry.comment.id) !== null
             }
             inputs.set(entry.comment.id, input)
             if (entry.anchor === null) {
@@ -4291,30 +4681,28 @@ export class ReviewController {
         // and falls back to the review projection once it settles.
         const transformActive =
             transformRun !== null && !transformRun.isSettled() ? transformRun : null
-        return settings.editors
-            .filter((editor) => editor.enabled && editor.capabilities.review)
-            .map((editor) => {
-                const state = run?.getEditorState(editor.id) ?? null
-                const errorReason =
-                    state?.status === 'error' && state.error
-                        ? railErrorReason(state.error.code)
-                        : undefined
-                const reviewStatus = state ? railStatusOf(state.status) : 'idle'
-                const status: RailEditorStatus =
-                    transformActive && transformActive.editorId === editor.id
-                        ? transformActive.getState().status === 'pending'
-                            ? 'pending'
-                            : 'transforming'
-                        : reviewStatus
-                return {
-                    id: editor.id,
-                    name: editor.name,
-                    color: editor.color,
-                    status,
-                    findingCount: state ? state.findingIds.length : 0,
-                    ...(errorReason === undefined ? {} : { errorReason })
-                }
-            })
+        return railEligibleEditors(settings.editors).map((editor) => {
+            const state = run?.getEditorState(editor.id) ?? null
+            const errorReason =
+                state?.status === 'error' && state.error
+                    ? railErrorReason(state.error.code)
+                    : undefined
+            const reviewStatus = state ? railStatusOf(state.status) : 'idle'
+            const status: RailEditorStatus =
+                transformActive && transformActive.editorId === editor.id
+                    ? transformActive.getState().status === 'pending'
+                        ? 'pending'
+                        : 'transforming'
+                    : reviewStatus
+            return {
+                id: editor.id,
+                name: editor.name,
+                color: editor.color,
+                status,
+                findingCount: state ? state.findingIds.length : 0,
+                ...(errorReason === undefined ? {} : { errorReason })
+            }
+        })
     }
 
     private dispatchDecorations(glue: ViewGlue, run: RunHandle | null): void {
@@ -4423,9 +4811,31 @@ export class ReviewController {
             if (!this.notifiedTransformErrors.has(String(run.runId))) {
                 this.notifiedTransformErrors.add(String(run.runId))
                 const label = run.actionLabel ?? 'Action'
-                new Notice(
-                    `${label} failed (${run.editorName}): ${state.error?.message ?? 'unknown error'}`
-                )
+                const message = `${label} failed (${run.editorName}): ${state.error?.message ?? 'unknown error'}`
+                const diagnostics = state.error?.diagnostics
+                if (diagnostics === undefined) {
+                    new Notice(message)
+                } else {
+                    // The run is discarded below, so the Notice is the ONE
+                    // surface this failure has — it carries the explicit
+                    // "Show details" gesture (issue #42) and stays up until
+                    // dismissed so the affordance is not lost mid-read. The
+                    // content itself never rides the Notice (Business Rules
+                    // #12): it renders only in the modal the click opens.
+                    const fragment = new DocumentFragment()
+                    fragment.createSpan({ text: message })
+                    // WCAG 2.5.3: keep the visible "Show details" a substring.
+                    const detailsLabel = `Show details of the failure for ${run.editorName}`
+                    const detailsEl = fragment.createEl('button', {
+                        cls: 'editor-ai-daemons-panel-error-details',
+                        text: 'Show details'
+                    })
+                    detailsEl.setAttribute('aria-label', detailsLabel)
+                    detailsEl.addEventListener('click', () => {
+                        new ErrorDiagnosticsModal(this.deps.app, run.editorName, diagnostics).open()
+                    })
+                    new Notice(fragment, 0)
+                }
             }
             this.deps.transformController.discardRun(filePath)
             return null
@@ -4572,11 +4982,15 @@ export class ReviewController {
         })
         editorView.focus()
         glue.transformPreviewKey = ''
+        this.recordTransformDecision(run, precondition.outcome, 'accepted')
         this.deps.transformController.discardRun(run.snapshot.filePath)
         this.scheduleRefresh()
     }
 
-    /** Reject: remove the widget and forget the run — nothing else. */
+    /**
+     * Reject: remove the widget, archive the verdict, forget the run —
+     * nothing else.
+     */
     private rejectTransform(glue: ViewGlue, run: TransformRunHandle): void {
         const editorView = editorViewOf(glue.view)
         if (editorView) {
@@ -4584,8 +4998,47 @@ export class ReviewController {
             editorView.focus()
         }
         glue.transformPreviewKey = ''
+        const outcome = run.getState().outcome
+        if (outcome !== null) {
+            this.recordTransformDecision(run, outcome, 'rejected')
+        }
         this.deps.transformController.discardRun(run.snapshot.filePath)
         this.scheduleRefresh()
+    }
+
+    /**
+     * Archives the user's verdict on a transform outcome (issue #43): same
+     * history service and record-time privacy gate as findings — an excluded
+     * or rule-disabled note records nothing (Business Rules #19). Recorded
+     * at DECISION time only: an outcome the user never ruled on (cancelled,
+     * superseded, discarded as stale) leaves no entry. Try/caught because an
+     * archive must never break the apply/reject flow (BR #19).
+     */
+    private recordTransformDecision(
+        run: TransformRunHandle,
+        outcome: TransformOutcome,
+        decision: TransformDecision
+    ): void {
+        const history = this.deps.history
+        if (!history) {
+            return
+        }
+        try {
+            history.record(
+                transformHistoryRecord({
+                    filePath: run.snapshot.filePath,
+                    editorId: run.editorId,
+                    editorName: run.editorName,
+                    kind: run.kind,
+                    actionLabel: run.actionLabel,
+                    spanText: run.target.kind === 'replace-span' ? run.target.spanText : null,
+                    outcome,
+                    decision
+                })
+            )
+        } catch {
+            // An archive must never break a run (Business Rules #19).
+        }
     }
 
     // -- Ambient surfaces -----------------------------------------------------
@@ -4620,11 +5073,12 @@ export class ReviewController {
     private updateStatusBar(): void {
         const path = this.resolveActiveFilePath()
         const run = path ? this.deps.runController.getRun(path) : null
+        // Disabled-editor lens, like every other surface: the counter must
+        // not report findings no surface will show.
         const count = run
-            ? run.findings
-                  .list()
-                  .filter((finding) => finding.status === 'open' || finding.status === 'preview')
-                  .length
+            ? withoutDisabledEditors(run.findings.list(), this.disabledEditorSet()).filter(
+                  (finding) => finding.status === 'open' || finding.status === 'preview'
+              ).length
             : 0
         this.deps.setFindingCount(count)
     }
@@ -4652,7 +5106,7 @@ export class ReviewController {
     ): Promise<MarkdownView | null> {
         // The ONE reveal path (panel clicks, keyboard triage, chip cycling,
         // margin column) — navigating findings is activity (issue #20).
-        this.noteDaemonActivity(filePath)
+        this.noteDaemonTriageActivity(filePath)
         // Revealing something invisible is incoherent (issue #29): any
         // surface that jumps to a finding un-hides the note's findings first.
         this.setFindingsHidden(filePath, false)
@@ -4694,7 +5148,14 @@ export class ReviewController {
         const to = Math.min(rangeTo, docLength)
         const fromPos = editor.offsetToPos(from)
         const toPos = editor.offsetToPos(to)
-        editor.setSelection(fromPos, toPos)
+        // The selection move is the plugin's, not the user's: keep it out of
+        // the daemon's EDITOR-tier activity stream (see field doc).
+        this.suppressSelectionActivity = true
+        try {
+            editor.setSelection(fromPos, toPos)
+        } finally {
+            this.suppressSelectionActivity = false
+        }
         editor.scrollIntoView({ from: fromPos, to: toPos }, true)
         if (focusEditor) {
             editor.focus()
@@ -4716,7 +5177,14 @@ export class ReviewController {
                 posEquals(editor.getCursor('from'), fromPos) &&
                 posEquals(editor.getCursor('to'), toPos)
             ) {
-                editor.setSelection(fromPos)
+                // Same exemption as the reveal itself: the collapse is
+                // plugin-originated, not user activity.
+                this.suppressSelectionActivity = true
+                try {
+                    editor.setSelection(fromPos)
+                } finally {
+                    this.suppressSelectionActivity = false
+                }
             }
         }, REVEAL_SELECTION_MS)
         this.pendingTimers.add(timer)

@@ -13,6 +13,7 @@ import {
     panelRing,
     railAnnouncement,
     railErrorReason,
+    railEligibleEditors,
     railMotion,
     truncateName
 } from './rail-model'
@@ -39,6 +40,32 @@ function editor(overrides: Partial<RailEditorState> = {}): RailEditorState {
 function state(overrides: Partial<RailState> = {}): RailState {
     return { editors: [editor()], running: false, ...overrides }
 }
+
+describe('railEligibleEditors', () => {
+    const configured = [
+        { id: 'e-1', enabled: true, capabilities: { review: true } },
+        { id: 'e-2', enabled: false, capabilities: { review: true } },
+        { id: 'e-3', enabled: true, capabilities: { review: false } }
+    ]
+
+    it('keeps only enabled review-capable editors', () => {
+        expect(railEligibleEditors(configured).map((editor) => editor.id)).toEqual(['e-1'])
+    })
+
+    it('drops a disabled editor even when it has findings in the run: the chip vanishes on the toggle', () => {
+        // The chip existing at all is decided by the SETTINGS, not by the
+        // run — a disabled editor's run state (and findings) stay in the
+        // store, hidden, and come back when the editor is re-enabled.
+        const allDisabled = configured.map((editor) => ({ ...editor, enabled: false }))
+        expect(railEligibleEditors(allDisabled)).toEqual([])
+    })
+
+    it('is a pure lens: the settings list is never mutated', () => {
+        const before = configured.map((editor) => ({ ...editor }))
+        railEligibleEditors(configured)
+        expect(configured).toEqual(before)
+    })
+})
 
 describe('buildRailViewModel', () => {
     describe('button', () => {

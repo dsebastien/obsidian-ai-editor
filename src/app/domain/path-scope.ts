@@ -56,3 +56,42 @@ export function deleteKeysUnder(collection: PathKeyedCollection, path: string): 
     }
     return doomed.length
 }
+
+/**
+ * Moves every entry keyed at `oldPath` or under it to the corresponding key
+ * under `newPath`, keeping its value. Returns the new keys. The rename
+ * counterpart of `deleteKeysUnder`: a vault RENAME closes nothing — state that
+ * belongs to a still-open note must follow it, not die with the old path
+ * (adversarial review 2026-08-06: deleting per-note daemon overrides on rename
+ * silently flipped notes back to the always-on default).
+ */
+export function remapKeysUnder<V>(map: Map<string, V>, oldPath: string, newPath: string): string[] {
+    const moved: [string, string, V][] = []
+    for (const [key, value] of map) {
+        const remapped = remapPathUnder(key, oldPath, newPath)
+        if (remapped !== null) {
+            moved.push([key, remapped, value])
+        }
+    }
+    for (const [from, to, value] of moved) {
+        map.delete(from)
+        map.set(to, value)
+    }
+    return moved.map(([, to]) => to)
+}
+
+/** `remapKeysUnder` for `Set<string>` (members are the keys). */
+export function remapMembersUnder(set: Set<string>, oldPath: string, newPath: string): string[] {
+    const moved: [string, string][] = []
+    for (const member of set) {
+        const remapped = remapPathUnder(member, oldPath, newPath)
+        if (remapped !== null) {
+            moved.push([member, remapped])
+        }
+    }
+    for (const [from, to] of moved) {
+        set.delete(from)
+        set.add(to)
+    }
+    return moved.map(([, to]) => to)
+}

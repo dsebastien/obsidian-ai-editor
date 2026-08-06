@@ -1201,6 +1201,35 @@ describe('startReview', () => {
         await result.run.settled
     })
 
+    it('silently drops a disabled editor from an editorIds redispatch and runs the rest', async () => {
+        // Fire-time resolution, pipeline half: even if a daemon (or any
+        // redispatch) hands over a set captured while an editor was still
+        // enabled, the pool is filtered against the LIVE settings here — the
+        // disabled editor neither runs nor nags as a skip (pool 3 stays
+        // silent about disabled editors: the user turned them off on
+        // purpose). Its findings are hidden, not purged, elsewhere.
+        const settings = makeSettings({
+            editors: [
+                makeEditor({ id: 'e-1', name: 'One' }),
+                makeEditor({ id: 'e-2', name: 'Benched', enabled: false })
+            ]
+        })
+        const result = await startReview({
+            settings,
+            snapshot: makeSnapshot(),
+            vault: new FakeVault(),
+            runController: new RunController(),
+            fetchImpl: fetchReturning(anthropicReviewBody()),
+            editorIds: ['e-1', 'e-2']
+        })
+        if (result.status !== 'started') {
+            throw new Error(`Expected started, got ${result.status}`)
+        }
+        expect(result.run.getEditorStates().map((state) => state.editorId)).toEqual(['e-1'])
+        expect(result.skips).toEqual([])
+        await result.run.settled
+    })
+
     it('returns no-editors when the requested editorIds cannot dispatch', async () => {
         const settings = makeSettings({
             editors: [makeEditor(), makeEditor({ id: 'e-2', name: 'Off', enabled: false })]

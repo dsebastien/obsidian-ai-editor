@@ -30,13 +30,31 @@ import { StateEffect } from '@codemirror/state'
 import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
+import { Menu, setIcon } from 'obsidian'
 import type { EditOp, Severity } from '../../domain/operations/contract'
+import { formatReference } from '../../domain/references'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
 import type { ThreadBeginFailure, ThreadMessage, ThreadTurn } from '../../domain/operations/thread'
 import { entityName } from '../entity-label'
 import { findingSpanById, findingSpansAt, removeFindingsEffect } from './finding-decorations'
+import { triageEditAnnotation } from './triage-edit'
 import { cardMaxWidth, paneCardViewport } from './layout-mode'
 import type { LayoutBox } from './layout-mode'
+
+/**
+ * Only http:/https: URLs may become clickable links on a source row (issue
+ * #30): any other scheme (javascript:, data:, file:, …) is rendered as inert
+ * text instead, so a malicious evidence payload can never make the card
+ * navigate somewhere unsafe.
+ */
+function isHttpUrl(raw: string): boolean {
+    try {
+        const protocol = new URL(raw).protocol
+        return protocol === 'http:' || protocol === 'https:'
+    } catch {
+        return false
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Data contract with the review controller (injected, never imported)
@@ -75,10 +93,25 @@ export interface FindingCardData {
     /**
      * Whether Accept may currently be offered: the proposal is non-empty AND
      * the FindingStore reports the finding actionable (every edit anchored,
-     * not stale, conflict-free, not terminal — all-or-nothing, design §4).
-     * The accept call re-verifies before anything is applied.
+     * not stale, conflict-free, not terminal — all-or-nothing, design §4)
+     * AND no stale-proposal marker is set. The accept call re-verifies
+     * before anything is applied.
      */
     readonly acceptable: boolean
+    /**
+     * A previous Accept attempt failed because the proposal went stale
+     * against the live text (runtime marker, set by the controller). The
+     * card replaces the dead disabled Accept button with a "Stale proposal"
+     * badge and — for non-carryover findings — a Regenerate action.
+     */
+    readonly staleProposal: boolean
+    /**
+     * The finding was carried over from a previous run (issue #19) and has
+     * not been re-adopted yet: a stale carryover shows the badge only —
+     * regeneration would re-run the whole editor set the carryover no longer
+     * belongs to.
+     */
+    readonly carryover: boolean
     /** Completed push-back exchanges, oldest first (see the thread domain). */
     readonly thread: readonly ThreadMessage[]
     /** In-flight or failed push-back turn; `null` when the thread is idle. */
@@ -105,6 +138,12 @@ export interface CardEvidenceData {
     readonly claim: string | null
     /** True when the editor actually consulted it during the review. */
     readonly verified: boolean
+    /**
+     * Whether this source has already been added to the note: 'footnote' if added
+     * as an inline footnote, 'section' if added to References, null if not yet added.
+     * Used to show "Added" state instead of Add button (dedup, issue #30).
+     */
+    readonly addedPlacement: 'footnote' | 'section' | null
 }
 
 /** One rendered edit of a finding's proposal. */
@@ -124,6 +163,14 @@ export type CardAcceptOutcome =
           readonly changes: readonly { from: number; to: number; insert: string }[]
       }
     | { readonly ok: false }
+
+/**
+ * Outcome of a batch reference add: only `'added'` dispatched a document
+ * change (and thus consumed the card's auto-close suppression); `'noop'`
+ * (everything already added) and `'failed'` must leave the card's
+ * `docChanged` behavior untouched.
+ */
+export type AddAllReferencesOutcome = 'added' | 'noop' | 'failed'
 
 /**
  * Finding resolution seam injected by the review controller.
@@ -167,6 +214,27 @@ export interface FindingLookup {
         evidenceIndex: number,
         placement: 'footnote' | 'section'
     ): boolean
+
+    /**
+     * Adds all verified, unadded sources in one batch (issue #30). Collects
+     * all verified sources not yet in the note and appends them to the
+     * References section in a single dispatch (one undo step). `'added'`
+     * means a dispatch happened (the card's `docChanged` handling ran);
+     * `'noop'` means every source was already in the live text — nothing was
+     * dispatched, so the card must NOT arm its auto-close suppression;
+     * `'failed'` means the finding or editor is no longer available.
+     */
+    addAllReferences(findingId: string): AddAllReferencesOutcome
+
+    /**
+     * Regenerates a stale-proposal finding: clears the runtime staleness
+     * marker and re-dispatches the note's review with the run's editor set
+     * (a scoped single-editor run would kill the other editors' findings —
+     * issue #19 carries only participating editors). The controller refuses
+     * (with a Notice) when the finding's editor is disabled or the note is
+     * not open in an editor.
+     */
+    regenerateFinding(findingId: string): void
 }
 
 /**
@@ -395,6 +463,36 @@ export function threadRefusalNotice(reason: ThreadBeginFailure, editorName: stri
     }
 }
 
+/** What the action row offers for a finding's proposal. */
+export type AcceptControlMode =
+    /** No proposal at all — nothing but Dismiss. */
+    | 'none'
+    /** The regular Accept button (enabled or disabled per `acceptable`). */
+    | 'accept'
+    /** Stale proposal: badge + Regenerate button. */
+    | 'regenerate'
+    /** Stale proposal on a carryover finding: badge only (no Regenerate). */
+    | 'stale-badge-only'
+
+/**
+ * Decides the accept-area rendering for one finding: a proposal whose accept
+ * failed against the live text (stale-proposal marker) is shown as a badge
+ * with a Regenerate action instead of a dead disabled Accept button —
+ * except for carryover findings (issue #19), which cannot be regenerated in
+ * place and get the badge alone.
+ */
+export function acceptControl(
+    data: Pick<FindingCardData, 'edits' | 'staleProposal' | 'carryover'>
+): AcceptControlMode {
+    if (data.edits.length === 0) {
+        return 'none'
+    }
+    if (!data.staleProposal) {
+        return 'accept'
+    }
+    return data.carryover ? 'stale-badge-only' : 'regenerate'
+}
+
 // ---------------------------------------------------------------------------
 // View plugin
 // ---------------------------------------------------------------------------
@@ -456,6 +554,12 @@ class FindingCardPlugin implements PluginValue {
     private scrollArmed = false
     /** Pending animation-frame handle of the scroll-close arming. */
     private scrollArmHandle: number | null = null
+    /**
+     * Suppresses the auto-close on the next docChanged event (issue #30, card
+     * persistence after Add). Set before calling addReference or addAllReferences,
+     * then reset after the first docChanged to refresh instead of close.
+     */
+    private suppressNextAutoClose = false
 
     private readonly onDocPointerDown = (event: MouseEvent): void => {
         const target = event.target
@@ -568,9 +672,15 @@ class FindingCardPlugin implements PluginValue {
         // Any external edit invalidates the card's content: the sections were
         // resolved against the pre-change document. Accept closes the card
         // BEFORE dispatching, so its own transaction never reaches this path
-        // with an open card.
+        // with an open card. Issue #30: if suppressNextAutoClose is set, suppress
+        // the close and refresh the card instead (for persistent card after Add).
         if (update.docChanged) {
-            this.closeCard()
+            if (this.suppressNextAutoClose) {
+                this.suppressNextAutoClose = false
+                this.refreshCard()
+            } else {
+                this.closeCard()
+            }
         }
         // Programmatic open/close (keyboard triage card-on-jump). Processed
         // after the doc-change close so an effect riding a doc-changing
@@ -943,94 +1053,225 @@ class FindingCardPlugin implements PluginValue {
     }
 
     /**
-     * The Sources block (issue #30): one row per evidence entry — the
-     * source, its verification label, and the two Add controls. Adds are
-     * offered ONLY for verified sources (the plugin never writes an
-     * unconsulted citation); an unverified row says so instead of showing
-     * dead buttons, and the footnote add additionally needs the finding's
-     * span to still be anchored somewhere to land.
+     * The Sources block (issue #30): one row per evidence entry with four states per
+     * source — verified & added, verified & not added, unverified. Adds are offered
+     * ONLY for verified sources (the plugin never writes an unconsulted citation).
+     * Card persists after a successful add via suppressNextAutoClose (spec §4.2).
      */
     private renderEvidence(data: FindingCardData): HTMLElement {
         const doc = this.view.dom.ownerDocument
         const block = doc.win.createDiv()
         block.classList.add('editor-ai-daemons-finding-card-sources')
+
+        // Header row with "Sources" label and conditional "Add all verified" button
+        const header = doc.win.createDiv()
+        header.classList.add('editor-ai-daemons-finding-card-sources-header')
+
         const heading = doc.win.createSpan()
         heading.classList.add('editor-ai-daemons-finding-card-sources-heading')
         heading.textContent = 'Sources'
-        block.appendChild(heading)
+        header.appendChild(heading)
+
+        // "Add all verified" button: visible if at least one verified source is not yet added
+        const unaddedVerified = data.evidence.filter(
+            (e): e is CardEvidenceData & { readonly verified: true } =>
+                e.verified && e.addedPlacement === null
+        )
+        if (unaddedVerified.length > 0) {
+            const addAllBtn = doc.win.createEl('button')
+            addAllBtn.classList.add('editor-ai-daemons-finding-card-sources-add-all')
+            addAllBtn.textContent = 'Add all'
+            addAllBtn.setAttribute(
+                'aria-label',
+                `Add all ${unaddedVerified.length} verified sources to References section`
+            )
+            addAllBtn.addEventListener('click', () => {
+                this.handleAddAllVerified(data)
+            })
+            header.appendChild(addAllBtn)
+        }
+
+        block.appendChild(header)
+
+        // One row per source with conditional controls based on state
         data.evidence.forEach((entry, index) => {
             const row = doc.win.createDiv()
             row.classList.add('editor-ai-daemons-finding-card-source')
+
             const title = doc.win.createSpan()
             title.classList.add('editor-ai-daemons-finding-card-source-title')
             title.textContent = entry.title
             row.appendChild(title)
+
+            // URL (if present): a clickable link for http(s) only; any other
+            // scheme renders as plain text (see isHttpUrl).
             if (entry.url !== null) {
-                const url = doc.win.createSpan()
-                url.classList.add('editor-ai-daemons-finding-card-source-url')
-                url.textContent = entry.url
-                row.appendChild(url)
+                if (isHttpUrl(entry.url)) {
+                    const link = doc.win.createEl('a')
+                    link.href = entry.url
+                    link.target = '_blank'
+                    link.rel = 'noopener noreferrer'
+                    link.classList.add('editor-ai-daemons-finding-card-source-url')
+                    link.textContent = entry.url
+                    // External-link icon: decorative, so hidden from screen
+                    // readers (the link text already carries the URL).
+                    const iconSpan = doc.win.createSpan()
+                    iconSpan.classList.add('editor-ai-daemons-finding-card-source-url-icon')
+                    iconSpan.setAttribute('aria-hidden', 'true')
+                    setIcon(iconSpan, 'external-link')
+                    link.appendChild(iconSpan)
+                    row.appendChild(link)
+                } else {
+                    const url = doc.win.createSpan()
+                    url.classList.add('editor-ai-daemons-finding-card-source-url')
+                    url.textContent = entry.url
+                    row.appendChild(url)
+                }
             }
+
+            // Claim (if present)
             if (entry.claim !== null) {
                 const claim = doc.win.createSpan()
                 claim.classList.add('editor-ai-daemons-finding-card-source-claim')
                 claim.textContent = entry.claim
                 row.appendChild(claim)
             }
+
             const controls = doc.win.createDiv()
             controls.classList.add('editor-ai-daemons-finding-card-source-controls')
-            if (entry.verified) {
-                controls.appendChild(
-                    this.addReferenceButton(doc, data, index, 'footnote', 'Add as footnote')
-                )
-                controls.appendChild(
-                    this.addReferenceButton(doc, data, index, 'section', 'Add to References')
-                )
+
+            // Four states per source
+            if (entry.verified && entry.addedPlacement === null) {
+                // State A: VERIFIED & NOT YET ADDED — show single "Add" button
+                controls.appendChild(this.addReferenceButton(doc, data, index))
+            } else if (entry.verified && entry.addedPlacement !== null) {
+                // State B: VERIFIED & ALREADY ADDED — show "✓ Added [placement]" badge
+                const badge = doc.win.createSpan()
+                badge.classList.add('editor-ai-daemons-finding-card-source-added')
+                const placement = entry.addedPlacement
+                const placementLabel = placement === 'footnote' ? 'as footnote' : 'to References'
+                badge.textContent = `✓ Added ${placementLabel}`
+                badge.setAttribute('aria-label', `✓ Added ${placementLabel}`)
+                controls.appendChild(badge)
             } else {
+                // State C: UNVERIFIED — show "Not consulted..." badge
                 const badge = doc.win.createSpan()
                 badge.classList.add('editor-ai-daemons-finding-card-source-unverified')
                 badge.textContent = 'Not consulted — verify before citing'
-                badge.title =
+                badge.setAttribute('aria-label', 'Not consulted — verify before citing')
+                badge.setAttribute(
+                    'title',
                     'The editor suggests this source but did not consult it during the ' +
-                    'review, so the plugin will not cite it for you. Check it yourself, ' +
-                    'then add it by hand (Copy gives you the markdown).'
+                        'review, so the plugin will not cite it for you. Check it yourself, ' +
+                        'then add it by hand (Copy gives you the markdown).'
+                )
                 controls.appendChild(badge)
             }
+
+            // Copy button on all sources — formatReference() so the clipboard
+            // matches EXACTLY what the Add controls would insert (bracket
+            // flattening included).
             controls.appendChild(
                 this.copyButton(doc, 'Copy this source as markdown', () =>
-                    entry.url === null ? entry.title : `[${entry.title}](${entry.url})`
+                    formatReference({ title: entry.title, url: entry.url ?? undefined })
                 )
             )
             row.appendChild(controls)
             block.appendChild(row)
         })
+
         return block
     }
 
-    private addReferenceButton(
-        doc: Document,
-        data: FindingCardData,
-        index: number,
-        placement: 'footnote' | 'section',
-        label: string
-    ): HTMLElement {
+    /**
+     * Add button for a verified, unadded source (issue #30, state A). Opens
+     * an Obsidian Menu with two options: footnote and References section.
+     * On successful add, sets suppressNextAutoClose to persist the card.
+     */
+    private addReferenceButton(doc: Document, data: FindingCardData, index: number): HTMLElement {
         const button = doc.win.createEl('button')
         button.classList.add('editor-ai-daemons-finding-card-source-add')
-        button.textContent = label
-        const blocked = placement === 'footnote' && !data.anchoredSpan
-        if (blocked) {
-            button.disabled = true
-            button.title =
-                'The finding is no longer anchored in the text, so there is no place ' +
-                'to attach the footnote — use Add to References instead.'
+        button.textContent = 'Add'
+        const evidence = data.evidence[index]
+        if (!evidence) {
+            return button // Defensive: evidence must exist
         }
-        button.addEventListener('click', () => {
-            // A successful add edits the note, which closes the card.
-            if (!this.lookup.addReference(data.findingId, index, placement)) {
-                button.disabled = true
+        // When the anchor is lost the menu only offers References, so both
+        // the accessible name and the tooltip must say why (spec §1.2 A).
+        button.setAttribute(
+            'aria-label',
+            data.anchoredSpan
+                ? `Add "${evidence.title}" to note`
+                : `Add "${evidence.title}" to note (anchor lost — footnote not available)`
+        )
+        if (!data.anchoredSpan) {
+            button.setAttribute('title', 'Anchor lost — footnote not available')
+        }
+
+        button.addEventListener('click', (event: MouseEvent) => {
+            const menu = new Menu()
+
+            // Footnote option (only if anchor is present)
+            if (data.anchoredSpan) {
+                menu.addItem((item) => {
+                    item.setTitle('Add as footnote')
+                        .setIcon('quote-glyph')
+                        .onClick(() => {
+                            this.handleAdd(data, index, 'footnote')
+                        })
+                })
             }
+
+            // References option (always available)
+            menu.addItem((item) => {
+                item.setTitle('Add to references')
+                    .setIcon('list')
+                    .onClick(() => {
+                        this.handleAdd(data, index, 'section')
+                    })
+            })
+
+            menu.showAtMouseEvent(event)
         })
+
         return button
+    }
+
+    /**
+     * Handle a successful add via button click (issue #30, §4.2).
+     * Sets suppressNextAutoClose to keep the card open and refresh it,
+     * then calls addReference which edits the note.
+     */
+    private handleAdd(
+        data: FindingCardData,
+        index: number,
+        placement: 'footnote' | 'section'
+    ): void {
+        this.suppressNextAutoClose = true
+        const success = this.lookup.addReference(data.findingId, index, placement)
+        if (!success) {
+            // Add failed; reset the flag so future docChanged events close normally
+            this.suppressNextAutoClose = false
+        }
+    }
+
+    /**
+     * Handle "Add all verified" button click (issue #30, §5).
+     * Collects all verified unadded sources and calls review-controller's
+     * addAllReferences, which batches them into one undo step.
+     */
+    private handleAddAllVerified(data: FindingCardData): void {
+        this.suppressNextAutoClose = true
+        const outcome = this.lookup.addAllReferences(data.findingId)
+        if (outcome !== 'added') {
+            // No dispatch happened ('noop': everything already in the live
+            // text; 'failed': finding/editor gone) — the flag was not
+            // consumed by a docChanged update, so reset it or the user's
+            // NEXT unrelated edit would refresh the card instead of closing
+            // it. On 'added' the dispatch ran synchronously and the flag is
+            // already consumed.
+            this.suppressNextAutoClose = false
+        }
     }
 
     /**
@@ -1105,7 +1346,8 @@ class FindingCardPlugin implements PluginValue {
         const actions = doc.win.createDiv()
         actions.classList.add('editor-ai-daemons-finding-card-actions')
 
-        if (data.edits.length > 0) {
+        const mode = acceptControl(data)
+        if (mode === 'accept') {
             const accept = doc.win.createEl('button')
             accept.classList.add('editor-ai-daemons-finding-card-accept', 'mod-cta')
             accept.textContent = 'Accept'
@@ -1118,6 +1360,29 @@ class FindingCardPlugin implements PluginValue {
                 this.acceptSection(data.findingId)
             })
             actions.appendChild(accept)
+        } else if (mode === 'regenerate' || mode === 'stale-badge-only') {
+            // Stale proposal (accept failed against the live text): a badge
+            // says WHY there is no Accept, and — for non-carryover findings —
+            // Regenerate re-runs the review so the editor can re-propose
+            // against the text as it reads now.
+            const badge = doc.win.createSpan()
+            badge.classList.add('editor-ai-daemons-finding-card-stale-badge')
+            badge.textContent =
+                mode === 'stale-badge-only' ? 'Stale (from previous review)' : 'Stale proposal'
+            badge.title =
+                'The text changed since this suggestion was written — it no longer applies'
+            actions.appendChild(badge)
+            if (mode === 'regenerate') {
+                const regenerate = doc.win.createEl('button')
+                regenerate.classList.add('editor-ai-daemons-finding-card-regenerate')
+                regenerate.textContent = 'Regenerate'
+                regenerate.title =
+                    'Re-run the review so the editor can propose against the current text'
+                regenerate.addEventListener('click', () => {
+                    this.regenerateSection(data.findingId)
+                })
+                actions.appendChild(regenerate)
+            }
         }
 
         const dismiss = doc.win.createEl('button')
@@ -1277,6 +1542,9 @@ class FindingCardPlugin implements PluginValue {
             return
         }
         this.closeCard()
+        // `triageEditAnnotation`: an accept is a TRIAGE-tier document edit —
+        // the daemon folds it into a pending refresh instead of restarting
+        // the armed idle window like a keystroke (`editor/triage-edit.ts`).
         this.view.dispatch({
             changes: outcome.changes.map((change) => ({
                 from: change.from,
@@ -1284,9 +1552,20 @@ class FindingCardPlugin implements PluginValue {
                 insert: change.insert
             })),
             effects: removeFindingsEffect.of([findingId]),
-            annotations: isolateHistory.of('full')
+            annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
         })
         this.view.focus()
+    }
+
+    /**
+     * Regenerate a stale-proposal finding: hands off to the controller
+     * (which clears the marker and re-dispatches the review) and closes the
+     * card — the run is being replaced, so the sections it showed are about
+     * to be superseded. Refusals surface as controller Notices.
+     */
+    private regenerateSection(findingId: string): void {
+        this.lookup.regenerateFinding(findingId)
+        this.closeCard()
     }
 
     /** Dismiss: mark dismissed, drop the decoration, drop the section. */

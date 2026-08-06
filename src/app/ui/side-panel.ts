@@ -1,14 +1,16 @@
 import { ItemView, setIcon } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
+import { globalDismissView } from '../commands/bulk-triage'
 import type { NavigationDirection } from '../commands/finding-navigation'
 import type { FindingId } from '../domain/ids'
-import type { Severity } from '../domain/operations/contract'
+import type { OperationErrorDiagnostics, Severity } from '../domain/operations/contract'
 import type { TrackedFinding } from '../services/orchestration/finding-store'
 import type { EditorRunState, RunHandle } from '../services/orchestration/run-controller'
 import type { EditorSkip } from '../services/review-service'
 import { skipReasonLabel } from '../services/review-service'
 import type { ReviewGate } from '../services/reviewability'
 import type { CommentJobRow, CommentJobsSection } from './comment-jobs-model'
+import { panelSectionPlan, withoutDisabledEditors } from './editor-visibility'
 import { undecoratedNoticeText } from './editor/decoration-budget'
 import { ErrorDiagnosticsModal } from './error-diagnostics-modal'
 import { SEVERITY_WORDS } from './editor/finding-identity'
@@ -99,14 +101,26 @@ export interface SidePanelBinding {
     readonly continueEditor: (editorId: string) => void
     /** Accept every non-conflicting finding of one editor (one undo step). */
     readonly acceptAll: (editorId: string) => void
-    /** Dismiss every open finding of one editor. */
-    readonly dismissAll: (editorId: string) => void
+    /**
+     * Dismiss every open finding of one editor — or of EVERY editor of the
+     * run when `editorId` is null (the controller's documented global scope,
+     * shared with the `dismiss-all-findings` palette command).
+     */
+    readonly dismissAll: (editorId: string | null) => void
     /**
      * Reports a non-mutating panel interaction (scrolling the list) so the
      * daemon's idle window resets on it (issue #20). Every mutating callback
      * above already reports through the controller method it calls.
      */
     readonly noteActivity: () => void
+    /**
+     * Editor ids present in the settings but switched OFF (the
+     * disabled-editor lens, `editor-visibility.ts`): their sections and
+     * findings are omitted entirely — hidden, not purged, so re-enabling
+     * the editor brings everything back. Unlike acknowledgements they are
+     * not counted in any footer: the settings toggle is the restore path.
+     */
+    readonly disabledEditors: readonly string[]
     /**
      * Editor ids acknowledged as "all good" for this note (issue #24) —
      * already pruned by the controller, so every id here is still clean.
@@ -159,6 +173,12 @@ export interface PanelReviewTarget {
  */
 export interface SidePanelCommentJobs {
     readonly section: () => CommentJobsSection
+    /**
+     * Captured tool output behind a FAILED comment, when the session still
+     * holds it (issue #42). Content is rendered ONLY behind the explicit
+     * "Show details" gesture — never in the row's detail line.
+     */
+    readonly diagnosticsFor: (commentId: string) => OperationErrorDiagnostics | null
     /** Re-asks an interrupted or failed comment. Never a resumption. */
     readonly retry: (commentId: string) => void
     /** Aborts an in-flight job. */
@@ -544,24 +564,35 @@ export class ReviewSidePanelView extends ItemView {
 
         this.renderScorecard(root, binding)
         this.renderSeverityFilter(root, binding)
-        this.renderSkips(root, binding.skips)
+        // Skip notices obey the disabled-editor lens too (Business Rules
+        // #21): a persona switched off after the run must not keep a row
+        // saying it was skipped. Hidden, not purged — the stored skips are
+        // untouched, so re-enabling the editor restores the notice.
+        this.renderSkips(
+            root,
+            withoutDisabledEditors(binding.skips, new Set(binding.disabledEditors))
+        )
         this.renderUndecoratedNotice(root, binding.undecoratedFindings)
+        this.renderGlobalBulkActions(root, binding)
 
         const colorById = new Map(binding.editors.map((editor) => [editor.id, editor.color]))
         // Every editor of a panel run IS one of its members (the pool is the
         // panel's membership — `resolveReviewParticipants`), so the panel's
         // name is what each section below belongs to.
         const panelName = binding.run.getPanelState()?.panelName ?? null
-        // Acknowledged all-good sections (issue #24) are skipped — and
-        // COUNTED: a panel that silently omits editors would leave the user
-        // wondering whether they ran. The scorecard above is never hidden.
-        const acknowledged = new Set(binding.acknowledgedEditors)
-        let acknowledgedCount = 0
-        for (const editorState of binding.run.getEditorStates()) {
-            if (acknowledged.has(editorState.editorId)) {
-                acknowledgedCount += 1
-                continue
-            }
+        // Disabled editors (settings toggle) vanish without a trace — hide,
+        // never purge. Acknowledged all-good sections (issue #24) are
+        // skipped and COUNTED: a panel that silently omits editors would
+        // leave the user wondering whether they ran. The scorecard BLOCK
+        // above is never hidden, but its member/dissent/skip rows apply the
+        // same disabled lens (`buildScorecardView`). Rules pinned in
+        // `panelSectionPlan`.
+        const plan = panelSectionPlan(
+            binding.run.getEditorStates(),
+            new Set(binding.acknowledgedEditors),
+            new Set(binding.disabledEditors)
+        )
+        for (const editorState of plan.sections) {
             this.renderEditorSection(
                 root,
                 binding,
@@ -570,7 +601,7 @@ export class ReviewSidePanelView extends ItemView {
                 panelName
             )
         }
-        this.renderAcknowledgedFooter(root, binding, acknowledgedCount)
+        this.renderAcknowledgedFooter(root, binding, plan.acknowledgedCount)
     }
 
     /** The Review | History tab bar (issue #21). */
@@ -611,8 +642,8 @@ export class ReviewSidePanelView extends ItemView {
             container.createDiv({
                 cls: 'editor-ai-daemons-panel-empty',
                 text:
-                    'No history for this note yet. Findings, push-back replies and panel ' +
-                    'scorecards land here as reviews run' +
+                    'No history for this note yet. Findings, push-back replies, panel ' +
+                    'scorecards and accepted or rejected transforms land here as you work' +
                     (history.durable
                         ? ' — and are kept across sessions.'
                         : ' — for this session. Turn on “Durable history” in the Behavior settings to keep them.')
@@ -817,10 +848,13 @@ export class ReviewSidePanelView extends ItemView {
         if (!binding || this.activeTab !== 'review') {
             return
         }
-        const acknowledged = new Set(binding.acknowledgedEditors)
-        const sectionCount = binding.run
-            .getEditorStates()
-            .filter((editorState) => !acknowledged.has(editorState.editorId)).length
+        // Same section rules as the list itself (`panelSectionPlan`): a
+        // stepper over sections that are not rendered is a dead control.
+        const sectionCount = panelSectionPlan(
+            binding.run.getEditorStates(),
+            new Set(binding.acknowledgedEditors),
+            new Set(binding.disabledEditors)
+        ).sections.length
         if (sectionCount === 0) {
             return
         }
@@ -891,7 +925,28 @@ export class ReviewSidePanelView extends ItemView {
         )
         item.createDiv({ cls: 'editor-ai-daemons-panel-comment-question', text: row.question })
         if (row.view.detail !== null) {
-            item.createDiv({ cls: 'editor-ai-daemons-panel-comment-detail', text: row.view.detail })
+            const detailEl = item.createDiv({
+                cls: 'editor-ai-daemons-panel-comment-detail',
+                text: row.view.detail
+            })
+            // Captured tool output stays behind an explicit gesture (issue
+            // #42) — see the contract's `diagnostics` field for why it is
+            // never inlined here.
+            const diagnostics =
+                row.view.status === 'failed' ? jobs.diagnosticsFor(row.commentId) : null
+            if (diagnostics !== null) {
+                // WCAG 2.5.3: keep the visible "Show details" a substring.
+                const detailsLabel = `Show details of the failure for the comment asked of ${row.editorName}`
+                const detailsEl = detailEl.createEl('button', {
+                    cls: 'editor-ai-daemons-panel-error-details',
+                    text: 'Show details'
+                })
+                detailsEl.setAttribute('aria-label', detailsLabel)
+                detailsEl.title = detailsLabel
+                detailsEl.addEventListener('click', () => {
+                    new ErrorDiagnosticsModal(this.app, row.editorName, diagnostics).open()
+                })
+            }
         }
         const actions = item.createDiv({ cls: 'editor-ai-daemons-panel-comment-actions' })
         if (row.view.canRetry) {
@@ -950,7 +1005,18 @@ export class ReviewSidePanelView extends ItemView {
         if (panel === null) {
             return
         }
-        const view = buildScorecardView(panel, this.topFixCandidates(binding))
+        // Disabled-editor lens over the scorecard's NAME-keyed rows (Business
+        // Rules #21): the scorecard result knows members only by name, so the
+        // disabled ids are translated through the run's roster. Hidden, never
+        // purged — the stored result keeps every row for re-enabling.
+        const disabledIds = new Set(binding.disabledEditors)
+        const disabledNames = new Set(
+            binding.run
+                .getEditorStates()
+                .filter((state) => disabledIds.has(state.editorId))
+                .map((state) => state.editorName)
+        )
+        const view = buildScorecardView(panel, this.topFixCandidates(binding), disabledNames)
         const box = root.createDiv({
             cls: `editor-ai-daemons-scorecard editor-ai-daemons-scorecard-${view.status.kind}`
         })
@@ -981,7 +1047,27 @@ export class ReviewSidePanelView extends ItemView {
             })
         }
         if (view.status.detail !== null) {
-            box.createDiv({ cls: 'editor-ai-daemons-scorecard-detail', text: view.status.detail })
+            const detailEl = box.createDiv({
+                cls: 'editor-ai-daemons-scorecard-detail',
+                text: view.status.detail
+            })
+            // The chairperson's captured tool output stays behind an explicit
+            // gesture (issue #42) — see the contract's `diagnostics` field for
+            // why it is never inlined here.
+            const diagnostics = view.status.diagnostics
+            if (diagnostics !== null) {
+                // WCAG 2.5.3: keep the visible "Show details" a substring.
+                const detailsLabel = `Show details of the failure for ${view.panelName}`
+                const detailsEl = detailEl.createEl('button', {
+                    cls: 'editor-ai-daemons-panel-error-details',
+                    text: 'Show details'
+                })
+                detailsEl.setAttribute('aria-label', detailsLabel)
+                detailsEl.title = detailsLabel
+                detailsEl.addEventListener('click', () => {
+                    new ErrorDiagnosticsModal(this.app, view.panelName, diagnostics).open()
+                })
+            }
         }
         if (view.rationale !== null && view.rationale.length > 0) {
             box.createDiv({ cls: 'editor-ai-daemons-scorecard-rationale', text: view.rationale })
@@ -999,8 +1085,15 @@ export class ReviewSidePanelView extends ItemView {
      * action into a dead row.
      */
     private topFixCandidates(binding: SidePanelBinding): TopFixCandidate[] {
+        const disabled = new Set(binding.disabledEditors)
         const candidates: TopFixCandidate[] = []
         for (const state of binding.run.getEditorStates()) {
+            if (disabled.has(state.editorId)) {
+                // A disabled member's findings are hidden everywhere; a top
+                // fix pointing at one would be a ranked action with an
+                // invisible target.
+                continue
+            }
             for (const id of state.findingIds) {
                 const finding = binding.run.findings.get(id)
                 if (
@@ -1133,9 +1226,13 @@ export class ReviewSidePanelView extends ItemView {
      * make findings look absent. Hidden while the run has nothing to filter.
      */
     private renderSeverityFilter(root: HTMLElement, binding: SidePanelBinding): void {
-        const live = binding.run.findings
-            .list()
-            .filter((finding) => finding.status === 'open' || finding.status === 'preview')
+        // The disabled-editor lens comes first: those findings are invisible
+        // for a different reason, and counting them as "hidden" here would
+        // make the severity filter's number lie.
+        const live = withoutDisabledEditors(
+            binding.run.findings.list(),
+            new Set(binding.disabledEditors)
+        ).filter((finding) => finding.status === 'open' || finding.status === 'preview')
         if (live.length === 0) {
             return
         }
@@ -1291,7 +1388,8 @@ export class ReviewSidePanelView extends ItemView {
             // never inlined here.
             const diagnostics = state.error.diagnostics
             if (diagnostics !== undefined) {
-                const detailsLabel = `Show failure details for ${state.editorName}`
+                // WCAG 2.5.3: keep the visible "Show details" a substring.
+                const detailsLabel = `Show details of the failure for ${state.editorName}`
                 const detailsEl = errorEl.createEl('button', {
                     cls: 'editor-ai-daemons-panel-error-details',
                     text: 'Show details'
@@ -1452,6 +1550,39 @@ export class ReviewSidePanelView extends ItemView {
             this.pendingStepEditorId = editorId
             onStep()
         })
+    }
+
+    /**
+     * Run-level bulk triage: "Dismiss all findings (n)" sweeps every editor's
+     * open findings for this note in ONE click — the `dismiss-all-findings`
+     * palette command made visible, rendered above the sections it acts on
+     * (run chrome, like the severity filter). Confirmation-free like the
+     * per-editor buttons: dismissing never touches the text.
+     *
+     * All the decisions (visibility, count, labels) come from
+     * `globalDismissView` over the run's severity-filtered findings — the
+     * SAME lens every bulk surface obeys, so the button never dismisses what
+     * the user cannot see, and never renders when a single editor's own
+     * "Dismiss all (m)" row below would be the identical control (no
+     * duplicate UI) or when there is nothing to dismiss (no dead UI).
+     */
+    private renderGlobalBulkActions(root: HTMLElement, binding: SidePanelBinding): void {
+        // Both lenses, same as the sections below: the button must never
+        // offer to dismiss findings the panel is not showing (disabled
+        // editors' findings included — those are hidden, not up for triage).
+        const view = globalDismissView(
+            withoutDisabledEditors(
+                binding.run.findings.list(),
+                new Set(binding.disabledEditors)
+            ).filter((finding) =>
+                passesSeverityFilter(binding.severityFilter, finding.raw.severity)
+            )
+        )
+        if (!view.visible) {
+            return
+        }
+        const row = root.createDiv({ cls: 'editor-ai-daemons-panel-bulk' })
+        this.addBulkButton(row, view.text, view.ariaLabel, () => binding.dismissAll(null))
     }
 
     /**

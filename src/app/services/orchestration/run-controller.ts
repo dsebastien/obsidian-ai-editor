@@ -6,6 +6,7 @@ import type { FindingId, RunId } from '../../domain/ids'
 import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type {
     AggregatePanelRequest,
+    OperationErrorDiagnostics,
     OperationEvent,
     OperationResult,
     PanelResult,
@@ -182,6 +183,14 @@ export interface PanelRunState {
     readonly resultStale: boolean
     /** Redacted failure message when `status` is `error`. */
     readonly error: string | null
+    /**
+     * What the failing aggregation backend captured, riding the failure the
+     * same way it rides a member's (issue #42): the redaction above guards
+     * the MESSAGE because it is shown unprompted; this content is rendered
+     * ONLY behind the contract field's explicit gesture (Business Rules #12
+     * exception, see `OperationErrorDiagnostics`).
+     */
+    readonly errorDiagnostics: OperationErrorDiagnostics | null
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +610,7 @@ interface InternalPanelState {
     result: PanelResult | null
     resultStale: boolean
     error: string | null
+    errorDiagnostics: OperationErrorDiagnostics | null
 }
 
 class ReviewRunHandle implements RunHandle {
@@ -682,7 +692,8 @@ class ReviewRunHandle implements RunHandle {
                   missingMembers: [],
                   result: null,
                   resultStale: false,
-                  error: null
+                  error: null,
+                  errorDiagnostics: null
               }
             : null
         this.panelSettled = this.panel
@@ -817,7 +828,8 @@ class ReviewRunHandle implements RunHandle {
                   missingMembers: [...panel.missingMembers],
                   result: panel.result,
                   resultStale: panel.resultStale,
-                  error: panel.error
+                  error: panel.error,
+                  errorDiagnostics: panel.errorDiagnostics
               }
             : null
     }
@@ -1106,6 +1118,7 @@ class ReviewRunHandle implements RunHandle {
         this.panelAbort = null
         panel.status = 'waiting'
         panel.error = null
+        panel.errorDiagnostics = null
         if (options.keepResult && panel.result !== null) {
             // `missingMembers` is kept with it: those members failed and are
             // not the ones continuing, so the retained scorecard keeps saying
@@ -1815,7 +1828,8 @@ class ReviewRunHandle implements RunHandle {
         const settle = (
             status: PanelAggregationStatus,
             result: PanelResult | null,
-            error: string | null
+            error: string | null,
+            diagnostics: OperationErrorDiagnostics | null = null
         ): void => {
             const panel = this.panel
             // Superseded by a retry, or cancelled while in flight: the attempt
@@ -1845,12 +1859,17 @@ class ReviewRunHandle implements RunHandle {
             // the same rule `cancelRun` states: an already-produced scorecard
             // stays inspectable.
             panel.error = error
+            // Captured tool output rides along untouched (issue #42): the
+            // redaction below guards the MESSAGE because it is shown
+            // unprompted; the diagnostics content is only ever shown behind
+            // the contract field's explicit gesture, caveat attached.
+            panel.errorDiagnostics = diagnostics
             this.resolvePanelSettled()
             this.notify()
         }
-        const fail = (message: string): void => {
+        const fail = (message: string, diagnostics?: OperationErrorDiagnostics): void => {
             const redact = this.panelSpec?.redactError
-            settle('error', null, redact ? redact(message) : message)
+            settle('error', null, redact ? redact(message) : message, diagnostics ?? null)
         }
         const request: AggregatePanelRequest = {
             kind: 'aggregate-panel',
@@ -1889,7 +1908,7 @@ class ReviewRunHandle implements RunHandle {
                             if (event.error.code === 'cancelled') {
                                 settle('cancelled', null, null)
                             } else {
-                                fail(event.error.message)
+                                fail(event.error.message, event.error.diagnostics)
                             }
                             continue
                         }

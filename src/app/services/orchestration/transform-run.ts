@@ -323,7 +323,15 @@ class TransformRunHandleImpl implements TransformRunHandle {
                 } else {
                     this.terminate('error', {
                         code: event.error.code,
-                        message: this.redact(event.error.message)
+                        message: this.redact(event.error.message),
+                        // Captured tool output rides along untouched (issue
+                        // #42, same seam as reviews): redaction guards the
+                        // MESSAGE because it is shown unprompted; the
+                        // diagnostics content is only ever rendered behind
+                        // the contract field's explicit gesture.
+                        ...(event.error.diagnostics !== undefined
+                            ? { diagnostics: event.error.diagnostics }
+                            : {})
                     })
                 }
                 return

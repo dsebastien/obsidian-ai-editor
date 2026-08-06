@@ -196,9 +196,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             app: this.app,
             plugin: this,
             getSettings: () => this.settings,
-            setDaemonMode: (enabled) =>
+            setDaemonAlwaysOn: (enabled) =>
                 this.update((draft) => {
-                    draft.behavior.daemonMode = enabled
+                    draft.behavior.daemonAlwaysOn = enabled
                 }),
             setRailCollapsed: (collapsed) =>
                 this.update((draft) => {
@@ -234,13 +234,14 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         this.registerReviewPanelView(reviewController)
         reviewController.initialize()
 
-        // Daemon mode (Business Rule #1 carve-out — the settings
-        // toggle IS the explicit user action): pure scheduler behind
-        // per-file timers; edits arrive via the controller's canonical-view
-        // update listener, run state via its refresh cycle, config via the
-        // settings observer (toggle + idle delay apply live, off clears all
-        // timers). Created after the ReviewController because it dispatches
-        // through it; `attachDaemon` closes the cycle.
+        // Daemon mode (Business Rule #1 carve-out — the per-note enable or
+        // the always-on setting IS the explicit user action): pure scheduler
+        // behind per-file timers; edits arrive via the controller's
+        // canonical-view update listener, run state via its refresh cycle,
+        // config via the settings observer (always-on default + idle delay
+        // apply live; per-note state is runtime-only and lives on the
+        // controller). Created after the ReviewController because it
+        // dispatches through it; `attachDaemon` closes the cycle.
         const daemonController = new DaemonController({
             getSettings: () => this.settings,
             runController,
@@ -263,6 +264,13 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                     })
                 }
                 daemonController.settingsChanged()
+                // Re-project every review surface from the new settings NOW:
+                // disabling an editor must make its chip, decorations and
+                // panel section vanish on the toggle itself, not on the next
+                // interaction (hide-not-purge lens, `editor-visibility.ts`).
+                // Explicit — not left to the daemon's onStateChange side
+                // effect, which is about timer state, not settings.
+                reviewController.requestRefresh()
                 // A settings change may be the fix (new key, new endpoint):
                 // yesterday's failure streaks must not keep suppressing
                 // automatic retries against a repaired backend (issue #23).
@@ -272,7 +280,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
 
         registerReviewCommands(this, reviewController, this)
         registerSetupCommands(this, this)
-        registerDaemonCommands(this, this)
+        registerDaemonCommands(this, reviewController)
         this.openSetupWizardOnFirstRun()
         // Dynamic `action-<bindingId>` commands (design §3): registration
         // follows the settings via the mutation observer — add/removeCommand
@@ -394,38 +402,55 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     override onunload(): void {
+        // Every step is exception-isolated: Obsidian's `Plugins.disablePlugin`
+        // catches a throwing `onunload`, logs `Plugin failure`, and STILL
+        // marks the plugin disabled — so any step that throws would silently
+        // skip everything after it. The worst victim is
+        // `reviewController.dispose()`: skipping it strands rail wrappers in
+        // every open pane's contentEl, and the next enable (hot-reload,
+        // update) mounts a second rail beside each zombie. One bad step must
+        // never cancel the rest of teardown.
+        const safely = (step: string, run: () => void): void => {
+            try {
+                run()
+            } catch (error) {
+                log(`Teardown step failed (${step}) — continuing`, 'error', error)
+            }
+        }
         // Background comment jobs first, and in this order: every in-flight
         // job dies with the process, so it is recorded as `interrupted` BEFORE
         // the store is flushed. A job written as `running` would come back
         // next session claiming to be alive; `interrupted` is the state that
         // offers Retry and never fakes a resumption (plan M8).
-        this.commentJobs?.interruptAll()
-        this.commentJobs?.dispose()
+        safely('commentJobs.interruptAll', () => this.commentJobs?.interruptAll())
+        safely('commentJobs.dispose', () => this.commentJobs?.dispose())
         this.commentJobs = null
-        this.backgroundGate?.dispose()
+        safely('backgroundGate.dispose', () => this.backgroundGate?.dispose())
         this.backgroundGate = null
         // Then the durable store: `flush` cancels the deferred write and
         // performs it now. `onunload` is synchronous in Obsidian, so this can
         // only be fire-and-forget — which is why the debounce is short.
-        void this.commentRepository?.flush()
+        safely('commentRepository.flush', () => void this.commentRepository?.flush())
         this.commentRepository = null
         // History sidecar: same fire-and-forget flush discipline.
-        if (this.settings.behavior.durableHistory) {
-            void this.historyRepository?.flush()
-        }
+        safely('historyRepository.flush', () => {
+            if (this.settings.behavior.durableHistory) {
+                void this.historyRepository?.flush()
+            }
+        })
         this.historyRepository = null
         // Daemon timers next (no NEW timer can fire mid-teardown; a dispatch
         // already mid-flight in the review pipeline aborts via `abortWhen`'s
         // disposed check before it could start a run), then
         // rails/subscriptions, then abort every in-flight backend request so
         // nothing outlives the plugin.
-        this.daemonController?.dispose()
+        safely('daemonController.dispose', () => this.daemonController?.dispose())
         this.daemonController = null
-        this.reviewController?.dispose()
+        safely('reviewController.dispose', () => this.reviewController?.dispose())
         this.reviewController = null
-        this.transformController?.cancelAll()
+        safely('transformController.cancelAll', () => this.transformController?.cancelAll())
         this.transformController = null
-        this.runController?.cancelAll()
+        safely('runController.cancelAll', () => this.runController?.cancelAll())
         this.runController = null
     }
 

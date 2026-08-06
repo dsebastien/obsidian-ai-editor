@@ -43,7 +43,9 @@ export const OPEN_REVIEW_PANEL_COMMAND_NAME = 'Open review panel'
  * - `accept-all` — accept every non-conflicting finding of the active run
  *   (all editors) as ONE undoable transaction; overlapping and no-longer-
  *   matching suggestions are skipped and reported. The per-editor variants
- *   are dynamic commands (`bulk-commands.ts`).
+ *   are dynamic commands (`bulk-commands.ts`), which also registers the
+ *   global counterpart `dismiss-all-findings` (dismiss every editor's open
+ *   findings for the active run at once).
  * - `filter-severity` — cycle the active file's severity lens (all →
  *   warnings and suggestions → warnings only); the Notice says what is shown
  *   and how much is hidden.

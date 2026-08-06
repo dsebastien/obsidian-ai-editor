@@ -22,7 +22,7 @@ const OUTCOME: SetupOutcome = {
     hasBackend: true,
     enabledEditorCount: 3,
     voiceNoteCount: 0,
-    daemonMode: false
+    daemonAlwaysOn: false
 }
 
 describe('step copy', () => {
@@ -148,7 +148,7 @@ describe('setupSummaryLines', () => {
 
     it('states the run mode either way', () => {
         expect(setupSummaryLines(OUTCOME, true).join(' ')).toContain('wait to be summoned')
-        expect(setupSummaryLines({ ...OUTCOME, daemonMode: true }, true).join(' ')).toContain(
+        expect(setupSummaryLines({ ...OUTCOME, daemonAlwaysOn: true }, true).join(' ')).toContain(
             'Daemon mode on'
         )
     })

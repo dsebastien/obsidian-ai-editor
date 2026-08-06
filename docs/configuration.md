@@ -28,10 +28,10 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 
 ### Daemon
 
-| Setting                  | Type   | Default | Range | What it does                                                                                                                                                                |
-| ------------------------ | ------ | ------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Daemon mode**          | toggle | `off`   | —     | Editors refresh their recommendations after you pause editing                                                                                                               |
-| **Idle delay (seconds)** | int    | `3`     | 1–600 | Only shown while daemon mode is on. Any interaction restarts the clock — typing, moving the cursor, triaging, using the panel or a card; only an actual edit arms a refresh |
+| Setting                                 | Type   | Default | Range | What it does                                                                                                                                                                                       |
+| --------------------------------------- | ------ | ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Enable automatically for every note** | toggle | `off`   | —     | Daemon mode is per note and starts off for each note you open; this makes every note start with it already on. The per-note rail toggle still works either way — see [Daemon mode](daemon-mode.md) |
+| **Idle delay (seconds)**                | int    | `3`     | 1–600 | Typing, moving the cursor or selecting text restarts the clock; triaging findings (panel or card use) does not; only an actual edit arms a refresh                                                 |
 
 ### History
 
@@ -131,6 +131,8 @@ Up to 200 editors. Per editor:
 | **Memory note path**     | text      | empty                 |
 | **Enabled**              | toggle    | `on`                  |
 
+**Enabled** off hides the editor everywhere (rail, highlights, panel) and keeps it out of daemon refreshes; its findings are hidden, not deleted, and return when it is re-enabled — see [Disabling an editor](editors.md#disabling-an-editor).
+
 See [Create and tune editors](editors.md).
 
 ## Panels tab
@@ -204,6 +206,7 @@ None of them ships a default hotkey. Assign your own in **Settings → Hotkeys**
 | **Dismiss current finding**                           | Clears it, moves to the next                                              |
 | **Cycle severity filter**                             | All → warnings and suggestions → warnings only                            |
 | **Accept all non-conflicting findings**               | Bulk accept across every editor of the note                               |
+| **Dismiss all findings**                              | Bulk dismiss across every editor of the note                              |
 | **Accept all from &lt;Editor&gt;**                    | One per enabled editor, generated dynamically                             |
 | **Dismiss all from &lt;Editor&gt;**                   | One per enabled editor, generated dynamically                             |
 | **Generate more findings from every finished editor** | One extra round per finished editor                                       |

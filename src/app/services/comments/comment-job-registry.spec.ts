@@ -204,6 +204,80 @@ describe('launching a background comment job', () => {
         expect(stored?.error).toEqual('HTTP 500')
     })
 
+    it('keeps a failed job’s diagnostics session-side, never in the durable store (issue #42)', async () => {
+        const { registry, repository } = setup()
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const req = request()
+        registry.launch({
+            notePath: NOTE,
+            comment: comment(),
+            run: {
+                request: req,
+                editorId: 'editor-1',
+                editorName: 'Fact Checker',
+                execute: async function* (): AsyncGenerator<OperationEvent> {
+                    await Promise.resolve()
+                    yield {
+                        type: 'error',
+                        runId: req.runId,
+                        error: {
+                            code: 'unknown',
+                            message: 'The tool exited with status 1.',
+                            diagnostics
+                        }
+                    }
+                }
+            }
+        })
+        await settle()
+        expect(registry.diagnosticsFor('c1')).toBe(diagnostics)
+        // The durable record carries only the status-only message: reveal()
+        // is a closure over this session's capture and must never serialize.
+        const stored = repository.listFor(NOTE)[0]
+        expect(stored?.status).toEqual('failed')
+        expect(JSON.stringify(stored)).not.toContain('stderr text')
+        // Retry replaces: the previous failure's capture goes with it.
+        expect(registry.prepareRetry(NOTE, 'c1')).not.toBeNull()
+        expect(registry.diagnosticsFor('c1')).toBeNull()
+    })
+
+    it('drops a failed job’s diagnostics when the comment is dismissed or deleted (issue #42)', async () => {
+        const { registry } = setup()
+        const diagnostics = { summary: 'capture', reveal: () => 'content' }
+        const launch = (id: string): void => {
+            const req = request(`run-${id}`)
+            registry.launch({
+                notePath: NOTE,
+                comment: comment({ id }),
+                run: {
+                    request: req,
+                    editorId: 'editor-1',
+                    editorName: 'Fact Checker',
+                    execute: async function* (): AsyncGenerator<OperationEvent> {
+                        await Promise.resolve()
+                        yield {
+                            type: 'error',
+                            runId: req.runId,
+                            error: { code: 'unknown', message: 'failed', diagnostics }
+                        }
+                    }
+                }
+            })
+        }
+        launch('c1')
+        launch('c2')
+        launch('c3')
+        await settle()
+        expect(registry.diagnosticsFor('c1')).toBe(diagnostics)
+        registry.dismiss(NOTE, 'c1')
+        expect(registry.diagnosticsFor('c1')).toBeNull()
+        registry.delete(NOTE, 'c2')
+        expect(registry.diagnosticsFor('c2')).toBeNull()
+        // A note (or folder) delete drops the captures of everything under it.
+        registry.noteDeleted(NOTE)
+        expect(registry.diagnosticsFor('c3')).toBeNull()
+    })
+
     it('refuses a second job for a comment that is already running', () => {
         const { registry } = setup()
         const input = {

@@ -139,8 +139,28 @@ describe('marginCardView', () => {
             canRetry: false,
             canCancel: false,
             canResolve: true,
-            canDelete: true
+            canDelete: true,
+            canShowDetails: false
         })
+    })
+
+    it('offers Show details only on a failed card whose capture the session still holds (issue #42)', () => {
+        // Failed + session-held capture → the explicit gesture appears.
+        const failed = marginCardView(
+            entry({ status: 'failed', error: 'exited with status 1' }, 'exact', {
+                hasDiagnostics: true
+            })
+        )
+        expect(failed.actions.canShowDetails).toBe(true)
+        // Failed but restored from disk (no capture this session) → nothing
+        // to show, so nothing is offered.
+        expect(
+            marginCardView(entry({ status: 'failed', error: 'boom' })).actions.canShowDetails
+        ).toBe(false)
+        // Not failed → a stale capture flag must not surface details.
+        expect(
+            marginCardView(entry({}, 'exact', { hasDiagnostics: true })).actions.canShowDetails
+        ).toBe(false)
     })
 
     it('offers retry on an interrupted comment that still has a span', () => {

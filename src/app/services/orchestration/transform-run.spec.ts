@@ -331,6 +331,33 @@ describe('TransformRunHandle protocol', () => {
         expect(run.getState().error?.message).toBe('timed out with key [redacted]')
     })
 
+    it('carries the executor diagnostics through, still behind reveal() (issue #42)', async () => {
+        // Same seam as reviews: dropping the captured output here would leave
+        // a failed inline transform as opaque as reviews used to be (#39).
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const controller = new TransformController()
+        const run = controller.startTransform(
+            makeInput({
+                execute: eventsExecutor([
+                    {
+                        type: 'error',
+                        runId: 'run-t1',
+                        error: {
+                            code: 'unknown',
+                            message: 'The tool exited with status 1.',
+                            diagnostics
+                        }
+                    }
+                ])
+            })
+        )
+        await run.settled
+        expect(run.getState().status).toBe('error')
+        expect(run.getState().error?.diagnostics).toBe(diagnostics)
+        // The message itself never absorbs the content.
+        expect(run.getState().error?.message).not.toContain('stderr text')
+    })
+
     it('redacts messages from thrown executor failures', async () => {
         const controller = new TransformController()
         const run = controller.startTransform(

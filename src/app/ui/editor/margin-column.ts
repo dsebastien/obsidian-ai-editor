@@ -40,6 +40,12 @@ export interface MarginColumnCallbacks {
     readonly onResolve: (commentId: string) => void
     /** Remove the comment from the store for good. */
     readonly onDelete: (commentId: string) => void
+    /**
+     * Open the failed job's captured tool output (issue #42). The explicit
+     * gesture the diagnostics contract demands — the column itself never
+     * holds or renders the content.
+     */
+    readonly onShowDetails: (commentId: string) => void
     /** Expand/collapse one card's answer. */
     readonly onToggleBody: (commentId: string) => void
     /** Expand/collapse a line's "N comments" chip. */
@@ -344,6 +350,19 @@ export class MarginColumn {
 
         const actions = this.doc.win.createDiv()
         actions.classList.add('editor-ai-daemons-margin-actions')
+        if (card.actions.canShowDetails) {
+            // Before Retry: the details say WHY the job failed, which is what
+            // the user reads before deciding to re-ask (issue #42).
+            this.addAction(
+                actions,
+                card,
+                'Show details',
+                () => this.callbacks.onShowDetails(card.commentId),
+                // WCAG 2.5.3 (label in name): the accessible name must
+                // contain the visible label "Show details" as a substring.
+                `Show details of the failure for the comment asked of ${card.editorName}`
+            )
+        }
         if (card.actions.canRetry) {
             this.addAction(actions, card, 'Retry', () => this.callbacks.onRetry(card.commentId))
         }
@@ -368,7 +387,8 @@ export class MarginColumn {
         actions: HTMLElement,
         card: MarginCardView,
         label: string,
-        onClick: () => void
+        onClick: () => void,
+        accessibleName?: string
     ): void {
         const button = this.doc.win.createEl('button')
         button.classList.add('editor-ai-daemons-margin-action')
@@ -376,7 +396,10 @@ export class MarginColumn {
         button.textContent = label
         // Every card carries identically-labelled buttons; the accessible
         // name has to say which comment this one acts on (WCAG 2.4.6).
-        this.applyTooltip(button, `${label} the comment asked of ${card.editorName}`)
+        this.applyTooltip(
+            button,
+            accessibleName ?? `${label} the comment asked of ${card.editorName}`
+        )
         button.addEventListener('click', onClick)
         actions.appendChild(button)
     }

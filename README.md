@@ -61,7 +61,7 @@ Click a row with findings to step through them in the text. Click an idle row an
 
 This is the part to read before installing, not after.
 
-- **Nothing runs automatically.** Every backend request is triggered by an explicit action of yours — Review, an action verb, a push-back, a comment, a health check. The one opt-in exception is **daemon mode**: a settings toggle, off by default, that lets your editors refresh their recommendations after you pause editing. Turning it on _is_ the explicit action, and its settings copy states the cost plainly.
+- **Nothing runs automatically.** Every backend request is triggered by an explicit action of yours — Review, an action verb, a push-back, a comment, a health check. The one opt-in exception is **daemon mode**: a per-note switch, off by default for every note you open, that lets your editors refresh that note after you pause editing (a settings toggle can make it start on for every note). Turning it on _is_ the explicit action, and the toggle copy states the cost plainly.
 - **Nothing is written without a diff.** Every AI-proposed change is a structured edit previewed until you accept it, and it is only applied while the target text still matches exactly what the proposal was computed against. A proposal that fails validation is shown as critique only — never applied, never silently dropped.
 - **Excluded notes are never sent anywhere.** Exclude by folder, by tag, or with `ai_editor: false` in a note's frontmatter. An excluded note is never the review target, never attached as linked context, and never followed through a wikilink from another prompt.
 - **What actually leaves your vault**, for a hosted API backend: the note's text (or the selection), the persona prompt and voice profile, and any vault notes you explicitly attached — nothing else. Run **Preview what will be sent** to see the exact assembly, character counts included, before spending anything.
@@ -118,7 +118,7 @@ The **setup wizard** opens by itself the first time the plugin loads and walks y
 1. **Add a backend** — pick a provider, paste a key, name a model. Select **Test connection**: it sends one small real request through the same path a review takes, so a green light means reviews will actually work.
 2. **Choose your editors** — seven are seeded and enabled; turn off the ones you do not want paying for.
 3. **Point at your voice profile** (optional) — a vault note describing how you write, injected into every editor's prompt.
-4. **Decide when editors run** — summoned only (the default), or daemon mode.
+4. **Decide when editors run** — summoned only (the default), or daemon mode on for every note.
 5. Open a note and run **Review current note**.
 
 Prefer doing it by hand? **Settings → AI Editor → Backends → Add backend**, set it as the global default, make sure at least one editor is enabled, then run **Review current note**.

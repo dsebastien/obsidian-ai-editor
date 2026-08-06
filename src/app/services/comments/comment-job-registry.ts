@@ -9,6 +9,7 @@ import {
 } from '../../domain/comments/comment-job'
 import type { CommentJobView } from '../../domain/comments/comment-job'
 import type { MarginComment } from '../../domain/comments/margin-comment'
+import type { OperationErrorDiagnostics } from '../../domain/operations/contract'
 import type { CommentRunController, StartCommentRunInput } from '../orchestration/comment-run'
 import type { MarginCommentRepository } from './comment-repository'
 
@@ -80,6 +81,15 @@ export interface CommentJobRegistryDeps {
 export class CommentJobRegistry {
     private readonly listeners = new Set<() => void>()
     private readonly unsubscribers = new Map<string, () => void>()
+    /**
+     * What each FAILED job's backend captured, keyed by comment id (issue
+     * #42). Session-side on purpose: the durable store persists only the
+     * redacted message (Business Rules #12) — `reveal()` is a closure over
+     * this session's capture and cannot survive a restart. An entry lives
+     * exactly as long as the failure it explains: cleared by retry, dismiss,
+     * delete, and note deletion.
+     */
+    private readonly failureDiagnostics = new Map<string, OperationErrorDiagnostics>()
     private readonly now: () => number
     private ticker: number | null = null
     private disposed = false
@@ -142,6 +152,13 @@ export class CommentJobRegistry {
                     this.mutate(notePath, commentId, (comment) =>
                         failCommentJob(comment, state.error?.message ?? 'The request failed.', at)
                     )
+                    // The captured tool output stays session-side (issue #42):
+                    // never persisted, surfaced only behind an explicit
+                    // gesture wherever the failed comment renders.
+                    const diagnostics = state.error?.diagnostics
+                    if (diagnostics !== undefined) {
+                        this.failureDiagnostics.set(commentId, diagnostics)
+                    }
                 } else {
                     // Cancelled — by the user, or by unload. Either way nothing
                     // answered, and `interrupted` is the state that offers
@@ -181,6 +198,9 @@ export class CommentJobRegistry {
         if (!next) {
             return null
         }
+        // A retry replaces, it never merges — the previous failure's captured
+        // output goes with the previous failure (issue #42).
+        this.failureDiagnostics.delete(commentId)
         this.deps.repository.upsert(notePath, next)
         this.notify()
         return next
@@ -204,6 +224,7 @@ export class CommentJobRegistry {
      */
     delete(notePath: string, commentId: string): boolean {
         this.cancel(commentId)
+        this.failureDiagnostics.delete(commentId)
         if (this.deps.repository.remove(notePath, commentId)) {
             this.notify()
             return true
@@ -229,6 +250,18 @@ export class CommentJobRegistry {
      */
     noteDeleted(path: string): void {
         this.deps.runs.cancelForNote(path)
+        // Same path/prefix matching as the repository: a folder delete
+        // arrives as ONE event, and diagnostics for comments that no longer
+        // exist would otherwise pin their captures forever (issue #42).
+        const prefix = `${path}/`
+        for (const notePath of this.deps.repository.notePaths()) {
+            if (notePath !== path && !notePath.startsWith(prefix)) {
+                continue
+            }
+            for (const comment of this.deps.repository.listFor(notePath)) {
+                this.failureDiagnostics.delete(comment.id)
+            }
+        }
         this.deps.repository.noteDeleted(path)
         this.syncTicker()
         this.notify()
@@ -248,6 +281,7 @@ export class CommentJobRegistry {
     /** Closes a comment without acting on it. */
     dismiss(notePath: string, commentId: string): boolean {
         this.cancel(commentId)
+        this.failureDiagnostics.delete(commentId)
         const changed = this.mutate(notePath, commentId, (comment) =>
             dismissCommentJob(comment, this.now())
         )
@@ -299,6 +333,17 @@ export class CommentJobRegistry {
     }
 
     /**
+     * The captured tool output behind a FAILED comment, when this session
+     * still holds it (issue #42). `null` for anything restored from disk —
+     * the capture died with the session that made it. Content is rendered
+     * ONLY behind an explicit gesture (Business Rules #12, see the contract's
+     * `OperationErrorDiagnostics`).
+     */
+    diagnosticsFor(commentId: string): OperationErrorDiagnostics | null {
+        return this.failureDiagnostics.get(commentId) ?? null
+    }
+
+    /**
      * Whether the durable store refuses to write for this session (a corrupt
      * file that could not be preserved). Surfaces so the entry points can
      * refuse BEFORE spending a backend request on a question that would not
@@ -327,6 +372,7 @@ export class CommentJobRegistry {
             unsubscribe()
         }
         this.unsubscribers.clear()
+        this.failureDiagnostics.clear()
         this.stopTicker()
         this.listeners.clear()
     }

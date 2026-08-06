@@ -303,14 +303,21 @@ export const behaviorSettingsSchema = z.object({
     /** Total context budget per run, in characters (proxy for tokens). */
     contextBudgetChars: z.number().int().min(1_000).max(2_000_000).default(200_000),
     /**
-     * Daemon mode (Business Rule #1 carve-out, Architecture.md § Run lifecycle): editors watch file
-     * edits and automatically re-dispatch a review after the user pauses
-     * editing a reviewable note whose text actually changed since its last
-     * run. Explicit carve-out to Business Rule #1: enabling this toggle IS
-     * the explicit user action authorizing those runs. Default off — every
-     * automatic refresh calls the configured backends (cost control).
+     * Daemon mode default for every note (Business Rule #1 carve-out,
+     * Architecture.md § Run lifecycle). Daemon mode itself is PER-NOTE
+     * runtime state (Sébastien, 2026-08-06): each note starts with the
+     * daemon OFF when it opens — even if it is on for another open note —
+     * and the rail toggle / palette command arm it for that note only, for
+     * as long as it stays open. This flag flips the default: with it ON,
+     * every bound note starts armed the moment it opens (the per-note
+     * toggle still turns individual notes off for the session). Enabling it
+     * IS the explicit user action authorizing automatic refreshes on every
+     * note. Default off — every refresh calls the configured backends
+     * (cost control). Replaces the retired global `daemonMode` flag
+     * (mapped at load: legacy ON → always-on ON, so upgrading users keep
+     * their automatic refreshes).
      */
-    daemonMode: z.boolean().default(false),
+    daemonAlwaysOn: z.boolean().default(false),
     /**
      * Seconds of quiet before a daemon refresh dispatches (per-file idle
      * window). Quiet means no edits AND no plugin/note interaction — typing,
@@ -531,8 +538,37 @@ function normalizeLegacyStarterFlag(raw: unknown): unknown {
     return { ...source, starterPackVersion: 1 }
 }
 
+/**
+ * Reads the retired GLOBAL `behavior.daemonMode` flag (≤0.x) as
+ * `daemonAlwaysOn`. Daemon mode became per-note runtime state defaulting to
+ * off (2026-08-06); a user whose global flag was ON had opted into automatic
+ * refreshes on every note they touch, and always-on is the new spelling of
+ * exactly that — without the mapping, the schema would strip the unknown key
+ * and their refreshes would silently stop on upgrade. Pre-parse for the same
+ * reason as the starter flag; a boolean `daemonAlwaysOn` already present in
+ * the raw data always outranks the legacy key.
+ */
+function normalizeLegacyDaemonMode(raw: unknown): unknown {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return raw
+    }
+    const source = raw as Record<string, unknown>
+    const behavior = source['behavior']
+    if (typeof behavior !== 'object' || behavior === null || Array.isArray(behavior)) {
+        return raw
+    }
+    const behaviorSource = behavior as Record<string, unknown>
+    if (
+        typeof behaviorSource['daemonAlwaysOn'] === 'boolean' ||
+        behaviorSource['daemonMode'] !== true
+    ) {
+        return raw
+    }
+    return { ...source, behavior: { ...behaviorSource, daemonAlwaysOn: true } }
+}
+
 export function loadSettingsDetailed(raw: unknown): LoadedSettings {
-    const normalized = normalizeLegacyStarterFlag(raw)
+    const normalized = normalizeLegacyDaemonMode(normalizeLegacyStarterFlag(raw))
     const whole = pluginSettingsSchema.safeParse(normalized)
     if (whole.success) {
         const resolved = resolveIdCollisions(whole.data)

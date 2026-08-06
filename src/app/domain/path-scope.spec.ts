@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { deleteKeysUnder, isPathUnder, remapPathUnder } from './path-scope'
+import {
+    deleteKeysUnder,
+    isPathUnder,
+    remapKeysUnder,
+    remapMembersUnder,
+    remapPathUnder
+} from './path-scope'
 
 describe('isPathUnder', () => {
     it('matches the exact path', () => {
@@ -51,5 +57,42 @@ describe('deleteKeysUnder', () => {
         const map = new Map<string, number>([['Other.md', 1]])
         expect(deleteKeysUnder(map, 'Notes')).toBe(0)
         expect(map.size).toBe(1)
+    })
+})
+
+describe('remapKeysUnder', () => {
+    it('moves matching keys to the new prefix, values intact, and returns the new keys', () => {
+        const map = new Map<string, number>([
+            ['Notes/A.md', 1],
+            ['Notes/Sub/B.md', 2],
+            ['NotesArchive/C.md', 3]
+        ])
+        expect(remapKeysUnder(map, 'Notes', 'Moved')).toEqual(['Moved/A.md', 'Moved/Sub/B.md'])
+        expect(map.get('Moved/A.md')).toBe(1)
+        expect(map.get('Moved/Sub/B.md')).toBe(2)
+        expect(map.has('Notes/A.md')).toBeFalse()
+        // The prefix look-alike stays untouched.
+        expect(map.get('NotesArchive/C.md')).toBe(3)
+    })
+
+    it('moves an exact single-file key', () => {
+        const map = new Map<string, string>([['Drafts/A.md', 'x']])
+        expect(remapKeysUnder(map, 'Drafts/A.md', 'Published/A.md')).toEqual(['Published/A.md'])
+        expect(map.get('Published/A.md')).toBe('x')
+        expect(map.size).toBe(1)
+    })
+
+    it('is a no-op when nothing matches', () => {
+        const map = new Map<string, number>([['Other.md', 1]])
+        expect(remapKeysUnder(map, 'Notes', 'Moved')).toEqual([])
+        expect([...map.keys()]).toEqual(['Other.md'])
+    })
+})
+
+describe('remapMembersUnder', () => {
+    it('moves matching members, sparing prefix look-alikes', () => {
+        const set = new Set<string>(['Notes/A.md', 'NotesArchive/C.md'])
+        expect(remapMembersUnder(set, 'Notes', 'Moved')).toEqual(['Moved/A.md'])
+        expect([...set].sort()).toEqual(['Moved/A.md', 'NotesArchive/C.md'])
     })
 })

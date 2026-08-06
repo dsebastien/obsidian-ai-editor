@@ -15,14 +15,16 @@
  *   the explicit user action authorizing automatic dispatches).
  * - A file arms on an edit and fires only after `idleMs` of inactivity;
  *   every further edit restarts the window.
- * - The idle window measures "has the user paused?", not "has the user
- *   stopped pressing keys?" (issue #20): ANY plugin/note interaction —
- *   cursor movement, triage, panel clicks, threads — postpones the window
- *   via `recordActivity`, but only an EDIT can arm it. Mere activity never
- *   satisfies the changed-text gate, so interacting with the panel cannot
- *   trigger a review of unchanged text; it only keeps a pending refresh
- *   from firing into the middle of the user's work. This reset is what
- *   makes the short default window safe.
+ * - The idle window measures "has the user paused EDITING?" (issue #20,
+ *   narrowed 2026-08-06): editor activity — cursor/selection movement,
+ *   undo/redo, anything read-write about the text — postpones the window
+ *   via `recordEditorActivity`, but only an EDIT can arm it. TRIAGE
+ *   activity (accepting, dismissing, panel scrolling and clicks, threads,
+ *   reference adds) deliberately does NOT postpone
+ *   (`recordTriageActivity`): triaging findings is working WITH the
+ *   review, and postponing the refresh for it delayed re-reviews by the
+ *   whole triage session. Mere activity never satisfies the changed-text
+ *   gate, so neither tier can trigger a review of unchanged text.
  * - Never while a run (or per-editor retry) is in flight for the file: a
  *   daemon dispatch goes through the regular `startRun`, which CANCELS the
  *   file's previous run — so dispatching mid-run would steal the user's
@@ -36,7 +38,7 @@
  *   at most one line per file (`logOversized`), never a modal or Notice.
  */
 
-import { deleteKeysUnder } from '../../domain/path-scope'
+import { deleteKeysUnder, remapKeysUnder, remapMembersUnder } from '../../domain/path-scope'
 
 export interface DaemonConfig {
     readonly enabled: boolean
@@ -92,9 +94,10 @@ interface PathState {
      * re-armed); null = not armed. */
     armedAt: number | null
     /**
-     * Timestamp of the last non-edit interaction while armed (issue #20);
-     * null = none since arming. Postpones the due time, never arms —
-     * cleared whenever the arm is consumed or (re)set.
+     * Timestamp of the last EDITOR-tier interaction while armed (issue #20;
+     * triage never records here); null = none since arming. Postpones the
+     * due time, never arms — cleared whenever the arm is consumed or
+     * (re)set.
      */
     lastActivityAt: number | null
     runInFlight: boolean
@@ -179,13 +182,13 @@ export class DaemonScheduler {
     }
 
     /**
-     * Any non-edit interaction with the plugin or the note at time `now`
-     * (issue #20): cursor/selection movement, panel and card interactions,
-     * triage, threads, modals. Postpones a PENDING arm's due time and does
-     * nothing else — activity alone never arms (the changed-text gate stays
-     * edit-only) and never touches an in-flight run's coalescing state.
+     * EDITOR-tier interaction with the note at time `now` (issue #20):
+     * cursor/selection movement, undo/redo, modals composing the next edit.
+     * Postpones a PENDING arm's due time and does nothing else — activity
+     * alone never arms (the changed-text gate stays edit-only) and never
+     * touches an in-flight run's coalescing state.
      */
-    recordActivity(path: string, now: number): void {
+    recordEditorActivity(path: string, now: number): void {
         if (!this.config.enabled) {
             return
         }
@@ -194,6 +197,46 @@ export class DaemonScheduler {
             return
         }
         state.lastActivityAt = now
+    }
+
+    /**
+     * TRIAGE-tier interaction (accept/dismiss, panel scroll/click, threads,
+     * reference adds): deliberately a no-op — triage must NOT postpone a
+     * pending refresh (two-tier carve-out, 2026-08-06). The method exists so
+     * every interaction surface still reports its tier explicitly and the
+     * non-postponing contract is pinned by spec rather than by absence of a
+     * call.
+     */
+    recordTriageActivity(_path: string): void {
+        // Intentionally empty: triage never moves the idle window.
+    }
+
+    /**
+     * A plugin-originated TRIAGE-tier DOCUMENT edit at `now` — accepting a
+     * finding's proposal (single or bulk), adding a reference. The text
+     * changed, so the note must eventually refresh — but triage never moves
+     * an armed idle window (two-tier carve-out, 2026-08-06): accepting the
+     * last finding at the end of a quiet window must not postpone the
+     * refresh by the full delay the way a keystroke would. So: armed → the
+     * existing deadline stands (the change is folded into the pending
+     * refresh); NOT armed → arms exactly like an edit (the change must not
+     * be silently lost); run in flight → coalesces into the settle re-arm
+     * exactly like an edit.
+     */
+    recordTriageEdit(path: string, now: number): void {
+        if (!this.config.enabled) {
+            return
+        }
+        const state = this.stateOf(path)
+        if (state.runInFlight) {
+            state.editedDuringRun = true
+            return
+        }
+        if (state.armedAt === null) {
+            state.armedAt = now
+            state.lastActivityAt = null
+        }
+        // Armed: deliberately untouched — triage never moves the idle window.
     }
 
     /**
@@ -231,7 +274,7 @@ export class DaemonScheduler {
         }
     }
 
-    /** Drops all state for a closed/deleted/renamed-away file. */
+    /** Drops all state for a closed or deleted file. */
     fileClosed(path: string): void {
         this.paths.delete(path)
         this.oversizedLogged.delete(path)
@@ -239,15 +282,33 @@ export class DaemonScheduler {
     }
 
     /**
-     * `fileClosed` for a path AND everything under it — a FOLDER rename or
-     * delete, which Obsidian reports without per-child events. Without it a
-     * deleted folder's notes stay armed, and the daemon keeps a schedule for
-     * files that no longer exist.
+     * `fileClosed` for a path AND everything under it — a FOLDER delete,
+     * which Obsidian reports without per-child events. Without it a deleted
+     * folder's notes stay armed, and the daemon keeps a schedule for files
+     * that no longer exist. Renames go through `filesRenamedUnder`.
      */
     filesClosedUnder(path: string): void {
         deleteKeysUnder(this.paths, path)
         deleteKeysUnder(this.oversizedLogged, path)
         deleteKeysUnder(this.paused, path)
+    }
+
+    /**
+     * A vault RENAME of `oldPath` (note or folder): the notes are still open
+     * and their views follow the file, so pending arms and the once-per-file
+     * oversized log marker follow too — a rename is NOT a close (adversarial
+     * review 2026-08-06; deleting the state here silently dropped pending
+     * refreshes). The `paused` marker is deliberately DROPPED, not remapped:
+     * it mirrors the controller's findings-hidden state, which a rename
+     * clears along with the cancelled run — a remapped pause would suppress
+     * refreshes at the new path with no findings-shown gesture left to lift
+     * it. Returns the remapped (new) paths so the glue can re-derive timers.
+     */
+    filesRenamedUnder(oldPath: string, newPath: string): string[] {
+        const moved = remapKeysUnder(this.paths, oldPath, newPath)
+        remapMembersUnder(this.oversizedLogged, oldPath, newPath)
+        deleteKeysUnder(this.paused, oldPath)
+        return moved
     }
 
     /** When the file's timer should fire, or null when nothing is armed. */

@@ -23,7 +23,7 @@ Nothing runs on its own, and nothing is written without a diff. Desktop only. Br
 - **Actions** — rephrase, summarize, simplify, humanize, continue writing, say more, critique, find evidence, identify assumptions — plus placement verbs that need no selection (expand the current section, continue at the end of the note) and your own custom verbs.
 - **Margin comments** — park a question on a passage and keep writing; the answer arrives in a column beside the text and survives restarts.
 - **Daemon mode** — opt-in automatic refreshes after you pause editing, off by default, honest about the cost.
-- **History** — the session's findings, replies and scorecards in their own panel tab; durable across restarts if you opt in.
+- **History** — the session's findings, replies, scorecards and transform decisions in their own panel tab; durable across restarts if you opt in.
 - **Vault as configuration** — personas, charters and voice profile can live in your own notes, read fresh at every run.
 - **Bring your own backend** — Anthropic, OpenAI, OpenRouter, OpenAI-compatible endpoints, Azure OpenAI, Ollama, or the Claude Code and Codex CLIs running locally.
 

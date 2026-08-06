@@ -3,6 +3,7 @@ import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
 import type { ThreadMessage } from '../../domain/operations/thread'
 import {
     CARD_GAP,
+    acceptControl,
     computeCardPosition,
     replyInputValue,
     selectFindingsAtPos,
@@ -245,5 +246,36 @@ describe('threadRefusalNotice', () => {
         )
         expect(threadRefusalNotice('cap-reached', 'Hater')).toContain(String(THREAD_MAX_TURNS))
         expect(threadRefusalNotice('blank-message', 'Hater')).toContain('before sending')
+    })
+})
+
+describe('acceptControl', () => {
+    const edit = { op: 'replace' as const, target: 'old', text: 'new' }
+
+    it('offers nothing for a proposal-less finding, stale marker or not', () => {
+        expect(acceptControl({ edits: [], staleProposal: false, carryover: false })).toEqual('none')
+        expect(acceptControl({ edits: [], staleProposal: true, carryover: false })).toEqual('none')
+    })
+
+    it('offers the regular Accept while no stale marker is set', () => {
+        expect(acceptControl({ edits: [edit], staleProposal: false, carryover: false })).toEqual(
+            'accept'
+        )
+        // Carryover alone does not change the accept area.
+        expect(acceptControl({ edits: [edit], staleProposal: false, carryover: true })).toEqual(
+            'accept'
+        )
+    })
+
+    it('replaces a stale proposal’s dead Accept with badge + Regenerate', () => {
+        expect(acceptControl({ edits: [edit], staleProposal: true, carryover: false })).toEqual(
+            'regenerate'
+        )
+    })
+
+    it('shows the badge alone for a stale carryover (no Regenerate)', () => {
+        expect(acceptControl({ edits: [edit], staleProposal: true, carryover: true })).toEqual(
+            'stale-badge-only'
+        )
     })
 })

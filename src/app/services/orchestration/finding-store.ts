@@ -121,7 +121,18 @@ export interface AdoptionPatch {
     readonly edits: readonly TrackedEdit[]
 }
 
-export type AcceptFailureReason = 'not-found' | 'invalid-status' | EditPlanFailure
+export type AcceptFailureReason =
+    | 'not-found'
+    | 'invalid-status'
+    /**
+     * The proposal no longer applies to the live text — some edit's anchor
+     * went stale or its precondition drifted (Business Rules #3). Folded
+     * into ONE reason because the UI reaction is the same either way: mark
+     * the finding stale-proposal and offer regeneration instead of a dead
+     * Accept button.
+     */
+    | 'stale-proposal'
+    | Exclude<EditPlanFailure, 'stale' | 'precondition-failed'>
 
 export type AcceptResult =
     | {
@@ -326,6 +337,12 @@ export class FindingStore {
         }
         const plan = planEditChanges(finding.edits, currentText)
         if (!plan.ok) {
+            if (plan.reason === 'stale' || plan.reason === 'precondition-failed') {
+                // Status stays 'open': the finding degrades visibly instead
+                // of vanishing (BR #16), and the caller can offer
+                // regeneration.
+                return { ok: false, reason: 'stale-proposal' }
+            }
             return { ok: false, reason: plan.reason }
         }
         return {

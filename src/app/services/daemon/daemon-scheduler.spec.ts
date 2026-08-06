@@ -308,12 +308,12 @@ describe('DaemonScheduler lifecycle', () => {
 // Activity reset (issue #20)
 // ---------------------------------------------------------------------------
 
-describe('DaemonScheduler.recordActivity', () => {
+describe('DaemonScheduler.recordEditorActivity', () => {
     it('postpones a pending arm — the window measures quiet, not just no-typing', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
         expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
-        scheduler.recordActivity(PATH, 10_000)
+        scheduler.recordEditorActivity(PATH, 10_000)
         expect(scheduler.nextDueAt(PATH)).toEqual(10_000 + IDLE_MS)
         // A fire at the ORIGINAL due time comes back as wait-for-the-new-one.
         expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
@@ -328,7 +328,7 @@ describe('DaemonScheduler.recordActivity', () => {
 
     it('never arms by itself — the changed-text gate stays edit-only', () => {
         const scheduler = makeScheduler()
-        scheduler.recordActivity(PATH, 1_000)
+        scheduler.recordEditorActivity(PATH, 1_000)
         expect(scheduler.nextDueAt(PATH)).toBeNull()
         expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
             action: 'skip',
@@ -339,7 +339,7 @@ describe('DaemonScheduler.recordActivity', () => {
     it('a fresh edit supersedes older activity (latest signal wins)', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
-        scheduler.recordActivity(PATH, 5_000)
+        scheduler.recordEditorActivity(PATH, 5_000)
         scheduler.recordEdit(PATH, 8_000)
         expect(scheduler.nextDueAt(PATH)).toEqual(8_000 + IDLE_MS)
     })
@@ -348,7 +348,7 @@ describe('DaemonScheduler.recordActivity', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
         scheduler.syncRunState(PATH, true, 2_000)
-        scheduler.recordActivity(PATH, 50_000)
+        scheduler.recordEditorActivity(PATH, 50_000)
         scheduler.recordEdit(PATH, 51_000) // coalesces into the settle re-arm
         scheduler.syncRunState(PATH, false, 60_000)
         // Re-armed from settle time; the mid-run activity must not postpone.
@@ -357,13 +357,13 @@ describe('DaemonScheduler.recordActivity', () => {
 
     it('does nothing while disabled and keeps files independent', () => {
         const disabled = makeScheduler(false)
-        disabled.recordActivity(PATH, 1_000)
+        disabled.recordEditorActivity(PATH, 1_000)
         expect(disabled.nextDueAt(PATH)).toBeNull()
 
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
         scheduler.recordEdit(OTHER, 1_000)
-        scheduler.recordActivity(OTHER, 20_000)
+        scheduler.recordEditorActivity(OTHER, 20_000)
         expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
         expect(scheduler.nextDueAt(OTHER)).toEqual(20_000 + IDLE_MS)
     })
@@ -371,7 +371,7 @@ describe('DaemonScheduler.recordActivity', () => {
     it('stale activity is cleared once the arm is consumed', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
-        scheduler.recordActivity(PATH, 2_000)
+        scheduler.recordEditorActivity(PATH, 2_000)
         // Consume the arm (not-reviewable skip).
         expect(scheduler.fire(PATH, 2_000 + IDLE_MS, clearProbe({ reviewable: false }))).toEqual({
             action: 'skip',
@@ -380,6 +380,192 @@ describe('DaemonScheduler.recordActivity', () => {
         // A new arm derives its window from the new edit alone.
         scheduler.recordEdit(PATH, 100_000)
         expect(scheduler.nextDueAt(PATH)).toEqual(100_000 + IDLE_MS)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Two-tier activity: triage never postpones (carve-out, 2026-08-06)
+// ---------------------------------------------------------------------------
+
+describe('DaemonScheduler.recordTriageActivity', () => {
+    it('does NOT postpone a pending arm — the due time stays at the edit', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordTriageActivity(PATH)
+        expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+        // The refresh dispatches at the original due time even though the
+        // user was triaging the whole window.
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('editor activity postpones where triage does not (tier contrast)', () => {
+        const editorSide = makeScheduler()
+        editorSide.recordEdit(PATH, 1_000)
+        editorSide.recordEditorActivity(PATH, 2_000)
+        expect(editorSide.nextDueAt(PATH)).toEqual(2_000 + IDLE_MS)
+
+        const triageSide = makeScheduler()
+        triageSide.recordEdit(PATH, 1_000)
+        triageSide.recordTriageActivity(PATH)
+        expect(triageSide.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+    })
+
+    it('never arms by itself, exactly like editor activity', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordTriageActivity(PATH)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.fire(PATH, IDLE_MS, clearProbe())).toEqual({
+            action: 'skip',
+            reason: 'not-armed'
+        })
+    })
+
+    it('an edit → triage burst fires one idle window after the edit', () => {
+        // Bug B's user story: type (arm), then accept/dismiss findings for
+        // a while — the refresh must fire idleMs after the EDIT, not after
+        // the last triage click.
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordTriageActivity(PATH)
+        scheduler.recordTriageActivity(PATH)
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+})
+
+describe('DaemonScheduler.recordTriageEdit', () => {
+    it('does NOT move an armed window — accepting at the end of a quiet window keeps the deadline', () => {
+        // The adversarial-review scenario: type (arm), wait almost the whole
+        // window, then accept a finding. The accept CHANGES the doc, so it
+        // reaches the edit stream — but it must not restart the countdown.
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordTriageEdit(PATH, 1_000 + IDLE_MS - 1)
+        expect(scheduler.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('a keystroke restarts the window where a triage edit does not (tier contrast)', () => {
+        const editSide = makeScheduler()
+        editSide.recordEdit(PATH, 1_000)
+        editSide.recordEdit(PATH, 10_000)
+        expect(editSide.nextDueAt(PATH)).toEqual(10_000 + IDLE_MS)
+
+        const triageSide = makeScheduler()
+        triageSide.recordEdit(PATH, 1_000)
+        triageSide.recordTriageEdit(PATH, 10_000)
+        expect(triageSide.nextDueAt(PATH)).toEqual(1_000 + IDLE_MS)
+    })
+
+    it('ARMS an unarmed note — unlike triage activity, the text changed and must refresh', () => {
+        // Accepting a finding with no window pending (e.g. right after a run
+        // settled with no further edits): the accepted text is new text, so
+        // the note arms exactly like an edit would.
+        const scheduler = makeScheduler()
+        scheduler.recordTriageEdit(PATH, 5_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(5_000 + IDLE_MS)
+        expect(scheduler.fire(PATH, 5_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('arming clears stale editor activity, exactly like an edit', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordEditorActivity(PATH, 4_000)
+        // The activity was recorded while armed; consume the arm via fire,
+        // then a fresh triage-edit arm must not resurrect it.
+        scheduler.fire(PATH, 4_000 + IDLE_MS, clearProbe())
+        scheduler.recordTriageEdit(PATH, 100_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(100_000 + IDLE_MS)
+    })
+
+    it('keeps an armed window with recorded activity where it was — the postponed due time stands', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.recordEditorActivity(PATH, 5_000)
+        scheduler.recordTriageEdit(PATH, 9_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(5_000 + IDLE_MS)
+    })
+
+    it('coalesces during a run exactly like an edit: one re-arm at settle', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.syncRunState(PATH, true, 2_000)
+        scheduler.recordTriageEdit(PATH, 3_000)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        scheduler.syncRunState(PATH, false, 10_000)
+        // Re-armed from settle time — the triage edit was not lost.
+        expect(scheduler.nextDueAt(PATH)).toEqual(10_000 + IDLE_MS)
+    })
+
+    it('is a no-op while disabled', () => {
+        const scheduler = makeScheduler(false)
+        scheduler.recordTriageEdit(PATH, 1_000)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.armedPaths()).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Rename remapping (a rename is not a close — adversarial review 2026-08-06)
+// ---------------------------------------------------------------------------
+
+describe('DaemonScheduler.filesRenamedUnder', () => {
+    it('moves a pending arm to the renamed path — due time intact', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        const moved = scheduler.filesRenamedUnder(PATH, 'Renamed/A.md')
+        expect(moved).toEqual(['Renamed/A.md'])
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.nextDueAt('Renamed/A.md')).toEqual(1_000 + IDLE_MS)
+        expect(scheduler.fire('Renamed/A.md', 1_000 + IDLE_MS, clearProbe())).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('remaps a whole folder, sparing prefix look-alikes', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit('Notes/A.md', 1_000)
+        scheduler.recordEdit('Notes/Sub/B.md', 2_000)
+        scheduler.recordEdit('NotesArchive/C.md', 3_000)
+        scheduler.filesRenamedUnder('Notes', 'Moved')
+        expect(scheduler.armedPaths().sort()).toEqual([
+            'Moved/A.md',
+            'Moved/Sub/B.md',
+            'NotesArchive/C.md'
+        ])
+    })
+
+    it('the oversized once-per-file log marker follows the file', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        expect(scheduler.fire(PATH, 1_000 + IDLE_MS, clearProbe({ oversized: true }))).toEqual({
+            action: 'skip',
+            reason: 'oversized',
+            logOversized: true
+        })
+        scheduler.filesRenamedUnder(PATH, 'Renamed/A.md')
+        scheduler.recordEdit('Renamed/A.md', 90_000)
+        // Same note, new name: no second log line.
+        expect(
+            scheduler.fire('Renamed/A.md', 90_000 + IDLE_MS, clearProbe({ oversized: true }))
+        ).toEqual({ action: 'skip', reason: 'oversized', logOversized: false })
+    })
+
+    it('DROPS the pause marker: the controller clears findings-hidden on rename, so a remapped pause would stick forever', () => {
+        const scheduler = makeScheduler()
+        scheduler.recordEdit(PATH, 1_000)
+        scheduler.pause(PATH)
+        scheduler.filesRenamedUnder(PATH, 'Renamed/A.md')
+        // The arm moved AND is live — nothing is left paused at either path.
+        expect(scheduler.nextDueAt('Renamed/A.md')).toEqual(1_000 + IDLE_MS)
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
     })
 })
 

@@ -43,7 +43,7 @@ An action bound to a panel says so in both places: _"Critique (panel: Pre-publis
 
 **Rewrite verbs** (rephrase, summarize, simplify, humanize) never touch your text directly. The proposal appears as an inline diff below the selection — old text struck through, new text underlined — with **Accept** and **Reject**. While the widget has focus, Enter accepts and Escape rejects.
 
-Accept is a single undo step, and only applies while the selected text is unchanged; editing that text dismisses the proposal as stale rather than applying it somewhere it no longer fits.
+Accept is a single undo step, and only applies while the selected text is unchanged; editing that text dismisses the proposal as stale rather than applying it somewhere it no longer fits. Either verdict — Accept or Reject — is archived in the panel's [History tab](usage.md#the-history-tab) with the proposal it ruled on; a proposal you never ruled on (cancelled, superseded, gone stale) leaves no entry.
 
 **Generate verbs** (continue writing, say more, expand section, continue the note) insert a proposed continuation through the same preview and the same Accept/Reject — after the selection or at the cursor for the first two, at the computed spot for the placement verbs.
 

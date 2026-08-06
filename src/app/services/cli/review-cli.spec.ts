@@ -368,6 +368,7 @@ describe('shapeRunOutput — panel runs', () => {
             missingMembers: [],
             resultStale: false,
             error: null,
+            errorDiagnostics: null,
             result: panelResultSchema.parse({
                 kind: 'aggregate-panel',
                 recommendation: 'needs-work',
@@ -455,7 +456,8 @@ describe('handleReviewCli — panel runs', () => {
                 missingMembers: [],
                 result: null,
                 resultStale: false,
-                error: null
+                error: null,
+                errorDiagnostics: null
             }
         })
         setNodeTimer(() => {
@@ -467,6 +469,7 @@ describe('handleReviewCli — panel runs', () => {
                 missingMembers: [],
                 resultStale: false,
                 error: null,
+                errorDiagnostics: null,
                 result: panelResultSchema.parse({
                     kind: 'aggregate-panel',
                     recommendation: 'publish',
@@ -545,6 +548,7 @@ describe('formatTextOutput', () => {
                 missingMembers: [],
                 resultStale: false,
                 error: null,
+                errorDiagnostics: null,
                 result: panelResultSchema.parse({
                     kind: 'aggregate-panel',
                     recommendation: 'publish',

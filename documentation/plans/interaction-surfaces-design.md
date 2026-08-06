@@ -54,7 +54,7 @@ Dynamic registration: on every settings mutation, diff desired vs registered com
 
 The mutation-observer hook this needed shipped in slice 1: `SettingsFacade.subscribe(listener)` notifies after every successful update or persist, including load-time repairs, and never on a rejected update.
 
-**Also shipped, after this table was written** — the commands that exist today beyond the rows above: `ask-for-comments` ("Ask for comments"), `preview-context` ("Preview what will be sent"), `generate-more` ("Generate more findings from every finished editor"), `toggle-margin-comments` ("Toggle the margin comment column"), `toggle-daemon-mode` ("Toggle daemon mode") and `run-setup-wizard` ("Run setup wizard"). `cancel-run` kept its id and is named "Cancel review or action", because it cancels a transform too.
+**Also shipped, after this table was written** — the commands that exist today beyond the rows above: `ask-for-comments` ("Ask for comments"), `preview-context` ("Preview what will be sent"), `generate-more` ("Generate more findings from every finished editor"), `toggle-margin-comments` ("Toggle the margin comment column"), `toggle-daemon-mode` ("Toggle daemon mode for the current note") and `run-setup-wizard` ("Run setup wizard"). `cancel-run` kept its id and is named "Cancel review or action", because it cancels a transform too.
 
 ## 4. Obsidian CLI extensions — GO
 

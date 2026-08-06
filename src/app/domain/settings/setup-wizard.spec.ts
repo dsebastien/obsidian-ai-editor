@@ -86,7 +86,7 @@ describe('initialSetupDraft', () => {
     it('starts from the current settings, so a re-run edits rather than resets', () => {
         const settings = makeSettings({
             voiceProfile: { text: '', notePaths: ['Voice.md'], followLinks: true },
-            behavior: { daemonMode: true }
+            behavior: { daemonAlwaysOn: true }
         })
         const draft = initialSetupDraft(settings)
         expect(draft.editors).toEqual([
@@ -95,7 +95,7 @@ describe('initialSetupDraft', () => {
         ])
         expect(draft.voiceNotePaths).toEqual(['Voice.md'])
         expect(draft.voiceFollowLinks).toBe(true)
-        expect(draft.daemonMode).toBe(true)
+        expect(draft.daemonAlwaysOn).toBe(true)
     })
 
     it('starts with no backend — the wizard adds one, it never edits an existing one', () => {
@@ -289,8 +289,8 @@ describe('applySetupWizard', () => {
     it('writes the daemon choice', () => {
         const settings = makeSettings()
         expect(
-            applySetupWizard(settings, { ...initialSetupDraft(settings), daemonMode: true })
-                .behavior.daemonMode
+            applySetupWizard(settings, { ...initialSetupDraft(settings), daemonAlwaysOn: true })
+                .behavior.daemonAlwaysOn
         ).toBe(true)
     })
 
@@ -340,7 +340,7 @@ describe('applySetupWizard', () => {
         const next = applySetupWizard(settings, {
             ...initialSetupDraft(settings),
             backend: makeBackend(),
-            daemonMode: true,
+            daemonAlwaysOn: true,
             voiceNotePaths: ['V.md']
         })
         expect(pluginSettingsSchema.safeParse(next).success).toBe(true)
@@ -358,7 +358,7 @@ describe('setupOutcome', () => {
             ...initialSetupDraft(settings),
             backend: makeBackend(),
             voiceNotePaths: ['A.md', 'B.md'],
-            daemonMode: true
+            daemonAlwaysOn: true
         })
         expect(outcome).toEqual({
             backendAdded: true,
@@ -366,7 +366,7 @@ describe('setupOutcome', () => {
             hasBackend: true,
             enabledEditorCount: 1,
             voiceNoteCount: 2,
-            daemonMode: true
+            daemonAlwaysOn: true
         })
     })
 

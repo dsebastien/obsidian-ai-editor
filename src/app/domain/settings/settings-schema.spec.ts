@@ -91,9 +91,10 @@ describe('DEFAULT_PLUGIN_SETTINGS', () => {
         expect(behavior.respectFrontmatterOptOut).toEqual(true)
         expect(behavior.stripFrontmatter).toEqual(false)
         expect(behavior.defaultCommentEditorId).toEqual('')
-        // Daemon mode is off by default (Business Rule #1: automatic runs
-        // only after the user explicitly enabled the toggle) — cost control.
-        expect(behavior.daemonMode).toEqual(false)
+        // Always-on daemon is off by default (Business Rule #1: automatic
+        // runs only after the user explicitly enabled them; daemon mode
+        // itself is per-note runtime state defaulting off) — cost control.
+        expect(behavior.daemonAlwaysOn).toEqual(false)
         // Short by design (issue #20): any interaction resets the window,
         // which is what makes 3 s safe.
         expect(behavior.daemonIdleSeconds).toEqual(3)
@@ -192,6 +193,30 @@ describe('loadSettings', () => {
             starterPackVersion: 'corrupt'
         })
         expect(corrupt.settings.starterPackVersion).toEqual(1)
+    })
+
+    it('reads the retired global daemonMode flag as daemonAlwaysOn', () => {
+        // A pre-per-note vault persisted `behavior.daemonMode: true` — the
+        // user had opted into automatic refreshes everywhere. Without the
+        // mapping the schema strips the unknown key and their refreshes
+        // silently stop on upgrade; always-on preserves the behavior.
+        const loaded = loadSettings({ behavior: { daemonMode: true } })
+        expect(loaded.behavior.daemonAlwaysOn).toEqual(true)
+        // The legacy flag never wins over an explicit daemonAlwaysOn.
+        const explicit = loadSettings({
+            behavior: { daemonMode: true, daemonAlwaysOn: false }
+        })
+        expect(explicit.behavior.daemonAlwaysOn).toEqual(false)
+        // And a legacy `false` maps to the default: off.
+        const off = loadSettings({ behavior: { daemonMode: false } })
+        expect(off.behavior.daemonAlwaysOn).toEqual(false)
+        // The mapping also survives the salvage path (corrupt sibling
+        // scalar): the behavior section keeps every individually-valid
+        // field, daemonAlwaysOn included.
+        const salvaged = loadSettingsDetailed({
+            behavior: { daemonMode: true, sizeWarningWords: 'corrupt' }
+        })
+        expect(salvaged.settings.behavior.daemonAlwaysOn).toEqual(true)
     })
 
     it('applies schema defaults to a minimal valid object', () => {

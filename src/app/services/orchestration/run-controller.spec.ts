@@ -508,7 +508,10 @@ describe('RunController edits & acceptance', () => {
         expect(shifted?.anchor).toEqual({ from: 42, to: 50, state: 'anchored' })
 
         // Stale finding cannot be accepted (Business Rules #3).
-        expect(run.findings.accept(staled!.id, DOC)).toEqual({ ok: false, reason: 'stale' })
+        expect(run.findings.accept(staled!.id, DOC)).toEqual({
+            ok: false,
+            reason: 'stale-proposal'
+        })
 
         // The shifted finding accepts against the post-edit document.
         const edited = `${DOC.slice(0, 5)}XYZ${DOC.slice(6, 20)}ABCDE${DOC.slice(20)}`
@@ -568,7 +571,10 @@ describe('RunController edits & acceptance', () => {
         expect(tracked?.anchor?.state).toEqual('stale')
         expect(run.findings.isActionable(tracked!.id)).toBeFalse()
         const edited = `${DOC.slice(0, 5)}${DOC.slice(7)}`
-        expect(run.findings.accept(tracked!.id, edited)).toEqual({ ok: false, reason: 'stale' })
+        expect(run.findings.accept(tracked!.id, edited)).toEqual({
+            ok: false,
+            reason: 'stale-proposal'
+        })
     })
 
     it('blocks acceptance when the current text no longer matches', async () => {
@@ -580,7 +586,7 @@ describe('RunController edits & acceptance', () => {
         const rewritten = 'Something entirely different'
         expect(run.findings.accept(tracked!.id, rewritten)).toEqual({
             ok: false,
-            reason: 'precondition-failed'
+            reason: 'stale-proposal'
         })
     })
 })
@@ -1660,6 +1666,48 @@ describe('RunController panel runs', () => {
 
         expect(run.getPanelState()?.status).toBe('error')
         expect(run.getPanelState()?.error).toBe('rejected [redacted]')
+    })
+
+    it('carries the aggregation diagnostics through, still behind reveal() (issue #42)', async () => {
+        // A CLI-backed chairperson that dies must not leave the scorecard
+        // failure as opaque as reviews used to be (#39): the capture rides the
+        // panel state, the MESSAGE stays status-only.
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const controller = new RunController()
+        const run = controller.startRun({
+            snapshot: snapshot(),
+            editors: [member('a')],
+            panel: {
+                panelId: 'panel-1',
+                panelName: 'Panel',
+                aggregate: async function* (request) {
+                    await Promise.resolve()
+                    yield {
+                        type: 'error',
+                        runId: request.runId,
+                        error: {
+                            code: 'unknown',
+                            message: 'The tool exited with status 1.',
+                            diagnostics
+                        }
+                    }
+                }
+            }
+        })
+
+        await run.panelSettled
+
+        expect(run.getPanelState()?.status).toBe('error')
+        expect(run.getPanelState()?.errorDiagnostics).toBe(diagnostics)
+        // The redacted message never absorbs the content.
+        expect(run.getPanelState()?.error).not.toContain('stderr text')
+
+        // A member going back to work re-opens the panel: the failed
+        // attempt's capture belongs to the failed attempt and goes with it.
+        expect(run.continueEditor('a', DOC)).toEqual({ ok: true })
+        expect(run.getPanelState()?.status).toBe('waiting')
+        expect(run.getPanelState()?.errorDiagnostics).toBeNull()
+        run.cancelRun()
     })
 
     it('treats a stream that ends without a terminal event as a failure', async () => {

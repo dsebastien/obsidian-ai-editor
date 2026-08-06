@@ -21,6 +21,10 @@ import type { CommandDiff, CommandView } from './command-sync'
  *
  * Registering per run instead would mean churning commands on every stream
  * event and orphaning hotkeys between runs.
+ *
+ * One GLOBAL sibling lives here too: `dismiss-all-findings` (all editors of
+ * the active run at once) — static id, registered once, same availability
+ * gate shape as the per-editor pair.
  */
 
 export interface BulkCommandView extends CommandView {
@@ -62,9 +66,50 @@ export function diffBulkCommands(
 }
 
 /**
- * Registers the per-editor bulk commands and keeps them in sync with the
- * settings. Call once from `onload`; Obsidian removes the plugin's commands
- * on unload.
+ * The two controller seams the global dismiss command dispatches through —
+ * narrow on purpose so the gating is unit-testable without a live controller.
+ */
+export type GlobalDismissController = Pick<ReviewController, 'canDismissAll' | 'dismissAllFindings'>
+
+/**
+ * The run-scoped `Dismiss all findings` command: every non-terminal finding
+ * of the ACTIVE note's run, across ALL editors. `editorId: null` is the
+ * controller's documented "every editor of the run" scope — the exact one the
+ * static `accept-all` command (`review-commands.ts`) already dispatches, so
+ * both global bulk commands agree on what "all" means (severity filter
+ * respected, one Notice with the count). Dismissing changes no document text,
+ * so the whole sweep is one store pass + one decoration dispatch — nothing to
+ * undo (mirrors `ReviewController.dismissAllFindings`).
+ *
+ * Static and registered ONCE (never per editor): the id must survive editors
+ * being added, renamed or removed so a user hotkey keeps working. Hidden via
+ * `checkCallback` when the active run has nothing dismissable, exactly like
+ * the per-editor pair — never a dead palette entry.
+ */
+export function registerGlobalDismissCommand(
+    plugin: Plugin,
+    controller: GlobalDismissController
+): void {
+    plugin.addCommand({
+        id: 'dismiss-all-findings',
+        name: 'Dismiss all findings',
+        checkCallback: (checking: boolean): boolean => {
+            if (!controller.canDismissAll(null)) {
+                return false
+            }
+            if (checking) {
+                return true
+            }
+            controller.dismissAllFindings(null)
+            return true
+        }
+    })
+}
+
+/**
+ * Registers the global dismiss command plus the per-editor bulk commands, and
+ * keeps the per-editor set in sync with the settings. Call once from
+ * `onload`; Obsidian removes the plugin's commands on unload.
  */
 export function registerBulkCommands(
     plugin: Plugin,
@@ -72,6 +117,8 @@ export function registerBulkCommands(
     getSettings: () => PluginSettingsV1,
     subscribe: (listener: () => void) => () => void
 ): void {
+    registerGlobalDismissCommand(plugin, controller)
+
     /** id → registered palette name (rename detection). */
     const registered = new Map<string, string>()
 

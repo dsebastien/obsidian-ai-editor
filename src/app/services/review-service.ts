@@ -46,7 +46,7 @@ import type { FetchFn } from './backends/resolve-fetch'
  * - Nothing runs without an explicit user action (Business Rules #1): the
  *   invokers are the Review command / rail button / menus / CLI — plus daemon
  *   refreshes, authorized by the rule's documented carve-out (the explicit
- *   `behavior.daemonMode` opt-in). Oversized notes additionally require a
+ *   per-note daemon enable or `behavior.daemonAlwaysOn`). Oversized notes additionally require a
  *   user-confirmed flag (the daemon skips them instead of asking).
  * - Error messages that could echo credentials are routed through the
  *   redaction seam (Business Rules #12).

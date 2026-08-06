@@ -118,43 +118,45 @@ export function renderBehaviorTab(containerEl: HTMLElement, ctx: TabContext): vo
     )
 
     new Setting(containerEl).setName('Daemon').setHeading()
+    containerEl.createEl('p', {
+        cls: 'editor-ai-daemons-tab-intro',
+        text:
+            'In daemon mode, editors watch your edits and refresh their recommendations ' +
+            'automatically after you pause. Daemon mode is per note: each note starts ' +
+            'with it off when you open it, and the toggle above the Review button (or ' +
+            'the Toggle daemon mode for the current note command) turns it on for that ' +
+            'note until you close it.'
+    })
     new Setting(containerEl)
-        .setName('Daemon mode')
+        .setName('Enable automatically for every note')
         .setDesc(
-            'Editors watch your edits and refresh their recommendations automatically ' +
-                'after you pause. Every refresh calls your configured AI backends — ' +
-                'this can increase costs significantly.'
+            'Every note starts with daemon mode already on when you open it. The ' +
+                'per-note toggle can still turn individual notes off. Every refresh ' +
+                'calls your configured AI backends — this can increase costs ' +
+                'significantly.'
         )
         .addToggle((toggle) => {
-            toggle.setValue(settings.behavior.daemonMode)
+            toggle.setValue(settings.behavior.daemonAlwaysOn)
             toggle.onChange((value) => {
-                // refresh: the idle-delay field only exists while the mode is
-                // on (it has no effect otherwise, and hiding it keeps the
-                // cost-sensitive toggle the single decision point).
-                commit(
-                    ctx,
-                    (draft) => {
-                        draft.behavior.daemonMode = value
-                    },
-                    { refresh: true }
-                )
+                commit(ctx, (draft) => {
+                    draft.behavior.daemonAlwaysOn = value
+                })
             })
         })
-    if (settings.behavior.daemonMode) {
-        renderIntField(
-            'Idle delay (seconds)',
-            'How long the note must be quiet before its review refreshes. Any ' +
-                'interaction restarts the clock — typing, moving the cursor, ' +
-                'triaging findings, using the review panel or a card. Only an ' +
-                'actual edit arms a refresh in the first place.',
-            settings.behavior.daemonIdleSeconds,
-            1,
-            600,
-            (draft, next) => {
-                draft.behavior.daemonIdleSeconds = next
-            }
-        )
-    }
+    renderIntField(
+        'Idle delay (seconds)',
+        'How long the note must be quiet before its review refreshes. Typing, ' +
+            'moving the cursor or selecting text restarts the clock; triaging ' +
+            'findings — accepting, dismissing, using the review panel or a ' +
+            'card — does not. Only an actual edit arms a refresh in the ' +
+            'first place.',
+        settings.behavior.daemonIdleSeconds,
+        1,
+        600,
+        (draft, next) => {
+            draft.behavior.daemonIdleSeconds = next
+        }
+    )
 
     new Setting(containerEl).setName('History').setHeading()
     new Setting(containerEl)

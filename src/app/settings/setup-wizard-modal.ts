@@ -484,18 +484,18 @@ export class SetupWizardModal extends Modal {
         new Setting(contentEl).setName('When editors run').addDropdown((dropdown) => {
             dropdown.addOption('summon', MODE_CHOICE_LABELS.summon)
             dropdown.addOption('daemon', MODE_CHOICE_LABELS.daemon)
-            dropdown.setValue(this.state.draft.daemonMode ? 'daemon' : 'summon')
+            dropdown.setValue(this.state.draft.daemonAlwaysOn ? 'daemon' : 'summon')
             dropdown.onChange((value) => {
                 this.state = {
                     ...this.state,
-                    draft: { ...this.state.draft, daemonMode: value === 'daemon' }
+                    draft: { ...this.state.draft, daemonAlwaysOn: value === 'daemon' }
                 }
                 // The cost warning is only shown for the option that costs:
                 // re-render so it appears and disappears with the choice.
                 this.render()
             })
         })
-        if (this.state.draft.daemonMode) {
+        if (this.state.draft.daemonAlwaysOn) {
             const warning = contentEl.createDiv({ cls: 'editor-ai-daemons-modal-warning' })
             warning.setText(DAEMON_COST_WARNING)
         }

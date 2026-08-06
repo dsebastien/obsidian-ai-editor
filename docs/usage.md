@@ -41,7 +41,7 @@ Every markdown editor gets a small card in its top-right corner: the [daemon](da
 - **Click a row** to cycle through that editor's findings; its highlights flash briefly so you can see where they are.
 - An editor that failed gets a **Retry** affordance right there.
 - A [panel](panels.md) is one row with a **hollow** centre where an editor's is filled, its name carries "(panel)", and its members are bracketed beneath it.
-- The daemon toggle pulses while a refresh is armed for this note.
+- The daemon toggle shows and flips [daemon mode](daemon-mode.md) **for this note** (each note starts with it off), and pulses while a refresh is armed.
 
 The rail floats over the note, so **when you are not using it, it fades** to a low opacity and the text underneath stays readable. Hovering it, tabbing into it, a running review, or an armed daemon refresh bring it back to full strength.
 
@@ -61,7 +61,7 @@ A finding highlights the **exact span it quotes**, tinted with its editor's colo
 
 When a highlight covers a **link**, a plain click opens the finding's card — the highlight is why you clicked — and `Ctrl`/`Cmd`+click follows the link as usual.
 
-Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its proposal was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again.
+Keep typing — highlights follow your edits. Edit _inside_ a highlighted span and the finding goes **stale**: dashed and dimmed, because its proposal was computed against text that no longer exists. A stale finding can still be dismissed; it cannot be accepted until the editor looks again — the card offers **Regenerate** for exactly that.
 
 Severities are **warning**, **suggestion** and **info**. In the AI Editor Review panel each carries a shaped glyph, not just a colour.
 
@@ -77,7 +77,7 @@ Click a highlight to open a floating card:
 
 ![A review card: the critique, the quoted line, and a Replace preview showing the old text struck through and the proposed text underneath, with Accept and Dismiss buttons](images/review-card.png)
 
-Overlapping findings stack in one card, innermost first. A proposal is one or more labelled edits — **Replace**, **Insert above**, **Insert below**, **Delete** — each previewed in its own shape: an insertion shows only what is added (your text stays), a delete shows only what goes. **Accept** applies the whole proposal as a single undoable edit — all of it or none, and only while the text still matches exactly what it was computed against; otherwise the finding is stale and must be re-reviewed. A proposal the plugin could not validate is removed and the card says so — you still get the critique, never a wrong write. Escape, clicking away, scrolling, or editing closes the card.
+Overlapping findings stack in one card, innermost first. A proposal is one or more labelled edits — **Replace**, **Insert above**, **Insert below**, **Delete** — each previewed in its own shape: an insertion shows only what is added (your text stays), a delete shows only what goes. **Accept** applies the whole proposal as a single undoable edit — all of it or none, and only while the text still matches exactly what it was computed against. When it no longer matches, the card shows a **Stale proposal** badge and a **Regenerate** button instead: Regenerate re-runs the note's review (same editors, same panel) so the editor can propose against the text as it reads now. Findings carried over from a previous review show the badge alone, and Regenerate needs the finding's editor to still be enabled and the note open. A proposal the plugin could not validate is removed and the card says so — you still get the critique, never a wrong write. Escape, clicking away, scrolling, or editing closes the card.
 
 Opening a card deliberately does **not** move focus: triage is driven from the keyboard and stealing focus would break the loop that opened the card.
 
@@ -121,7 +121,7 @@ The **status bar** shows the number of open findings for the active note, and di
 
 ## The History tab
 
-The panel has two tabs: **Review** (everything above) and **History** — the archive behind it. Every finding, push-back reply and panel scorecard lands there as it is produced, grouped by day (newest first) with filter chips by type and by editor, so "what did the Hater say before I re-ran it?" and "what did I dismiss ten minutes ago?" have answers. Entries are clipped records, selectable and copyable; a verbatim repeat of what an editor already said is not recorded twice.
+The panel has two tabs: **Review** (everything above) and **History** — the archive behind it. Every finding, push-back reply and panel scorecard lands there as it is produced — and every transform or generate proposal lands there as you accept or reject it, with your verdict — grouped by day (newest first) with filter chips by type and by editor, so "what did the Hater say before I re-ran it?" and "what did I dismiss ten minutes ago?" have answers. Entries are clipped records, selectable and copyable; a verbatim repeat of what an editor already said is not recorded twice.
 
 By default history lives for the session. Turn on **Durable history** (Behavior settings) to keep it across restarts, per note — it is stored in the plugin folder and **contains quoted text from your notes**, which is why it is off by default, excluded from settings export, and clearable: per note from the tab's footer, entirely from the settings. Old entries expire on their own (90 days, at most 100 per note). Excluded notes and notes a rule switched the plugin off for never get history at all — the same absolute rule as requests — and excluding a note later hides its already-archived entries without deleting them: un-exclude it and they are back.
 
@@ -144,7 +144,8 @@ Threads are capped at six exchanges per finding and last for the session only: n
 
 - **Accept all (n)** in an editor's panel section applies every non-conflicting proposal of that editor at once, as **one** undoable edit. Each finding's proposal applies whole or not at all. Two proposals covering the same span cannot both apply: the first wins, the other is reported as skipped so you can re-review that span. Proposals whose text changed in the meantime are skipped too. A notice always says what was applied and what was skipped.
 - **Dismiss all (m)** clears that editor's findings for the note. It never touches your text.
-- The palette carries the same per editor — **Accept all from &lt;Editor&gt;**, **Dismiss all from &lt;Editor&gt;** — plus **Accept all non-conflicting findings** for every editor of the note at once.
+- **Dismiss all findings (n)** — a run-level button above the sections — clears every editor's findings for the note in one click. It appears when more than one editor has findings; with a single editor, that section's own **Dismiss all (m)** is the same control.
+- The palette carries the same per editor — **Accept all from &lt;Editor&gt;**, **Dismiss all from &lt;Editor&gt;** — plus **Accept all non-conflicting findings** and **Dismiss all findings** for every editor of the note at once.
 
 Bulk operations respect the severity filter: they never touch a finding you cannot currently see.
 

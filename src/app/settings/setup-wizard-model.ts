@@ -86,7 +86,7 @@ export const DAEMON_COST_WARNING =
 /** Label of the summon/daemon choice, per option. */
 export const MODE_CHOICE_LABELS = {
     summon: 'Wait to be summoned (recommended)',
-    daemon: 'Daemon mode — refresh automatically after I pause'
+    daemon: 'Daemon mode on for every note — refresh automatically after I pause'
 } as const
 
 /** Explanation of the note-refs "Follow links" toggle on the voice step. */
@@ -175,8 +175,8 @@ export function setupSummaryLines(outcome: SetupOutcome, canReview: boolean): re
         )
     }
     lines.push(
-        outcome.daemonMode
-            ? 'Daemon mode on — editors refresh automatically after you pause editing.'
+        outcome.daemonAlwaysOn
+            ? 'Daemon mode on for every note — editors refresh automatically after you pause editing.'
             : 'Editors wait to be summoned.'
     )
     return lines

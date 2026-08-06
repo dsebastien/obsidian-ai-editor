@@ -9,6 +9,20 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## Per-note daemon mode + always-on setting (2026-08-06)
+
+Status: **nothing verified.** Shipped with unit coverage (controller per-note gating, migration, wizard/settings renames), but nobody has flipped the toggle in a running vault.
+
+- Open two notes; turn daemon mode on via the rail toggle in note A. Edit both: only note A arms (pulse on its toggle) and refreshes; note B never does.
+- Close note A (last pane showing it) and reopen it: the daemon toggle is hollow again — the per-note enable did not survive the reopen. Same after an Obsidian restart.
+- The palette command is now **Toggle daemon mode for the current note**, hidden without an active markdown note; it flips the active note only and its Notice says "for this note".
+- Settings → Behavior → Daemon: the toggle is **Enable automatically for every note** (idle delay now always visible). Turn it on: every open note's rail toggle shows filled; a freshly opened note starts armed after its first edit. The rail toggle still turns a single note off; closing that note and reopening it comes back ON (always-on default).
+- Turn **Enable automatically for every note** off: every note — including ones enabled by hand before — stops refreshing at once.
+- Migration: a vault whose `data.json` still has `behavior.daemonMode: true` loads with **Enable automatically for every note** ON (check the settings tab); one with `daemonMode: false` or absent loads with it off.
+- Auto-disable (issue #23) with always-on ON: after 3 fully-failed refreshes the sticky Notice appears AND the settings toggle is off afterwards. With always-on OFF and a per-note enable: the Notice appears and the note's rail toggle is hollow.
+
+---
+
 ## Operation contract v2 — structured edits (issues #17/#22, 2026-08-01)
 
 Status: **nothing verified.** The contract change shipped with 2378 tests green, and the v2 review schema was probed successfully against a live local `qwen3:4b` (6/6 valid results, correct ops chosen, no prose leaked into edit text) — but no UI surface of it has ever been seen in a running vault.
@@ -48,7 +62,7 @@ Status: **nothing verified.** Scheduler logic is spec-pinned; the feel of the 3 
 - Edit, then scroll the review panel continuously: same — postponed until you stop.
 - Interacting WITHOUT any prior edit (pure reading/triage of an already-reviewed, unchanged note) never triggers a refresh at all.
 - Settings → Behavior → Idle delay: shows range 1–600, default 3, and the description names what resets the clock.
-- The `Toggle daemon mode` Notice mentions the quiet-window semantics.
+- The `Toggle daemon mode for the current note` Notice mentions the quiet-window semantics (editing restarts the clock; triaging does not).
 
 ## Truncation and payload recovery (issue #18, 2026-08-02)
 
@@ -604,8 +618,28 @@ Needs a deliberately broken CLI backend (point the path at a script that exits 1
 - [ ] Popout window: modal opens in the right window; copy targets that window's clipboard.
 - [ ] API backend with a model that rejects the request: HTTP 400 message names thinking/output-budget/model as the things to check; 404 says check the model name.
 
+## Failure diagnostics — remaining surfaces (issue #42, 2026-08-06) — UNVERIFIED
+
+Same broken CLI backend setup as the issue #39 section. The three surfaces #39 left string-only:
+
+- [ ] Panel run whose CLI-backed chairperson fails: the scorecard's failed line shows **Show details**; the modal opens with the caveat and the captured output; the scorecard status line itself never contains the content.
+- [ ] Retrying/continuing a member re-opens the scorecard and the stale Show details disappears with the old failure.
+- [ ] Inline transform (e.g. Rephrase) via a broken CLI editor: the failure Notice carries **Show details**, stays up until dismissed, and the click opens the modal; the Notice text itself is status-only.
+- [ ] A failed transform WITHOUT captured output (API backend) shows the plain auto-dismissing Notice as before.
+- [ ] Margin comment answered by a broken CLI editor: the failed card offers **Show details** (before Retry); same on the side panel's comment row.
+- [ ] After Retry, Resolve, or Delete of that comment, Show details is gone; after an Obsidian restart the failed comment loads back with NO Show details (the capture died with the session).
+
 ## Motion (issue #14, 2026-08-05) — UNVERIFIED
 
 - [ ] Opening a finding card: one short fade/rise (~160ms); no flicker, no replay when a push-back reply refreshes the open card; placement identical to before.
 - [ ] Press feedback: rail rows/buttons, panel buttons (retry, acknowledge, filter, nav, Show details), card actions/copy visibly depress (~3% scale) on mousedown; the rail chevron still rotates correctly (no scale clobber).
 - [ ] With system reduced-motion on: card appears instantly (no half-played frame); pressed state still visible.
+
+## Double rail after aborted teardown (cross-generation leak, 2026-08-06) — UNVERIFIED
+
+The keyed-map fix is spec-covered (`mount-guard.spec.ts`); the visual outcome needs a live vault with hot-reload (`.hotreload` marker present).
+
+- [ ] Simulate an aborted teardown: in devtools, before disabling, make an early `onunload` step throw (e.g. `plugin.commentJobs.interruptAll = () => { throw new Error('boom') }` on the running plugin instance), then disable → enable (or trigger hot-reload). Every open markdown pane shows exactly ONE rail (previously: two, one frozen).
+- [ ] `document.querySelectorAll('.editor-ai-daemons-rail-wrapper').length` equals the number of open markdown panes after re-enable; same for `.editor-ai-daemons-margin` (when comments are enabled).
+- [ ] Collapse/expand the rail after the re-enable: no second rail disagreeing with the collapsed state.
+- [ ] Normal dev loop: repeated hot-reload cycles with a note open never accumulate wrappers.

@@ -61,6 +61,12 @@ Three toggles that decide what an editor is _allowed_ to be asked:
 
 An editor with review off is not broken; it simply is not a reviewer. The skip is reported so you can see why it did not take part.
 
+## Disabling an editor
+
+The **Enabled** toggle at the bottom of the dialog benches the whole persona. The moment you switch it off, the editor vanishes from every surface: its chip leaves the rail, its highlights leave the text, its section and findings leave the review panel, and [daemon refreshes](daemon-mode.md) stop running it.
+
+Nothing is deleted. The findings are hidden, not discarded — switch the editor back on and they return exactly as they were, no new review needed. (If a re-review of the note ran while the editor was off, that review replaced the note's results without it, so there is nothing to bring back.) Deleting an editor is different: its existing findings stay visible on the note, attributed to the name the run knew.
+
 ## Learning memory
 
 An extra block appended to the editor's system prompt.

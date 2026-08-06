@@ -7,10 +7,11 @@ import {
     bulkAcceptNotice,
     bulkDismissNotice,
     dismissableFindingIds,
+    globalDismissView,
     isBulkAcceptable,
     planBulkAccept
 } from './bulk-triage'
-import type { BulkCandidateFinding } from './bulk-triage'
+import type { BulkCandidateFinding, GlobalDismissCandidate } from './bulk-triage'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -290,6 +291,80 @@ describe('dismissableFindingIds', () => {
                 candidate({ id: 'done', status: 'accepted' })
             ])
         ).toEqual(['open', 'preview', 'stale', 'orphan'])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// globalDismissView
+// ---------------------------------------------------------------------------
+
+describe('globalDismissView', () => {
+    const owned = (
+        editorId: string,
+        options: Parameters<typeof candidate>[0]
+    ): GlobalDismissCandidate => ({ ...candidate(options), editorId })
+
+    it('counts every non-terminal finding across editors', () => {
+        const view = globalDismissView([
+            owned('editor-1', { id: 'a' }),
+            owned('editor-1', { id: 'b', status: 'preview' }),
+            owned('editor-2', { id: 'c', state: 'stale' }),
+            owned('editor-2', { id: 'd', unanchored: true })
+        ])
+        expect(view).toEqual({
+            visible: true,
+            count: 4,
+            text: 'Dismiss all findings (4)',
+            // WCAG 2.5.3 Label in Name: the accessible name must contain the
+            // visible label verbatim as a prefix.
+            ariaLabel: 'Dismiss all findings (4) from every editor of this note'
+        })
+        expect(view.ariaLabel.startsWith(view.text)).toBe(true)
+    })
+
+    it('advertises the same set dismissableFindingIds sweeps', () => {
+        const candidates = [
+            owned('editor-1', { id: 'open' }),
+            owned('editor-2', { id: 'preview', status: 'preview' }),
+            owned('editor-2', { id: 'gone', status: 'dismissed' })
+        ]
+        expect(globalDismissView(candidates).count).toBe(dismissableFindingIds(candidates).length)
+    })
+
+    it('hides when there is nothing to dismiss (no dead UI)', () => {
+        expect(globalDismissView([])).toEqual({
+            visible: false,
+            count: 0,
+            text: '',
+            ariaLabel: ''
+        })
+        expect(
+            globalDismissView([
+                owned('editor-1', { id: 'a', status: 'accepted' }),
+                owned('editor-2', { id: 'b', status: 'dismissed' })
+            ]).visible
+        ).toBe(false)
+    })
+
+    it('hides when a single editor owns every dismissable finding (its own row is the identical control)', () => {
+        const view = globalDismissView([
+            owned('editor-1', { id: 'a' }),
+            owned('editor-1', { id: 'b', status: 'preview' })
+        ])
+        expect(view.visible).toBe(false)
+        expect(view.count).toBe(2)
+    })
+
+    it('ignores terminal findings when counting contributing editors', () => {
+        // editor-2 only has terminal findings left, so the run is effectively
+        // single-editor and the per-editor row already covers it.
+        expect(
+            globalDismissView([
+                owned('editor-1', { id: 'a' }),
+                owned('editor-1', { id: 'b' }),
+                owned('editor-2', { id: 'c', status: 'accepted' })
+            ]).visible
+        ).toBe(false)
     })
 })
 

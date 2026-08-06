@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'bun:test'
+import type { Plugin } from 'obsidian'
 import {
     apiBackendSchema,
     editorConfigSchema,
     pluginSettingsSchema
 } from '../domain/settings/settings-schema'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
-import { desiredBulkCommands, diffBulkCommands } from './bulk-commands'
+import {
+    desiredBulkCommands,
+    diffBulkCommands,
+    registerGlobalDismissCommand
+} from './bulk-commands'
+import type { GlobalDismissController } from './bulk-commands'
 
 function makeSettings(editors: Record<string, unknown>[]): PluginSettingsV1 {
     return pluginSettingsSchema.parse({
@@ -98,5 +104,80 @@ describe('desiredBulkCommands', () => {
         const diff = diffBulkCommands(registered, desiredBulkCommands(makeSettings([])))
         expect([...diff.remove].sort()).toEqual(['accept-all-editor-1', 'dismiss-all-editor-1'])
         expect(diff.add).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------
+// registerGlobalDismissCommand
+// ---------------------------------------------------------------------------
+
+interface CapturedCommand {
+    readonly id: string
+    readonly name: string
+    readonly checkCallback?: (checking: boolean) => boolean
+}
+
+function fakePlugin(captured: CapturedCommand[]): Plugin {
+    return {
+        addCommand: (command: CapturedCommand): CapturedCommand => {
+            captured.push(command)
+            return command
+        }
+    } as unknown as Plugin
+}
+
+function fakeController(dismissable: boolean): {
+    controller: GlobalDismissController
+    dismissed: (string | null)[]
+} {
+    const dismissed: (string | null)[] = []
+    return {
+        controller: {
+            canDismissAll: (): boolean => dismissable,
+            dismissAllFindings: (editorId: string | null): void => {
+                dismissed.push(editorId)
+            }
+        },
+        dismissed
+    }
+}
+
+describe('registerGlobalDismissCommand', () => {
+    it('registers ONE static command with a stable, editor-free id', () => {
+        const captured: CapturedCommand[] = []
+        registerGlobalDismissCommand(fakePlugin(captured), fakeController(true).controller)
+        expect(captured.map((command) => ({ id: command.id, name: command.name }))).toEqual([
+            { id: 'dismiss-all-findings', name: 'Dismiss all findings' }
+        ])
+        expect(captured[0]?.checkCallback).toBeDefined()
+    })
+
+    it('is hidden when the active run has nothing to dismiss', () => {
+        const captured: CapturedCommand[] = []
+        const { controller, dismissed } = fakeController(false)
+        registerGlobalDismissCommand(fakePlugin(captured), controller)
+        expect(captured[0]?.checkCallback?.(true)).toBe(false)
+        // Even a direct (non-checking) invocation must not dispatch: Obsidian
+        // calls the same callback for hotkeys, so the gate runs both ways.
+        expect(captured[0]?.checkCallback?.(false)).toBe(false)
+        expect(dismissed).toEqual([])
+    })
+
+    it('reports available without dispatching while checking', () => {
+        const captured: CapturedCommand[] = []
+        const { controller, dismissed } = fakeController(true)
+        registerGlobalDismissCommand(fakePlugin(captured), controller)
+        expect(captured[0]?.checkCallback?.(true)).toBe(true)
+        expect(dismissed).toEqual([])
+    })
+
+    it('dismisses across EVERY editor of the run when invoked', () => {
+        const captured: CapturedCommand[] = []
+        const { controller, dismissed } = fakeController(true)
+        registerGlobalDismissCommand(fakePlugin(captured), controller)
+        expect(captured[0]?.checkCallback?.(false)).toBe(true)
+        // `null` is the controller's "every editor" scope — the whole point
+        // of the global command.
+        expect(dismissed).toEqual([null])
     })
 })

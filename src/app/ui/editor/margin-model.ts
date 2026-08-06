@@ -64,6 +64,13 @@ export interface MarginCommentInput {
     readonly editorName: string
     /** Whether the user expanded this card's body. */
     readonly expanded: boolean
+    /**
+     * Whether the session still holds the failed job's captured tool output
+     * (issue #42). Drives the "Show details" affordance only — the content
+     * itself never reaches this model (Business Rules #12: explicit gesture,
+     * rendered by the modal the glue opens).
+     */
+    readonly hasDiagnostics?: boolean
 }
 
 export interface MarginCardActions {
@@ -72,6 +79,8 @@ export interface MarginCardActions {
     readonly canCancel: boolean
     readonly canResolve: boolean
     readonly canDelete: boolean
+    /** The failed job's captured output is one explicit click away (issue #42). */
+    readonly canShowDetails: boolean
 }
 
 export interface MarginCardView {
@@ -217,7 +226,8 @@ function cardKey(card: MarginCardView): string {
         card.actions.canRetry,
         card.actions.canCancel,
         card.actions.canResolve,
-        card.actions.canDelete
+        card.actions.canDelete,
+        card.actions.canShowDetails
     ]
         .map((allowed) => (allowed ? '1' : '0'))
         .join('')
@@ -312,7 +322,10 @@ export function marginCardView(input: MarginCommentInput): MarginCardView {
             canRetry: view.canRetry && !orphaned,
             canCancel: view.canCancel,
             canResolve: view.canDismiss,
-            canDelete: true
+            canDelete: true,
+            // Only a failed card can have a capture, and only while the
+            // session that captured it is still alive (issue #42).
+            canShowDetails: comment.status === 'failed' && input.hasDiagnostics === true
         },
         accessibleName: cardAccessibleName(input, view)
     }

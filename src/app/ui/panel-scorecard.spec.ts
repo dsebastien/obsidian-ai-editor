@@ -30,6 +30,7 @@ function panel(overrides: Partial<PanelRunState> = {}): PanelRunState {
         result: result(),
         resultStale: false,
         error: null,
+        errorDiagnostics: null,
         ...overrides
     }
 }
@@ -72,6 +73,35 @@ describe('buildScorecardView status', () => {
         expect(view.status.label).toContain('member reviews below are unaffected')
         expect(view.status.detail).toBe('rate limit reached')
         expect(view.verdict).toBeNull()
+    })
+
+    it('carries the aggregation diagnostics through on failure, still behind reveal() (issue #42)', () => {
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const view = buildScorecardView(
+            panel({
+                status: 'error',
+                result: null,
+                error: 'The tool exited with status 1.',
+                errorDiagnostics: diagnostics
+            }),
+            []
+        )
+        expect(view.status.kind).toBe('failed')
+        expect(view.status.diagnostics).toBe(diagnostics)
+        // The status line never absorbs the content.
+        expect(view.status.detail).not.toContain('stderr text')
+        expect(view.status.label).not.toContain('stderr text')
+    })
+
+    it('exposes no diagnostics outside a failed aggregation', () => {
+        const diagnostics = { summary: 'stale', reveal: () => 'stale content' }
+        // A stale capture must not survive a status that is not `failed` —
+        // mirrors `statusOf`'s detail rule.
+        const view = buildScorecardView(
+            panel({ status: 'done', errorDiagnostics: diagnostics }),
+            []
+        )
+        expect(view.status.diagnostics).toBeNull()
     })
 
     it('points a missing aggregation backend at the setting that fixes it', () => {
@@ -382,5 +412,104 @@ describe('scorecardMemberName', () => {
 
     it('is just the name when the panel said nothing about the member', () => {
         expect(scorecardMemberName(base)).toBe('Hater')
+    })
+})
+
+/**
+ * Disabled-editor lens over the scorecard (Business Rules #21, adversarial
+ * review 2026-08-06): the section list below already hides a disabled
+ * member's persona, but the scorecard block kept its member row, dissent
+ * positions and top-fix credit visible. The lens filters the VIEW only — the
+ * stored result is untouched, so re-enabling restores every row.
+ */
+describe('buildScorecardView disabled-member lens', () => {
+    it('omits a disabled member row and keeps the rest', () => {
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    memberVerdicts: [
+                        { editorName: 'Hater', verdict: 'needs-work', keyPoint: 'Too soft' },
+                        { editorName: 'Beginner', verdict: 'publish' }
+                    ]
+                })
+            }),
+            [],
+            new Set(['Hater'])
+        )
+        expect(view.members.map((member) => member.editorName)).toEqual(['Beginner'])
+        // The panel-level synthesis is the panel's voice, not the member's.
+        expect(view.verdict).not.toBeNull()
+    })
+
+    it('drops a disabled member from missingMembers too', () => {
+        const view = buildScorecardView(
+            panel({ status: 'skipped', result: null, missingMembers: ['Hater'] }),
+            [],
+            new Set(['Hater'])
+        )
+        expect(view.missingMembers).toEqual([])
+        expect(view.members.map((member) => member.editorName)).toEqual(['Beginner'])
+    })
+
+    it('filters a disabled member out of dissent positions, dropping emptied entries', () => {
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    dissent: [
+                        {
+                            subject: 'Whether the opening works',
+                            positions: [
+                                { editorName: 'Hater', stance: 'It buries the point' },
+                                { editorName: 'Beginner', stance: 'Clear enough' }
+                            ]
+                        },
+                        {
+                            subject: 'Only the disabled member spoke',
+                            positions: [{ editorName: 'Hater', stance: 'Cut it all' }]
+                        }
+                    ]
+                })
+            }),
+            [],
+            new Set(['Hater'])
+        )
+        expect(view.dissent).toHaveLength(1)
+        expect(view.dissent[0]?.positions.map((p) => p.editorName)).toEqual(['Beginner'])
+    })
+
+    it('suppresses a disabled member credit on an unresolved top fix, keeping the action row', () => {
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    topFixes: [
+                        { action: 'Rewrite it', editorName: 'Hater', quote: 'the weak opening' }
+                    ]
+                })
+            }),
+            // No candidates: a disabled member's findings never reach the
+            // candidate list (`topFixCandidates` filters them), so the fix
+            // cannot resolve and the model's credit is all that is left.
+            [],
+            new Set(['Hater'])
+        )
+        expect(view.topFixes).toHaveLength(1)
+        expect(view.topFixes[0]?.action).toBe('Rewrite it')
+        expect(view.topFixes[0]?.editorName).toBeNull()
+        expect(view.topFixes[0]?.findingId).toBeNull()
+    })
+
+    it('defaults to no filtering — solo and all-enabled panels are untouched', () => {
+        const view = buildScorecardView(
+            panel({
+                result: result({
+                    memberVerdicts: [{ editorName: 'Hater', verdict: 'needs-work' }]
+                })
+            }),
+            []
+        )
+        expect(view.members.map((member) => member.editorName).sort()).toEqual([
+            'Beginner',
+            'Hater'
+        ])
     })
 })

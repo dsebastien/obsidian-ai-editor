@@ -1,5 +1,9 @@
 import type { FindingId } from '../domain/ids'
-import type { PanelDissent, Verdict } from '../domain/operations/contract'
+import type {
+    OperationErrorDiagnostics,
+    PanelDissent,
+    Verdict
+} from '../domain/operations/contract'
 import { resolveTopFix, scorecardMembers } from '../domain/panels/scorecard-model'
 import type { TopFixCandidate } from '../domain/panels/scorecard-model'
 import type {
@@ -43,6 +47,13 @@ export interface ScorecardStatus {
     readonly label: string
     /** Redacted backend message, when there is one. */
     readonly detail: string | null
+    /**
+     * What the failing aggregation backend captured (issue #42). Content is
+     * rendered ONLY behind an explicit gesture — the "Show details" modal —
+     * never inlined next to `detail` (Business Rules #12, see the contract
+     * field). Non-null only when `kind` is `failed`.
+     */
+    readonly diagnostics: OperationErrorDiagnostics | null
 }
 
 /** One ranked action, with the member finding it points at when it resolved. */
@@ -137,7 +148,12 @@ const STATUS_LABELS: Readonly<Record<ScorecardStatusKind, string>> = {
 
 function statusOf(panel: PanelRunState): ScorecardStatus {
     const kind = scorecardStatusKind(panel.status)
-    return { kind, label: STATUS_LABELS[kind], detail: kind === 'failed' ? panel.error : null }
+    return {
+        kind,
+        label: STATUS_LABELS[kind],
+        detail: kind === 'failed' ? panel.error : null,
+        diagnostics: kind === 'failed' ? panel.errorDiagnostics : null
+    }
 }
 
 /**
@@ -156,10 +172,22 @@ function membersOf(panel: PanelRunState): ScorecardMember[] {
     }))
 }
 
-/** Everything the side panel needs to render one panel run's scorecard. */
+/**
+ * Everything the side panel needs to render one panel run's scorecard.
+ *
+ * `disabledMemberNames` is the disabled-editor lens (Business Rules #21, the
+ * hide/purge contract in `editor-visibility.ts`) projected onto the
+ * scorecard's NAME-keyed rows — the run states carry the ids, the scorecard
+ * result only knows members by name. A disabled member's row, dissent
+ * positions and top-fix credit all disappear from the VIEW; the run's stored
+ * result is untouched, so re-enabling the editor brings every row straight
+ * back. The panel-level synthesis (verdict, rationale, ranked actions) stays:
+ * it is the panel's voice, not the member's.
+ */
 export function buildScorecardView(
     panel: PanelRunState,
-    candidates: readonly TopFixCandidate[]
+    candidates: readonly TopFixCandidate[],
+    disabledMemberNames: ReadonlySet<string> = new Set()
 ): ScorecardView {
     const result = panel.result
     return {
@@ -172,22 +200,34 @@ export function buildScorecardView(
                 ? null
                 : { verdict: result.recommendation, label: verdictLabel(result.recommendation) },
         rationale: result?.rationale ?? null,
-        members: membersOf(panel),
+        members: membersOf(panel).filter((member) => !disabledMemberNames.has(member.editorName)),
         topFixes: (result?.topFixes ?? []).map((fix, index) => {
             const resolved = resolveTopFix(fix, candidates)
+            // The RESOLVED owner wins over the credited one: the row is
+            // about to reveal that finding, so crediting anyone else is
+            // a provenance claim the click contradicts. The model's name
+            // stands only when nothing resolved (a structural fix) — and
+            // never when it names a disabled member (`candidates` already
+            // exclude their findings, so nothing of theirs can resolve;
+            // the fix itself stays, as the panel's ranked action).
+            const credited = resolved?.editorName ?? fix.editorName ?? null
             return {
                 rank: index + 1,
                 action: fix.action,
-                // The RESOLVED owner wins over the credited one: the row is
-                // about to reveal that finding, so crediting anyone else is
-                // a provenance claim the click contradicts. The model's name
-                // stands only when nothing resolved (a structural fix).
-                editorName: resolved?.editorName ?? fix.editorName ?? null,
+                editorName:
+                    credited !== null && disabledMemberNames.has(credited) ? null : credited,
                 findingId: resolved?.id ?? null
             }
         }),
-        dissent: result?.dissent ?? [],
-        missingMembers: panel.missingMembers
+        dissent: (result?.dissent ?? [])
+            .map((entry) => ({
+                ...entry,
+                positions: entry.positions.filter(
+                    (position) => !disabledMemberNames.has(position.editorName)
+                )
+            }))
+            .filter((entry) => entry.positions.length > 0),
+        missingMembers: panel.missingMembers.filter((name) => !disabledMemberNames.has(name))
     }
 }
 

@@ -55,7 +55,7 @@ Use a **privacy exclusion** instead when the content must never leave the vault 
 
 ## Be deliberate about daemon mode
 
-It is genuinely nice on a piece you are actively drafting and genuinely expensive on a long editing session. If you use it, raise the idle delay well above the default, and give the daemon-active editors a cheap model.
+It is genuinely nice on a piece you are actively drafting and genuinely expensive on a long editing session — which is why it is per note: flip it on for the draft you want watched and it dies with the note. If you use it (especially **Enable automatically for every note**), raise the idle delay well above the default, and give the daemon-active editors a cheap model.
 
 ## Park questions instead of breaking flow
 

@@ -251,6 +251,34 @@ describe('comment run protocol enforcement', () => {
         expect(run?.getState().error?.message).toEqual('bad key ***')
     })
 
+    it('carries the executor diagnostics through, still behind reveal() (issue #42)', async () => {
+        // Same seam as reviews: dropping the captured output here would leave
+        // a failed margin comment as opaque as reviews used to be (#39).
+        const diagnostics = { summary: 'The tool wrote 12 bytes.', reveal: () => 'stderr text' }
+        const req = request()
+        const controller = new CommentRunController(openGate())
+        const run = controller.start(
+            makeInput({
+                request: req,
+                execute: eventsExecutor([
+                    {
+                        type: 'error',
+                        runId: req.runId,
+                        error: {
+                            code: 'unknown',
+                            message: 'The tool exited with status 1.',
+                            diagnostics
+                        }
+                    }
+                ])
+            })
+        )
+        expect(await run?.settled).toEqual('error')
+        expect(run?.getState().error?.diagnostics).toBe(diagnostics)
+        // The message itself never absorbs the content.
+        expect(run?.getState().error?.message).not.toContain('stderr text')
+    })
+
     it('reports a backend that throws as an error, redacted', async () => {
         const controller = new CommentRunController(openGate())
         const run = controller.start(

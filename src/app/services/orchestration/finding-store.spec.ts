@@ -163,12 +163,16 @@ describe('FindingStore.accept', () => {
         expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'unanchored' })
     })
 
-    it('fails with stale after an overlapping edit', () => {
+    it('fails with stale-proposal after an overlapping edit, keeping the finding open', () => {
         const store = new FindingStore()
         const finding = store.add(makeInput())
         store.applyTextChanges([{ from: 5, to: 7, insertedLength: 1 }])
         expect(store.accept(finding.id, DOC).ok).toBeFalse()
-        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'stale' })
+        // Stale anchor → ONE UI-facing reason: the card offers regeneration.
+        expect(store.accept(finding.id, DOC)).toEqual({ ok: false, reason: 'stale-proposal' })
+        // The finding survives the failed accept (BR #16 — degrade, never
+        // silently drop): status stays 'open', not terminal.
+        expect(store.get(finding.id)?.status).toEqual('open')
     })
 
     it('fails with no-proposal when there is nothing to apply', () => {
@@ -195,16 +199,22 @@ describe('FindingStore.accept', () => {
         }
     })
 
-    it('fails with precondition-failed when the text drifted without remapping', () => {
+    it('fails with stale-proposal when the text drifted without remapping', () => {
         const store = new FindingStore()
         const finding = store.add(makeInput())
         const drifted = 'The QUICK brown fox jumps over the lazy dog'
+        // Precondition drift folds into the same UI-facing reason as a stale
+        // anchor: either way the proposal no longer applies and the card
+        // offers regeneration.
         expect(store.accept(finding.id, drifted)).toEqual({
             ok: false,
-            reason: 'precondition-failed'
+            reason: 'stale-proposal'
         })
         // The finding stays open — the user can regenerate, never auto-apply.
         expect(store.get(finding.id)?.status).toEqual('open')
+        // And a later accept against restored text still succeeds (the
+        // failure latched nothing).
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
     })
 })
 

@@ -19,6 +19,26 @@ export type RailEditorStatus =
     | 'error'
     | 'cancelled'
 
+/** The two editor-config fields that decide whether a chip exists at all. */
+export interface RailEligibleEditor {
+    readonly enabled: boolean
+    readonly capabilities: { readonly review: boolean }
+}
+
+/**
+ * Which configured editors get a chip on the rail: enabled AND
+ * review-capable. A DISABLED editor's chip disappears entirely (the toggle
+ * is the user's word that this persona stays quiet — its findings are
+ * hidden, not purged, by the same settings change), and a transform-only
+ * editor never had a review chip to begin with. Pure and spec-pinned here
+ * so the controller's projection cannot drift from the rail's contract.
+ */
+export function railEligibleEditors<T extends RailEligibleEditor>(
+    editors: readonly T[]
+): readonly T[] {
+    return editors.filter((editor) => editor.enabled && editor.capabilities.review)
+}
+
 /** Per-editor input state, projected by the run orchestrator. */
 export interface RailEditorState {
     readonly id: string
@@ -68,10 +88,11 @@ export interface RailState {
     /** True while a review run is in flight (button shows Cancel). */
     readonly running: boolean
     /**
-     * Whether daemon mode is on at all (the global `behavior.daemonMode`
-     * setting). Drives the rail's daemon toggle, which is present in both
-     * states — a control that only appears once enabled cannot be the thing
-     * that enables it.
+     * Whether daemon mode is on for THIS note (per-note runtime state,
+     * defaulting to `behavior.daemonAlwaysOn` — off unless that setting is
+     * on; the choice dies when the note closes). Drives the rail's daemon
+     * toggle, which is present in both states — a control that only appears
+     * once enabled cannot be the thing that enables it.
      */
     readonly daemonMode?: boolean
     /**
@@ -450,7 +471,7 @@ export function buildDaemonViewModel(
             label,
             ariaLabel: 'Daemon mode off',
             tooltip:
-                'Daemon mode is off — editors run only when you summon them. Turn it on to refresh reviews automatically after you pause; every refresh calls your backends.'
+                'Daemon mode is off for this note — editors run only when you summon them. Turn it on to refresh this note automatically after you pause, until you close it; every refresh calls your backends.'
         }
     }
     return {
@@ -460,8 +481,8 @@ export function buildDaemonViewModel(
         label,
         ariaLabel: armed ? 'Daemon mode on, refresh armed' : 'Daemon mode on',
         tooltip: armed
-            ? `${DAEMON_ARMED_TITLE}. Click to turn daemon mode off.`
-            : 'Daemon mode is on — a changed note refreshes after you pause. Click to turn it off.'
+            ? `${DAEMON_ARMED_TITLE}. Click to turn daemon mode off for this note.`
+            : 'Daemon mode is on for this note — it refreshes after you pause. Click to turn it off.'
     }
 }
 

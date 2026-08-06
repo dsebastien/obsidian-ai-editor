@@ -4,8 +4,9 @@ import { changesConflict, editsApplicable, planEditChanges } from '../domain/ope
 
 /**
  * Pure planning logic for bulk triage (plan M4 "Bulk triage": per-editor
- * accept/dismiss-all, accept-all-non-conflicting as ONE undoable
- * transaction). The glue supplies the candidate findings (already narrowed to
+ * accept/dismiss-all, run-level dismiss-all across every editor,
+ * accept-all-non-conflicting as ONE undoable transaction). The glue supplies
+ * the candidate findings (already narrowed to
  * the editor and to what the severity filter shows) plus the CURRENT document
  * text; these functions decide what can be applied, what must be skipped and
  * why, and how to word the outcome.
@@ -124,13 +125,73 @@ function firstFrom(changes: readonly EditChange[]): number {
     return changes.reduce((min, change) => Math.min(min, change.from), Number.MAX_SAFE_INTEGER)
 }
 
+/**
+ * Whether one finding can still be dismissed: any non-terminal status —
+ * stale and unanchored ones included, dismissing is always allowed.
+ */
+export function isDismissable(finding: BulkCandidateFinding): boolean {
+    return finding.status === 'open' || finding.status === 'preview'
+}
+
 /** The findings a "dismiss all" applies to: every non-terminal candidate. */
 export function dismissableFindingIds(
     candidates: readonly BulkCandidateFinding[]
 ): readonly string[] {
-    return candidates
-        .filter((finding) => finding.status === 'open' || finding.status === 'preview')
-        .map((finding) => finding.id)
+    return candidates.filter(isDismissable).map((finding) => finding.id)
+}
+
+/**
+ * Structural subset the GLOBAL dismiss view needs: the bulk candidate plus
+ * the editor that reported it (a `TrackedFinding` satisfies it as-is).
+ */
+export interface GlobalDismissCandidate extends BulkCandidateFinding {
+    readonly editorId: string
+}
+
+/**
+ * The side panel's run-level "Dismiss all findings (n)" affordance — the
+ * `dismiss-all-findings` palette command made visible. Pure projection over
+ * the SAME candidates the controller's `dismissAllFindings(null)` sweeps
+ * (severity filter already applied by the caller), so the button never
+ * promises a count the sweep would not dismiss.
+ */
+export interface GlobalDismissView {
+    /**
+     * False when the row must not render: nothing to dismiss (no dead UI),
+     * or every dismissable finding belongs to ONE editor — that editor's own
+     * section already carries the identical "Dismiss all (m)" control, and a
+     * second button doing the same thing is noise, not an affordance. The
+     * palette command stays available either way (its gate is count > 0).
+     */
+    readonly visible: boolean
+    /** Non-terminal candidates across every editor — what a click dismisses. */
+    readonly count: number
+    /** Button text, mirroring the per-editor row's count-in-label pattern. */
+    readonly text: string
+    /**
+     * Accessible name: starts with the visible label verbatim (WCAG 2.5.3
+     * Label in Name — speech-input users activate by speaking the visible
+     * text), then spells out the every-editor scope.
+     */
+    readonly ariaLabel: string
+}
+
+/** Builds the run-level dismiss view from the severity-filtered candidates. */
+export function globalDismissView(
+    candidates: readonly GlobalDismissCandidate[]
+): GlobalDismissView {
+    const dismissable = candidates.filter(isDismissable)
+    const count = dismissable.length
+    const editors = new Set(dismissable.map((finding) => finding.editorId))
+    if (count === 0 || editors.size < 2) {
+        return { visible: false, count, text: '', ariaLabel: '' }
+    }
+    return {
+        visible: true,
+        count,
+        text: `Dismiss all findings (${count})`,
+        ariaLabel: `Dismiss all findings (${count}) from every editor of this note`
+    }
 }
 
 /**
