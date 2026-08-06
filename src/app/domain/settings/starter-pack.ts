@@ -193,7 +193,7 @@ export const STARTER_EDITOR_SPECS: readonly StarterEditorSpec[] = [
     },
     {
         name: 'Fact Checker',
-        color: 'var(--color-blue)',
+        color: 'var(--color-yellow)',
         prompt: FACT_CHECKER_PROMPT,
         research: true
     },
@@ -221,7 +221,7 @@ export const STARTER_EDITOR_SPECS: readonly StarterEditorSpec[] = [
 export const REVISION_2_EDITOR_SPECS: readonly StarterEditorSpec[] = [
     {
         name: 'Grammar Editor',
-        color: 'var(--color-yellow)',
+        color: 'var(--color-pink)',
         prompt: GRAMMAR_PROMPT,
         research: false
     }
