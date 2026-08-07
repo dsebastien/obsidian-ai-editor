@@ -2,7 +2,7 @@
 
 User-facing configuration of the plugin (persisted in `data.json`, schema-versioned with migrations).
 
-## Settings tabs
+## Settings pages
 
 1. **Backends** — 1-n provider instances (Anthropic, OpenAI, OpenRouter, OpenAI-compatible with custom base URL, Azure OpenAI deployment-based, Ollama), each with label, credentials, default model, per-kind thinking/reasoning controls; CLI agents (explicit executable selection, consented health check) are M7. Global default backend. What makes a backend valid is one rule shared with the setup wizard (`domain/settings/backend-validation.ts`), messages included.
 2. **Editors** — persona gallery: name, color, prompt (textarea + ordered note-ref control + follow-links toggle), backend/model override, context policy (opt-in linked notes + cap), capabilities, optional learning memory (settings — with its own editable textarea — | vault note + path), enabled. The memory is injected into the editor's runs and REWRITTEN by the `Distill editor learnings` palette command (issue #4): available only when a memory-enabled editor has triage decisions recorded this session, one request on the editor's own backend, result saved only through an editable confirmation modal (Business Rules #22). `memoryText` is stripped from settings exports.

@@ -4,7 +4,6 @@ import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import {
     applyEntityDeletion,
     builtInActionLabel,
-    clampInt,
     computeDeletionImpact,
     decodeActionTarget,
     deletionImpactLines,
@@ -301,16 +300,6 @@ describe('moveItem', () => {
         expect(moveItem(['a', 'b'], 0, 0)).toBeNull()
         expect(moveItem(['a', 'b'], -1, 1)).toBeNull()
         expect(moveItem(['a', 'b'], 0, 2)).toBeNull()
-    })
-})
-
-describe('clampInt', () => {
-    test('clamps, parses, and falls back', () => {
-        expect(clampInt('5', 1, 10, 3)).toBe(5)
-        expect(clampInt('999', 1, 10, 3)).toBe(10)
-        expect(clampInt('-4', 1, 10, 3)).toBe(1)
-        expect(clampInt('abc', 1, 10, 3)).toBe(3)
-        expect(clampInt('  7  ', 1, 10, 3)).toBe(7)
     })
 })
 

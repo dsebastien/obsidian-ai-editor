@@ -150,7 +150,7 @@ export function decodeActionTarget(value: string): ActionTarget | null {
 export type DeletableEntityKind = 'backend' | 'editor' | 'panel'
 
 /** Copy of the settings with one entity removed (references left dangling). */
-export function withEntityRemoved(
+function withEntityRemoved(
     settings: PluginSettingsV1,
     kind: DeletableEntityKind,
     id: string
@@ -402,15 +402,6 @@ export function moveItem<T>(items: readonly T[], from: number, to: number): T[] 
     }
     next.splice(to, 0, moved)
     return next
-}
-
-/** Parses an integer from user input, clamped to [min, max]; fallback on NaN. */
-export function clampInt(raw: string, min: number, max: number, fallback: number): number {
-    const parsed = Number.parseInt(raw.trim(), 10)
-    if (Number.isNaN(parsed)) {
-        return fallback
-    }
-    return Math.min(max, Math.max(min, parsed))
 }
 
 /**

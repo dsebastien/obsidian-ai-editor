@@ -107,37 +107,13 @@
 
 /* ========================================
    SETTINGS TAB (src/app/settings/)
-   Tabbed settings UI. Layout via Tailwind
-   utilities; every color comes from Obsidian
-   theme variables so light/dark both work.
+   Settings UI. Obsidian renders the pages from
+   our declarative definitions (issue #35); what
+   remains here styles the bespoke bits our
+   `render:` escape hatches still build. Layout via
+   Tailwind utilities; every color comes from
+   Obsidian theme variables so light/dark both work.
    ======================================== */
-
-/* Tab bar */
-.editor-ai-daemons-settings-tabbar {
-    @apply flex flex-wrap gap-1 mb-6;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.editor-ai-daemons-settings-tab {
-    @apply cursor-pointer px-3 py-2;
-    border: none;
-    border-radius: var(--radius-s, 4px) var(--radius-s, 4px) 0 0;
-    border-bottom: 2px solid transparent;
-    background-color: transparent;
-    box-shadow: none;
-    color: var(--text-muted);
-}
-
-.editor-ai-daemons-settings-tab:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
-}
-
-.editor-ai-daemons-settings-tab.is-active {
-    border-bottom-color: var(--interactive-accent);
-    color: var(--text-normal);
-    font-weight: var(--font-semibold, 600);
-}
 
 /* Key-storage disclosure and intros */
 .editor-ai-daemons-settings-callout {
@@ -182,41 +158,6 @@
 .editor-ai-daemons-color-dot--ring {
     background-color: transparent;
     border: 3px solid var(--text-muted);
-}
-
-/* Card gallery (editors, panels) */
-.editor-ai-daemons-card-grid {
-    @apply mt-2 grid gap-3;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-}
-
-.editor-ai-daemons-card {
-    @apply flex flex-col gap-1.5 p-3;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background-color: var(--background-secondary);
-}
-
-.editor-ai-daemons-card.is-disabled {
-    @apply opacity-60;
-}
-
-.editor-ai-daemons-card-title {
-    @apply flex items-center font-medium;
-    color: var(--text-normal);
-}
-
-.editor-ai-daemons-card-sub {
-    @apply text-xs;
-    color: var(--text-muted);
-}
-
-.editor-ai-daemons-card-actions {
-    @apply mt-2 flex items-center justify-end gap-2;
-}
-
-.editor-ai-daemons-card-actions .checkbox-container {
-    margin-right: auto;
 }
 
 /* Chip lists (excluded folders / tags) */
@@ -340,8 +281,7 @@
    highlight. position: fixed; left/top are
    computed and viewport-clamped in code. The
    `editor-ai-daemons-finding-card*` names are distinct
-   from the settings gallery `editor-ai-daemons-card*`
-   block above and from rail/decoration classes.
+   from rail and decoration classes.
    ======================================== */
 
 /* Highlights are clickable — advertise it */

@@ -56,7 +56,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     control: {
                         type: 'number',
                         key: 'behavior.sizeWarningWords',
-                        defaultValue: 8_000,
                         min: 100,
                         max: 1_000_000,
                         step: 1,
@@ -69,7 +68,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     control: {
                         type: 'number',
                         key: 'behavior.maxConcurrentRequests',
-                        defaultValue: 3,
                         min: 1,
                         max: 10,
                         step: 1,
@@ -82,7 +80,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     control: {
                         type: 'number',
                         key: 'behavior.requestTimeoutSeconds',
-                        defaultValue: 600,
                         min: 30,
                         max: 3_600,
                         step: 1,
@@ -100,7 +97,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     control: {
                         type: 'number',
                         key: 'behavior.contextBudgetChars',
-                        defaultValue: 200_000,
                         min: 1_000,
                         max: 2_000_000,
                         step: 1,
@@ -146,7 +142,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     control: {
                         type: 'number',
                         key: 'behavior.daemonIdleSeconds',
-                        defaultValue: 3,
                         min: 1,
                         max: 600,
                         step: 1,
@@ -333,14 +328,21 @@ export function commentEditorOptions(ctx: TabContext): Record<string, string> {
 /**
  * Bounds validator for a numeric control.
  *
- * The imperative tab clamped out-of-range input and fell back to the last
- * committed value; a `control` has neither hook. What it does have is
- * `validate`, which rejects the change and shows the message inline BEFORE the
+ * The imperative tab clamped out-of-range input and fell back to the LAST
+ * COMMITTED value; a `control` has neither hook. What it does have is
+ * `validate`, which rejects the change and shows the message inline before the
  * value reaches storage — better than the old silent clamp, which changed the
- * user's number without saying so. Paired with `defaultValue`, which is what a
- * cleared field falls back to (the framework would otherwise submit 0, and
- * every one of these fields has a minimum above 0, so zod would reject a value
- * the user never typed).
+ * user's number without saying so.
+ *
+ * These controls deliberately declare NO `defaultValue` (adversarial review,
+ * 2026-08-07). `defaultValue` is documented as the fallback when the RESOLVER
+ * returns undefined/null, which ours never does for a key that resolves — and
+ * `settings-definitions.spec.ts` guarantees every declared key resolves. What
+ * it bought instead was a silent reset: clear a Context budget deliberately set
+ * to its 1,000 minimum and the field would persist the 200,000 schema default,
+ * widening a cost guardrail 200x without a word. With no default declared the
+ * cleared field fails this validator and is refused inline, which is the right
+ * answer whether the framework substitutes 0, NaN, or nothing at all.
  *
  * The same bounds live in `settings-schema.ts`. That is deliberate: this is the
  * affordance, the schema is the guarantee for anything arriving by another

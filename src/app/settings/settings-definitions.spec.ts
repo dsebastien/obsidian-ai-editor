@@ -141,3 +141,82 @@ describe('settings definitions', () => {
         expect(ctx.facade.getSettings()).toEqual(DEFAULT_PLUGIN_SETTINGS)
     })
 })
+
+/**
+ * Numeric controls replaced `clampInt`, which fell back to the LAST COMMITTED
+ * value on unusable input. The declarative API has no equivalent hook, and
+ * `defaultValue` is the wrong substitute: it is documented as the fallback for
+ * a resolver returning undefined/null, and declaring it turned a cleared field
+ * into a silent reset to the SCHEMA default — clearing a Context budget the
+ * user had deliberately pinned at its 1,000 minimum would persist 200,000,
+ * widening a cost guardrail 200x with no message (adversarial review,
+ * 2026-08-07).
+ *
+ * So: no numeric control declares `defaultValue`, and every one rejects the
+ * values a cleared or malformed field can produce. That holds whether the
+ * framework substitutes 0, NaN, or nothing.
+ */
+describe('numeric settings controls', () => {
+    interface NumberControl {
+        readonly key: string
+        readonly min: number
+        readonly max: number
+        readonly defaultValue?: unknown
+        readonly validate?: (value: number) => string | void
+    }
+
+    function numberControls(items: readonly unknown[]): NumberControl[] {
+        const found: NumberControl[] = []
+        const visit = (node: unknown): void => {
+            if (node === null || typeof node !== 'object') {
+                return
+            }
+            const record = node as Record<string, unknown>
+            const control = record['control'] as Record<string, unknown> | undefined
+            if (control && control['type'] === 'number') {
+                found.push(control as unknown as NumberControl)
+            }
+            const nested = record['items']
+            if (Array.isArray(nested)) {
+                for (const child of nested) {
+                    visit(child)
+                }
+            }
+        }
+        for (const item of items) {
+            visit(item)
+        }
+        return found
+    }
+
+    const controls = numberControls(behaviorPageItems(buildContext(DEFAULT_PLUGIN_SETTINGS)))
+
+    it('finds the numeric controls it means to check', () => {
+        expect(controls.length).toBeGreaterThan(0)
+        expect(controls.map((control) => control.key)).toContain('behavior.contextBudgetChars')
+    })
+
+    it('declares no defaultValue, so a cleared field cannot silently reset one', () => {
+        expect(controls.filter((control) => control.defaultValue !== undefined)).toEqual([])
+    })
+
+    it('rejects what a cleared or malformed field submits', () => {
+        for (const control of controls) {
+            expect(control.validate).toBeDefined()
+            // 0 and NaN are the plausible substitutes for an empty input; every
+            // one of these fields has a minimum above 0, so both must fail.
+            expect(control.validate?.(0)).toBeTypeOf('string')
+            expect(control.validate?.(Number.NaN)).toBeTypeOf('string')
+            expect(control.validate?.(control.min - 1)).toBeTypeOf('string')
+            expect(control.validate?.(control.max + 1)).toBeTypeOf('string')
+            expect(control.validate?.(control.min + 0.5)).toBeTypeOf('string')
+        }
+    })
+
+    it('accepts the bounds themselves', () => {
+        for (const control of controls) {
+            expect(control.validate?.(control.min)).toBeUndefined()
+            expect(control.validate?.(control.max)).toBeUndefined()
+        }
+    })
+})
