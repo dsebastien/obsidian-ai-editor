@@ -627,3 +627,99 @@ describe('DaemonScheduler pause/resume', () => {
         expect(scheduler.nextDueAt(PATH)).toEqual(3_000 + IDLE_MS)
     })
 })
+
+// ---------------------------------------------------------------------------
+// Immediate arm on enable (Sébastien, 2026-08-07)
+// ---------------------------------------------------------------------------
+
+describe('DaemonScheduler armImmediate', () => {
+    it('is due at once, with no idle window to wait out', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(1_000)
+        expect(scheduler.fire(PATH, 1_000, clearProbe())).toEqual({ action: 'dispatch' })
+    })
+
+    it('reviews a never-reviewed note on enable', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        expect(scheduler.fire(PATH, 1_000, clearProbe({ lastRunHash: null }))).toEqual({
+            action: 'dispatch'
+        })
+    })
+
+    it('spends no request when the note was already reviewed unchanged', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        expect(
+            scheduler.fire(PATH, 1_000, clearProbe({ currentHash: 'h', lastRunHash: 'h' }))
+        ).toEqual({ action: 'skip', reason: 'unchanged' })
+    })
+
+    it('still honours every other fire gate', () => {
+        const notReviewable = makeScheduler()
+        notReviewable.armImmediate(PATH, 1_000)
+        expect(notReviewable.fire(PATH, 1_000, clearProbe({ reviewable: false }))).toEqual({
+            action: 'skip',
+            reason: 'not-reviewable'
+        })
+
+        const oversized = makeScheduler()
+        oversized.armImmediate(PATH, 1_000)
+        expect(oversized.fire(PATH, 1_000, clearProbe({ oversized: true }))).toEqual({
+            action: 'skip',
+            reason: 'oversized',
+            logOversized: true
+        })
+
+        const paused = makeScheduler()
+        paused.armImmediate(PATH, 1_000)
+        paused.pause(PATH)
+        expect(paused.nextDueAt(PATH)).toBeNull()
+        expect(paused.fire(PATH, 1_000, clearProbe())).toEqual({
+            action: 'skip',
+            reason: 'paused'
+        })
+    })
+
+    it('no-ops while disabled and while a run is in flight', () => {
+        const disabled = makeScheduler(false)
+        disabled.armImmediate(PATH, 1_000)
+        expect(disabled.nextDueAt(PATH)).toBeNull()
+
+        // A run in flight IS the review the enable gesture asks for.
+        const running = makeScheduler()
+        running.syncRunState(PATH, true, 500)
+        running.armImmediate(PATH, 1_000)
+        expect(running.nextDueAt(PATH)).toBeNull()
+        // ...and it must not fabricate a re-arm at settle either.
+        running.syncRunState(PATH, false, 2_000)
+        expect(running.nextDueAt(PATH)).toBeNull()
+    })
+
+    it('reverts to the normal idle window on the next edit', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        scheduler.recordEdit(PATH, 2_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(2_000 + IDLE_MS)
+    })
+
+    it('does not survive resume: un-hiding waits the full quiet window', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        scheduler.pause(PATH)
+        scheduler.resume(PATH, 5_000)
+        expect(scheduler.nextDueAt(PATH)).toEqual(5_000 + IDLE_MS)
+    })
+
+    it('is consumed by its own fire — a second timer finds nothing armed', () => {
+        const scheduler = makeScheduler()
+        scheduler.armImmediate(PATH, 1_000)
+        expect(scheduler.fire(PATH, 1_000, clearProbe())).toEqual({ action: 'dispatch' })
+        expect(scheduler.nextDueAt(PATH)).toBeNull()
+        expect(scheduler.fire(PATH, 1_500, clearProbe())).toEqual({
+            action: 'skip',
+            reason: 'not-armed'
+        })
+    })
+})

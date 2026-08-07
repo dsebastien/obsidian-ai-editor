@@ -15,6 +15,11 @@
  *   the explicit user action authorizing automatic dispatches).
  * - A file arms on an edit and fires only after `idleMs` of inactivity;
  *   every further edit restarts the window.
+ * - ENABLING the daemon for a note arms it immediately (`armImmediate`,
+ *   Sébastien 2026-08-07): the toggle is itself the request for a review, so
+ *   the note must not sit findingless until the user happens to type. Only
+ *   the due time is bypassed — every gate below still applies, so an
+ *   already-reviewed, unchanged note costs nothing on re-enable.
  * - The idle window measures "has the user paused EDITING?" (issue #20,
  *   narrowed 2026-08-06): editor activity — cursor/selection movement,
  *   undo/redo, anything read-write about the text — postpones the window
@@ -94,6 +99,12 @@ interface PathState {
      * re-armed); null = not armed. */
     armedAt: number | null
     /**
+     * The arm is due IMMEDIATELY — `idleMs` does not apply (`armImmediate`,
+     * the enable gesture). Cleared by every other arming path, so a
+     * subsequent edit restores the normal quiet window.
+     */
+    immediate: boolean
+    /**
      * Timestamp of the last EDITOR-tier interaction while armed (issue #20;
      * triage never records here); null = none since arming. Postpones the
      * due time, never arms — cleared whenever the arm is consumed or
@@ -162,6 +173,9 @@ export class DaemonScheduler {
         if (state && state.armedAt !== null && !state.runInFlight) {
             state.armedAt = now
             state.lastActivityAt = null
+            // Un-hiding is not the enable gesture: the full quiet window
+            // applies again even if the arm was an immediate one.
+            state.immediate = false
         }
     }
 
@@ -179,6 +193,36 @@ export class DaemonScheduler {
         state.armedAt = now
         // The edit IS the latest activity; older activity must not linger.
         state.lastActivityAt = null
+        state.immediate = false
+    }
+
+    /**
+     * Arms `path` to fire NOW, bypassing the idle window: the daemon was just
+     * ENABLED for this note (Sébastien, 2026-08-07 — "as soon as the daemon is
+     * enabled, it should run a review"). Waiting `idleMs` for an edit that may
+     * never come left a freshly enabled note with no findings at all, which
+     * reads as the toggle doing nothing.
+     *
+     * This only sets the due time to now — every gate in `fire` still applies,
+     * so the enable never dispatches over an in-flight run, into an excluded
+     * or oversized note, or (crucially) over text that was ALREADY reviewed
+     * and has not changed since: re-enabling on an untouched note costs no
+     * request, because the findings it would produce already exist.
+     *
+     * No-ops while disabled or with a run in flight (that run IS the review
+     * the gesture asks for).
+     */
+    armImmediate(path: string, now: number): void {
+        if (!this.config.enabled) {
+            return
+        }
+        const state = this.stateOf(path)
+        if (state.runInFlight) {
+            return
+        }
+        state.armedAt = now
+        state.lastActivityAt = null
+        state.immediate = true
     }
 
     /**
@@ -235,6 +279,7 @@ export class DaemonScheduler {
         if (state.armedAt === null) {
             state.armedAt = now
             state.lastActivityAt = null
+            state.immediate = false
         }
         // Armed: deliberately untouched — triage never moves the idle window.
     }
@@ -255,6 +300,7 @@ export class DaemonScheduler {
                 state.runInFlight = true
                 state.armedAt = null
                 state.lastActivityAt = null
+                state.immediate = false
                 state.editedDuringRun = false
             }
             return
@@ -271,6 +317,7 @@ export class DaemonScheduler {
             // immediate back-to-back dispatch.
             state.armedAt = now
             state.lastActivityAt = null
+            state.immediate = false
         }
     }
 
@@ -320,7 +367,7 @@ export class DaemonScheduler {
         if (!state || state.armedAt === null || state.runInFlight || this.paused.has(path)) {
             return null
         }
-        return this.dueAtOf(state.armedAt, state.lastActivityAt)
+        return this.dueAtOf(state.armedAt, state.lastActivityAt, state.immediate)
     }
 
     /** Every file with a pending arm (timer resync after settings change). */
@@ -356,15 +403,17 @@ export class DaemonScheduler {
             state.runInFlight = true
             state.armedAt = null
             state.lastActivityAt = null
+            state.immediate = false
             state.editedDuringRun = true
             return { action: 'skip', reason: 'run-in-flight' }
         }
-        const dueAt = this.dueAtOf(state.armedAt, state.lastActivityAt)
+        const dueAt = this.dueAtOf(state.armedAt, state.lastActivityAt, state.immediate)
         if (now < dueAt) {
             return { action: 'wait', dueAt }
         }
         state.armedAt = null // consumed — every branch below is terminal
         state.lastActivityAt = null
+        state.immediate = false
         if (!probe.reviewable) {
             return { action: 'skip', reason: 'not-reviewable' }
         }
@@ -385,9 +434,14 @@ export class DaemonScheduler {
     /**
      * The armed window's expiry: `idleMs` after the LATEST of the arming edit
      * and any interaction recorded since (issue #20) — quiet means "no edits
-     * AND no activity", not merely "no keystrokes".
+     * AND no activity", not merely "no keystrokes". An IMMEDIATE arm
+     * (`armImmediate`, the enable gesture) is due at its arming instant: there
+     * is no edit burst to wait out.
      */
-    private dueAtOf(armedAt: number, lastActivityAt: number | null): number {
+    private dueAtOf(armedAt: number, lastActivityAt: number | null, immediate: boolean): number {
+        if (immediate) {
+            return armedAt
+        }
         return Math.max(armedAt, lastActivityAt ?? armedAt) + this.config.idleMs
     }
 
@@ -397,6 +451,7 @@ export class DaemonScheduler {
             state = {
                 armedAt: null,
                 lastActivityAt: null,
+                immediate: false,
                 runInFlight: false,
                 editedDuringRun: false
             }

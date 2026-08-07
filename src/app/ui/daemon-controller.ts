@@ -73,6 +73,13 @@ export interface DaemonControllerDeps {
     readonly port: DaemonReviewPort
     /** Armed-state changed for some file — refresh the rail indicator. */
     readonly onStateChange: () => void
+    /**
+     * Path of the note the user is currently looking at, or null when that
+     * is not a markdown note. Used ONLY to decide which note the
+     * `daemonAlwaysOn` flip should review immediately (see `settingsChanged`)
+     * — the per-note toggle already knows its own path.
+     */
+    readonly getActiveNotePath?: () => string | null
     readonly now?: () => number
     /**
      * Timer seam (same pattern as `CommentJobRegistry`): defaults to
@@ -169,6 +176,13 @@ export class DaemonController {
             this.clearTimer(path)
         }
         this.scheduler.setConfig(this.readConfig())
+        if (enabled) {
+            // The enable gesture IS the review request: arm now rather than
+            // waiting for an edit that may never come. The scheduler's gates
+            // still decide whether a request is actually spent.
+            this.scheduler.armImmediate(path, this.now())
+            this.syncTimer(path)
+        }
         this.deps.onStateChange()
     }
 
@@ -351,6 +365,7 @@ export class DaemonController {
             return
         }
         const alwaysOn = this.deps.getSettings().behavior.daemonAlwaysOn
+        const alwaysOnBefore = this.lastAlwaysOn
         if (alwaysOn !== this.lastAlwaysOn) {
             // The setting flip is authoritative: per-note session choices
             // are dropped so the new default applies to every note at once
@@ -366,6 +381,18 @@ export class DaemonController {
         this.failureTracker.reset()
         const armedBefore = this.scheduler.armedPaths()
         this.scheduler.setConfig(this.readConfig())
+        if (alwaysOn && alwaysOn !== alwaysOnBefore) {
+            // Turning always-on ON is an enable gesture like the rail toggle,
+            // so it too must review NOW rather than wait for an edit — but
+            // only for the note the user is actually looking at. Arming every
+            // open note would fan one settings click out into N unattended
+            // requests, which is exactly the cost profile daemon mode is
+            // careful about everywhere else.
+            const active = this.deps.getActiveNotePath?.() ?? null
+            if (active !== null && this.isEnabledFor(active)) {
+                this.scheduler.armImmediate(active, this.now())
+            }
+        }
         // Off: the scheduler cleared its arms — drop every real timer too.
         // On/idle change: re-derive each pending timer from the new config.
         for (const path of armedBefore) {

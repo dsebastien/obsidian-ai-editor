@@ -24,9 +24,15 @@ If you want daemon mode on everywhere without flipping it per note, enable **Set
 
 This is the one deliberate exception to "nothing runs automatically", and turning it on — per note, or for every note in settings — _is_ the explicit permission for it.
 
+## Turning it on reviews the note
+
+Enabling daemon mode is itself a request for a review, so the note is reviewed **immediately** — you do not have to type something first to see findings. That applies to the rail toggle, the palette command, and switching **daemon mode on by default** on in the settings (which reviews the note you are currently looking at, not every open note).
+
+All the conditions below still apply. In particular, re-enabling on a note you already reviewed and have not touched since costs nothing: its findings are already there.
+
 ## When a refresh happens
 
-All of these must hold:
+Apart from the enable itself, all of these must hold:
 
 - daemon mode is on **for that note**;
 - the note was **quiet** for the **idle delay** (default 3 seconds, range 1–600). Quiet means no editing — typing, moving the cursor or selecting text restarts the clock. Triaging findings does **not**: accepting, dismissing, scrolling the review panel or using a card leaves the clock running, so a re-review lands shortly after you stop typing even while you work through the findings;

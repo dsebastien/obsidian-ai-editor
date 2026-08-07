@@ -1,4 +1,4 @@
-import { Notice, Platform, Plugin, requireApiVersion } from 'obsidian'
+import { MarkdownView, Notice, Platform, Plugin, requireApiVersion } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
 import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings/settings-schema'
@@ -289,7 +289,9 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
             getSettings: () => this.settings,
             runController,
             port: reviewController,
-            onStateChange: () => reviewController.requestRefresh()
+            onStateChange: () => reviewController.requestRefresh(),
+            getActiveNotePath: () =>
+                this.app.workspace.getActiveViewOfType(MarkdownView)?.file?.path ?? null
         })
         this.daemonController = daemonController
         reviewController.attachDaemon(daemonController)

@@ -615,3 +615,113 @@ describe('DaemonController issue #23 suspension latch (always-on stays on)', () 
         controller.dispose()
     })
 })
+
+// ---------------------------------------------------------------------------
+// Review immediately on enable (Sébastien, 2026-08-07)
+// ---------------------------------------------------------------------------
+
+describe('DaemonController reviews on enable', () => {
+    let timers: FakeTimers
+
+    beforeEach(() => {
+        timers = makeFakeTimers()
+    })
+
+    function makeController(
+        getSettings: () => PluginSettingsV1,
+        port: DaemonReviewPort,
+        activePath: string | null = NOTE_PATH
+    ) {
+        let t = 0
+        const controller = new DaemonController({
+            getSettings,
+            runController: new RunController(),
+            port,
+            onStateChange: (): void => {
+                // State pulses are irrelevant to these specs.
+            },
+            getActiveNotePath: (): string | null => activePath,
+            now: (): number => t,
+            setTimer: timers.setTimer,
+            clearTimer: timers.clearTimer
+        })
+        return {
+            controller,
+            fireLater: (): void => {
+                t += 60_000
+                timers.fireAll()
+            }
+        }
+    }
+
+    it('dispatches on the per-note enable, with no edit and no idle wait', () => {
+        const settings = makeSettings([{ id: 'e-1', enabled: true }], false)
+        const { port, calls } = makePort()
+        const { controller } = makeController(() => settings, port)
+        controller.setEnabledFor(NOTE_PATH, true)
+        expect(controller.isArmed(NOTE_PATH)).toBe(true)
+        // No clock advance: the arm is due at the instant it was made.
+        timers.fireAll()
+        expect(calls).toEqual([{ path: NOTE_PATH, editorIds: null, panelId: null }])
+        controller.dispose()
+    })
+
+    it('arms only the enabled note, never its neighbours', () => {
+        const settings = makeSettings([{ id: 'e-1', enabled: true }], false)
+        const { port, calls } = makePort()
+        const { controller } = makeController(() => settings, port)
+        controller.setEnabledFor(NOTE_PATH, true)
+        timers.fireAll()
+        expect(calls.map((call) => call.path)).toEqual([NOTE_PATH])
+        controller.dispose()
+    })
+
+    it('does nothing on the DISABLE half of the toggle', () => {
+        const settings = makeSettings([{ id: 'e-1', enabled: true }], true)
+        const { port, calls } = makePort()
+        const { controller, fireLater } = makeController(() => settings, port)
+        controller.setEnabledFor(NOTE_PATH, false)
+        expect(controller.isArmed(NOTE_PATH)).toBe(false)
+        fireLater()
+        expect(calls).toEqual([])
+        controller.dispose()
+    })
+
+    it('reviews the ACTIVE note only when always-on is switched on', () => {
+        let settings = makeSettings([{ id: 'e-1', enabled: true }], false)
+        const { port, calls } = makePort()
+        const { controller } = makeController(() => settings, port)
+        // A neighbour that is open and edited must NOT be swept in: one
+        // settings click may cost one request, not one per open note.
+        controller.setEnabledFor('notes/other.md', true)
+        timers.fireAll() // flush that note's OWN enable dispatch
+        calls.length = 0
+        settings = makeSettings([{ id: 'e-1', enabled: true }], true)
+        controller.settingsChanged()
+        timers.fireAll()
+        expect(calls).toEqual([{ path: NOTE_PATH, editorIds: null, panelId: null }])
+        controller.dispose()
+    })
+
+    it('does not review when always-on is switched OFF', () => {
+        let settings = makeSettings([{ id: 'e-1', enabled: true }], true)
+        const { port, calls } = makePort()
+        const { controller, fireLater } = makeController(() => settings, port)
+        settings = makeSettings([{ id: 'e-1', enabled: true }], false)
+        controller.settingsChanged()
+        fireLater()
+        expect(calls).toEqual([])
+        controller.dispose()
+    })
+
+    it('tolerates no active markdown note when always-on is switched on', () => {
+        let settings = makeSettings([{ id: 'e-1', enabled: true }], false)
+        const { port, calls } = makePort()
+        const { controller, fireLater } = makeController(() => settings, port, null)
+        settings = makeSettings([{ id: 'e-1', enabled: true }], true)
+        controller.settingsChanged()
+        fireLater()
+        expect(calls).toEqual([])
+        controller.dispose()
+    })
+})
