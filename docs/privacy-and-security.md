@@ -45,7 +45,7 @@ For an API backend, one request carries:
 
 Nothing else. No vault listing, no file names beyond the ones attached, no metadata sweep.
 
-**Strip frontmatter** (Behavior tab, off by default) removes the leading frontmatter block from the reviewed note **and** from every attached note, in the request payload and in what the preview reports. Nothing else in the text is touched. When your selection is inside the frontmatter — you asked an action to rewrite the frontmatter itself — the block is sent, because it is the thing you pointed at.
+**Strip frontmatter** (Behavior page, off by default) removes the leading frontmatter block from the reviewed note **and** from every attached note, in the request payload and in what the preview reports. Nothing else in the text is touched. When your selection is inside the frontmatter — you asked an action to rewrite the frontmatter itself — the block is sent, because it is the thing you pointed at.
 
 Run **Preview what will be sent** to see the exact assembly for one editor and one note — total characters against the budget, one row per section with its size and whether the budget truncated or dropped it, and the verbatim system prompt with a copy button. It sends nothing. It assembles through the same code a real request uses, so it cannot drift from what would actually be sent.
 
@@ -59,7 +59,7 @@ The History tab keeps clipped records of what your editors said — including **
 
 - **If the vault syncs — Obsidian Sync, iCloud, Dropbox, Syncthing, git — the keys travel with it.**
 - Use minimal-scope keys, and rotate them if the vault ever leaks.
-- The Backends tab repeats this in a callout above the first field.
+- The Backends page repeats this in a callout above the first field.
 
 Keys and prompts are redacted from logs and error reports, and provider error bodies are never shown verbatim — a provider that echoes your key in an error message cannot leak it through a notice. [Exported settings](transfer.md) never contain a key.
 

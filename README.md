@@ -38,7 +38,7 @@ Editors are personas you define — a name, a colour, a prompt, optionally backe
 
 Enable as many as you want, and group them into panels that review together and produce one scorecard:
 
-![The Editors settings tab: the seeded editor cards with enable toggles, capabilities, and edit and delete buttons](docs/images/editors-tab.png)
+![The Editors settings page: the seeded editor cards with enable toggles, capabilities, and edit and delete buttons](docs/images/editors-tab.png)
 
 ## The screens, in words
 

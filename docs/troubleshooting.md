@@ -17,7 +17,7 @@ Slow local models are the usual cause. A 7B model on CPU, or any model with thin
 4. **Lower the context budget** or turn off **Include linked notes** on the editors involved. Fewer characters, faster answer.
 5. **Reduce concurrency.** **Max concurrent requests** at 3 means three models loading at once on the same machine; drop it to 1 for a local backend.
 
-**A CLI backend ignores that setting.** It carries its own **Timeout** on the backend itself (default 300 s). Raising the Behavior tab's request timeout does nothing for Claude Code or Codex.
+**A CLI backend ignores that setting.** It carries its own **Timeout** on the backend itself (default 300 s). Raising the Behavior page's request timeout does nothing for Claude Code or Codex.
 
 **Test connection uses its own 60-second bound**, so a local model still loading its weights can fail the test and work fine for a real review. The message says so when that is what happened.
 
@@ -52,7 +52,7 @@ The response is also refused if the envelope exceeds the safety bounds: more tha
 
 ## Failures, retries, and what the plugin does on its own
 
-Transient failures are retried automatically, a bounded number of times: a network blip or a 5xx gets a couple of attempts with a short backoff, a timeout and an unusable answer get one more attempt, a rate limit waits the time the provider asked for (up to 30 seconds). What is **never** retried: a rejected key (fix it in the Backends tab), an exhausted quota or credit (the message says so — paying is the fix, retrying is not), a cancelled run, and an answer that ran out of output space. A backend that keeps failing stops receiving automatic retries until a request succeeds, you run **Test connection**, or you change settings. [Daemon mode](daemon-mode.md) additionally turns itself off after three fully-failed automatic refreshes.
+Transient failures are retried automatically, a bounded number of times: a network blip or a 5xx gets a couple of attempts with a short backoff, a timeout and an unusable answer get one more attempt, a rate limit waits the time the provider asked for (up to 30 seconds). What is **never** retried: a rejected key (fix it in the Backends page), an exhausted quota or credit (the message says so — paying is the fix, retrying is not), a cancelled run, and an answer that ran out of output space. A backend that keeps failing stops receiving automatic retries until a request succeeds, you run **Test connection**, or you change settings. [Daemon mode](daemon-mode.md) additionally turns itself off after three fully-failed automatic refreshes.
 
 ## Findings appear under "Not anchored"
 
@@ -93,22 +93,22 @@ Skips are always reported, never silent. The reason is one of:
 
 | Message                                       | Fix                                                                   |
 | --------------------------------------------- | --------------------------------------------------------------------- |
-| _review capability disabled_                  | Editors tab → the editor → **Review**                                 |
-| _rewrite capability disabled_                 | Editors tab → the editor → **Rewrite** (transform actions need it)    |
+| _review capability disabled_                  | Editors page → the editor → **Review**                                |
+| _rewrite capability disabled_                 | Editors page → the editor → **Rewrite** (transform actions need it)   |
 | _no backend configured_                       | Set a global default backend, or assign one to the editor             |
 | _its backend no longer exists_                | Reassign the editor to a backend that exists                          |
-| _its backend is disabled_                     | Backends tab → enable it                                              |
+| _its backend is disabled_                     | Backends page → enable it                                             |
 | _its CLI backend has not been allowed to run_ | Grant launch consent on the backend's row                             |
 | _no model configured_                         | Set a default model on the backend, or a model override on the editor |
-| _the editor is disabled_                      | Editors tab → enable it                                               |
-| _the matching rule's panel no longer exists_  | Rules tab → repoint or delete the rule                                |
+| _the editor is disabled_                      | Editors page → enable it                                              |
+| _the matching rule's panel no longer exists_  | Rules page → repoint or delete the rule                               |
 
 ## The note is too big
 
 Notes above **Size warning threshold** (default 8000 words) ask for confirmation before anything is sent. Confirm, or:
 
 - **review a selection** instead of the whole note;
-- **raise the threshold** in the Behavior tab if you routinely work with long notes and know what it costs;
+- **raise the threshold** in the Behavior page if you routinely work with long notes and know what it costs;
 - from the CLI, pass `--confirm-large`.
 
 **Daemon mode silently skips oversized notes** rather than interrupting you with a dialog. If a note never refreshes automatically, its size is the first thing to check.
@@ -141,7 +141,7 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 - the pane is narrower than ~700px — the AI Editor Review panel is the surface below that;
 - you are in **Reading view**, which has no column. The comments still exist and are still listed in the panel;
-- **Margin comment column** is off in the Behavior tab, or you hit **Toggle the margin comment column**.
+- **Margin comment column** is off in the Behavior page, or you hit **Toggle the margin comment column**.
 
 **A comment says it is orphaned.** You edited away the text it quoted. The comment is kept with its original quote in a collapsed group at the top of the column rather than deleted. **Retry** refuses an orphaned comment: re-asking about text that no longer exists would answer a different question.
 
@@ -153,7 +153,7 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 ## Actions
 
-**An action is missing from the menu.** Unbound actions are hidden. Bound-but-undispatchable ones show the reason under their row in the Actions tab: no name, no instruction, no class chosen, a target that is disabled or deleted.
+**An action is missing from the menu.** Unbound actions are hidden. Bound-but-undispatchable ones show the reason under their row in the Actions page: no name, no instruction, no class chosen, a target that is disabled or deleted.
 
 **A custom action does nothing.** Check **What it does** is set. There is deliberately no default, and until you pick one the action stays out of every surface.
 

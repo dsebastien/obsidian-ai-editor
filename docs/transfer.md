@@ -44,7 +44,7 @@ But a stripped key protects nothing on its own: Ollama needs none, an OpenAI-com
 - the confirmation lists **the kind and the URL each one would send notes to**, plus whether it carries a custom request body;
 - it states **how many imported editors would take part in every review**.
 
-Enabling one means opening the Backends tab, where its URL is in front of you.
+Enabling one means opening the Backends page, where its URL is in front of you.
 
 **Imported CLI backends never carry consent** and always arrive off. You are asked again, about the executable that is actually on this machine. See [CLI backends](cli-backends.md).
 

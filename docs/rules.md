@@ -29,7 +29,7 @@ A **binding rule** decides, per scope of your vault, either **who reviews** thos
 2. Among the rest, **the first match from the top** assigns the reviewer. One rule, never a union of several.
 3. A note nothing matches is reviewed by every enabled editor.
 
-Use the arrows on each row to set priority. New rules are appended at the bottom, which is the lowest priority.
+Drag a row by its handle to set priority. New rules are appended at the bottom, which is the lowest priority.
 
 Each row shows what it currently resolves to, and says so when a rule does nothing.
 
@@ -54,7 +54,7 @@ The **OSK note type** match works two ways, and a rule matches either spelling:
 - when the [Obsidian Starter Kit](https://github.com/DeveloPassion/obsidian-starter-kit-plugin) plugin is installed, against its own type names (for example _Permanent Notes_);
 - always, against the `type/…` tag convention (for example `permanent_note`).
 
-The Rules tab tells you which of the two is active in your vault, and shows the spelling to use. The Starter Kit is optional and is never required — it is feature-detected, not depended on.
+The Rules page tells you which of the two is active in your vault, and shows the spelling to use. The Starter Kit is optional and is never required — it is feature-detected, not depended on.
 
 ## A rule is not a privacy exclusion
 
@@ -64,7 +64,7 @@ They look similar and they are not the same thing:
 | -------------------------- | -------------------------------------------------------------- | -------------------------------------------- |
 | Effect on the note         | No plugin surfaces, no AI                                      | Never sent to any backend                    |
 | Effect as _linked context_ | None — the note can still be attached to another note's review | Absolute: never attached, never followed     |
-| Configured in              | Rules tab                                                      | Behavior tab                                 |
+| Configured in              | Rules page                                                     | Behavior page                                |
 
 If the point is that a note's content must never leave the vault, use a privacy exclusion. Use a kill switch when the plugin is simply noise in that part of the vault.
 

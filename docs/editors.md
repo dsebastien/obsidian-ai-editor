@@ -9,7 +9,7 @@ An **editor** is an AI persona: a name, a colour, and a prompt saying what it ca
 
 **Settings → AI Editor → Editors → Add editor**, or select an existing one to open the same dialog.
 
-![The Editors settings tab: the seeded editor cards with enable toggles, capabilities, and edit and delete buttons](images/editors-tab.png)
+![The Editors settings page: the seeded editor cards with enable toggles, capabilities, and edit and delete buttons](images/editors-tab.png)
 
 ## The fields
 
@@ -60,6 +60,16 @@ Three toggles that decide what an editor is _allowed_ to be asked:
 - **Research** — may look things up when the backend supports it. Only the Fact Checker has it on by default.
 
 An editor with review off is not broken; it simply is not a reviewer. The skip is reported so you can see why it did not take part.
+
+## The order of editors
+
+The order editors appear in on the Editors page is the order they **run** in, and the order they appear in on the [persona rail](usage.md#the-persona-rail) and in the review panel. Drag a row by its handle to change it.
+
+Put the editors whose findings matter most to you first. Results stream in as each editor finishes, so run order decides what you read first — on a long note with several editors that is the difference between triaging what you care about immediately and waiting for it.
+
+The order applies to [panel](panels.md) runs too. A panel's membership says _who_ takes part, never in what sequence: members are always dispatched in the order they sit in on the Editors page, whatever order you added them to the panel.
+
+A disabled editor keeps its place in the list, so re-enabling it puts it back where you wanted it.
 
 ## Disabling an editor
 

@@ -37,7 +37,7 @@ Said plainly, because the consent you are asked for is only meaningful if it is 
 
 Both are asked for explicitly, both are recorded per backend, and both can be withdrawn.
 
-1. **Allowed to run.** Enabling a CLI backend opens a dialog that states what will happen, names the exact file that will run, and says you are responsible for what that program does. Until you agree, the backend is **skipped by every review and every action**, however its enable toggle reads. An enabled backend that has not been allowed is not a running backend, and the Backends tab says so on its row.
+1. **Allowed to run.** Enabling a CLI backend opens a dialog that states what will happen, names the exact file that will run, and says you are responsible for what that program does. Until you agree, the backend is **skipped by every review and every action**, however its enable toggle reads. An enabled backend that has not been allowed is not a running backend, and the Backends page says so on its row.
 2. **Tool and research mode.** A separate, stronger permission: the agent may read and write files and reach the network while it works. **Off by default.** Turning it on is its own dialog with its own wording. Turning it off later leaves the backend working, just without tools.
 
 The second consent is offered only where the plugin can actually enforce the off position. Claude Code can be run with all tools disabled, so it gets the toggle. Codex cannot — running commands is how it answers at all — so instead of a toggle that would do nothing, its settings row says so and describes what is enforced anyway.
@@ -49,7 +49,7 @@ The second consent is offered only where the plugin can actually enforce the off
 1. **Settings → AI Editor → Backends → Add backend** → **Claude Code (runs locally)** or **Codex (runs locally)**.
 2. **Executable**: paste the full path, or select **Detect**. Detection walks a curated list of install locations — `~/.local/bin`, `~/.claude/local`, `~/.bun/bin`, `~/.volta/bin`, `~/.cargo/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` — and only asks the filesystem whether something is there. **It never runs anything and never searches `PATH`.** On Windows it deliberately returns nothing, because every candidate there is a `.cmd` shim the boundary would refuse. If it finds nothing, run `which claude` or `which codex` in a terminal and paste what it prints.
 3. Optionally set a **Default model**. Leave it empty to let the tool use its own current default.
-4. **Timeout**: how long one run may take before the tool and everything it started are stopped. Default **300 seconds**, range 10–3600. Agents are much slower than a chat completion, which is why this is separate from the request timeout in the Behavior tab — and why raising _that_ one does nothing for a CLI backend.
+4. **Timeout**: how long one run may take before the tool and everything it started are stopped. Default **300 seconds**, range 10–3600. Agents are much slower than a chat completion, which is why this is separate from the request timeout in the Behavior page — and why raising _that_ one does nothing for a CLI backend.
 5. **Test connection** runs one trivial review through the whole path — same executable, same temporary folder, same environment and timeout. It asks for the first consent before running, because running it _is_ launching the program.
 6. Save, then switch the backend on. Assign it to an editor or a panel like any other backend.
 

@@ -9,7 +9,7 @@ An **action** is a verb you run on selected text — or, for the two placement v
 
 Each action is bound to one editor (or, for review-class actions, a panel) in **Settings → AI Editor → Actions**. The starter pack binds sensible defaults, so the selection menu works out of the box.
 
-![The Actions settings tab: one row per built-in verb with its description and a binding dropdown](images/actions-tab.png)
+![The Actions settings page: one row per built-in verb with its description and a binding dropdown](images/actions-tab.png)
 
 ## The built-in verbs
 
@@ -73,7 +73,7 @@ A custom action's referenced vault notes are inlined into its instruction (up to
 
 - The note is [excluded](privacy-and-security.md) or a [rule](rules.md) switched the plugin off for it — nothing is offered at all.
 - The action is unbound — unbound actions are hidden rather than shown broken.
-- The action is bound but cannot run (its editor is disabled, its backend is gone, the rewrite capability is off, the class was never chosen). The Actions tab shows the reason under its row.
+- The action is bound but cannot run (its editor is disabled, its backend is gone, the rewrite capability is off, the class was never chosen). The Actions page shows the reason under its row.
 
 ## See what an action would send
 

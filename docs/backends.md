@@ -18,12 +18,12 @@ Both families are resolved through the same code path, so anything that can run 
 
 ## Add an API backend
 
-![The Backends settings tab: the plain-text API key warning callout, the global default backend, and a configured Ollama backend with an enable toggle](images/backends-tab.png)
+![The Backends settings page: the plain-text API key warning callout, the global default backend, and a configured Ollama backend with an enable toggle](images/backends-tab.png)
 
 1. **Settings → AI Editor → Backends → Add backend**, pick the provider, select **Add**.
 2. Fill in the fields the provider needs (below).
 3. Select **Add backend** to save.
-4. Set it as the **Global default backend** at the top of the tab — editors inherit it unless they override it — or assign it per editor.
+4. Set it as the **Global default backend** at the top of the page — editors inherit it unless they override it — or assign it per editor.
 
 ### Fields, by provider
 
