@@ -87,7 +87,7 @@ On top of that, **two separate consents**, both revocable, both recording _which
 
 ## Installation
 
-Requires Obsidian **1.12.2** or newer, on **desktop** (Windows, macOS, Linux).
+Requires Obsidian **1.13.0** or newer, on **desktop** (Windows, macOS, Linux).
 
 ### Community plugins
 

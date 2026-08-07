@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Platform, Plugin, requireApiVersion } from 'obsidian'
+import { MarkdownView, Notice, Platform, Plugin } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
 import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings/settings-schema'
@@ -65,8 +65,7 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
      */
     // `override` since the typings moved to 1.13.1: `Plugin.settings` is
     // declared as `settings?: unknown` on the base. Narrowing it here is the
-    // intended use; the base is types-only, so nothing changes at runtime and
-    // minAppVersion stays where it is.
+    // intended use; the base is types-only, so nothing changes at runtime.
     override settings: PluginSettingsV1 = DEFAULT_PLUGIN_SETTINGS
 
     /**
@@ -364,11 +363,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         registerEditorMenu(this, reviewController, () => this.settings)
         registerFileMenu(this, reviewController)
 
-        // CLI surface (interaction surfaces design §4): desktop-only and
-        // gated on the API release that shipped `registerCliHandler`
-        // (1.12.2). Runtime-guarded so `minAppVersion` stays untouched —
-        // older public releases simply have no CLI surface.
-        if (Platform.isDesktop && requireApiVersion('1.12.2')) {
+        // CLI surface (interaction surfaces design §4): desktop-only. The
+        // API-release guard that used to sit here retired with the 1.13.0
+        // `minAppVersion` floor (issue #35) — `registerCliHandler` shipped in
+        // 1.12.2, so every version that can load this plugin now has it.
+        if (Platform.isDesktop) {
             // `registerCliHandler` throws when the command is still
             // registered by a dying instance (double-load race — same
             // failure mode `registerReviewPanelView` heals). There is no

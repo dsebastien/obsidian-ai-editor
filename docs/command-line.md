@@ -13,7 +13,7 @@ obsidian editor-ai-daemons:status --file "Some Note" --format text
 obsidian editor-ai-daemons:cancel --file "Some Note"
 ```
 
-**Requires Obsidian 1.12.2 or newer**, on desktop — the same floor the plugin itself requires, since 1.12.2 is the release that added the API.
+**Desktop only.** The API this uses shipped in Obsidian 1.12.2, below the 1.13.0 floor the plugin itself requires, so any Obsidian that can run the plugin can run these.
 
 Not to be confused with [CLI backends](cli-backends.md), which are the other direction: an AI agent running on your machine _as_ a backend.
 

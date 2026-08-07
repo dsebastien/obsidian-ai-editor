@@ -169,7 +169,7 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 ## Commands are missing from the palette
 
-- **`editor-ai-daemons:*` CLI subcommands** need Obsidian 1.12.2 or newer — the same floor the plugin itself requires.
+- **`editor-ai-daemons:*` CLI subcommands** are desktop-only; they do not appear on mobile.
 - **Per-action and per-editor commands** are generated from your settings and disappear when the binding does.
 - **Triage commands** only appear when there is something to triage.
 - **Nothing at all for this note**: a [binding rule](rules.md) has switched the plugin off for it.

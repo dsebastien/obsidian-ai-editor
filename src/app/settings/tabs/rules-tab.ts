@@ -1,4 +1,4 @@
-import { Setting } from 'obsidian'
+import type { Setting, SettingDefinitionItem, SettingGroupItem } from 'obsidian'
 import type { BindingRule, RuleMatch } from '../../domain/settings/settings-schema'
 import { generateId } from '../../domain/ids'
 import { isStarterKitAvailable, readOskNoteTypes } from '../../ui/osk-note-types'
@@ -30,57 +30,73 @@ function firstOskTypeName(app: TabContext['app']): string | null {
 }
 
 /**
- * Rules tab: ordered binding rules. A rule matches notes by
+ * Rules page: ordered binding rules. A rule matches notes by
  * folder/tag/frontmatter/OSK note type and either assigns a default reviewer
  * (editor or panel) or disables the plugin entirely for that scope.
  *
  * The copy here states the evaluation order the engine actually implements
  * (`domain/rules/rule-engine.ts`): kill switches win from any position, then
  * the first matching assignment in list order.
+ *
+ * Declarative (issue #35): the rules are a `list`, which is what makes order
+ * load-bearing AND editable — the framework's drag handle calls `onReorder`,
+ * and its delete button calls `onDelete`, so the hand-rolled arrow-up /
+ * arrow-down / trash buttons are gone. `moveItem` still performs the move, so
+ * the persisted order is produced by the same helper as before.
+ *
+ * A rule row stays imperative (`render`): its fields live inside
+ * `settings.rules[]`, which no dot-path `control` key can address, and one row
+ * carries four to five interdependent controls (the value control's very TYPE
+ * depends on the match type) rather than a single value. The row body is the
+ * pre-#35 code minus the reorder and delete buttons the list now owns.
  */
-export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void {
+export function rulesPageItems(ctx: TabContext): SettingDefinitionItem[] {
     const settings = ctx.facade.getSettings()
+    const starterKitTypeCount = readOskNoteTypes(ctx.app).length
 
-    containerEl.createEl('p', {
-        cls: 'editor-ai-daemons-tab-intro',
-        text: 'The “Disable plugin” action is a kill switch: no rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.'
-    })
-    containerEl.createEl('p', {
-        cls: 'editor-ai-daemons-tab-intro',
-        text: 'Among the remaining rules, the first match from the top assigns who reviews the note — one rule, not a union. Use the arrows to set priority.'
-    })
-    containerEl.createEl('p', {
-        cls: 'editor-ai-daemons-tab-intro',
-        text: 'Notes no rule matches are reviewed by every enabled editor, which is also what happens when there are no rules at all.'
-    })
-    // Only mentioned when it is there. Telling a user who does not run the
-    // Starter Kit that it was "not detected" advertises a match type they
-    // cannot use and reads as a warning about something being wrong.
-    if (isStarterKitAvailable(ctx.app)) {
-        containerEl.createEl('p', {
-            cls: 'editor-ai-daemons-tab-intro',
-            text: `Obsidian Starter Kit detected — “OSK note type” lists its ${readOskNoteTypes(ctx.app).length} types to pick from. A note also matches by its type/… tag, so rules keep working if the Starter Kit is ever disabled.`
-        })
-    }
-
-    if (settings.rules.length === 0) {
-        containerEl.createEl('p', {
-            cls: 'editor-ai-daemons-empty-state',
-            text: 'No rules yet — every enabled editor reviews every note.'
-        })
-    }
-    settings.rules.forEach((rule, index) => {
-        renderRuleRow(containerEl, ctx, rule, index, settings.rules.length)
-    })
-
-    new Setting(containerEl)
-        .setName('Add rule')
-        .setDesc('New rules are appended at the bottom (lowest priority).')
-        .addButton((button) => {
-            button
-                .setButtonText('Add rule')
-                .setCta()
-                .onClick(() => {
+    return [
+        {
+            type: 'group',
+            heading: 'How rules are evaluated',
+            items: [
+                {
+                    name: 'Disabling the plugin is a kill switch',
+                    desc: 'No rail, no menu items, no commands, no AI for matching notes. It wins wherever it sits in the list.',
+                    // Explanatory copy, not a setting: keeping it out of search
+                    // stops it from outranking the rules themselves.
+                    searchable: false
+                },
+                {
+                    name: 'The first match assigns the reviewer',
+                    desc: 'Among the remaining rules, the first match from the top assigns who reviews the note — one rule, not a union. Drag a rule to change its priority.',
+                    searchable: false
+                },
+                {
+                    name: 'Notes no rule matches',
+                    desc: 'Reviewed by every enabled editor, which is also what happens when there are no rules at all.',
+                    searchable: false
+                },
+                {
+                    name: 'Obsidian Starter Kit detected',
+                    desc: `“OSK note type” lists its ${starterKitTypeCount} types to pick from. A note also matches by its type/… tag, so rules keep working if the Starter Kit is ever disabled.`,
+                    // Only mentioned when it is there. Telling a user who does
+                    // not run the Starter Kit that it was "not detected"
+                    // advertises a match type they cannot use and reads as a
+                    // warning about something being wrong.
+                    visible: () => isStarterKitAvailable(ctx.app),
+                    searchable: false
+                }
+            ]
+        },
+        {
+            type: 'list',
+            heading: 'Rules',
+            emptyState: 'No rules yet — every enabled editor reviews every note.',
+            addItem: {
+                name: 'Add rule',
+                // Appended at the bottom, i.e. lowest priority: a new rule must
+                // never silently outrank the ones already tuned above it.
+                action: (): void => {
                     commit(
                         ctx,
                         (draft) => {
@@ -95,17 +111,69 @@ export function renderRulesTab(containerEl: HTMLElement, ctx: TabContext): void 
                         },
                         { refresh: true }
                     )
-                })
-        })
+                }
+            },
+            // Rule order is the priority order the engine reads, so the drag
+            // handle is the priority control — nothing else sets it.
+            onReorder: (oldIndex: number, newIndex: number): void => {
+                commit(
+                    ctx,
+                    (draft) => {
+                        const next = moveItem(draft.rules, oldIndex, newIndex)
+                        if (next) {
+                            draft.rules = next
+                        }
+                    },
+                    { refresh: true }
+                )
+            },
+            // Deleted by id, not by index: the index identifies the row in the
+            // snapshot this render was built from, and resolving it against the
+            // draft would delete whatever now sits at that position. Nothing
+            // else in the settings references a rule, so there is no referential
+            // impact to confirm — unlike backends, editors and panels.
+            //
+            // The id is resolved from the LIVE settings, not the render-time
+            // `settings` snapshot: a drag reorders the array and the framework
+            // re-indexes its rows immediately, but our refresh only lands after
+            // the write persists. Deleting in that window against the snapshot
+            // resolves the wrong id — and rule order is first-match-wins, so it
+            // silently reroutes reviews (adversarial review, 2026-08-07).
+            onDelete: (index: number): void => {
+                const doomed = ctx.facade.getSettings().rules[index]
+                if (!doomed) {
+                    return
+                }
+                commit(
+                    ctx,
+                    (draft) => {
+                        draft.rules = draft.rules.filter((item) => item.id !== doomed.id)
+                    },
+                    { refresh: true }
+                )
+            },
+            items: settings.rules.map((rule, index) => ruleRowItem(ctx, rule, index))
+        }
+    ]
 }
 
-function renderRuleRow(
-    containerEl: HTMLElement,
-    ctx: TabContext,
-    rule: BindingRule,
-    index: number,
-    total: number
-): void {
+/** One rule as a list row: name and summary declared, controls rendered. */
+function ruleRowItem(ctx: TabContext, rule: BindingRule, index: number): SettingGroupItem {
+    const settings = ctx.facade.getSettings()
+    return {
+        name: `Rule ${index + 1}`,
+        desc: ruleSummary(settings, rule),
+        render: (setting: Setting): void => {
+            renderRuleControls(setting, ctx, rule)
+        }
+    }
+}
+
+/**
+ * The controls of a single rule row. Reorder and delete are NOT here: the list
+ * renders them from `onReorder` / `onDelete`.
+ */
+function renderRuleControls(row: Setting, ctx: TabContext, rule: BindingRule): void {
     const settings = ctx.facade.getSettings()
     const mutate = (
         mutator: (target: BindingRule) => void,
@@ -123,10 +191,7 @@ function renderRuleRow(
         )
     }
 
-    const row = new Setting(containerEl)
     row.setClass('editor-ai-daemons-rule-row')
-    row.setName(`Rule ${index + 1}`)
-    row.setDesc(ruleSummary(settings, rule))
     const starterKitAvailable = isStarterKitAvailable(ctx.app)
 
     row.addToggle((toggle) => {
@@ -188,7 +253,7 @@ function renderRuleRow(
     // own ("Permanent Notes"), not the tag spelling, and getting one character
     // wrong yields a rule that silently matches nothing. A value already set
     // but no longer in the registry (type renamed, Starter Kit disabled) is
-    // kept as its own option so opening this tab cannot rewrite the rule.
+    // kept as its own option so opening this page cannot rewrite the rule.
     const oskTypeNames =
         rule.match.matchType === 'osk-note-type'
             ? readOskNoteTypes(ctx.app)
@@ -261,54 +326,4 @@ function renderRuleRow(
             })
         })
     }
-    row.addExtraButton((button) => {
-        button
-            .setIcon('arrow-up')
-            .setTooltip('Move up')
-            .setDisabled(index === 0)
-            .onClick(() => {
-                commit(
-                    ctx,
-                    (draft) => {
-                        const next = moveItem(draft.rules, index, index - 1)
-                        if (next) {
-                            draft.rules = next
-                        }
-                    },
-                    { refresh: true }
-                )
-            })
-    })
-    row.addExtraButton((button) => {
-        button
-            .setIcon('arrow-down')
-            .setTooltip('Move down')
-            .setDisabled(index === total - 1)
-            .onClick(() => {
-                commit(
-                    ctx,
-                    (draft) => {
-                        const next = moveItem(draft.rules, index, index + 1)
-                        if (next) {
-                            draft.rules = next
-                        }
-                    },
-                    { refresh: true }
-                )
-            })
-    })
-    row.addExtraButton((button) => {
-        button
-            .setIcon('trash')
-            .setTooltip('Delete')
-            .onClick(() => {
-                commit(
-                    ctx,
-                    (draft) => {
-                        draft.rules = draft.rules.filter((item) => item.id !== rule.id)
-                    },
-                    { refresh: true }
-                )
-            })
-    })
 }

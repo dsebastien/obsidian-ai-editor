@@ -1,18 +1,18 @@
-import { PluginSettingTab } from 'obsidian'
-import type { App, Plugin } from 'obsidian'
+import { Notice, PluginSettingTab } from 'obsidian'
+import type { App, Plugin, SettingDefinitionItem } from 'obsidian'
 import { BUY_ME_A_COFFEE_BADGE_DATA_URL } from '../assets/buy-me-a-coffee'
 import { BUY_ME_A_COFFEE_URL, renderSupportSection } from '../ui/support-links'
+import { readControlValue, writeControlValue } from './control-bindings'
 import { createSettingsFacade } from './settings-facade'
 import type { SettingsFacade } from './settings-facade'
-import { renderBackendsTab } from './tabs/backends-tab'
-import { renderEditorsTab } from './tabs/editors-tab'
-import { renderPanelsTab } from './tabs/panels-tab'
-import { renderActionsTab } from './tabs/actions-tab'
-import { renderVoiceTab } from './tabs/voice-tab'
-import { renderRulesTab } from './tabs/rules-tab'
-import { renderBehaviorTab } from './tabs/behavior-tab'
+import { backendsPageItems } from './tabs/backends-tab'
+import { editorsPageItems } from './tabs/editors-tab'
+import { panelsPageItems } from './tabs/panels-tab'
+import { actionsPageItems } from './tabs/actions-tab'
+import { voicePageItems } from './tabs/voice-tab'
+import { rulesPageItems } from './tabs/rules-tab'
+import { behaviorPageItems } from './tabs/behavior-tab'
 import type { TabContext } from './tabs/shared'
-import { isTabNavigationKey, nextTabIndex } from './tab-keyboard'
 
 /**
  * The plugin instance as the settings tab sees it. When the plugin
@@ -23,52 +23,31 @@ import { isTabNavigationKey, nextTabIndex } from './tab-keyboard'
  */
 export type SettingsTabPlugin = Plugin & Partial<SettingsFacade>
 
-interface SettingsTabDefinition {
-    readonly id: string
-    readonly label: string
-    readonly render: (containerEl: HTMLElement, ctx: TabContext) => void
-}
-
-const SETTINGS_TABS: readonly SettingsTabDefinition[] = [
-    { id: 'backends', label: 'Backends', render: renderBackendsTab },
-    { id: 'editors', label: 'Editors', render: renderEditorsTab },
-    { id: 'panels', label: 'Panels', render: renderPanelsTab },
-    { id: 'actions', label: 'Actions', render: renderActionsTab },
-    { id: 'voice', label: 'Voice & style', render: renderVoiceTab },
-    { id: 'rules', label: 'Rules', render: renderRulesTab },
-    { id: 'behavior', label: 'Behavior', render: renderBehaviorTab }
-]
-
-/** DOM id of one tab button — the `aria-labelledby` target of its panel. */
-function tabDomId(tabId: string): string {
-    return `editor-ai-daemons-settings-tab-${tabId}`
-}
-
 /**
- * DOM id of the ONE tab panel. Constant on purpose: `renderAll` creates a
- * single panel element and re-renders its contents on every tab change, so a
- * per-tab id would make six of the seven `aria-controls` point at ids that are
- * not in the document — a dangling reference on every inactive tab, which is
- * worse than none. The panel says which tab it belongs to through
- * `aria-labelledby`, re-pointed at the active tab button each render.
- */
-const SETTINGS_PANEL_DOM_ID = 'editor-ai-daemons-settings-panel'
-
-/**
- * Tabbed settings tab (Backends / Editors / Panels / Actions / Voice & style
- * / Rules / Behavior). The active tab lives in memory only — reopening the
- * settings within a session restores it; restarting Obsidian resets it.
+ * Settings tab, declared rather than rendered (issue #35).
  *
- * NOTE: member names deliberately avoid Obsidian `SettingTab` reserved names
- * (`update`, `settingItems`, `getControlValue`, …) — see AGENTS.md.
+ * `getSettingDefinitions` returns one `page` per former tab — Backends,
+ * Editors, Panels, Actions, Voice & style, Rules, Behavior — in the order the
+ * hand-built tab bar used. Obsidian owns navigation, focus and the ARIA
+ * plumbing from here on, and indexes every declared `name`/`desc` so a setting
+ * is reachable from the settings search without knowing which page holds it.
+ *
+ * Scalars declared as `control` definitions are addressed by DOT PATH into
+ * `PluginSettingsV1`; `getControlValue`/`setControlValue` below are the two
+ * ends of that bridge (see `control-bindings.ts`). Every write still goes
+ * through the facade's `update`, the single persistence path — the declarative
+ * API changed how settings are described, not how they are stored.
+ *
+ * NOTE: member names deliberately avoid Obsidian `SettingTab` reserved names.
+ * That constraint is no longer theoretical: this class overrides `update`'s
+ * callers, `getSettingDefinitions`, `getControlValue` and `setControlValue`,
+ * and inherits `settingItems`, `refreshDomState`, `display` and `hide` — so a
+ * private helper named after any of them would shadow framework behaviour
+ * rather than merely look confusing.
  */
 export class AIEditorPluginSettingTab extends PluginSettingTab {
     plugin: SettingsTabPlugin
     private readonly facade: SettingsFacade
-    private activeTabId: string
-    private tabVisible = false
-    /** True while a re-render was caused by the user moving between tabs. */
-    private pendingTabFocus = false
 
     /** Clears review history (issue #21); wired by the plugin after load. */
     clearHistory: (() => void) | undefined
@@ -78,121 +57,114 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
         this.plugin = plugin
         const created = createSettingsFacade(plugin)
         this.facade = created.facade
-        this.activeTabId = SETTINGS_TABS[0]?.id ?? 'backends'
-        // Re-render once persisted settings are loaded, if the tab is open.
+        // Settings arrive asynchronously; re-read the definitions once they do
+        // so both the rendered pane and the search index reflect them.
         void created.ready.then(() => {
-            if (this.tabVisible) {
-                this.renderAll()
-            }
+            this.update()
         })
     }
 
-    override display(): void {
-        this.tabVisible = true
-        this.renderAll()
-    }
-
-    override hide(): void {
-        this.tabVisible = false
-        super.hide()
-    }
-
-    private renderAll(): void {
-        const { containerEl } = this
-        containerEl.empty()
-
-        const tabBar = containerEl.createDiv({
-            cls: 'editor-ai-daemons-settings-tabbar',
-            attr: { 'role': 'tablist', 'aria-label': 'AI Editor settings sections' }
-        })
-        const activeIndex = Math.max(
-            0,
-            SETTINGS_TABS.findIndex((tab) => tab.id === this.activeTabId)
-        )
-        const content = containerEl.createDiv({
-            cls: 'editor-ai-daemons-settings-content',
-            attr: {
-                'role': 'tabpanel',
-                // Programmatically focusable so activating a tab can put focus
-                // on the section it just revealed — see `selectTab`.
-                'tabindex': '-1',
-                'id': SETTINGS_PANEL_DOM_ID,
-                'aria-labelledby': tabDomId(this.activeTabId)
-            }
-        })
-
-        let activeButton: HTMLElement | null = null
-        SETTINGS_TABS.forEach((tab, index) => {
-            const isActive = index === activeIndex
-            const button = tabBar.createEl('button', {
-                cls: isActive
-                    ? 'editor-ai-daemons-settings-tab is-active'
-                    : 'editor-ai-daemons-settings-tab',
-                text: tab.label,
-                attr: {
-                    'role': 'tab',
-                    'type': 'button',
-                    'id': tabDomId(tab.id),
-                    'aria-selected': String(isActive),
-                    'aria-controls': SETTINGS_PANEL_DOM_ID,
-                    // Roving tabindex: ONE stop for the whole bar. Tab moves
-                    // past the tablist to the settings themselves, arrows move
-                    // within it — the ARIA tabs pattern, and the reason the
-                    // arrow handler below is not optional once `role=tab` is
-                    // on these buttons.
-                    'tabindex': isActive ? '0' : '-1'
-                }
-            })
-            if (isActive) {
-                activeButton = button
-            }
-            button.addEventListener('click', () => {
-                this.selectTab(tab.id)
-            })
-            button.addEventListener('keydown', (event: KeyboardEvent) => {
-                if (!isTabNavigationKey(event.key)) {
-                    return
-                }
-                event.preventDefault()
-                const target = nextTabIndex(event.key, index, SETTINGS_TABS.length)
-                const next = SETTINGS_TABS[target]
-                if (next) {
-                    this.selectTab(next.id)
-                }
-            })
-        })
-
-        const activeTab = SETTINGS_TABS[activeIndex]
-        if (activeTab) {
-            const ctx: TabContext = {
-                app: this.app,
-                facade: this.facade,
-                refresh: () => this.renderAll(),
-                ...(this.clearHistory ? { clearHistory: this.clearHistory } : {})
-            }
-            activeTab.render(content, ctx)
-        }
-
-        // Outside the tab panel on purpose: the support section belongs to no
-        // section, so putting it in one would hide it from everybody who never
-        // opens that section — and would make it part of the panel a screen
-        // reader announces for the tab.
-        this.renderSupport(containerEl)
-
-        this.restoreTabFocus(activeButton)
+    override getSettingDefinitions(): SettingDefinitionItem[] {
+        const ctx = this.buildContext()
+        return [
+            { type: 'page', name: 'Backends', items: backendsPageItems(ctx) },
+            { type: 'page', name: 'Editors', items: editorsPageItems(ctx) },
+            { type: 'page', name: 'Panels', items: panelsPageItems(ctx) },
+            { type: 'page', name: 'Actions', items: actionsPageItems(ctx) },
+            { type: 'page', name: 'Voice & style', items: voicePageItems(ctx) },
+            { type: 'page', name: 'Rules', items: rulesPageItems(ctx) },
+            { type: 'page', name: 'Behavior', items: behaviorPageItems(ctx) },
+            this.supportItem()
+        ]
     }
 
     /**
-     * The support calls to action. Wording and URLs live in
-     * `ui/support-links.ts` — the one place the whole plugin collection shares
-     * — so this tab renders exactly what the "What's new" tab, the README and
-     * the docs site say. Only the Buy me a coffee badge is plugin-local (the
-     * image asset is), which is why it arrives as a callback.
+     * Reads the value behind a `control` key. The key is a dot path into
+     * `PluginSettingsV1`; an unresolvable one yields `undefined`, which the
+     * framework reads as "use the declared default" rather than throwing
+     * mid-render (`control-bindings.spec.ts` is what stops that degradation
+     * from going unnoticed).
      */
-    private renderSupport(containerEl: HTMLElement): void {
-        renderSupportSection(containerEl, (el) => {
-            this.renderBuyMeACoffeeBadge(el)
-        })
+    override getControlValue(key: string): unknown {
+        return readControlValue(this.facade.getSettings(), key)
+    }
+
+    /**
+     * Persists a `control` edit through the facade — the same `update` every
+     * other settings surface uses, so the value is schema-validated and
+     * saved in exactly one place.
+     *
+     * Two distinct failures are surfaced the same way: `update` rejecting
+     * (the write never landed on disk — e.g. zod refused the value, or the
+     * save failed) and `writeControlValue` refusing the path (the key
+     * addresses a field the schema does not define, so nothing was mutated).
+     *
+     * Both then REJECT the returned promise rather than resolving it. A
+     * fulfilled promise tells the framework the write succeeded, so it keeps
+     * the control showing a value that was never stored — the transient Notice
+     * scrolls away and the pane goes on lying until something forces a
+     * re-render (adversarial review, 2026-08-07). Rejecting lets the framework
+     * roll the control back to `getControlValue`'s answer, which is the truth.
+     */
+    override async setControlValue(key: string, value: unknown): Promise<void> {
+        let landed = false
+        try {
+            await this.facade.update((draft) => {
+                landed = writeControlValue(draft, key, value)
+            })
+        } catch (error) {
+            new Notice('AI Editor: failed to save settings.')
+            throw error
+        }
+        if (!landed) {
+            new Notice('AI Editor: failed to save settings.')
+            throw new Error(`Setting "${key}" does not address a known field.`)
+        }
+    }
+
+    /**
+     * Everything a page module needs. Rebuilt on every `getSettingDefinitions`
+     * call so `clearHistory` — wired by the plugin AFTER construction — is
+     * picked up, and so `refresh` re-reads the definitions (`update`) rather
+     * than re-running a render of our own: the framework owns the DOM now.
+     */
+    private buildContext(): TabContext {
+        return {
+            app: this.app,
+            facade: this.facade,
+            refresh: (): void => {
+                this.update()
+            },
+            ...(this.clearHistory ? { clearHistory: this.clearHistory } : {})
+        }
+    }
+
+    /**
+     * The support calls to action, at the root of the tree rather than inside
+     * a page: they belong to no section, so burying them in one would hide
+     * them from everybody who never opens that section.
+     *
+     * A `render` escape hatch because `renderSupportSection` builds its own
+     * `Setting` rows — wording and URLs live in `ui/support-links.ts`, the one
+     * place the whole plugin collection shares, so this tab shows exactly what
+     * the "What's new" tab, the README and the docs site say. Only the Buy me
+     * a coffee badge is plugin-local (the image asset is), which is why it
+     * arrives as a callback. The row Obsidian created for the definition is
+     * removed: the section renders into the group itself.
+     */
+    private supportItem(): SettingDefinitionItem {
+        return {
+            name: 'Support',
+            // Not a setting: keeping it out of search stops it answering
+            // queries that are looking for something configurable.
+            searchable: false,
+            render: (setting, group): void => {
+                renderSupportSection(group.listEl, (el) => {
+                    this.renderBuyMeACoffeeBadge(el)
+                })
+                setting.settingEl.remove()
+            }
+        }
     }
 
     /** The Buy me a coffee badge, as an image link. */
@@ -202,36 +174,5 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
         imgEl.src = BUY_ME_A_COFFEE_BADGE_DATA_URL
         imgEl.alt = 'Buy me a coffee'
         imgEl.width = 175
-    }
-
-    /**
-     * Switches tabs and re-renders. Selection FOLLOWS focus (the pattern's
-     * default for a bar whose panels are cheap to build), so an arrow key
-     * both moves and activates — one gesture, and the panel under the tab is
-     * always the one being announced.
-     */
-    private selectTab(tabId: string): void {
-        if (this.activeTabId === tabId) {
-            return
-        }
-        this.activeTabId = tabId
-        this.pendingTabFocus = true
-        this.renderAll()
-    }
-
-    /**
-     * `renderAll` empties the whole container, so the element the user was
-     * standing on is destroyed along with everything else — focus falls back
-     * to the document and a keyboard user loses the bar entirely after one
-     * arrow press. Focus is put back on the tab they moved to, and only when
-     * the re-render came from THEIR action (never on the load-time re-render,
-     * which would steal focus from wherever they had got to).
-     */
-    private restoreTabFocus(activeButton: HTMLElement | null): void {
-        if (!this.pendingTabFocus) {
-            return
-        }
-        this.pendingTabFocus = false
-        activeButton?.focus()
     }
 }

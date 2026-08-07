@@ -42,7 +42,7 @@
         "tsc": "tsc --noEmit",
         "tsc:watch": "tsc --noEmit --watch --preserveWatchOutput",
         "tscw": "bun run tsc:watch",
-        "lint": "eslint . --max-warnings 1",
+        "lint": "eslint . --max-warnings 0",
         "lint:fix": "eslint . --fix",
         "format": "prettier --write .",
         "format:check": "prettier --check .",

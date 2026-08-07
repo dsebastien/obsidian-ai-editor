@@ -23,7 +23,7 @@ import { createNoteResolver } from './resolve-note-path'
  * them.
  *
  * Same caller contract as `registerReviewCli`: the plugin `onload` guards
- * registration with `Platform.isDesktop && requireApiVersion('1.12.2')` and
+ * registration with `Platform.isDesktop` and
  * wraps each call in a try/catch — `registerCliHandler` throws when the
  * command is still registered by a dying instance (double-load race), and
  * the plugin then degrades to no CLI surface for that subcommand.

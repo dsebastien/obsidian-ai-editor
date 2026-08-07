@@ -7,9 +7,11 @@ nav_order: 80
 
 Every setting, where it lives, and what it defaults to. Settings are stored in this plugin's `data.json` inside your vault — see [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
-**Settings → AI Editor** has seven tabs: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
+**Settings → AI Editor** has seven pages: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
 
-## Behavior tab
+Requires Obsidian **1.13.0** or newer. The settings use Obsidian's declarative settings API, so individual settings are reachable from Obsidian's own settings search — you can type "idle delay" or "strip frontmatter" without knowing which page holds it. Collections (backends, editors, panels, actions, rules) support drag-to-reorder and keyboard delete.
+
+## Behavior page
 
 ### Setup
 
@@ -68,7 +70,7 @@ Up to 200 folders and 200 tags.
 
 See [Move settings between vaults](transfer.md).
 
-## Backends tab
+## Backends page
 
 | Setting                    | Type     | Default | What it does                                                                               |
 | -------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------ |
@@ -108,7 +110,7 @@ Up to 50 backends.
 
 See [CLI backends](cli-backends.md).
 
-## Editors tab
+## Editors page
 
 Up to 200 editors. Per editor:
 
@@ -138,7 +140,7 @@ Up to 200 editors. Per editor:
 
 See [Create and tune editors](editors.md).
 
-## Panels tab
+## Panels page
 
 Up to 50 panels, 1–20 members each.
 
@@ -154,7 +156,7 @@ Up to 50 panels, 1–20 members each.
 
 See [Work with panels](panels.md).
 
-## Actions tab
+## Actions page
 
 Up to 200 bindings. Nine built-in verbs plus your own custom actions.
 
@@ -167,7 +169,7 @@ Up to 200 bindings. Nine built-in verbs plus your own custom actions.
 
 See [Run actions on a selection](actions.md).
 
-## Voice & style tab
+## Voice & style page
 
 ![The Voice & style settings tab: the voice profile textarea and an ordered list of voice profile notes resolved from the vault](images/voice-and-style-tab.png)
 
@@ -177,7 +179,7 @@ See [Run actions on a selection](actions.md).
 | **Voice profile notes** | note refs | empty   |
 | **Follow links**        | toggle    | `on`    |
 
-## Rules tab
+## Rules page
 
 Up to 200 rules, evaluated in list order with kill switches winning from anywhere.
 

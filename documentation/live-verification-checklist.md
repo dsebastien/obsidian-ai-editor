@@ -230,7 +230,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Turn on the OS "reduce motion" setting: the rail dots, the daemon dot, the panel ring, the review spinner, the chip-click flash and the in-flight thread message all stop moving, and every one of those states is still readable.
 - Three editors on one note: their highlights differ by underline STYLE as well as by tint. Hover one — the tooltip names the editor, the severity and, in a panel run, the panel. Edit the quoted text: the tooltip says stale.
 - A theme that restyles `mark` in reading view must not change anything in the editor (the marks are still `<span>`s — this is the check that the rejected `<mark>` decision was the right one).
-- Settings, keyboard only: Tab lands ONCE on the tab bar, Arrow Left/Right cycles with wrap, Home/End jump, the panel changes with the tab, and focus stays on the tab after each move. Then Tab moves into the settings themselves.
+- Settings, keyboard only: navigation between the seven pages is Obsidian's own (declarative settings API, issue #35) — we no longer own a tab bar, so there is nothing plugin-specific to verify here beyond the pages being reachable and each one rendering its controls.
 - Pick a persona colour with the keyboard: the check appears on the chosen swatch and focus is on it, not lost to the document.
 - Tab to a finding row in the side panel: the ring is clearly distinct from the hover tint. Same for the transform preview widget.
 - Screen reader over the side panel: each section announces its editor (and its panel when there is one), each finding announces its severity, each scorecard row announces one sentence rather than running into the next.
@@ -559,8 +559,8 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 
 ## The support CTAs catch up with the fleet (v1 sweep stage I, slice 3 — plan M9)
 
-- Open **Settings → AI Editor**: the support section (Knowii / GitHub Sponsors / Newsletter + YouTube, then the Buy me a coffee badge) appears below the tab content on every one of the seven tabs, and the badge image renders from the inlined data URL.
-- Keyboard: arrowing across the settings tab bar must still land focus on the tab button, not on the support links now sitting after the panel.
+- Open **Settings → AI Editor**: the support section (Knowii / GitHub Sponsors / Newsletter + YouTube, then the Buy me a coffee badge) appears at the end of the settings, and the badge image renders from the inlined data URL.
+- Settings search: type `idle delay`, `strip frontmatter` and `context budget` into Obsidian's settings search — each must surface the control itself, editable in place, without opening the page first. This is what issue #35 bought; if a control is missing here, its dot-path key is wrong.
 - In **Settings → Community plugins**, the installed AI Editor entry should show three funding links rather than one.
 
 ## Placement verbs — Expand section / Continue the note (issue #31, 2026-08-04) — UNVERIFIED

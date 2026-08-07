@@ -7,10 +7,10 @@ nav_order: 2
 
 ## Requirements
 
-- Obsidian **1.12.2** or newer.
+- Obsidian **1.13.0** or newer.
 - **Desktop only** (Windows, macOS, Linux). The plugin declares `isDesktopOnly: true`; it does not run on mobile.
 - At least one AI backend you can reach: a hosted API key, a local Ollama server, or an agent CLI installed on the same machine.
-- The `editor-ai-daemons:*` [command-line integration](command-line.md) needs the same 1.12.2 — it is the release that added the API.
+- The `editor-ai-daemons:*` [command-line integration](command-line.md) is covered by the same floor: its API shipped in 1.12.2, below the version the plugin requires.
 
 ## Install
 

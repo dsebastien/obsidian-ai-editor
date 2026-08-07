@@ -19,7 +19,7 @@ import { createNoteResolver } from './resolve-note-path'
  * live vault and the shared review pipeline, and registers the handler.
  *
  * The caller (plugin `onload`) guards registration with
- * `Platform.isDesktop && requireApiVersion('1.12.2')` — `registerCliHandler`
+ * `Platform.isDesktop` — `registerCliHandler`
  * shipped with API 1.12.2 and the CLI is a desktop surface; on older public
  * releases the plugin simply has no CLI surface (no `minAppVersion` bump).
  * `registerCliHandler` throws when the command is already registered (e.g.
