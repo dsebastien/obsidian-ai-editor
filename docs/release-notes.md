@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.10.1 (2026-08-07)
+
+### Bug Fixes
+
+- **plugin:** stop a cleared numeric setting resetting to the schema default
+
 ## 0.10.0 (2026-08-07)
 
 ### ⚠ BREAKING CHANGES
