@@ -22,6 +22,7 @@ import {
     createEditorSpec,
     isRequestedSelectionValid,
     resolveEditorBackend,
+    resolveReviewParticipants,
     skipReasonLabel,
     startReview
 } from './review-service'
@@ -2010,5 +2011,52 @@ describe('addEditorToRun (joining a run, 2026-08-04)', () => {
             fetchImpl: fetchReturning(anthropicReviewBody())
         })
         expect(result.status).toBe('editor-unavailable')
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Editor order (issue #46)
+// ---------------------------------------------------------------------------
+
+describe('resolveReviewParticipants editor order', () => {
+    const ORDERED = [
+        makeEditor({ id: 'e-1', name: 'First' }),
+        makeEditor({ id: 'e-2', name: 'Second' }),
+        makeEditor({ id: 'e-3', name: 'Third' })
+    ]
+    const noRule = { kind: 'default' } as const
+
+    function idsOf(settings: PluginSettingsV1, requested = {}): string[] {
+        return resolveReviewParticipants(settings, noRule, requested).participants.map(
+            (participant) => participant.editor.id
+        )
+    }
+
+    it('runs editors in settings order', () => {
+        expect(idsOf(makeSettings({ editors: ORDERED }))).toEqual(['e-1', 'e-2', 'e-3'])
+    })
+
+    it('follows a reorder of the settings array — the settings tab is the control', () => {
+        const reordered = [ORDERED[2], ORDERED[0], ORDERED[1]]
+        expect(idsOf(makeSettings({ editors: reordered }))).toEqual(['e-3', 'e-1', 'e-2'])
+    })
+
+    it('ignores the order a named pool lists its members in', () => {
+        // A panel's `memberEditorIds` is membership, not sequence: the pool is
+        // built by FILTERING settings.editors, so the user's one ordering
+        // control governs panel runs too.
+        const settings = makeSettings({
+            editors: ORDERED,
+            panels: [
+                {
+                    id: 'panel-1',
+                    name: 'Panel',
+                    color: 'var(--color-blue)',
+                    memberEditorIds: ['e-3', 'e-1']
+                }
+            ]
+        })
+        expect(idsOf(settings, { panelId: 'panel-1' })).toEqual(['e-1', 'e-3'])
+        expect(idsOf(settings, { editorIds: ['e-3', 'e-2'] })).toEqual(['e-2', 'e-3'])
     })
 })

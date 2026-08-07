@@ -134,6 +134,8 @@ Up to 200 editors. Per editor:
 
 **Enabled** off hides the editor everywhere (rail, highlights, panel) and keeps it out of daemon refreshes; its findings are hidden, not deleted, and return when it is re-enabled — see [Disabling an editor](editors.md#disabling-an-editor).
 
+**Order.** The **move up** / **move down** buttons on each card set the order editors run in, and the order they appear in the [rail](usage.md#the-persona-rail) and the review panel. Put the ones whose findings matter most first. The order applies to [panel](panels.md) runs too: a panel's membership says _who_ takes part, never in what sequence. A disabled editor keeps its place in the list, so re-enabling it restores the position you chose.
+
 See [Create and tune editors](editors.md).
 
 ## Panels tab

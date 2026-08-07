@@ -1,15 +1,22 @@
 import { ExtraButtonComponent, Setting, ToggleComponent } from 'obsidian'
 import type { EditorConfig } from '../../domain/settings/settings-schema'
 import { ConfirmModal, renderColorDot } from '../components'
-import { applyEntityDeletion, deletionImpactLines, describeBackendRef } from '../helpers'
+import { applyEntityDeletion, deletionImpactLines, describeBackendRef, moveItem } from '../helpers'
 import { EditorModal } from './editor-modal'
 import { commit } from './shared'
 import type { TabContext } from './shared'
 
 /**
  * Editors tab: card gallery of AI personas (solid color dot = editor) with
- * enable/edit/delete, plus the add flow. Deletion shows referential impact
- * (panels, actions, rules, comment default) before anything is removed.
+ * enable/edit/delete/reorder, plus the add flow. Deletion shows referential
+ * impact (panels, actions, rules, comment default) before anything is removed.
+ *
+ * The gallery's order IS the editor order everywhere else (issue #46): the
+ * review pool is built by filtering `settings.editors`
+ * (`resolveReviewParticipants`), the run keeps that order in its editor-state
+ * map, and both the rail and the panel render straight off it. So the move
+ * buttons here are the single control for "who runs, and shows, first" — no
+ * separate order field exists or is needed.
  */
 export function renderEditorsTab(containerEl: HTMLElement, ctx: TabContext): void {
     const settings = ctx.facade.getSettings()
@@ -39,13 +46,24 @@ export function renderEditorsTab(containerEl: HTMLElement, ctx: TabContext): voi
         return
     }
 
+    containerEl.createEl('p', {
+        cls: 'editor-ai-daemons-tab-intro',
+        text: 'This order is the order editors run in, and the order they appear in the rail and the review panel. Put the ones you care about most first.'
+    })
+
     const grid = containerEl.createDiv({ cls: 'editor-ai-daemons-card-grid' })
-    for (const editor of settings.editors) {
-        renderEditorCard(grid, ctx, editor)
-    }
+    settings.editors.forEach((editor, index) => {
+        renderEditorCard(grid, ctx, editor, index, settings.editors.length)
+    })
 }
 
-function renderEditorCard(grid: HTMLElement, ctx: TabContext, editor: EditorConfig): void {
+function renderEditorCard(
+    grid: HTMLElement,
+    ctx: TabContext,
+    editor: EditorConfig,
+    index: number,
+    total: number
+): void {
     const settings = ctx.facade.getSettings()
     const card = grid.createDiv({ cls: 'editor-ai-daemons-card' })
     if (!editor.enabled) {
@@ -91,6 +109,23 @@ function renderEditorCard(grid: HTMLElement, ctx: TabContext, editor: EditorConf
             { refresh: true }
         )
     })
+    // Reordering moves the editor within `settings.editors` itself — the one
+    // array every downstream surface reads — so a disabled editor keeps its
+    // slot and re-enabling restores the intended position.
+    new ExtraButtonComponent(actions)
+        .setIcon('arrow-up')
+        .setTooltip('Move up (runs and shows earlier)')
+        .setDisabled(index === 0)
+        .onClick(() => {
+            moveEditor(ctx, index, index - 1)
+        })
+    new ExtraButtonComponent(actions)
+        .setIcon('arrow-down')
+        .setTooltip('Move down (runs and shows later)')
+        .setDisabled(index === total - 1)
+        .onClick(() => {
+            moveEditor(ctx, index, index + 1)
+        })
     new ExtraButtonComponent(actions)
         .setIcon('pencil')
         .setTooltip('Edit')
@@ -118,4 +153,17 @@ function renderEditorCard(grid: HTMLElement, ctx: TabContext, editor: EditorConf
                 }
             }).open()
         })
+}
+
+function moveEditor(ctx: TabContext, from: number, to: number): void {
+    commit(
+        ctx,
+        (draft) => {
+            const next = moveItem(draft.editors, from, to)
+            if (next) {
+                draft.editors = next
+            }
+        },
+        { refresh: true }
+    )
 }
