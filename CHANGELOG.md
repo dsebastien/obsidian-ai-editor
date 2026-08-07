@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.9.0...0.10.0) (2026-08-07)
+
+### ⚠ BREAKING CHANGES
+
+* **plugin:** minAppVersion is now 1.13.0.
+
+`display()` is not called when `getSettingDefinitions()` returns a non-empty
+array, so adopting the declarative API is a replacement, not an addition. With
+no backwards compatibility to keep, the hand-built tab bar, its keyboard
+navigation and its ARIA plumbing are deleted outright rather than maintained
+alongside a second UI — `tab-keyboard.ts` goes with them, since that behaviour
+is Obsidian's now.
+
+Seven `page` definitions replace the seven tabs. Scalars are `control`
+definitions addressed by DOT PATH into the settings, which is what makes them
+reachable from Obsidian's settings search — the point of the issue. Dot paths
+are the one stringly-typed seam this introduces: `settings-definitions.spec.ts`
+builds the whole tree, against empty defaults AND a seeded starter pack (the
+collection pages emit rows only when entities exist), and asserts every
+declared key resolves and none is declared twice.
+
+Collections become `list` definitions, so drag-to-reorder and keyboard delete
+come from the framework. The arrow buttons in editors (shipped in 0.9.0) and
+rules are gone — same array move, done natively. Order remains load-bearing and
+spec-pinned: editors drive run/rail/panel order, rules are first-match-wins.
+
+Deliberately still imperative, each for a reason rather than convenience:
+- `defaultBackend` is a NULLABLE object, so a `defaultBackend.backendId`
+  control would walk to null, be refused by `writeControlValue`, and silently
+  not persist.
+- Backend rows keep their toggle in `render`: a `control` writes straight to
+  storage, which would enable a local CLI program without ever showing the
+  launch-consent dialog.
+- Entity rows need a toggle AND an edit affordance, and a definition is exactly
+  one of control/action/render.
+- Chip lists edit arrays, which no control type persists.
+
+Fixes from an adversarial review of the migration:
+- Rules and backends resolved the doomed entity from the render-time snapshot
+  in `onDelete`. The framework re-indexes rows the moment a drag lands, while
+  our refresh waits on persistence — so deleting in that window hit the wrong
+  entity, silently rerouting reviews (rules are first-match-wins). Both now
+  resolve against live settings; `list-delete-index.spec.ts` pins it and fails
+  without the fix.
+- "Clear history" became a whole-row `action`, losing the imperative tab's
+  "you must hit Clear" safeguard — a stray click wiped every entry with no
+  undo. It confirms now.
+- Numeric controls lost clamping and the last-value fallback. They declare
+  `defaultValue` (a cleared field submitted 0, below every minimum) and a
+  bounds `validate` that rejects inline before storage — better than the old
+  silent clamp, which changed the number without saying so.
+- `setControlValue` resolved on failure, telling the framework a write
+  succeeded and leaving the control displaying a value that was never stored.
+  It rejects now, so the framework can roll back to the stored truth.
+
+Lint drops to --max-warnings 0: the one tolerated warning was
+obsidianmd/settings-tab/prefer-setting-definitions, which this fixes.
+
+### Features
+
+* **plugin:** declarative settings, Obsidian 1.13 floor ([#35](https://github.com/dsebastien/obsidian-ai-editor/issues/35)) ([8afb267](https://github.com/dsebastien/obsidian-ai-editor/commit/8afb2672c38fd11072fe89c53a6f248354177674))
+
 ## [0.9.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.8.0...0.9.0) (2026-08-07)
 
 ### Features
@@ -322,6 +384,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
