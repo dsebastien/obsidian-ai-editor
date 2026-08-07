@@ -283,6 +283,16 @@
     height: 22px;
 }
 
+/* Custom picker holds the active color: mirror the preset selected ring. */
+.editor-ai-daemons-swatch-custom.is-selected {
+    border: 2px solid var(--text-normal);
+}
+
+/* Screen-reader-only live region announcing the chosen color. */
+.editor-ai-daemons-color-live {
+    @apply sr-only;
+}
+
 /* Full-width textarea rows (prompts, charters, voice profile) */
 .editor-ai-daemons-settings-textarea {
     @apply flex-col items-stretch gap-2;
@@ -577,6 +587,27 @@
 
 .editor-ai-daemons-ask-single-editor {
     color: var(--text-normal);
+}
+
+/* Distilled-memory confirmation modal (src/app/ui/memory-review-modal.ts) */
+.editor-ai-daemons-memory-previous {
+    @apply mb-2;
+}
+
+.editor-ai-daemons-memory-previous summary {
+    @apply cursor-pointer text-sm;
+    color: var(--text-muted);
+}
+
+.editor-ai-daemons-memory-previous pre {
+    @apply mt-1 max-h-60 overflow-auto p-2 text-xs whitespace-pre-wrap;
+    background-color: var(--background-primary-alt);
+    border-radius: var(--radius-s);
+}
+
+.editor-ai-daemons-memory-textarea {
+    min-height: 12em;
+    font-family: var(--font-monospace);
 }
 
 /* "What will be sent" preview modal (src/app/ui/context-preview-modal.ts).

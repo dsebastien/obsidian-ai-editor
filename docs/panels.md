@@ -11,14 +11,14 @@ A **panel** is a group of editors that review together and are then summed up. I
 
 **Settings → AI Editor → Panels → Add panel**:
 
-| Field                          | What it does                                                      |
-| ------------------------------ | ----------------------------------------------------------------- |
-| **Name**                       | Shown everywhere, always followed by "(panel)"                    |
-| **Color**                      | The panel's identity ring on the rail                             |
-| **Members**                    | 1 to 20 editors, toggled on                                       |
-| **Charter**                    | The shared brief — text and/or vault notes, with **Follow links** |
-| **Aggregation backend**        | Which backend writes the summary                                  |
-| **Aggregation model override** | Only shown when a backend is set                                  |
+| Field                          | What it does                                                               |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| **Name**                       | Shown everywhere, always followed by "(panel)"                             |
+| **Color**                      | The panel's identity ring on the rail — a theme preset or any custom color |
+| **Members**                    | 1 to 20 editors, toggled on                                                |
+| **Charter**                    | The shared brief — text and/or vault notes, with **Follow links**          |
+| **Aggregation backend**        | Which backend writes the summary                                           |
+| **Aggregation model override** | Only shown when a backend is set                                           |
 
 ![The Panels settings tab: the Pre-publish Review panel card listing its four members and aggregation backend, with an enable toggle](images/panels-tab.png)
 

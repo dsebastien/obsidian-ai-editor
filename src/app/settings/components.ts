@@ -2,6 +2,7 @@ import { Modal, Notice, Setting } from 'obsidian'
 import type { App, DropdownComponent } from 'obsidian'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { entityOptionText } from '../ui/entity-label'
+import { COLOR_PRESETS, colorAnnouncement, isHexColor, rgbStringToHex } from './color-field-model'
 import { backendKindLabel, encodeActionTarget, moveItem } from './helpers'
 import { NotePathSuggest } from './note-path-suggest'
 
@@ -84,21 +85,6 @@ export function renderColorDot(
     return dot
 }
 
-/**
- * Theme-variable colors paired with a human label: the label is what screen
- * readers announce, so the raw CSS token never reaches assistive technology.
- */
-const COLOR_PRESETS: readonly { readonly value: string; readonly label: string }[] = [
-    { value: 'var(--color-red)', label: 'red' },
-    { value: 'var(--color-orange)', label: 'orange' },
-    { value: 'var(--color-yellow)', label: 'yellow' },
-    { value: 'var(--color-green)', label: 'green' },
-    { value: 'var(--color-cyan)', label: 'cyan' },
-    { value: 'var(--color-blue)', label: 'blue' },
-    { value: 'var(--color-purple)', label: 'purple' },
-    { value: 'var(--color-pink)', label: 'pink' }
-]
-
 export interface ColorFieldOptions {
     label: string
     variant: 'editor' | 'panel'
@@ -115,11 +101,25 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
         .setName(options.label)
         .setDesc('Pick a theme preset or a custom color.')
     const row = setting.controlEl.createDiv({ cls: 'editor-ai-daemons-swatch-row' })
+    // Live region for announcing the chosen color. Created once, OUTSIDE the
+    // row `render()` rebuilds: `row.empty()` would otherwise destroy it and
+    // assistive tech loses a region that is re-created mid-announcement
+    // (same rule as the rail's status element).
+    const liveEl = setting.controlEl.createSpan({
+        cls: 'editor-ai-daemons-color-live',
+        attr: { 'role': 'status', 'aria-live': 'polite' }
+    })
+    const announce = (color: string): void => {
+        liveEl.textContent = colorAnnouncement(color)
+    }
 
-    // `render()` rebuilds the row, destroying the button that was clicked —
-    // so the swatch that ends up selected takes the focus back. Without it a
+    // `render()` rebuilds the row, destroying the control that was used —
+    // so the control that ends up selected takes the focus back. Without it a
     // keyboard user is dropped to the document after picking a colour.
+    // Two flags because two controls can hold focus: a preset swatch, or the
+    // custom picker input (committing a custom hex destroys it too).
     let takeFocus = false
+    let takeFocusCustom = false
     const render = (): void => {
         row.empty()
         const current = options.get()
@@ -156,6 +156,7 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
                 event.preventDefault()
                 takeFocus = true
                 options.set(preset.value)
+                announce(preset.value)
                 render()
             })
         }
@@ -163,17 +164,42 @@ export function renderColorField(containerEl: HTMLElement, options: ColorFieldOp
             takeFocus = false
             selectedEl?.focus()
         }
+        const currentIsHex = isHexColor(current)
         const custom = row.createEl('input', {
             cls: 'editor-ai-daemons-swatch-custom',
             type: 'color',
-            attr: { 'aria-label': 'Custom color' }
+            attr: {
+                // When a custom hex is active the picker IS the selected
+                // control: say which color it holds, and mirror the preset
+                // swatches' selected ring (see stylesheet).
+                'aria-label': currentIsHex ? `Custom color, current: ${current}` : 'Custom color'
+            }
         })
-        if (/^#[0-9a-fA-F]{6}$/.test(current)) {
+        if (currentIsHex) {
+            custom.addClass('is-selected')
             custom.value = current
+        } else if (selectedEl) {
+            // Seed the picker with the active preset's resolved color so
+            // "start from the current color and tweak" works. The swatch's
+            // background is the raw `var()` string; computed style resolves
+            // it against the live theme (popout-safe via the element's own
+            // window).
+            const resolved = rgbStringToHex(
+                selectedEl.win.getComputedStyle(selectedEl).backgroundColor
+            )
+            if (resolved) {
+                custom.value = resolved
+            }
+        }
+        if (takeFocusCustom) {
+            takeFocusCustom = false
+            custom.focus()
         }
         // 'change' (not 'input') so re-rendering never closes a live picker.
         custom.addEventListener('change', () => {
+            takeFocusCustom = true
             options.set(custom.value)
+            announce(custom.value)
             render()
         })
     }
