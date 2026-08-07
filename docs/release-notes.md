@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.8.0 (2026-08-07)
+
+### Features
+
+- **plugin:** review the note as soon as daemon mode is enabled
+
 ## 0.7.0 (2026-08-07)
 
 ### Features
