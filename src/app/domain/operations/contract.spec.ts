@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
     CONTRACT_VERSION,
+    MEMORY_TEXT_MAX,
     operationRequestSchema,
     operationResultSchema,
     panelResultSchema,
@@ -223,5 +224,88 @@ describe('operationResultSchema', () => {
 
     it('rejects an insert-at result without insertion', () => {
         expect(() => operationResultSchema.parse({ kind: 'insert-at' })).toThrow()
+    })
+})
+
+describe('distill-memory contract (issue #4)', () => {
+    const event = {
+        quote: 'quick brown',
+        critique: 'Too generic',
+        severity: 'suggestion',
+        decision: 'rejected'
+    }
+
+    it('parses a distill-memory request and round-trips through the union', () => {
+        const parsed = operationRequestSchema.parse({
+            ...base,
+            kind: 'distill-memory',
+            currentMemory: 'Old rules.',
+            events: [
+                event,
+                {
+                    ...event,
+                    decision: 'conceded',
+                    thread: [
+                        { role: 'user', content: 'it is deliberate' },
+                        { role: 'editor', content: 'conceded' }
+                    ]
+                }
+            ]
+        })
+        expect(parsed.kind).toEqual('distill-memory')
+        if (parsed.kind === 'distill-memory') {
+            expect(parsed.events).toHaveLength(2)
+            // Thread defaults to empty — most events carry no push-back.
+            expect(parsed.events[0]?.thread).toEqual([])
+            expect(parsed.events[1]?.decision).toEqual('conceded')
+        }
+    })
+
+    it('requires at least one event and caps at 200', () => {
+        const request = (events: unknown[]): unknown => ({
+            ...base,
+            kind: 'distill-memory',
+            currentMemory: '',
+            events
+        })
+        expect(() => operationRequestSchema.parse(request([]))).toThrow()
+        expect(() => operationRequestSchema.parse(request(new Array(201).fill(event)))).toThrow()
+    })
+
+    it('rejects an unknown decision', () => {
+        expect(() =>
+            operationRequestSchema.parse({
+                ...base,
+                kind: 'distill-memory',
+                currentMemory: '',
+                events: [{ ...event, decision: 'superseded' }]
+            })
+        ).toThrow()
+    })
+
+    it('rejects a current memory over the 50k ceiling', () => {
+        expect(() =>
+            operationRequestSchema.parse({
+                ...base,
+                kind: 'distill-memory',
+                currentMemory: 'x'.repeat(MEMORY_TEXT_MAX + 1),
+                events: [event]
+            })
+        ).toThrow()
+    })
+
+    it('parses a distill-memory result and rejects empty or oversized memory', () => {
+        const parsed = operationResultSchema.parse({
+            kind: 'distill-memory',
+            memory: 'Stop flagging em dashes.'
+        })
+        expect(parsed.kind).toEqual('distill-memory')
+        expect(() => operationResultSchema.parse({ kind: 'distill-memory', memory: '' })).toThrow()
+        expect(() =>
+            operationResultSchema.parse({
+                kind: 'distill-memory',
+                memory: 'x'.repeat(MEMORY_TEXT_MAX + 1)
+            })
+        ).toThrow()
     })
 })

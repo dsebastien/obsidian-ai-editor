@@ -231,6 +231,61 @@ export const threadTurnRequestSchema = baseRequest.extend({
     message: z.string().min(1).max(SHORT_TEXT_MAX)
 })
 
+/** Ceiling on one editor's learned memory (mirrors `memoryText`'s schema max). */
+export const MEMORY_TEXT_MAX = 50_000
+
+/**
+ * The user's decision on one finding, as distillation input (issue #4).
+ * `held`: the user pushed back and the editor kept its position — not
+ * terminal (a later accept/reject on the same finding is a second event),
+ * but the exchange itself is signal.
+ */
+export const triageDecisionSchema = z.enum([
+    'accepted',
+    'rejected',
+    'dismissed',
+    'conceded',
+    'held'
+])
+export type TriageDecision = z.infer<typeof triageDecisionSchema>
+
+/**
+ * One triaged finding fed to memory distillation (issue #4): the observation
+ * (quote + critique + severity), what the user decided, and — for conceded
+ * findings — the push-back thread that changed the editor's mind. Bounds
+ * mirror the journal's clipping (`memory-journal.ts`), not the finding
+ * contract: distillation reads a compressed record, never the full finding.
+ */
+export const distillTriageEventSchema = z.object({
+    quote: z.string().min(1).max(QUOTE_MAX),
+    critique: z.string().min(1).max(1_000),
+    severity: severitySchema,
+    decision: triageDecisionSchema,
+    thread: z
+        .array(
+            z.object({
+                role: z.enum(['user', 'editor']),
+                content: z.string().max(1_000)
+            })
+        )
+        .max(50)
+        .default([])
+})
+export type DistillTriageEvent = z.infer<typeof distillTriageEventSchema>
+
+/**
+ * Memory distillation (issue #4): rewrite one editor's learning memory from
+ * the session's triage decisions. `currentMemory` is the memory as it stands
+ * (settings text or memory-note body, frontmatter stripped); the result's
+ * `memory` REPLACES it wholesale — replacement is the rotation/cap mechanism,
+ * there is no append path.
+ */
+export const distillMemoryRequestSchema = baseRequest.extend({
+    kind: z.literal('distill-memory'),
+    currentMemory: z.string().max(MEMORY_TEXT_MAX),
+    events: z.array(distillTriageEventSchema).min(1).max(200)
+})
+
 /** Panel aggregation over completed member results. */
 export const aggregatePanelRequestSchema = baseRequest.extend({
     kind: z.literal('aggregate-panel'),
@@ -260,6 +315,7 @@ export const operationRequestSchema = z.discriminatedUnion('kind', [
     transformSelectionRequestSchema,
     insertAtRequestSchema,
     threadTurnRequestSchema,
+    distillMemoryRequestSchema,
     aggregatePanelRequestSchema
 ])
 export type OperationRequest = z.infer<typeof operationRequestSchema>
@@ -267,6 +323,7 @@ export type ReviewRequest = z.infer<typeof reviewRequestSchema>
 export type TransformSelectionRequest = z.infer<typeof transformSelectionRequestSchema>
 export type InsertAtRequest = z.infer<typeof insertAtRequestSchema>
 export type ThreadTurnRequest = z.infer<typeof threadTurnRequestSchema>
+export type DistillMemoryRequest = z.infer<typeof distillMemoryRequestSchema>
 export type AggregatePanelRequest = z.infer<typeof aggregatePanelRequestSchema>
 
 // ---------------------------------------------------------------------------
@@ -333,6 +390,18 @@ export const threadTurnResultSchema = z.object({
     revisedEdits: z.array(rawEditSchema).max(FINDING_EDITS_MAX).optional()
 })
 export type ThreadTurnResult = z.infer<typeof threadTurnResultSchema>
+
+/**
+ * Distillation result (issue #4): the WHOLE rewritten memory. Replaces the
+ * editor's memory when — and only when — the user confirms it in the review
+ * modal (Business Rules #2). The 50k ceiling is a hard reject, matching the
+ * `memoryText` schema max; the prompt asks for well under 10k.
+ */
+export const distillMemoryResultSchema = z.object({
+    kind: z.literal('distill-memory'),
+    memory: z.string().min(1).max(MEMORY_TEXT_MAX)
+})
+export type DistillMemoryResult = z.infer<typeof distillMemoryResultSchema>
 
 /**
  * One ranked action from the scorecard. `action` is the instruction; the two
@@ -405,6 +474,7 @@ export const operationResultSchema = z.discriminatedUnion('kind', [
     transformSelectionResultSchema,
     insertAtResultSchema,
     threadTurnResultSchema,
+    distillMemoryResultSchema,
     panelResultSchema
 ])
 export type OperationResult = z.infer<typeof operationResultSchema>

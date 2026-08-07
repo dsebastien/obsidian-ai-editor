@@ -133,6 +133,26 @@ describe('exportSettings', () => {
         expect(exportSecretRisks(settings, only('editors'))).toEqual([])
     })
 
+    it('NEVER includes distilled editor memory (issue #4 — personal learned data)', () => {
+        const settings = settingsOf({
+            editors: [
+                {
+                    id: 'e1',
+                    name: 'Concision',
+                    memory: 'settings',
+                    memoryText: 'The author accepts long sentences.'
+                }
+            ]
+        })
+        const document = exportSettings(settings, ALL_SECTIONS)
+        expect(document.editors?.[0]).toMatchObject({ id: 'e1', memoryText: '' })
+        // The memory MODE and note path are configuration and survive.
+        expect(document.editors?.[0]).toMatchObject({ memory: 'settings' })
+        expect(exportSettingsJson(settings, ALL_SECTIONS)).not.toContain(
+            'The author accepts long sentences.'
+        )
+    })
+
     it('omits unselected sections entirely instead of emptying them', () => {
         const document = exportSettings(populated(), only('editors', 'voiceProfile'))
         expect(Object.keys(document).sort()).toEqual([

@@ -30,6 +30,8 @@ import { registerEditorMenu } from './ui/menus/editor-menu'
 import { registerFileMenu } from './ui/menus/file-menu'
 import { backendHealth } from './services/backends/backend-health'
 import { createHistoryRecorder } from './services/history/history-recorder'
+import { MemoryJournal } from './services/memory/memory-journal'
+import type { RunObserver } from './services/orchestration/run-controller'
 import { HistoryRepository, historyStorePathIn } from './services/history/history-repository'
 import { HistoryService } from './services/history/history-service'
 import { DaemonController } from './ui/daemon-controller'
@@ -41,6 +43,7 @@ import { registerActionCommands } from './commands/action-commands'
 import { registerBulkCommands } from './commands/bulk-commands'
 import { registerReviewCommands } from './commands/review-commands'
 import { registerDaemonCommands } from './commands/daemon-commands'
+import { registerMemoryCommands } from './commands/memory-commands'
 import { registerSetupCommands } from './commands/setup-commands'
 import { registerReviewCli } from './cli/register-review-cli'
 import { registerCancelCli, registerStatusCli } from './cli/register-run-cli'
@@ -181,9 +184,49 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         // `behavior.maxConcurrentRequests` backend requests in flight across
         // all runs. Read per acquisition, so settings changes apply to the
         // next request without a reload.
+        //
+        // Run observer = history recorder (issue #21) + memory journal
+        // (issue #4), composed into one object: the recorder archives what
+        // editors said, the journal captures what the user DECIDED — the
+        // session-only input of the `Distill editor learnings` command.
+        // Session-scoped on purpose (BR #22): events quote note content and
+        // are never persisted.
+        const memoryJournal = new MemoryJournal()
+        // Journal events follow renames, like history and comments: the
+        // distiller re-checks exclusions at CONSUME time (BR #7), and that
+        // check must see the note's CURRENT path — a note moved into an
+        // excluded folder must take its events with it (folder-only
+        // exclusion configs would otherwise keep quoting it), and a benign
+        // rename must not fail events closed on a dead path.
+        this.registerEvent(
+            this.app.vault.on('rename', (file, oldPath) => {
+                memoryJournal.filesRenamedUnder(oldPath, file.path)
+            })
+        )
+        const runObserver: RunObserver = {
+            ...createHistoryRecorder(historyService),
+            findingDecided: ({ filePath, editorId, finding, decision }): void => {
+                // docs/editors.md promises memory Off means "nothing added,
+                // nothing recorded" — decisions for an editor the user never
+                // opted into learning must not accumulate note quotes in RAM.
+                const editor = this.settings.editors.find((candidate) => candidate.id === editorId)
+                if (!editor || editor.memory === 'off') {
+                    return
+                }
+                memoryJournal.record({
+                    editorId,
+                    notePath: filePath,
+                    quote: finding.raw.quote,
+                    critique: finding.raw.critique,
+                    severity: finding.raw.severity,
+                    decision,
+                    thread: finding.thread
+                })
+            }
+        }
         const runController = new RunController(
             () => this.settings.behavior.maxConcurrentRequests,
-            createHistoryRecorder(historyService)
+            runObserver
         )
         this.runController = runController
         // Transform/generate runs share the SAME request gate: reviews and
@@ -281,6 +324,22 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         registerReviewCommands(this, reviewController, this)
         registerSetupCommands(this, this)
         registerDaemonCommands(this, reviewController)
+        // Learning-loop distillation (issue #4). `saveEditorMemory` is a
+        // narrow seam (the `setDaemonAlwaysOn` precedent): the memory flow
+        // writes exactly one field and has no business holding the facade.
+        registerMemoryCommands(this, {
+            getSettings: () => this.settings,
+            journal: memoryJournal,
+            requestGate: runController.requestGate,
+            saveEditorMemory: (editorId, memory) =>
+                this.update((draft) => {
+                    const editor = draft.editors.find((candidate) => candidate.id === editorId)
+                    if (!editor) {
+                        throw new Error('This editor no longer exists.')
+                    }
+                    editor.memoryText = memory
+                })
+        })
         this.openSetupWizardOnFirstRun()
         // Dynamic `action-<bindingId>` commands (design §3): registration
         // follows the settings via the mutation observer — add/removeCommand

@@ -4,7 +4,13 @@ import { asFindingId, asRunId, generateId } from '../../domain/ids'
 import type { RawFinding } from '../../domain/operations/contract'
 import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
-import { FindingStore, type CarryoverFinding, type NewFinding } from './finding-store'
+import {
+    FindingStore,
+    type CarryoverFinding,
+    type FindingDecision,
+    type NewFinding,
+    type TrackedFinding
+} from './finding-store'
 
 const DOC = 'The quick brown fox jumps over the lazy dog'
 
@@ -719,5 +725,136 @@ describe('FindingStore carryover (issue #19)', () => {
         expect(store.closePreview(carried.id)?.status).toEqual('open')
         const accepted = store.accept(carried.id, DOC)
         expect(accepted.ok).toBeTrue()
+    })
+})
+
+describe('FindingStore onDecided (issue #4 — learning-loop signal)', () => {
+    function decidingStore(): {
+        store: FindingStore
+        decisions: { finding: TrackedFinding; decision: FindingDecision }[]
+    } {
+        const decisions: { finding: TrackedFinding; decision: FindingDecision }[] = []
+        const store = new FindingStore(undefined, (finding, decision) => {
+            decisions.push({ finding, decision })
+        })
+        return { store, decisions }
+    }
+
+    it('fires on accept with the post-transition finding', () => {
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput())
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+        expect(decisions).toHaveLength(1)
+        expect(decisions[0]?.decision).toEqual('accepted')
+        expect(decisions[0]?.finding.status).toEqual('accepted')
+        expect(decisions[0]?.finding.id).toEqual(finding.id)
+    })
+
+    it('fires on reject and dismiss with the matching decision', () => {
+        const { store, decisions } = decidingStore()
+        const rejected = store.add(makeInput())
+        const dismissed = store.add(makeInput())
+        store.reject(rejected.id)
+        store.dismiss(dismissed.id)
+        expect(decisions.map((entry) => entry.decision)).toEqual(['rejected', 'dismissed'])
+    })
+
+    it('fires conceded with the completed thread when a concession dismisses', () => {
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'it is intentional')
+        store.completeThreadTurn(finding.id, { kind: 'concede', reply: 'Withdrawing it' })
+        expect(decisions).toHaveLength(1)
+        expect(decisions[0]?.decision).toEqual('conceded')
+        expect(decisions[0]?.finding.conceded).toBeTrue()
+        expect(decisions[0]?.finding.thread).toEqual([
+            { role: 'user', content: 'it is intentional' },
+            { role: 'editor', content: 'Withdrawing it' }
+        ])
+    })
+
+    it('does NOT fire when a concession lands on an already-accepted finding', () => {
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'push')
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+        decisions.length = 0
+        store.completeThreadTurn(finding.id, { kind: 'concede', reply: 'late withdrawal' })
+        expect(decisions).toHaveLength(0)
+    })
+
+    it('fires held with the completed exchange when the editor keeps its position', () => {
+        // Adversarial review 2026-08-07: a session of PURE push-back must
+        // reach the journal, or the distillation command stays hidden and
+        // the argument is lost.
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'push')
+        store.completeThreadTurn(finding.id, {
+            kind: 'hold',
+            reply: 'Standing by it',
+            revisedCritique: null,
+            revisedEdits: null
+        })
+        expect(decisions).toHaveLength(1)
+        expect(decisions[0]?.decision).toEqual('held')
+        expect(decisions[0]?.finding.thread).toEqual([
+            { role: 'user', content: 'push' },
+            { role: 'editor', content: 'Standing by it' }
+        ])
+        // Not terminal: the finding stays open for a later accept/reject,
+        // which reports a second decision.
+        expect(decisions[0]?.finding.status).toEqual('open')
+    })
+
+    it('a held turn then a reject reports both decisions in order', () => {
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput())
+        store.beginThreadTurn(finding.id, 'push')
+        store.completeThreadTurn(finding.id, {
+            kind: 'hold',
+            reply: 'Standing by it',
+            revisedCritique: null,
+            revisedEdits: null
+        })
+        store.reject(finding.id)
+        expect(decisions.map((entry) => entry.decision)).toEqual(['held', 'rejected'])
+    })
+
+    it('does NOT fire on a failed accept', () => {
+        const { store, decisions } = decidingStore()
+        const finding = store.add(makeInput({ edits: [unanchoredEdit()] }))
+        expect(store.accept(finding.id, DOC).ok).toBeFalse()
+        expect(decisions).toHaveLength(0)
+    })
+
+    it('does NOT fire when a carryover arrives already terminal', () => {
+        const { store, decisions } = decidingStore()
+        store.addCarryover({
+            ...makeInput(),
+            status: 'rejected',
+            thread: [],
+            threadTurn: null,
+            conceded: false
+        })
+        expect(decisions).toHaveLength(0)
+    })
+
+    it('does NOT fire on supersede or removeMany', () => {
+        const { store, decisions } = decidingStore()
+        const first = store.add(makeInput())
+        const second = store.add(makeInput())
+        store.supersede(first.id, second.id)
+        store.removeMany([second.id])
+        expect(decisions).toHaveLength(0)
+    })
+
+    it('a throwing observer never breaks the transition', () => {
+        const store = new FindingStore(undefined, () => {
+            throw new Error('observer bug')
+        })
+        const finding = store.add(makeInput())
+        expect(store.accept(finding.id, DOC).ok).toBeTrue()
+        expect(store.get(finding.id)?.status).toEqual('accepted')
     })
 })

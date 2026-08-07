@@ -163,7 +163,7 @@ export function exportSettings(
         format: EXPORT_FORMAT,
         schemaVersion: SETTINGS_SCHEMA_VERSION,
         ...(selection.backends ? { backends: settings.backends.map(withoutSecrets) } : {}),
-        ...(selection.editors ? { editors: settings.editors } : {}),
+        ...(selection.editors ? { editors: settings.editors.map(withoutLearnedMemory) } : {}),
         ...(selection.panels ? { panels: settings.panels } : {}),
         ...(selection.actions ? { actions: settings.actions } : {}),
         ...(selection.rules ? { rules: settings.rules } : {}),
@@ -195,6 +195,17 @@ function withoutSecrets(backend: BackendInstance): BackendInstance {
         return { ...backend, apiKey: '' }
     }
     return { ...backend, consent: { launchPath: '', toolsPath: '' } }
+}
+
+/**
+ * Strips an editor's distilled memory from an export (issue #4): `memoryText`
+ * derives from how the user triaged their own vault content — it is personal
+ * learned data, not shareable configuration, and it must not travel in a
+ * pack. The memory MODE and note path stay: they are functional
+ * configuration, declared like `baseUrl`.
+ */
+function withoutLearnedMemory(editor: EditorConfig): EditorConfig {
+    return { ...editor, memoryText: '' }
 }
 
 // ---------------------------------------------------------------------------

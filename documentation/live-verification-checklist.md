@@ -643,3 +643,28 @@ The keyed-map fix is spec-covered (`mount-guard.spec.ts`); the visual outcome ne
 - [ ] `document.querySelectorAll('.editor-ai-daemons-rail-wrapper').length` equals the number of open markdown panes after re-enable; same for `.editor-ai-daemons-margin` (when comments are enabled).
 - [ ] Collapse/expand the rail after the re-enable: no second rail disagreeing with the collapsed state.
 - [ ] Normal dev loop: repeated hot-reload cycles with a note open never accumulate wrappers.
+
+## Color picker freedom (issue #44, 2026-08-07) — UNVERIFIED
+
+In an editor or panel modal (**Settings → AI Editor → Editors/Panels → edit**):
+
+- [ ] Picking a custom color via the native picker persists and round-trips after an Obsidian reload (the entity keeps the hex, highlights/rail use it).
+- [ ] With a preset active (e.g. red), the custom picker opens pre-seeded with that preset's resolved hex, not `#000000`. Known limitation: a theme that defines `--color-*` in a modern color space (`oklch()`, `color(display-p3 …)`) serializes the computed style in that space, which `rgbStringToHex` does not parse — the picker then opens unseeded (pre-#44 behavior). Expected, not a bug; don't chase it on such themes.
+- [ ] Screen reader announces "Color set to …" on both a swatch click (preset label) and a picker commit (hex) — polite, no focus steal.
+- [ ] Committing a custom color with the keyboard keeps focus on the custom picker input after the row re-renders (mirror of the preset-swatch focus restore).
+- [ ] When a custom hex is active, the custom input shows the selected ring (same as a selected preset swatch) and its accessible name includes the hex.
+- [ ] A dark custom hex on a dark theme still yields readable highlights (contrast clamp derives the display color).
+
+## Learning loop / memory distillation (issue #4, 2026-08-07) — UNVERIFIED
+
+Setup: an editor with **Learning memory** set to `Plugin settings` or `Vault note` (+ path), enabled, backend configured.
+
+- [ ] **Command gating**: `Distill editor learnings` is hidden from the palette until at least one finding from that editor is accepted/rejected/dismissed this session; it appears afterwards, and disappears again after a successful save (journal cleared) or a plugin reload (journal is session-only).
+- [ ] **Modal flow**: running the command shows a "distilling…" Notice, then the confirmation modal: previous memory collapsed under "Previous memory", proposed memory in an editable textarea, Save disabled when the text is blanked. Cancel saves nothing and the command remains available (journal kept).
+- [ ] **Settings-mode save**: with memory = `Plugin settings`, Save updates **Memory text** in the editor dialog (new textarea visible there), persists across reload, and the next review's "what will be sent" preview shows the memory in the system prompt.
+- [ ] **Note creation**: with memory = `Vault note` and a path in a folder that does not exist yet, Save creates folders + note; a later distill run preserves the note's frontmatter and replaces only the body.
+- [ ] **Settings-mode textarea**: the **Memory text** textarea appears in the editor dialog only when memory = `Plugin settings`, and edits there persist via Save.
+- [ ] **Concede signal**: push back on a finding until the editor concedes, then distill — the proposal should reflect the argument (the thread is part of the payload).
+- [ ] **In-flight guard**: while a distillation is running (or its modal is open), the command no longer offers that editor; it returns after Save or Cancel.
+- [ ] **Mid-flight triage survives**: trigger a distillation, triage more findings while it runs, then Save — the command stays available (the new decisions are still journaled for the next distillation).
+- [ ] **Path normalization**: set **Memory note path** to a value without `.md` (e.g. `Meta/AI memory`) — distill + Save writes `Meta/AI memory.md`, and the next run's "what will be sent" preview attaches that same note.

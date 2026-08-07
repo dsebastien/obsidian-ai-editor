@@ -147,3 +147,67 @@ describe('resultJsonSchema', () => {
         expect(required).not.toContain('evidence')
     })
 })
+
+describe('buildUserMessage — distill-memory (issue #4)', () => {
+    const distillOperation = (): Extract<OperationRequest, { kind: 'distill-memory' }> => ({
+        ...base,
+        kind: 'distill-memory',
+        currentMemory: 'Old rule: avoid adverbs.',
+        events: [
+            {
+                quote: 'quick brown',
+                critique: 'Too generic',
+                severity: 'suggestion',
+                decision: 'rejected',
+                thread: []
+            },
+            {
+                quote: 'the lazy dog',
+                critique: 'Cliché',
+                severity: 'warning',
+                decision: 'conceded',
+                thread: [
+                    { role: 'user', content: 'It is deliberate' },
+                    { role: 'editor', content: 'Fair, withdrawing' }
+                ]
+            }
+        ]
+    })
+
+    it('renders the current memory and one triage-event block per event', () => {
+        const message = buildUserMessage(distillOperation(), 'json-object')
+        expect(message).toContain('<current-memory>\nOld rule: avoid adverbs.\n</current-memory>')
+        expect(message.match(/<triage-event>/g)).toHaveLength(2)
+        expect(message).toContain('<decision>\nrejected\n</decision>')
+        expect(message).toContain('<severity>\nwarning\n</severity>')
+        expect(message).toContain('<quote>\nquick brown\n</quote>')
+        expect(message).toContain('<critique>\nCliché\n</critique>')
+        // The conceded event's thread rides along; the other has none.
+        expect(message).toContain('<user-turn>\nIt is deliberate\n</user-turn>')
+        expect(message).toContain('<editor-turn>\nFair, withdrawing\n</editor-turn>')
+        expect(message.match(/<thread>/g)).toHaveLength(1)
+    })
+
+    it('renders "(empty)" for a blank current memory', () => {
+        const operation: OperationRequest = { ...distillOperation(), currentMemory: '' }
+        expect(buildUserMessage(operation, 'json-object')).toContain(
+            '<current-memory>\n(empty)\n</current-memory>'
+        )
+    })
+
+    it('carries the wholesale-rewrite rules and the strict output contract', () => {
+        const message = buildUserMessage(distillOperation(), 'json-object')
+        expect(message).toContain('"kind" set to "distill-memory"')
+        expect(message).toContain('REPLACES the current memory wholesale')
+        expect(message).toContain('generalize patterns instead of listing episodes')
+        expect(message).toContain('Never copy the quoted document text')
+        expect(message).toContain('well under 10,000 characters')
+        // The inline schema is the distill result schema.
+        expect(message).toContain('"const":"distill-memory"')
+    })
+
+    it('derives a distill-memory result schema for provider-side enforcement', () => {
+        const schema = resultJsonSchema('distill-memory')
+        expect(JSON.stringify(schema)).toContain('"memory"')
+    })
+})

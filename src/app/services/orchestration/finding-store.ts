@@ -158,6 +158,31 @@ const TERMINAL_STATUSES: readonly FindingStatus[] = [
 ]
 
 /**
+ * The user's decision on a finding, as reported to `onDecided` (issue #4 —
+ * the learning-loop signal). `conceded` is the editor withdrawing after
+ * push-back — recorded as a decision because the user's arguments caused it,
+ * and it is the strongest "the editor was wrong" signal there is. `held` is
+ * the mirror: the user pushed back and the editor kept its position — the
+ * exchange (and how the editor defended) is signal a push-back-only session
+ * must not lose, and unlike the others it is not terminal: the user may
+ * still accept or reject afterwards, which reports again.
+ */
+export type FindingDecision = 'accepted' | 'rejected' | 'dismissed' | 'conceded' | 'held'
+
+/**
+ * Fired once per USER triage decision, with the post-transition finding (a
+ * conceded or held finding's completed `thread` rides along). This store is
+ * the one choke point every triage surface goes through — card, keyboard,
+ * bulk, panel — so a constructor callback here observes them all
+ * structurally.
+ *
+ * Deliberately NOT fired for: `addCarryover` with a terminal status (decided
+ * in a previous round), `supersede` (mechanical replacement, not a verdict),
+ * `removeMany` (retry bookkeeping), or a failed `accept` (nothing happened).
+ */
+export type FindingDecidedCallback = (finding: TrackedFinding, decision: FindingDecision) => void
+
+/**
  * In-memory store for the findings of one review run, enforcing the status
  * state machine and Business Rules #3 (stale proposals are never applied).
  *
@@ -169,9 +194,11 @@ const TERMINAL_STATUSES: readonly FindingStatus[] = [
 export class FindingStore {
     private readonly findings = new Map<string, TrackedFinding>()
     private readonly onChange: (() => void) | undefined
+    private readonly onDecided: FindingDecidedCallback | undefined
 
-    constructor(onChange?: () => void) {
+    constructor(onChange?: () => void, onDecided?: FindingDecidedCallback) {
         this.onChange = onChange
+        this.onDecided = onDecided
     }
 
     add(input: NewFinding): TrackedFinding {
@@ -345,9 +372,11 @@ export class FindingStore {
             }
             return { ok: false, reason: plan.reason }
         }
+        const accepted = this.update(finding, { status: 'accepted' })
+        this.decided(accepted, 'accepted')
         return {
             ok: true,
-            finding: this.update(finding, { status: 'accepted' }),
+            finding: accepted,
             changes: plan.changes
         }
     }
@@ -535,11 +564,17 @@ export class FindingStore {
         ]
         if (outcome.kind === 'concede') {
             const dismissable = finding.status === 'open' || finding.status === 'preview'
-            return this.update(finding, {
+            const updated = this.update(finding, {
                 thread,
                 threadTurn: null,
                 ...(dismissable ? { status: 'dismissed' as const, conceded: true } : {})
             })
+            if (dismissable) {
+                // The concession actually dismissed the finding: the user's
+                // push-back won the argument (issue #4's strongest signal).
+                this.decided(updated, 'conceded')
+            }
+            return updated
         }
         const revisedRaw = outcome.revisedEdits
         const edits: readonly TrackedEdit[] | null =
@@ -554,7 +589,7 @@ export class FindingStore {
                       anchoredText: null,
                       matchStrategy: null
                   })))
-        return this.update(finding, {
+        const held = this.update(finding, {
             thread,
             threadTurn: null,
             raw: {
@@ -565,6 +600,13 @@ export class FindingStore {
             ...(edits === null ? {} : { edits }),
             ...(edits !== null && finding.status === 'preview' ? { status: 'open' as const } : {})
         })
+        // A landed hold is the learning loop's push-back-lost signal: the
+        // user argued, the editor kept its position, and the completed
+        // exchange rides along. Without it, a session of pure push-back
+        // (no accept/reject/dismiss) leaves the journal empty and the
+        // distillation command hidden — the argument would be lost.
+        this.decided(held, 'held')
+        return held
     }
 
     /**
@@ -587,7 +629,18 @@ export class FindingStore {
         if (!finding || (finding.status !== 'open' && finding.status !== 'preview')) {
             return null
         }
-        return this.update(finding, { status })
+        const closed = this.update(finding, { status })
+        this.decided(closed, status)
+        return closed
+    }
+
+    /** Exception-isolated: a learning-loop observer must never break triage. */
+    private decided(finding: TrackedFinding, decision: FindingDecision): void {
+        try {
+            this.onDecided?.(finding, decision)
+        } catch {
+            // Observer only.
+        }
     }
 
     private update(finding: TrackedFinding, patch: Partial<TrackedFinding>): TrackedFinding {

@@ -207,6 +207,20 @@ export class EditorModal extends Modal {
                     }
                 })
             })
+        if (this.draft.memory === 'settings') {
+            // Transparency (issue #4): settings-mode memory must be readable
+            // and editable here, not only via data.json. The distillation
+            // command rewrites it through its own confirmation modal.
+            renderPromptTextArea(contentEl, {
+                name: 'Memory text',
+                desc: 'What this editor has learned. Injected into its runs; rewritten by "Distill editor learnings".',
+                placeholder: 'Stop flagging em dashes…',
+                get: () => this.draft.memoryText,
+                set: (value) => {
+                    this.draft.memoryText = value
+                }
+            })
+        }
         if (this.draft.memory === 'note') {
             new Setting(contentEl)
                 .setName('Memory note path')

@@ -13,6 +13,7 @@ import {
     type ContextSection
 } from './context-budget'
 import { isExcluded } from './exclusions'
+import { normalizeMemoryNotePath } from '../memory/memory-note'
 import type { VaultReader } from './vault-reader.intf'
 import { extractWikilinks } from './wikilinks'
 
@@ -177,12 +178,15 @@ export async function assembleContext(input: AssembleContextInput): Promise<Asse
         return !isExcluded(path, vault.getNoteMetadata(path), behavior)
     }
 
+    // Same canonical normalization the distiller and the note write use —
+    // a stray space or missing `.md` in the free-text setting must not make
+    // reviews read a different path than distillations write.
+    const memoryNotePath =
+        editor.memory === 'note' ? normalizeMemoryNotePath(editor.memoryNotePath) : ''
     const promptRefPaths = [
         ...(editor.injectVoiceProfile ? voiceProfile.notePaths : []),
         ...editor.prompt.notePaths,
-        ...(editor.memory === 'note' && editor.memoryNotePath.length > 0
-            ? [editor.memoryNotePath]
-            : [])
+        ...(memoryNotePath.length > 0 ? [memoryNotePath] : [])
     ]
     for (const path of promptRefPaths) {
         if (eligible(path)) {

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+    distillMemoryResultSchema,
     insertAtResultSchema,
     panelResultSchema,
     reviewResultWireSchema,
@@ -37,6 +38,7 @@ const RESULT_SCHEMAS = {
     'transform-selection': transformSelectionResultSchema,
     'insert-at': insertAtResultSchema,
     'thread-turn': threadTurnResultSchema,
+    'distill-memory': distillMemoryResultSchema,
     'aggregate-panel': panelResultSchema
 } as const
 
@@ -99,6 +101,14 @@ function kindRules(operation: OperationRequest): string[] {
                 'Set "concede" to true ONLY when the push-back convinced you the finding does not hold — you are withdrawing it, and "reply" says why in one or two sentences. A withdrawn finding is dismissed, so do not also send a revised critique or edits.',
                 'Otherwise hold your position: keep "concede" false, and use "revisedCritique" and/or "revisedEdits" when the exchange sharpened what you are asking for. Omit both when nothing changed.',
                 '"revisedEdits" REPLACES your earlier proposal wholesale. Each edit is applied mechanically: "text" contains ONLY document content, never commentary. Operations: "replace" replaces the edit\'s target with "text"; "insert-before"/"insert-after" insert "text" around the target, leaving it untouched; "delete" removes it. An edit\'s target is its own verbatim "quote" from the document; omit it to target the quoted text of this finding.'
+            ]
+        case 'distill-memory':
+            return [
+                '"memory" REPLACES the current memory wholesale — this rewrite IS the size control. Merge what still holds from the current memory with what the new decisions teach, drop rules that repeated evidence contradicts, and generalize patterns instead of listing episodes.',
+                'Write imperative rules addressed to yourself, the editor persona ("Stop flagging…", "The author accepts…", "Keep insisting on…"). Rules, not a diary.',
+                'Read the decisions as signal: "accepted" means the author took your suggestion; "rejected" and "dismissed" are negative signal about that kind of finding; "conceded" means you withdrew after push-back — the strongest evidence you were wrong, and the thread says why; "held" means the author pushed back but you kept your position — the thread carries the argument, and repeated push-back on the same kind of finding means the author disputes it even if you still believe it.',
+                "Never copy the quoted document text into the memory beyond short illustrative fragments — the memory is about the author's preferences, not their content.",
+                'Keep the memory well under 10,000 characters. Short and dense beats exhaustive; drop the weakest rule before adding a marginal one.'
             ]
         case 'aggregate-panel':
             return [
@@ -186,6 +196,42 @@ function payload(operation: OperationRequest): string {
             }
             parts.push(tag('user-message', operation.message))
             return parts.join('\n\n')
+        }
+        case 'distill-memory': {
+            const events = operation.events
+                .map((event) => {
+                    const parts = [
+                        tag('decision', event.decision),
+                        tag('severity', event.severity),
+                        tag('quote', event.quote),
+                        tag('critique', event.critique)
+                    ]
+                    if (event.thread.length > 0) {
+                        parts.push(
+                            tag(
+                                'thread',
+                                event.thread
+                                    .map((turn) =>
+                                        tag(
+                                            turn.role === 'user' ? 'user-turn' : 'editor-turn',
+                                            turn.content
+                                        )
+                                    )
+                                    .join('\n')
+                            )
+                        )
+                    }
+                    return tag('triage-event', parts.join('\n'))
+                })
+                .join('\n')
+            return [
+                'Rewrite your learning memory from the triage decisions below — what the author accepted, rejected, dismissed, argued you out of, or argued against while you held your position.',
+                tag(
+                    'current-memory',
+                    operation.currentMemory.length > 0 ? operation.currentMemory : '(empty)'
+                ),
+                tag('triage-events', events)
+            ].join('\n\n')
         }
         case 'aggregate-panel':
             return [

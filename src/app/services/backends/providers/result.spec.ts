@@ -453,3 +453,34 @@ describe('extractJsonPayload recovery hardening (adversarial review 2026-08-02)'
         }
     })
 })
+
+describe('validateOperationResult — distill-memory (issue #4)', () => {
+    it('accepts a valid distill result through the strict non-review path', () => {
+        const { result, salvage } = validateOperationResult({
+            kind: 'distill-memory',
+            memory: 'Stop flagging em dashes; the author accepts long sentences.'
+        })
+        expect(result.kind).toBe('distill-memory')
+        if (result.kind === 'distill-memory') {
+            expect(result.memory).toContain('Stop flagging em dashes')
+        }
+        expect(salvage).toBeNull()
+    })
+
+    it('rejects a memory over the 50k ceiling as a contract error (hard reject)', () => {
+        try {
+            validateOperationResult({ kind: 'distill-memory', memory: 'x'.repeat(50_001) })
+            expect.unreachable()
+        } catch (error) {
+            expect(error).toBeInstanceOf(ProviderError)
+            expect((error as ProviderError).code).toBe('invalid-output')
+            expect((error as Error).message).toContain('memory')
+        }
+    })
+
+    it('rejects an empty memory — a distillation must say something', () => {
+        expect(() => validateOperationResult({ kind: 'distill-memory', memory: '' })).toThrow(
+            ProviderError
+        )
+    })
+})

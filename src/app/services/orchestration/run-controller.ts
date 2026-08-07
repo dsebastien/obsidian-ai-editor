@@ -33,7 +33,7 @@ import type { ThreadBeginFailure } from '../../domain/operations/thread'
 import type { DocumentSnapshot } from '../../domain/snapshot'
 import { hashText } from '../../domain/snapshot'
 import { FindingStore } from './finding-store'
-import type { TrackedFinding } from './finding-store'
+import type { FindingDecision, TrackedFinding } from './finding-store'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
 
@@ -453,6 +453,25 @@ export interface RunObserver {
         readonly panelName: string
         readonly result: PanelResult
     }): void
+    /**
+     * The user decided a finding (issue #4 — the learning-loop signal):
+     * accept, reject, dismiss, a concession the user argued the editor
+     * into, or a held push-back turn the editor defended (not terminal —
+     * a later accept/reject reports again).
+     * Optional — the history recorder does not consume it (history
+     * records what editors SAID, the memory journal records what the user
+     * DECIDED). `finding` is the post-transition record, so a conceded
+     * finding carries its completed thread. Fired from the `FindingStore`
+     * choke point, so every triage surface (card, keyboard, bulk, panel)
+     * reports through it structurally.
+     */
+    findingDecided?(input: {
+        readonly filePath: string
+        readonly editorId: string
+        readonly editorName: string
+        readonly finding: TrackedFinding
+        readonly decision: FindingDecision
+    }): void
 }
 
 /**
@@ -678,7 +697,10 @@ class ReviewRunHandle implements RunHandle {
         private readonly observer: RunObserver | null = null
     ) {
         this.snapshot = input.snapshot
-        this.findings = new FindingStore(() => this.notify())
+        this.findings = new FindingStore(
+            () => this.notify(),
+            (finding, decision) => this.reportDecision(finding, decision)
+        )
         this.panelSpec = input.panel ?? null
         this.panel = input.panel
             ? {
@@ -1950,6 +1972,28 @@ class ReviewRunHandle implements RunHandle {
         const release = state.releasePermit
         state.releasePermit = null
         release?.()
+    }
+
+    /**
+     * Forwards a triage decision from the store's choke point to the observer
+     * (issue #4). Exception-isolated like every observer call: an observer
+     * must never break triage.
+     */
+    private reportDecision(finding: TrackedFinding, decision: FindingDecision): void {
+        if (this.observer?.findingDecided === undefined) {
+            return
+        }
+        try {
+            this.observer.findingDecided({
+                filePath: this.snapshot.filePath,
+                editorId: finding.editorId,
+                editorName: this.states.get(finding.editorId)?.editorName ?? finding.editorId,
+                finding,
+                decision
+            })
+        } catch {
+            // Observer only.
+        }
     }
 
     private notify(): void {

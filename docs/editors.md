@@ -15,21 +15,21 @@ An **editor** is an AI persona: a name, a colour, and a prompt saying what it ca
 
 ![The edit-editor dialog for Devil's Advocate: name, colour presets, persona prompt, prompt notes, backend override, and toggles for linked notes and the voice profile](images/edit-editor.png)
 
-| Field                         | What it does                                                                                 |
-| ----------------------------- | -------------------------------------------------------------------------------------------- |
-| **Name**                      | Shown on the rail, in cards, menus and commands                                              |
-| **Color**                     | The tint of this editor's highlights, and of its dot and status ring on the rail             |
-| **Persona prompt**            | Direct prompt text                                                                           |
-| **Prompt notes**              | Ordered vault notes appended to the prompt, resolved fresh at every run                      |
-| **Follow links**              | Also inline the notes those prompt notes link to (one hop)                                   |
-| **Backend**                   | Override the global default backend for this editor                                          |
-| **Model override**            | Only shown when a backend is set; empty means the backend's default model                    |
-| **Include linked notes**      | Attach the notes the _reviewed_ note links to as context                                     |
-| **Linked notes cap**          | 1–20, default 5                                                                              |
-| **Inject voice profile**      | Prepend the global voice profile to this editor's runs (on by default)                       |
-| **Capabilities**              | Review / Rewrite / Research                                                                  |
-| **Learning memory**           | An extra prompt block — see [below](#learning-memory)                                        |
-| **Preview what will be sent** | Assembles this editor's context for the active note, using the values you have not saved yet |
+| Field                         | What it does                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Name**                      | Shown on the rail, in cards, menus and commands                                                                       |
+| **Color**                     | The tint of this editor's highlights, and of its dot and status ring on the rail — a theme preset or any custom color |
+| **Persona prompt**            | Direct prompt text                                                                                                    |
+| **Prompt notes**              | Ordered vault notes appended to the prompt, resolved fresh at every run                                               |
+| **Follow links**              | Also inline the notes those prompt notes link to (one hop)                                                            |
+| **Backend**                   | Override the global default backend for this editor                                                                   |
+| **Model override**            | Only shown when a backend is set; empty means the backend's default model                                             |
+| **Include linked notes**      | Attach the notes the _reviewed_ note links to as context                                                              |
+| **Linked notes cap**          | 1–20, default 5                                                                                                       |
+| **Inject voice profile**      | Prepend the global voice profile to this editor's runs (on by default)                                                |
+| **Capabilities**              | Review / Rewrite / Research                                                                                           |
+| **Learning memory**           | An extra prompt block — see [below](#learning-memory)                                                                 |
+| **Preview what will be sent** | Assembles this editor's context for the active note, using the values you have not saved yet                          |
 
 ## Writing a good persona prompt
 
@@ -69,13 +69,19 @@ Nothing is deleted. The findings are hidden, not discarded — switch the editor
 
 ## Learning memory
 
-An extra block appended to the editor's system prompt.
+An extra block appended to the editor's system prompt — what this editor has learned about you.
 
-- **Off** (default) — nothing added.
-- **Vault note** — the note at **Memory note path** is attached to this editor's runs. Readable, editable, versioned by your vault like everything else.
-- **Plugin settings** — the block is stored inside the plugin's own data instead of a note.
+- **Off** (default) — nothing added, nothing recorded.
+- **Vault note** — the note at **Memory note path** is attached to this editor's runs. Readable, editable, versioned by your vault like everything else. Stray spaces are ignored and `.md` is added for you when the path lacks it. The path must stay inside the vault: absolute paths and `..` segments are refused.
+- **Plugin settings** — the memory lives in a **Memory text** field right in this dialog, stored in the plugin's own data.
 
-**The plugin does not write to it.** Nothing distils your accepts and rejects into it today; it is a place _you_ maintain — "stop flagging my em dashes", "this vault's audience is developers" — and the plugin injects. Since the settings-stored variant has no editing field in the dialog, use **Vault note** unless you enjoy editing `data.json` by hand.
+You can write it yourself ("stop flagging my em dashes", "this vault's audience is developers") — and the editor can learn it. While you triage findings, the plugin keeps a session-only journal of what you accepted, rejected, dismissed, argued the editor out of — and the push-backs the editor stood its ground on, so a session of pure arguing still teaches. The **Distill editor learnings** command turns that journal into a rewritten memory:
+
+1. Triage some findings from a memory-enabled editor, then run **Distill editor learnings** from the palette. (The command only appears when there is something to distill, and hides an editor whose distillation is already running.)
+2. One request runs on the editor's own backend — this is the only cost, and it only happens when you run the command. Nothing is ever distilled automatically.
+3. The proposed memory opens in a dialog, editable, with the previous memory alongside. **Save memory** replaces the old memory wholesale (that rewrite is also how it stays short); **Cancel** discards the proposal and keeps the journal for a later try. If the destination changed while the dialog sat open — you edited the memory note or the field — Save refuses instead of overwriting your edits; cancel and distill again.
+
+The journal lives in memory only — it empties on reload; saving a distilled memory clears the decisions that distillation saw, so anything you triage while the request is running stays queued for the next one. Findings from excluded notes never reach a distillation, and the learned memory never travels in a settings export.
 
 ## The voice profile
 

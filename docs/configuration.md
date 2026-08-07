@@ -112,24 +112,25 @@ See [CLI backends](cli-backends.md).
 
 Up to 200 editors. Per editor:
 
-| Field                    | Type      | Default               |
-| ------------------------ | --------- | --------------------- |
-| **Name**                 | text      | —                     |
-| **Color**                | swatch    | `var(--color-accent)` |
-| **Persona prompt**       | textarea  | empty                 |
-| **Prompt notes**         | note refs | empty                 |
-| **Follow links**         | toggle    | `off`                 |
-| **Backend**              | dropdown  | inherit global        |
-| **Model override**       | text      | empty                 |
-| **Include linked notes** | toggle    | `off`                 |
-| **Linked notes cap**     | int       | `5` (1–20)            |
-| **Inject voice profile** | toggle    | `on`                  |
-| **Review capability**    | toggle    | `on`                  |
-| **Rewrite capability**   | toggle    | `on`                  |
-| **Research capability**  | toggle    | `off`                 |
-| **Learning memory**      | dropdown  | `Off`                 |
-| **Memory note path**     | text      | empty                 |
-| **Enabled**              | toggle    | `on`                  |
+| Field                    | Type                   | Default               |
+| ------------------------ | ---------------------- | --------------------- |
+| **Name**                 | text                   | —                     |
+| **Color**                | swatch + custom picker | `var(--color-accent)` |
+| **Persona prompt**       | textarea               | empty                 |
+| **Prompt notes**         | note refs              | empty                 |
+| **Follow links**         | toggle                 | `off`                 |
+| **Backend**              | dropdown               | inherit global        |
+| **Model override**       | text                   | empty                 |
+| **Include linked notes** | toggle                 | `off`                 |
+| **Linked notes cap**     | int                    | `5` (1–20)            |
+| **Inject voice profile** | toggle                 | `on`                  |
+| **Review capability**    | toggle                 | `on`                  |
+| **Rewrite capability**   | toggle                 | `on`                  |
+| **Research capability**  | toggle                 | `off`                 |
+| **Learning memory**      | dropdown               | `Off`                 |
+| **Memory text**          | textarea               | empty                 |
+| **Memory note path**     | text                   | empty                 |
+| **Enabled**              | toggle                 | `on`                  |
 
 **Enabled** off hides the editor everywhere (rail, highlights, panel) and keeps it out of daemon refreshes; its findings are hidden, not deleted, and return when it is re-enabled — see [Disabling an editor](editors.md#disabling-an-editor).
 
@@ -139,15 +140,15 @@ See [Create and tune editors](editors.md).
 
 Up to 50 panels, 1–20 members each.
 
-| Field                          | Type                 | Default               |
-| ------------------------------ | -------------------- | --------------------- |
-| **Name**                       | text                 | —                     |
-| **Color**                      | swatch               | `var(--color-accent)` |
-| **Members**                    | toggles              | —                     |
-| **Charter**                    | textarea + note refs | empty                 |
-| **Aggregation backend**        | dropdown             | inherit global        |
-| **Aggregation model override** | text                 | empty                 |
-| **Enabled**                    | toggle               | `on`                  |
+| Field                          | Type                   | Default               |
+| ------------------------------ | ---------------------- | --------------------- |
+| **Name**                       | text                   | —                     |
+| **Color**                      | swatch + custom picker | `var(--color-accent)` |
+| **Members**                    | toggles                | —                     |
+| **Charter**                    | textarea + note refs   | empty                 |
+| **Aggregation backend**        | dropdown               | inherit global        |
+| **Aggregation model override** | text                   | empty                 |
+| **Enabled**                    | toggle                 | `on`                  |
 
 See [Work with panels](panels.md).
 
@@ -211,6 +212,7 @@ None of them ships a default hotkey. Assign your own in **Settings → Hotkeys**
 | **Dismiss all from &lt;Editor&gt;**                   | One per enabled editor, generated dynamically                             |
 | **Generate more findings from every finished editor** | One extra round per finished editor                                       |
 | **Toggle the margin comment column**                  | View preference; the comments are unaffected                              |
+| **Distill editor learnings**                          | Turns this session's triage decisions into editor memory (one request)    |
 | **Run setup wizard**                                  | Re-opens the guided setup                                                 |
 | _&lt;Action name&gt;_                                 | One command per bound action, appearing and disappearing with the binding |
 

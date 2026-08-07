@@ -19,6 +19,7 @@ You write. When you want a second opinion, you summon your editors — all of th
 - **Margin comments** — park a question on a passage and keep writing; an editor answers it in the background, and the answer waits for you in a column beside the text.
 - **Daemon mode** — an opt-in toggle that lets your editors refresh their findings on their own after you pause editing. Off by default, paused per note when you hide findings, and honest about the cost in its settings copy.
 - **History** — every finding, push-back exchange and scorecard of the session, browsable in its own panel tab after the run that produced them is gone. Durable across restarts if you opt in.
+- **Learning memory** — opt-in per editor: as you accept, reject and argue with findings, the **Distill editor learnings** command turns the session's decisions into a short memory the editor re-reads on every run — one request on that editor's backend, only when you run the command, and you confirm (and can edit) the exact text before anything is saved.
 - **Vault as configuration** — every prompt field accepts direct text _and/or_ references to your own vault notes, resolved fresh at run time. Documenting your assistant in your vault _is_ configuring the plugin.
 
 ## Screenshots
