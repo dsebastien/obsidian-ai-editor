@@ -1,5 +1,18 @@
 # Release Notes
 
+## 0.7.0 (2026-08-07)
+
+### Features
+
+- **plugin:** default the Fact Checker to yellow, the Grammar Editor to pink
+- **plugin:** free color picker for editor and panel colors ([#44](https://github.com/dsebastien/obsidian-ai-editor/issues/44))
+- **plugin:** per-editor learning loop — distill triage decisions into editor memory ([#4](https://github.com/dsebastien/obsidian-ai-editor/issues/4))
+- **plugin:** review-surface batch — sources UX, finding lifecycle, highlight contrast, per-note daemon ([#42](https://github.com/dsebastien/obsidian-ai-editor/issues/42), [#43](https://github.com/dsebastien/obsidian-ai-editor/issues/43)) [#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23)
+
+### Bug Fixes
+
+- **plugin:** pre-mix keyframe colors outside [@keyframes](https://github.com/keyframes) so the minifier keeps them ([#45](https://github.com/dsebastien/obsidian-ai-editor/issues/45))
+
 ## 0.6.1 (2026-08-05)
 
 ### Bug Fixes

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.6.1...0.7.0) (2026-08-07)
+
+### Features
+
+* **plugin:** default the Fact Checker to yellow, the Grammar Editor to pink ([7465450](https://github.com/dsebastien/obsidian-ai-editor/commit/74654501e3074181c28361d75660ee93d221925a))
+* **plugin:** free color picker for editor and panel colors ([#44](https://github.com/dsebastien/obsidian-ai-editor/issues/44)) ([dc21823](https://github.com/dsebastien/obsidian-ai-editor/commit/dc21823df1ea8a65589293da45d30c5ccd2fed16))
+* **plugin:** per-editor learning loop — distill triage decisions into editor memory ([#4](https://github.com/dsebastien/obsidian-ai-editor/issues/4)) ([fe2e11c](https://github.com/dsebastien/obsidian-ai-editor/commit/fe2e11cfe6988c796d29d57ffe59eb96cfeb1759))
+* **plugin:** review-surface batch — sources UX, finding lifecycle, highlight contrast, per-note daemon ([#42](https://github.com/dsebastien/obsidian-ai-editor/issues/42), [#43](https://github.com/dsebastien/obsidian-ai-editor/issues/43)) ([fd23e91](https://github.com/dsebastien/obsidian-ai-editor/commit/fd23e91e52b2e7d3527355b63b2e99453a4c79bb)), closes [#30](https://github.com/dsebastien/obsidian-ai-editor/issues/30) [#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23)
+
+### Bug Fixes
+
+* **plugin:** pre-mix keyframe colors outside [@keyframes](https://github.com/keyframes) so the minifier keeps them ([#45](https://github.com/dsebastien/obsidian-ai-editor/issues/45)) ([291bf6c](https://github.com/dsebastien/obsidian-ai-editor/commit/291bf6c07587d2129f470c12c0451f9a999cc3a4))
+
 ## [0.6.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.6.0...0.6.1) (2026-08-05)
 
 ### Bug Fixes
@@ -297,6 +310,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
