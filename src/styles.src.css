@@ -1455,8 +1455,16 @@ a.editor-ai-daemons-finding-card-source-url:hover {
 }
 
 /* One editor settling: a soft wash of its own persona colour, once. The ring
-   has already switched to its terminal shape, so nothing depends on this. */
+   has already switched to its terminal shape, so nothing depends on this.
+   The wash colour is derived HERE, not in the keyframes: lightningcss drops
+   color-mix(...var()...) declarations inside @keyframes (issue #45), so the
+   frames may only reference a plain custom property. */
 .editor-ai-daemons-rail-row-settled {
+    --editor-ai-daemons-rail-settle-from: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-editor-display) 26%,
+        transparent
+    );
     animation: editor-ai-daemons-rail-settle 520ms ease-out;
 }
 
@@ -1768,16 +1776,13 @@ a.editor-ai-daemons-finding-card-source-url:hover {
     }
 }
 
-/* Consumes the lightness-clamped display color (derived in the FINDING
-   HIGHLIGHTS block below) — a near-black persona color would otherwise wash
-   the row with an invisible tint. */
+/* Consumes the wash colour pre-mixed on .editor-ai-daemons-rail-row-settled —
+   a color-mix here would be dropped by the minifier (issue #45). The display
+   color it builds on is the lightness-clamped one (FINDING HIGHLIGHTS block
+   below), so a near-black persona color still yields a visible wash. */
 @keyframes editor-ai-daemons-rail-settle {
     from {
-        background-color: color-mix(
-            in srgb,
-            var(--editor-ai-daemons-editor-display) 26%,
-            transparent
-        );
+        background-color: var(--editor-ai-daemons-rail-settle-from);
     }
     to {
         background-color: transparent;
@@ -1894,25 +1899,30 @@ a.editor-ai-daemons-finding-card-source-url:hover {
    data-editor-id for scoping/debugging. Motion-sensitive users keep the
    static stronger tint without the pulse (see the reduced-motion block). */
 .editor-ai-daemons-finding-emphasized {
-    background-color: color-mix(in srgb, var(--editor-ai-daemons-finding-display) 38%, transparent);
+    /* Both pulse levels are pre-mixed here, not in the keyframes: lightningcss
+       drops color-mix(...var()...) declarations inside @keyframes (issue #45),
+       which shipped the pulse as an empty animation in prod builds. */
+    --editor-ai-daemons-emphasis-hi: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-finding-display) 38%,
+        transparent
+    );
+    --editor-ai-daemons-emphasis-lo: color-mix(
+        in srgb,
+        var(--editor-ai-daemons-finding-display) 22%,
+        transparent
+    );
+    background-color: var(--editor-ai-daemons-emphasis-hi);
     animation: editor-ai-daemons-emphasis 1s ease-in-out 2;
 }
 
 @keyframes editor-ai-daemons-emphasis {
     0%,
     100% {
-        background-color: color-mix(
-            in srgb,
-            var(--editor-ai-daemons-finding-display) 38%,
-            transparent
-        );
+        background-color: var(--editor-ai-daemons-emphasis-hi);
     }
     50% {
-        background-color: color-mix(
-            in srgb,
-            var(--editor-ai-daemons-finding-display) 22%,
-            transparent
-        );
+        background-color: var(--editor-ai-daemons-emphasis-lo);
     }
 }
 
