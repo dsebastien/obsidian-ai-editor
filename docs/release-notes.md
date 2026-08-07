@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.9.0 (2026-08-07)
+
+### Features
+
+- **plugin:** reorder editors from the settings tab ([#46](https://github.com/dsebastien/obsidian-ai-editor/issues/46))
+
 ## 0.8.0 (2026-08-07)
 
 ### Features

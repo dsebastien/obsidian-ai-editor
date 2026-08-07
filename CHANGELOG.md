@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.8.0...0.9.0) (2026-08-07)
+
+### Features
+
+* **plugin:** reorder editors from the settings tab ([#46](https://github.com/dsebastien/obsidian-ai-editor/issues/46)) ([c99709f](https://github.com/dsebastien/obsidian-ai-editor/commit/c99709fd15b30ebf074f2be6364fd7f230b64636))
+
 ## [0.8.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.7.0...0.8.0) (2026-08-07)
 
 ### Features
@@ -316,6 +322,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
