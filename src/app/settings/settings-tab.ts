@@ -152,18 +152,38 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
      * arrives as a callback. The row Obsidian created for the definition is
      * removed: the section renders into the group itself.
      */
+    /**
+     * The support calls to action (Knowii, GitHub Sponsors, newsletter,
+     * YouTube, Buy me a coffee). `renderSupportSection` is copied verbatim
+     * across the whole plugin fleet and must stay byte-identical, so the host
+     * adapts to it rather than the other way round.
+     *
+     * Wrapped in a group, and rendered INSIDE its own row. An earlier version
+     * was a bare definition at the root that built into `group.listEl` and then
+     * deleted its own row — at the root there is no group to build into, and
+     * the section disappeared from the settings entirely (reported 2026-08-08).
+     * `render` is documented as rendering the setting ROW; everything outside
+     * it belongs to the framework.
+     */
     private supportItem(): SettingDefinitionItem {
         return {
-            name: 'Support',
-            // Not a setting: keeping it out of search stops it answering
-            // queries that are looking for something configurable.
-            searchable: false,
-            render: (setting, group): void => {
-                renderSupportSection(group.listEl, (el) => {
-                    this.renderBuyMeACoffeeBadge(el)
-                })
-                setting.settingEl.remove()
-            }
+            type: 'group',
+            // No heading here: `renderSupportSection` draws its own.
+            items: [
+                {
+                    name: 'Support',
+                    // Not a setting: keeping it out of search stops it
+                    // answering queries looking for something configurable.
+                    searchable: false,
+                    render: (setting): void => {
+                        setting.settingEl.addClass('editor-ai-daemons-settings-embed')
+                        setting.infoEl.remove() // the section draws its own headings
+                        renderSupportSection(setting.settingEl, (el) => {
+                            this.renderBuyMeACoffeeBadge(el)
+                        })
+                    }
+                }
+            ]
         }
     }
 

@@ -212,7 +212,7 @@ function builtInActionItem(ctx: TabContext, verb: BuiltInActionId): SettingGroup
 function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupItem {
     return {
         name: action.customName.length > 0 ? action.customName : 'Unnamed action',
-        render: (setting, group): void => {
+        render: (setting): void => {
             const settings = ctx.facade.getSettings()
             const mutate = (
                 mutator: (target: ActionBinding) => void,
@@ -280,9 +280,17 @@ function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupI
             renderBindingWarning(setting, action, ctx)
 
             // The instruction is a prompt source (text + ordered note refs +
-            // follow-links), not a scalar: the existing editors render it into
-            // the list, right under the row they belong to.
-            renderPromptTextArea(group.listEl, {
+            // follow-links), not a scalar, so the existing editors build it.
+            // They go INSIDE this row, in a full-width block under its own
+            // name/control line: `render` renders the setting row, and anything
+            // written outside it (`group.listEl`) is the framework's to
+            // discard — which is why the identical pattern made the voice
+            // profile notes and the privacy chip lists vanish (2026-08-08).
+            setting.settingEl.addClass('editor-ai-daemons-settings-embed-host')
+            const extras = setting.settingEl.createDiv({
+                cls: 'editor-ai-daemons-settings-embed'
+            })
+            renderPromptTextArea(extras, {
                 name: 'Instruction',
                 desc: customInstructionDesc(action.customVerbClass),
                 placeholder: 'Turn the selection into a numbered checklist…',
@@ -293,7 +301,7 @@ function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupI
                     })
                 }
             })
-            renderNoteRefsEditor(group.listEl, {
+            renderNoteRefsEditor(extras, {
                 app: ctx.app,
                 name: 'Instruction notes',
                 desc: 'Vault notes appended to the instruction, in order, read fresh on every run.',

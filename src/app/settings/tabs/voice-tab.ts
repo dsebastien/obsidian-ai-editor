@@ -45,9 +45,16 @@ export function voicePageItems(ctx: TabContext): SettingDefinitionItem[] {
                     name: 'Voice profile notes',
                     desc: 'Vault notes appended in order at run time (e.g. My Voice Profile). Editing those notes immediately affects every subsequent run.',
                     // Arrays: no control type persists an ordered list, so the
-                    // existing note-ref editor renders into the row.
-                    render: (setting, group): void => {
-                        renderNoteRefsEditor(group.listEl, {
+                    // existing note-ref editor renders into the row. INTO the
+                    // row: `render` renders the setting row, and the framework
+                    // owns everything outside it — building into `group.listEl`
+                    // and deleting the row made this control vanish entirely,
+                    // leaving the voice profile notes unconfigurable (reported
+                    // 2026-08-08).
+                    render: (setting): void => {
+                        setting.settingEl.addClass('editor-ai-daemons-settings-embed')
+                        setting.infoEl.remove() // the helper draws its own name + desc
+                        renderNoteRefsEditor(setting.settingEl, {
                             app: ctx.app,
                             name: 'Voice profile notes',
                             desc: 'Vault notes appended in order at run time (e.g. My Voice Profile). Editing those notes immediately affects every subsequent run.',
@@ -57,7 +64,6 @@ export function voicePageItems(ctx: TabContext): SettingDefinitionItem[] {
                                     draft.voiceProfile.notePaths = paths
                                 })
                         })
-                        setting.settingEl.remove()
                     }
                 },
                 {

@@ -160,6 +160,30 @@
     border: 3px solid var(--text-muted);
 }
 
+/* A settings row whose entire body is a bespoke widget built by a `render:`
+   hook — chip lists, the note-ref editor, the support section. Those helpers
+   are shared (the support section is byte-identical across the plugin fleet)
+   and create their own `Setting`s, so the row must stop being a name/control
+   flex line and become a plain block they can lay themselves out inside.
+   Rendering INTO the row is deliberate: `render` renders the setting row, and
+   anything written outside it is the framework's to discard. */
+/* A row that keeps its own name/control line but hosts a bespoke widget under
+   it (the custom-action instruction editor). The row wraps so the embedded
+   block lands full-width on its own line instead of squeezing the control. */
+.editor-ai-daemons-settings-embed-host {
+    flex-wrap: wrap;
+}
+
+.editor-ai-daemons-settings-embed-host > .editor-ai-daemons-settings-embed {
+    flex-basis: 100%;
+}
+
+.editor-ai-daemons-settings-embed {
+    display: block;
+    padding: 0;
+    border-top: none;
+}
+
 /* Chip lists (excluded folders / tags) */
 .editor-ai-daemons-chip-list {
     @apply my-2 flex flex-wrap items-center gap-1.5;

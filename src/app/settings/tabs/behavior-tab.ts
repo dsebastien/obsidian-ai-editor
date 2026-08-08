@@ -199,9 +199,18 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                     name: 'Excluded folders',
                     desc: 'Notes under these folders never leave the vault.',
                     // Arrays: no control type persists a list, so the existing
-                    // chip editor renders into the row.
-                    render: (setting, group): void => {
-                        renderChipList(group.listEl, {
+                    // chip editor renders into the row. INTO the row: `render`
+                    // is documented as rendering the setting row, and the
+                    // framework owns everything outside it — an earlier version
+                    // built into `group.listEl` and deleted its own row, and the
+                    // whole control simply did not appear (reported 2026-08-08).
+                    // Staying inside `settingEl` also means the framework tears
+                    // the widget down with the row, so re-renders cannot stack
+                    // duplicates.
+                    render: (setting): void => {
+                        setting.settingEl.addClass('editor-ai-daemons-settings-embed')
+                        setting.infoEl.remove() // the helper draws its own name + desc
+                        renderChipList(setting.settingEl, {
                             name: 'Excluded folders',
                             desc: 'Notes under these folders never leave the vault.',
                             placeholder: 'Folder path, e.g. Private',
@@ -213,14 +222,15 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                                 }),
                             normalize: (raw) => normalizeChipValue(raw, 'folder')
                         })
-                        setting.settingEl.remove()
                     }
                 },
                 {
                     name: 'Excluded tags',
                     desc: 'Notes carrying these tags never leave the vault.',
-                    render: (setting, group): void => {
-                        renderChipList(group.listEl, {
+                    render: (setting): void => {
+                        setting.settingEl.addClass('editor-ai-daemons-settings-embed')
+                        setting.infoEl.remove() // the helper draws its own name + desc
+                        renderChipList(setting.settingEl, {
                             name: 'Excluded tags',
                             desc: 'Notes carrying these tags never leave the vault.',
                             placeholder: 'Tag without #, e.g. private',
@@ -232,7 +242,6 @@ export function behaviorPageItems(ctx: TabContext): SettingDefinitionItem[] {
                                 }),
                             normalize: (raw) => normalizeChipValue(raw, 'tag')
                         })
-                        setting.settingEl.remove()
                     }
                 },
                 {

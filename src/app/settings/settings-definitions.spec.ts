@@ -220,3 +220,66 @@ describe('numeric settings controls', () => {
         }
     })
 })
+
+/**
+ * `render` is documented as rendering the setting ROW. Everything outside that
+ * row belongs to the framework, so a hook that builds into `group.listEl` and
+ * then deletes its own row produces nothing the user can see — which is exactly
+ * what happened to the voice profile notes, the two privacy chip lists and the
+ * support section after the #35 migration (reported 2026-08-08). They were
+ * invisible in a green build: no test renders Obsidian, so nothing failed.
+ *
+ * This is the cheapest guard that would have caught it — a source-level check
+ * that no `render` hook reaches outside its row. It is not a substitute for
+ * looking at the settings pane, but it turns a silent regression into a
+ * failing test.
+ */
+describe('render escape hatches stay inside their row', () => {
+    const sources = new Bun.Glob('*.ts').scanSync({
+        cwd: `${import.meta.dir}/tabs`,
+        absolute: true
+    })
+
+    const files = [...sources, `${import.meta.dir}/settings-tab.ts`].filter(
+        (path) => !path.endsWith('.spec.ts')
+    )
+
+    it('reads the settings sources it means to check', async () => {
+        expect(files.length).toBeGreaterThan(5)
+        const text = await Bun.file(`${import.meta.dir}/tabs/behavior-tab.ts`).text()
+        expect(text).toContain('render:')
+    })
+
+    /** Source with comments stripped — the prose here explains the rule. */
+    async function codeOf(path: string): Promise<string> {
+        const text = await Bun.file(path).text()
+        return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    }
+
+    async function filesContaining(needle: string): Promise<string[]> {
+        const offenders: string[] = []
+        for (const path of files) {
+            if ((await codeOf(path)).includes(needle)) {
+                offenders.push(path.split('/').slice(-1)[0] ?? path)
+            }
+        }
+        return offenders
+    }
+
+    it('never builds into group.listEl', async () => {
+        expect(await filesContaining('group.listEl')).toEqual([])
+    })
+
+    it('never deletes the row the framework gave it', async () => {
+        expect(await filesContaining('settingEl.remove()')).toEqual([])
+    })
+
+    it('still detects an offender when one exists', async () => {
+        // Guards the comment stripping: if it ate real code too, the checks
+        // above would pass vacuously forever.
+        const code = '/* group.listEl */\n// group.listEl\nfoo(group.listEl)'
+        const stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+        expect(stripped).toContain('group.listEl')
+        expect(stripped.match(/group\.listEl/g)).toHaveLength(1)
+    })
+})
