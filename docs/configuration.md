@@ -9,7 +9,7 @@ Every setting, where it lives, and what it defaults to. Settings are stored in t
 
 **Settings → AI Editor** has seven pages: **Backends**, **Editors**, **Panels**, **Actions**, **Voice & style**, **Rules**, **Behavior**.
 
-Requires Obsidian **1.13.0** or newer. The settings use Obsidian's declarative settings API, so individual settings are reachable from Obsidian's own settings search — you can type "idle delay" or "strip frontmatter" without knowing which page holds it. Collections (backends, editors, panels, actions, rules) support drag-to-reorder and keyboard delete.
+Requires Obsidian **1.13.0** or newer. The settings use Obsidian's declarative settings API, so individual settings are reachable from Obsidian's own settings search — you can type "idle delay" or "strip frontmatter" without knowing which page holds it. Collections support keyboard delete, and backends, editors, panels and rules can be dragged to reorder. Actions cannot: they are a fixed set of verbs plus your custom ones, and nothing reads their order.
 
 ## Behavior page
 
