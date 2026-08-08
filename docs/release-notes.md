@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.10.3 (2026-08-08)
+
+### Bug Fixes
+
+- **plugin:** restore the settings controls the [#35](https://github.com/dsebastien/obsidian-ai-editor/issues/35) migration made invisible
+
 ## 0.10.2 (2026-08-07)
 
 ## 0.10.1 (2026-08-07)
