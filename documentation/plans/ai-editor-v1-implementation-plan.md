@@ -1,25 +1,25 @@
 # AI Editor — v1 Reference (vision, locked decisions, architecture)
 
-> Status: **v1 is built and unshipped.** This is not a plan to execute — it is why the plugin is shaped the way it is: the vision (§1), the work it was drawn from (§2), the product decisions locked with Sébastien (§3), the domain model (§4, §4b-§4f), the architecture (§5), the fleet support-CTA convention (§6), the risk register (§7) and the parked design questions (§7b, §8).
+> Status: **v1 is built, released on GitHub (0.10.x line), and live-verified.** This is not a plan to execute — it is why the plugin is shaped the way it is: the vision (§1), the work it was drawn from (§2), the product decisions locked with Sébastien (§3), the domain model (§4, §4b-§4f), the architecture (§5), the fleet support-CTA convention (§6), the risk register (§7) and the parked design questions (§7b, §8).
 >
 > **What the code actually does is documented elsewhere, and those documents win when they disagree with this one:** `documentation/Architecture.md` (structure, run lifecycle, UI contracts, accessibility and performance contracts), `documentation/Domain Model.md` (entities), `documentation/Business Rules.md` (invariants), `documentation/Configuration.md` (settings as the user sees them), `documentation/plans/interaction-surfaces-design.md` (menus, commands, CLI). Manual checks a human still has to run live: `documentation/live-verification-checklist.md`. Everything still open — post-v1 features and the bugs found in live testing — is in GitHub issues, not here.
 
-## 0. Current state
+## 0. Current state (updated 2026-08-12)
 
-**The gate.** `bun run format`, then `bun run validate` (tsc + eslint `--max-warnings 0` + the spec suite, 2 341 specs green), then `bun run build`. Nothing merges that does not pass all three.
+**The gate.** `bun run format`, then `bun run validate` (tsc + eslint `--max-warnings 0` + the spec suite — 2 822 specs green as of 2026-08-12), then `bun run build`. Nothing merges that does not pass all three.
 
-**Nothing has been pushed.** Every commit of the whole build is local.
+**Released.** The repo is pushed and GitHub releases exist through the 0.10.x line (0.10.4 at the time of writing), each with `main.js`, `manifest.json`, `styles.css` and provenance attestation via the two-phase release workflow.
+
+**Live-vault verification: completed by Sébastien, 2026-08-12** — the full pass over `documentation/live-verification-checklist.md`. That document is now a regression checklist for future changes, not a pre-submission gate.
 
 **Remaining — Sébastien personally. Not agent scope: do not plan or attempt it.**
 
-1. **Push.**
-2. **Marketplace submission** — run `documentation/community-review-checklist.md`; its "Before submitting" section is the order. The naming blocker it opened with is closed (see Identity below).
-3. **Docs-site publishing, screenshots, video.**
-4. **Live-vault verification** — the plugin has never been exercised end to end by an agent, and cannot be: Obsidian is a GUI app. Every manual check is in `documentation/live-verification-checklist.md`, starting with its "End-to-end review flow" section; CLI backends need real binaries, margin comments need a real sync, theming needs real community themes, and the performance work needs a real vault.
+1. **Marketplace submission** — run `documentation/community-review-checklist.md`; its "Before submitting" section is the order. The naming blocker it opened with is closed (see Identity below).
+2. **Docs-site publishing, screenshots, video.**
 
 **Identity, settled 2026-07-31.** The catalog blocker (`buszk/obsidian-ai-editor` owns the `ai-editor` id and the "AI Editor" name) was resolved by renaming the plugin `id` to `editor-ai-daemons` while keeping the display name "AI Editor". The **GitHub repository name did not change** — every repo URL, funding link, docs `baseurl` and the temp-dir prefix still read `obsidian-ai-editor`. Command ids embed no plugin id and needed nothing. Evidence and the re-run catalog check: `documentation/community-review-checklist.md` § 0.
 
-**Standing policy — no users yet (Sébastien, 2026-07-29).** Until the plugin ships, never spend effort on backwards compatibility, migrations or behaviour-preserving defaults: pick the best design outright and change schemas freely. The schema-version machinery stays for post-release.
+**Standing policy — no users yet (Sébastien, 2026-07-29; re-check before relying on it).** Until the plugin ships to the community catalog, never spend effort on backwards compatibility, migrations or behaviour-preserving defaults: pick the best design outright and change schemas freely. The schema-version machinery stays for post-release. **Caveat (2026-08-12): public GitHub releases exist, so early adopters may already be installing outside the catalog** — the policy lapses at catalog acceptance at the latest; if a schema break is on the table, confirm with Sébastien first.
 
 ## 1. Vision
 

@@ -7,7 +7,7 @@
 - `workspace.on('editor-menu')` / `('file-menu')` / `('files-menu')` all exist (obsidian.d.ts 1.12.x). `files-menu` receives `TAbstractFile[]` (multi-selection); folder entries are `TFolder` instances — filter them.
 - `Menu.addItem` / `addSeparator`, `MenuItem.setTitle/setIcon/setDisabled/setSection` exist. **`setSubmenu` is NOT public API** — no submenus; flatten.
 - `addCommand` / `removeCommand` are public (1.7.2+); user hotkeys persist across unregister/re-register **as long as command ids are stable**. Ids must derive from entity UUIDs, never display names.
-- `registerCliHandler(command, description, flags, handler)` is **`@public` `@since 1.12.2`** on `Plugin`, with `CliData`/`CliFlag`/`CliFlags`/`CliHandler` exported types. The repo's typings were pinned at 1.12.0, which predates it; they were bumped to **1.12.3** (still the pin) and `minAppVersion` was deliberately left alone. Guard registration with `Platform.isDesktop && requireApiVersion('1.12.2')`. Reference implementation: obsidian-note-toolbar `CliManager`/`CliHandlers` (passes community review).
+- `registerCliHandler(command, description, flags, handler)` is **`@public` `@since 1.12.2`** on `Plugin`, with `CliData`/`CliFlag`/`CliFlags`/`CliHandler` exported types. The repo's typings were pinned at 1.12.0, which predates it; they were bumped to 1.12.3 at the time (the pin has since moved with the fleet — `package.json` is authoritative, 1.13.1 as of 2026-08-12) and `minAppVersion` was deliberately left alone. Guard registration with `Platform.isDesktop && requireApiVersion('1.12.2')`. Reference implementation: obsidian-note-toolbar `CliManager`/`CliHandlers` (passes community review).
 
 ## 1. Editor context menu (selection)
 

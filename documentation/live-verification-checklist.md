@@ -1,8 +1,13 @@
 # Live verification checklist
 
-Everything below needs a human in a running Obsidian vault — no agent verified any of it.
+Everything below needs a human in a running Obsidian vault — agents cannot verify any of it.
 Extracted 2026-07-31 from the per-day development history before that history was removed;
-grouped by the feature that introduced the check. Work through this before submitting.
+grouped by the feature that introduced the check.
+
+**A full pass over every section was completed by Sébastien on 2026-08-12** (recorded in the
+per-section Status lines). This document is now a REGRESSION checklist: the checkboxes stay
+unchecked on purpose so any section can be re-run after a change touches its feature — a new
+verification pass updates that section's Status line, nothing else.
 
 Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, and
 `ai_editor: false` (not the old key) is the frontmatter opt-out.
@@ -11,7 +16,7 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ## Per-note daemon mode + always-on setting (2026-08-06)
 
-Status: **nothing verified.** Shipped with unit coverage (controller per-note gating, migration, wizard/settings renames), but nobody has flipped the toggle in a running vault.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Open two notes; turn daemon mode on via the rail toggle in note A. Edit both: only note A arms (pulse on its toggle) and refreshes; note B never does.
 - Close note A (last pane showing it) and reopen it: the daemon toggle is hollow again — the per-note enable did not survive the reopen. Same after an Obsidian restart.
@@ -25,7 +30,7 @@ Status: **nothing verified.** Shipped with unit coverage (controller per-note ga
 
 ## Operation contract v2 — structured edits (issues #17/#22, 2026-08-01)
 
-Status: **nothing verified.** The contract change shipped with 2378 tests green, and the v2 review schema was probed successfully against a live local `qwen3:4b` (6/6 valid results, correct ops chosen, no prose leaked into edit text) — but no UI surface of it has ever been seen in a running vault.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - A review produces findings whose card shows the proposal as LABELLED edits: **Replace** renders old struck + new, **Insert above/below** renders ONLY the inserted text (the quoted line must visibly not be struck), **Delete** renders only the struck text.
 - Accepting an **insert-before** proposal adds the text above the quoted line and the quoted line SURVIVES — this is the #17 data-loss regression check, the single most important item here.
@@ -40,7 +45,7 @@ Status: **nothing verified.** The contract change shipped with 2378 tests green,
 
 ## Cross-run carryover — re-review keeps findings and triage (issue #19, 2026-08-02)
 
-Status: **nothing verified.** Shipped with full unit/integration coverage (store, run controller, cursor), but no eye has seen the dimmed state or the swap in a running vault.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Review a note, wait for findings, then hit Review again: the existing findings STAY on screen — dimmed in the editor highlights and in the side panel — for the whole wait, instead of the note going bare.
 - While dimmed, a carried finding still works: card opens, Accept applies, Dismiss clears — dimming is presentational only.
@@ -54,7 +59,7 @@ Status: **nothing verified.** Shipped with full unit/integration coverage (store
 
 ## Daemon debounce — short window, any-interaction reset (issue #20, 2026-08-02)
 
-Status: **nothing verified.** Scheduler logic is spec-pinned; the feel of the 3 s window and the activity feeds need a live vault.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Daemon on, edit a note, hands off everything: the refresh fires ~3 s after the last keystroke (default settings).
 - Edit, then keep moving the cursor / selecting text WITHOUT editing: no refresh fires while you keep interacting; it fires ~3 s after you truly stop.
@@ -66,7 +71,7 @@ Status: **nothing verified.** Scheduler logic is spec-pinned; the feel of the 3 
 
 ## Truncation and payload recovery (issue #18, 2026-08-02)
 
-Status: **nothing verified.** Parser and adapters are spec-pinned; the original repro needs a live backend.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Reproduce the original failure: a LONG selection → "Ask for comments" against a local model. The error must now say the model ran out of output space (or "stopped mid-answer") with the shorter-selection advice — not "Model response is not valid JSON" — and it must be visible on the margin card / panel job list, not only as a Notice.
 - A chatty model (prose around the JSON) no longer fails the run — the object is recovered and findings land.
@@ -74,7 +79,7 @@ Status: **nothing verified.** Parser and adapters are spec-pinned; the original 
 
 ## Failure classification, auto-retry, daemon auto-disable (issue #23, 2026-08-02)
 
-Status: **nothing verified.** Policy, breaker and tracker are spec-pinned; the live behaviors need a vault and a deliberately broken backend.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Configure a backend with a WRONG API key and review: the failure says authentication and points at the Backends tab; no automatic retry happens (watch the provider dashboard / server log — exactly one request).
 - Briefly kill a local server (Ollama) mid-idle, review, restart it within a couple of seconds: the review should succeed on the automatic retry without the user doing anything.
@@ -83,7 +88,7 @@ Status: **nothing verified.** Policy, breaker and tracker are spec-pinned; the l
 
 ## Rail collapse (issue #28, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The chevron collapses the rail to daemon toggle + count + chevron; expanding restores the full card. State survives note switches AND a restart (persisted), and applies to every pane at once.
 - While a review runs collapsed, **Cancel is visible** and works; when idle, no Review button shows.
@@ -93,7 +98,7 @@ Status: **nothing verified.**
 
 ## Show/hide findings + daemon pause (issue #29, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The rail's ▣/▢ toggle (and the "Show/hide findings in the note" command) clears highlights, the current-finding ring and any open card; the side panel keeps listing everything; toggling back restores decorations with statuses intact.
 - Daemon on, findings hidden, edit the note, wait: NO refresh fires. Show them again: a refresh arms and fires after the idle window (text changed while hidden).
@@ -103,7 +108,7 @@ Status: **nothing verified.**
 
 ## Acknowledge all-good editors (issue #24, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - A settled editor with zero findings shows the ✓ in its section header; clicking hides the section and the footer says "1 all-good editor acknowledged · Show".
 - An editor whose findings you dismissed/accepted entirely also becomes acknowledgeable; one with open findings, or still running/failed, never shows the ✓.
@@ -113,7 +118,7 @@ Status: **nothing verified.**
 
 ## History tab (issue #21, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The panel shows Review | History tabs; History lists this note's entries newest-day-first with time stamps; filter chips appear once 2+ kinds or editors exist and narrow the list; text is selectable.
 - Run a review → findings appear as history entries after the editor settles. Push back on a finding → the exchange lands. Run a panel → the scorecard lands.
@@ -125,7 +130,7 @@ Status: **nothing verified.**
 
 ## Ask a question — panels in the picker + rename (issue #27, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The command and context-menu item now read "Ask a question" (id unchanged — existing hotkeys still fire it); the modal title matches.
 - With ≥1 enabled panel whose members can run, the picker lists panels after editors, marked "(panel · N requests)" with the real count (resolvable members + 1 when aggregation is configured).
@@ -135,7 +140,7 @@ Status: **nothing verified.**
 
 ## Selection segment on the rail (issue #26, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - Select text, hold still ~200 ms: a "Selection" segment appears attached to Review (one visual object, flush corners). No flicker while dragging the selection out.
 - Click it: the review runs on ONLY the selection — and the visual selection in the editor SURVIVES the click (mousedown capture; the critical check). Focus stays in the editor.
@@ -146,7 +151,7 @@ Status: **nothing verified.**
 
 ## Rail idle fade + selectable finding text (issues #33/#34, 2026-08-02)
 
-Status: **nothing verified.**
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The rail dims when the pointer leaves it and nothing in it has focus; hovering or tabbing into it restores it. It stays SOLID while a review runs and while the daemon toggle pulses (refresh armed); a daemon that is merely on (breathing, nothing armed) does not keep it solid.
 - Reduced motion on: the fade snaps rather than animates.
@@ -158,7 +163,7 @@ Status: **nothing verified.**
 
 ## End-to-end review flow (the M2 baseline — start here)
 
-Status: **partly done.** One end-to-end run has succeeded in a live vault — 4/4 findings anchored through a local Ollama (`qwen3:4b`) — and Sébastien confirmed that the card opens on a highlight click and that Accept and Dismiss work. Everything else below is unverified, and no real API provider has ever been configured against this build.
+Status: **verified 2026-08-12** (full pass by Sébastien).
 
 - The plugin loads in a live vault with no console errors.
 - `Review current note` runs on a test note and findings land.
@@ -563,7 +568,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - Settings search: type `idle delay`, `strip frontmatter` and `context budget` into Obsidian's settings search — each must surface the control itself, editable in place, without opening the page first. This is what issue #35 bought; if a control is missing here, its dot-path key is wrong.
 - In **Settings → Community plugins**, the installed AI Editor entry should show three funding links rather than one.
 
-## Placement verbs — Expand section / Continue the note (issue #31, 2026-08-04) — UNVERIFIED
+## Placement verbs — Expand section / Continue the note (issue #31, 2026-08-04)
 
 Bind both verbs to an editor first (Actions tab — they ship unbound).
 
@@ -576,14 +581,14 @@ Bind both verbs to an editor first (Actions tab — they ship unbound).
 - [ ] Both verbs appear in the palette while bound and vanish when unbound.
 - [ ] Unbound: right-click without selection shows no plugin entries at all.
 
-## Finding over a link (2026-08-04) — UNVERIFIED
+## Finding over a link (2026-08-04)
 
 - [ ] A finding whose span covers a wikilink: plain click on the link text opens the CARD, does not navigate.
 - [ ] Ctrl/Cmd+click on the same spot follows the link (no card).
 - [ ] Same for an external/markdown link inside a finding span.
 - [ ] Links OUTSIDE any finding still open on plain click as before.
 
-## Find references (issue #30, 2026-08-04) — UNVERIFIED
+## Find references (issue #30, 2026-08-04)
 
 Best tested with a research-capable backend (CLI agent) so verified sources exist; an API backend exercises the unverified path.
 
@@ -595,7 +600,7 @@ Best tested with a research-capable backend (CLI agent) so verified sources exis
 - [ ] Unanchored finding (edit the claim's text first): footnote button disabled with the reason; Add to References still works.
 - [ ] Verb appears in menu/palette bound to Fact Checker out of the box (fresh vault) — existing vaults keep their bindings.
 
-## Grammar Editor + revisioned starter pack (issue #37, 2026-08-05) — UNVERIFIED
+## Grammar Editor + revisioned starter pack (issue #37, 2026-08-05)
 
 The seeding change matters more than the persona: this is the first pack revision shipped into an existing install.
 
@@ -605,7 +610,7 @@ The seeding change matters more than the persona: this is the first pack revisio
 - [ ] Planted style bait (a deliberate fragment, an informal "gonna", a wikilink, a code block with odd spelling) produces NO findings — lane discipline.
 - [ ] Fresh vault (rename `data.json` away, reload): seven editors seed, one panel, bindings as documented; `starterPackVersion: 2` from the start.
 
-## Failure diagnostics — Show details (issue #39, 2026-08-05) — UNVERIFIED
+## Failure diagnostics — Show details (issue #39, 2026-08-05)
 
 Needs a deliberately broken CLI backend (point the path at a script that exits 1 after echoing to stderr; log out of `claude` for the real case) and a broken API backend (wrong model).
 
@@ -618,7 +623,7 @@ Needs a deliberately broken CLI backend (point the path at a script that exits 1
 - [ ] Popout window: modal opens in the right window; copy targets that window's clipboard.
 - [ ] API backend with a model that rejects the request: HTTP 400 message names thinking/output-budget/model as the things to check; 404 says check the model name.
 
-## Failure diagnostics — remaining surfaces (issue #42, 2026-08-06) — UNVERIFIED
+## Failure diagnostics — remaining surfaces (issue #42, 2026-08-06)
 
 Same broken CLI backend setup as the issue #39 section. The three surfaces #39 left string-only:
 
@@ -629,13 +634,13 @@ Same broken CLI backend setup as the issue #39 section. The three surfaces #39 l
 - [ ] Margin comment answered by a broken CLI editor: the failed card offers **Show details** (before Retry); same on the side panel's comment row.
 - [ ] After Retry, Resolve, or Delete of that comment, Show details is gone; after an Obsidian restart the failed comment loads back with NO Show details (the capture died with the session).
 
-## Motion (issue #14, 2026-08-05) — UNVERIFIED
+## Motion (issue #14, 2026-08-05)
 
 - [ ] Opening a finding card: one short fade/rise (~160ms); no flicker, no replay when a push-back reply refreshes the open card; placement identical to before.
 - [ ] Press feedback: rail rows/buttons, panel buttons (retry, acknowledge, filter, nav, Show details), card actions/copy visibly depress (~3% scale) on mousedown; the rail chevron still rotates correctly (no scale clobber).
 - [ ] With system reduced-motion on: card appears instantly (no half-played frame); pressed state still visible.
 
-## Double rail after aborted teardown (cross-generation leak, 2026-08-06) — UNVERIFIED
+## Double rail after aborted teardown (cross-generation leak, 2026-08-06)
 
 The keyed-map fix is spec-covered (`mount-guard.spec.ts`); the visual outcome needs a live vault with hot-reload (`.hotreload` marker present).
 
@@ -644,7 +649,7 @@ The keyed-map fix is spec-covered (`mount-guard.spec.ts`); the visual outcome ne
 - [ ] Collapse/expand the rail after the re-enable: no second rail disagreeing with the collapsed state.
 - [ ] Normal dev loop: repeated hot-reload cycles with a note open never accumulate wrappers.
 
-## Color picker freedom (issue #44, 2026-08-07) — UNVERIFIED
+## Color picker freedom (issue #44, 2026-08-07)
 
 In an editor or panel modal (**Settings → AI Editor → Editors/Panels → edit**):
 
@@ -655,7 +660,7 @@ In an editor or panel modal (**Settings → AI Editor → Editors/Panels → edi
 - [ ] When a custom hex is active, the custom input shows the selected ring (same as a selected preset swatch) and its accessible name includes the hex.
 - [ ] A dark custom hex on a dark theme still yields readable highlights (contrast clamp derives the display color).
 
-## Learning loop / memory distillation (issue #4, 2026-08-07) — UNVERIFIED
+## Learning loop / memory distillation (issue #4, 2026-08-07)
 
 Setup: an editor with **Learning memory** set to `Plugin settings` or `Vault note` (+ path), enabled, backend configured.
 
@@ -668,3 +673,17 @@ Setup: an editor with **Learning memory** set to `Plugin settings` or `Vault not
 - [ ] **In-flight guard**: while a distillation is running (or its modal is open), the command no longer offers that editor; it returns after Save or Cancel.
 - [ ] **Mid-flight triage survives**: trigger a distillation, triage more findings while it runs, then Save — the command stays available (the new decisions are still journaled for the next distillation).
 - [ ] **Path normalization**: set **Memory note path** to a value without `.md` (e.g. `Meta/AI memory`) — distill + Save writes `Meta/AI memory.md`, and the next run's "what will be sent" preview attaches that same note.
+
+## Rename survival (issue #47, 2026-08-12)
+
+Status: **verified 2026-08-12** (full pass by Sébastien).
+
+Runs, findings and all per-note review state must survive a vault rename (Business Rule #23).
+
+- [ ] Rename a note (inline title or file explorer) while its review is showing: findings, highlights, panel content and rail state all stay; Accept on a finding still applies after the rename.
+- [ ] Rename a FOLDER containing a note under review: same survival for every note under it; a sibling folder with a shared name prefix (`Notes` vs `NotesArchive`) is untouched.
+- [ ] Rename while a run is still IN FLIGHT: the run keeps going and its findings land on the renamed note.
+- [ ] Rename while findings are hidden (issue #29): the daemon stays paused for the renamed note, and "show findings" at the new path lifts the pause.
+- [ ] Triage position and severity lens survive the rename (step-next continues from the same finding; the lens keeps its mode).
+- [ ] Rename with a pending transform preview: the preview stays presented and Apply still works when the target text is unchanged.
+- [ ] DELETE a note with a live run: run, findings and all per-note state are gone; recreating a note at the same path starts clean.
