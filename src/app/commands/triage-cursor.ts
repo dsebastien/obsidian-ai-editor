@@ -1,4 +1,4 @@
-import { deleteKeysUnder } from '../domain/path-scope'
+import { deleteKeysUnder, remapKeysUnder } from '../domain/path-scope'
 import type { TriageMemory } from './finding-navigation'
 
 /**
@@ -18,8 +18,10 @@ import type { TriageMemory } from './finding-navigation'
  * back to the recorded offset, exactly the degradation an evicted cursor
  * produced.
  *
- * Lifecycle owned by the caller: `clear` on file delete/rename and on
- * Escape (the explicit "leave triage" gesture), `clearAll` on dispose.
+ * Lifecycle owned by the caller: `clear` on file delete and on Escape (the
+ * explicit "leave triage" gesture), `renameUnder` on vault rename (the run
+ * survives a rename, so the cursor follows it — issue #47), `clearAll` on
+ * dispose.
  */
 export class TriageCursorStore {
     private readonly byFile = new Map<string, { token: unknown; memory: TriageMemory }>()
@@ -53,11 +55,21 @@ export class TriageCursorStore {
     }
 
     /**
-     * `clear` for a path AND everything under it — a FOLDER rename or delete,
-     * which Obsidian reports without per-child events.
+     * `clear` for a path AND everything under it — a FOLDER delete, which
+     * Obsidian reports without per-child events.
      */
     clearUnder(path: string): void {
         deleteKeysUnder(this.byFile, path)
+    }
+
+    /**
+     * Follows a vault rename (issue #47): the run survives a rename
+     * (`RunController.renameUnder` re-keys the same handle instance), so
+     * the user's triage position moves with the note instead of dying with
+     * the old path. The stored `token` stays valid — it IS that handle.
+     */
+    renameUnder(oldPath: string, newPath: string): void {
+        remapKeysUnder(this.byFile, oldPath, newPath)
     }
 
     clearAll(): void {

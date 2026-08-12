@@ -6,7 +6,7 @@ import type {
     TransformSelectionRequest
 } from '../../domain/operations/contract'
 import type { DocumentSnapshot } from '../../domain/snapshot'
-import { isPathUnder } from '../../domain/path-scope'
+import { isPathUnder, remapPathUnder } from '../../domain/path-scope'
 import type { OperationErrorInfo } from './run-controller'
 import type { ReleasePermit } from './semaphore'
 import { Semaphore } from './semaphore'
@@ -141,7 +141,8 @@ export interface TransformRunHandle {
 class TransformRunHandleImpl implements TransformRunHandle {
     readonly runId: RunId
     readonly kind: 'transform-selection' | 'insert-at'
-    readonly snapshot: DocumentSnapshot
+    /** Mutable ONLY through `renamedTo` — a vault rename re-keys the run. */
+    snapshot: DocumentSnapshot
     readonly target: TransformTarget
     readonly editorId: string
     readonly editorName: string
@@ -173,6 +174,15 @@ class TransformRunHandleImpl implements TransformRunHandle {
             () => undefined,
             () => undefined
         )
+    }
+
+    /**
+     * Follows a vault rename (issue #47): only the path changes — text,
+     * target span and outcome are content-based and stay valid, so a
+     * pending preview survives the user retitling the note.
+     */
+    renamedTo(newPath: string): void {
+        this.snapshot = { ...this.snapshot, filePath: newPath }
     }
 
     getState(): TransformRunState {
@@ -379,7 +389,7 @@ class TransformRunHandleImpl implements TransformRunHandle {
  * they opt in.
  */
 export class TransformController {
-    private readonly runs = new Map<string, TransformRunHandle>()
+    private readonly runs = new Map<string, TransformRunHandleImpl>()
 
     constructor(
         private readonly requestGate: Semaphore = new Semaphore(() => Number.POSITIVE_INFINITY)
@@ -400,7 +410,8 @@ export class TransformController {
         return this.runs.get(filePath) ?? null
     }
 
-    /** Cancels and forgets the run for a file (file closed/deleted/renamed). */
+    /** Cancels and forgets the run for a file (file closed or deleted — a
+     * rename goes through `renameUnder` instead). */
     discardRun(filePath: string): void {
         const run = this.runs.get(filePath)
         if (!run) {
@@ -420,6 +431,28 @@ export class TransformController {
             if (isPathUnder(filePath, path)) {
                 this.discardRun(filePath)
             }
+        }
+    }
+
+    /**
+     * Follows a vault rename of `path` (note or folder) — issue #47, same
+     * contract as `RunController.renameUnder`: a rename never changes
+     * content, so the run is re-keyed with its outcome intact rather than
+     * cancelled. A stale run already at a target path is discarded first.
+     */
+    renameUnder(oldPath: string, newPath: string): void {
+        for (const [filePath, run] of [...this.runs]) {
+            const moved = remapPathUnder(filePath, oldPath, newPath)
+            if (moved === null || moved === filePath) {
+                continue
+            }
+            const occupant = this.runs.get(moved)
+            if (occupant && occupant !== run) {
+                this.discardRun(moved)
+            }
+            this.runs.delete(filePath)
+            run.renamedTo(moved)
+            this.runs.set(moved, run)
         }
     }
 

@@ -345,16 +345,18 @@ export class DaemonScheduler {
      * and their views follow the file, so pending arms and the once-per-file
      * oversized log marker follow too — a rename is NOT a close (adversarial
      * review 2026-08-06; deleting the state here silently dropped pending
-     * refreshes). The `paused` marker is deliberately DROPPED, not remapped:
-     * it mirrors the controller's findings-hidden state, which a rename
-     * clears along with the cancelled run — a remapped pause would suppress
-     * refreshes at the new path with no findings-shown gesture left to lift
-     * it. Returns the remapped (new) paths so the glue can re-derive timers.
+     * refreshes). The `paused` marker follows too (issue #47): it mirrors
+     * the controller's findings-hidden state, which a rename now REMAPS
+     * along with the surviving run — so the findings-shown gesture that
+     * lifts the pause is still available at the new path. (Before #47 the
+     * rename cancelled the run and cleared hidden state, so the pause was
+     * deliberately dropped here.) Returns the remapped (new) paths so the
+     * glue can re-derive timers.
      */
     filesRenamedUnder(oldPath: string, newPath: string): string[] {
         const moved = remapKeysUnder(this.paths, oldPath, newPath)
         remapMembersUnder(this.oversizedLogged, oldPath, newPath)
-        deleteKeysUnder(this.paused, oldPath)
+        remapMembersUnder(this.paused, oldPath, newPath)
         return moved
     }
 

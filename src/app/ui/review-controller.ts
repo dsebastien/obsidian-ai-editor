@@ -39,7 +39,13 @@ import { sectionInsertionPoint } from '../domain/sections'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
 import { asFindingId } from '../domain/ids'
-import { deleteKeysUnder, isPathUnder, remapPathUnder } from '../domain/path-scope'
+import {
+    deleteKeysUnder,
+    isPathUnder,
+    remapKeysUnder,
+    remapMembersUnder,
+    remapPathUnder
+} from '../domain/path-scope'
 import type { FindingId } from '../domain/ids'
 import type { PluginSettingsV1 } from '../domain/settings/settings-schema'
 import { createSnapshot, hashText } from '../domain/snapshot'
@@ -688,15 +694,18 @@ export class ReviewController {
         // retained snapshot for the plugin's lifetime, and a stale run a note
         // later created at a reused path would inherit, decorating it with
         // another note's finding anchors.
+        //
+        // A rename REMAPS rather than discards (issue #47): retitling a note
+        // mid-review used to wipe every finding — but a rename changes the
+        // path, never the content, so every content-anchored finding stays
+        // valid. The same "the views follow the file" argument that made the
+        // daemon remap its per-note state (adversarial review 2026-08-06)
+        // applies to the run itself, and to everything scoped to it: skip
+        // reports, triage cursor, severity lens, hidden findings and
+        // acknowledgements all move with the note. Only a DELETE discards.
         plugin.registerEvent(
             app.vault.on('rename', (file, oldPath) => {
-                this.discardFileState(oldPath)
-                // The daemon REMAPS rather than discards: a rename closes
-                // nothing — the views follow the file — so the per-note
-                // enablement override and any pending arm must follow too.
-                // Discarding them silently flipped an explicitly
-                // disabled/enabled note back to the `daemonAlwaysOn` default
-                // (adversarial review 2026-08-06).
+                this.remapFileState(oldPath, file.path)
                 this.daemon?.filesRenamedUnder(oldPath, file.path)
                 if (this.lastActiveMarkdownFile !== null) {
                     const moved = remapPathUnder(this.lastActiveMarkdownFile, oldPath, file.path)
@@ -731,18 +740,12 @@ export class ReviewController {
 
     /**
      * Forgets every per-file state the controller owns for `path` and for
-     * everything under it — the sweep both vault hooks above share.
-     *
-     * A rename drops rather than remaps, which is the pre-existing single-file
-     * semantics kept deliberately: the run is cancelled either way (its
-     * snapshot is about a file that no longer exists at that path), so keeping
-     * a triage cursor or a severity filter pointed at findings that are gone
-     * would only be state pretending to be useful.
-     *
-     * The DAEMON is the exception and is handled by each hook itself: its
-     * per-note state (enablement override, pending arm, timer) is about the
-     * NOTE, not about a run's findings — a rename remaps it
-     * (`filesRenamedUnder`), only a delete discards it (`filesClosedUnder`).
+     * everything under it — the DELETE hook's sweep. Deletion is a real
+     * close: the run's snapshot is about a note that no longer exists, so
+     * keeping a triage cursor or a severity filter pointed at findings that
+     * are gone would only be state pretending to be useful. The daemon's
+     * per-note state dies alongside via `filesClosedUnder` (the hook calls
+     * it itself).
      */
     private discardFileState(path: string): void {
         this.deps.runController.discardUnder(path)
@@ -753,6 +756,46 @@ export class ReviewController {
         this.severityFilters.clearUnder(path)
         deleteKeysUnder(this.hiddenFindings, path)
         deleteKeysUnder(this.acknowledgedAllGood, path)
+    }
+
+    /**
+     * Moves every per-file state the controller owns from `oldPath` (and
+     * everything under it) to `newPath` — the RENAME hook's sweep (issue
+     * #47). A rename changes the path, never the content: the run's
+     * findings, the triage position, the severity lens, hidden findings and
+     * all-good acknowledgements are all about content that still exists, so
+     * they follow the note instead of dying with the old path.
+     *
+     * The glues' `filePath` is remapped SYNCHRONOUSLY here, not left to the
+     * scheduled refresh: `handleEditorUpdate` forwards an edit only while
+     * `glue.filePath` matches the view's live file path (which Obsidian has
+     * already updated when the rename event fires). Waiting for the refresh
+     * would drop any edit typed in that window, leaving the surviving run's
+     * anchors silently stale (BR #3/#4) — the exact hazard the synchronous
+     * `started` branch of `startReview` documents.
+     *
+     * `panelDispatchInFlight` is deliberately NOT remapped: its entries are
+     * removed by the same captured path string that added them, so moving
+     * one would strand the marker and leave the note's Review button
+     * permanently "busy".
+     */
+    private remapFileState(oldPath: string, newPath: string): void {
+        this.deps.runController.renameUnder(oldPath, newPath)
+        this.deps.transformController.renameUnder(oldPath, newPath)
+        remapKeysUnder(this.skipsByFile, oldPath, newPath)
+        remapKeysUnder(this.undecoratedByFile, oldPath, newPath)
+        this.triageCursors.renameUnder(oldPath, newPath)
+        this.severityFilters.renameUnder(oldPath, newPath)
+        remapMembersUnder(this.hiddenFindings, oldPath, newPath)
+        remapKeysUnder(this.acknowledgedAllGood, oldPath, newPath)
+        for (const glue of this.glues.values()) {
+            if (glue.filePath !== null) {
+                const moved = remapPathUnder(glue.filePath, oldPath, newPath)
+                if (moved !== null) {
+                    glue.filePath = moved
+                }
+            }
+        }
     }
 
     /**

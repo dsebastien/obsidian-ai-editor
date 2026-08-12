@@ -93,6 +93,19 @@ describe('SeverityFilterStore', () => {
         expect(store.get('NotesArchive/C.md')).toBe('warning-and-suggestion')
     })
 
+    it('renameUnder moves the lens with the note, sparing prefix look-alikes (issue #47)', () => {
+        const store = new SeverityFilterStore()
+        store.cycle('Notes/A.md')
+        store.cycle('Notes/A.md') // warnings only
+        store.cycle('Notes/Sub/B.md')
+        store.cycle('NotesArchive/C.md')
+        store.renameUnder('Notes', 'Moved')
+        expect(store.get('Notes/A.md')).toBe('all')
+        expect(store.get('Moved/A.md')).toBe('warning')
+        expect(store.get('Moved/Sub/B.md')).toBe('warning-and-suggestion')
+        expect(store.get('NotesArchive/C.md')).toBe('warning-and-suggestion')
+    })
+
     it('clears one file and all files', () => {
         const store = new SeverityFilterStore()
         store.cycle('a.md')

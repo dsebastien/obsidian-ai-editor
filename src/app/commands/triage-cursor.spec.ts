@@ -58,6 +58,19 @@ describe('TriageCursorStore', () => {
         expect(store.has('NotesArchive/C.md')).toBe(true)
     })
 
+    it('renameUnder moves cursors with the note — same run token, position intact (issue #47)', () => {
+        const store = new TriageCursorStore()
+        store.set('Notes/A.md', runA, { id: 'f-1', from: 12 })
+        store.set('Notes/Sub/B.md', runA, { id: 'f-2', from: 2 })
+        store.set('NotesArchive/C.md', runB, { id: 'f-3', from: 3 })
+        store.renameUnder('Notes', 'Moved')
+        expect(store.has('Notes/A.md')).toBe(false)
+        // The run survives a rename as the same handle, so the token matches.
+        expect(store.get('Moved/A.md', runA)).toEqual({ id: 'f-1', from: 12 })
+        expect(store.get('Moved/Sub/B.md', runA)).toEqual({ id: 'f-2', from: 2 })
+        expect(store.get('NotesArchive/C.md', runB)).toEqual({ id: 'f-3', from: 3 })
+    })
+
     it('clearAll empties every file', () => {
         const store = new TriageCursorStore()
         store.set('one.md', runA, { id: 'f-1', from: 1 })

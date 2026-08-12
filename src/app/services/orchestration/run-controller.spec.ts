@@ -725,6 +725,92 @@ describe('RunController subscriptions', () => {
     })
 })
 
+describe('RunController.renameUnder (issue #47 — a rename is not a close)', () => {
+    it('re-keys the run to the new path with findings intact — same handle, re-pathed snapshot', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('keep', (runId) => [result(runId, [raw()])])
+        const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
+        await run.settled
+
+        controller.renameUnder('notes/test.md', 'notes/better-title.md')
+
+        expect(controller.getRun('notes/test.md')).toBeNull()
+        const moved = controller.getRun('notes/better-title.md')
+        expect(moved).toBe(run)
+        expect(moved?.snapshot.filePath).toEqual('notes/better-title.md')
+        // Content identity is untouched: anchors and preconditions stay valid.
+        expect(moved?.snapshot.text).toEqual(DOC)
+        expect(moved?.findings.list()).toHaveLength(1)
+        expect(moved?.getEditorState('keep')?.status).toEqual('done')
+    })
+
+    it('remaps a whole FOLDER, sparing prefix look-alikes', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('done', (runId) => [result(runId, [])])
+        for (const filePath of ['Notes/A.md', 'Notes/Sub/B.md', 'NotesArchive/C.md']) {
+            const run = controller.startRun({
+                snapshot: createSnapshot({ filePath, text: DOC }),
+                editors: [editor]
+            })
+            await run.settled
+        }
+        controller.renameUnder('Notes', 'Moved')
+        expect(controller.getRun('Notes/A.md')).toBeNull()
+        expect(controller.getRun('Moved/A.md')).not.toBeNull()
+        expect(controller.getRun('Moved/Sub/B.md')).not.toBeNull()
+        expect(controller.getRun('Moved/Sub/B.md')?.snapshot.filePath).toEqual('Moved/Sub/B.md')
+        expect(controller.getRun('NotesArchive/C.md')?.snapshot.filePath).toEqual(
+            'NotesArchive/C.md'
+        )
+    })
+
+    it('keeps an IN-FLIGHT run alive across the rename — late findings land on the moved run', async () => {
+        const controller = new RunController()
+        const gate = deferred()
+        const slow: RunEditorSpec = {
+            editorId: 'slow',
+            editorName: 'Slow',
+            execute: async function* (request) {
+                await gate.promise
+                yield finding(request.runId, raw())
+                yield result(request.runId, [])
+            }
+        }
+        const run = controller.startRun({ snapshot: snapshot(), editors: [slow] })
+        await Promise.resolve()
+
+        controller.renameUnder('notes/test.md', 'notes/better-title.md')
+        expect(run.getEditorState('slow')?.status).toEqual('running')
+
+        gate.resolve()
+        await run.settled
+        const moved = controller.getRun('notes/better-title.md')
+        expect(moved?.getEditorState('slow')?.status).toEqual('done')
+        expect(moved?.findings.list()).toHaveLength(1)
+    })
+
+    it('discards a stale run already sitting at the target path instead of inheriting it', async () => {
+        const controller = new RunController()
+        const editor = scriptedEditor('done', (runId) => [result(runId, [raw()])])
+        const stale = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'Moved/A.md', text: 'other text entirely' }),
+            editors: [editor]
+        })
+        const live = controller.startRun({
+            snapshot: createSnapshot({ filePath: 'Notes/A.md', text: DOC }),
+            editors: [editor]
+        })
+        await Promise.all([stale.settled, live.settled])
+
+        controller.renameUnder('Notes', 'Moved')
+
+        // The moved note gets ITS run, never the stale occupant's findings.
+        expect(controller.getRun('Moved/A.md')).toBe(live)
+        expect(controller.getRun('Moved/A.md')?.snapshot.text).toEqual(DOC)
+        expect(controller.getRun('Notes/A.md')).toBeNull()
+    })
+})
+
 describe('RunController finding lookup', () => {
     it('resolves the run owning a finding across files', async () => {
         const controller = new RunController()

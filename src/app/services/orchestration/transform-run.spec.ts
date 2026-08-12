@@ -628,6 +628,77 @@ describe('TransformController', () => {
         expect(controller.getRun('NotesArchive/B.md')).toBe(runOutside)
     })
 
+    it('renameUnder re-keys a run to the new path with its outcome intact (issue #47)', async () => {
+        const controller = new TransformController()
+        const run = controller.startTransform(makeInput())
+        await run.settled
+        expect(run.getState().status).toBe('done')
+
+        controller.renameUnder('Notes/Test.md', 'Notes/Better title.md')
+
+        expect(controller.getRun('Notes/Test.md')).toBeNull()
+        const moved = controller.getRun('Notes/Better title.md')
+        expect(moved).toBe(run)
+        expect(moved?.snapshot.filePath).toBe('Notes/Better title.md')
+        // Content-based precondition survives: only the path changed.
+        expect(moved?.checkPrecondition(DOC_TEXT).ok).toBe(true)
+        expect(moved?.getState().status).toBe('done')
+    })
+
+    it('renameUnder keeps an in-flight run alive and remaps a folder, sparing look-alikes', async () => {
+        const controller = new TransformController()
+        const inside = pendingExecutor('run-inside')
+        const runInside = controller.startTransform(
+            makeInput({
+                execute: inside.execute,
+                request: transformRequest('run-inside'),
+                snapshot: createSnapshot({ filePath: 'Notes/Sub/A.md', text: DOC_TEXT })
+            })
+        )
+        const runOutside = controller.startTransform(
+            makeInput({
+                snapshot: createSnapshot({ filePath: 'NotesArchive/B.md', text: DOC_TEXT })
+            })
+        )
+        await tick()
+        controller.renameUnder('Notes', 'Moved')
+        expect(runInside.getState().status).toBe('running')
+        expect(controller.getRun('Notes/Sub/A.md')).toBeNull()
+        expect(controller.getRun('Moved/Sub/A.md')).toBe(runInside)
+        expect(controller.getRun('NotesArchive/B.md')).toBe(runOutside)
+        inside.finish()
+        await runInside.settled
+        expect(controller.getRun('Moved/Sub/A.md')?.getState().status).toBe('done')
+    })
+
+    it('renameUnder discards a stale run already at the target path instead of inheriting it', async () => {
+        const controller = new TransformController()
+        const pending = pendingExecutor('run-stale')
+        const stale = controller.startTransform(
+            makeInput({
+                execute: pending.execute,
+                request: transformRequest('run-stale'),
+                snapshot: createSnapshot({ filePath: 'Moved/A.md', text: DOC_TEXT })
+            })
+        )
+        const live = controller.startTransform(
+            makeInput({
+                request: transformRequest('run-live'),
+                snapshot: createSnapshot({ filePath: 'Notes/A.md', text: DOC_TEXT })
+            })
+        )
+        await tick()
+        await live.settled
+
+        controller.renameUnder('Notes', 'Moved')
+
+        expect(controller.getRun('Moved/A.md')).toBe(live)
+        expect(stale.getState().status).toBe('cancelled')
+        expect(controller.getRun('Notes/A.md')).toBeNull()
+        pending.finish()
+        await stale.settled
+    })
+
     it('cancelAll cancels and forgets every run', async () => {
         const controller = new TransformController()
         const pendingA = pendingExecutor('run-a')

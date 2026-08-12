@@ -558,14 +558,19 @@ describe('DaemonScheduler.filesRenamedUnder', () => {
         ).toEqual({ action: 'skip', reason: 'oversized', logOversized: false })
     })
 
-    it('DROPS the pause marker: the controller clears findings-hidden on rename, so a remapped pause would stick forever', () => {
+    it('REMAPS the pause marker: findings-hidden survives a rename (issue #47), so the pause must follow it', () => {
         const scheduler = makeScheduler()
         scheduler.recordEdit(PATH, 1_000)
         scheduler.pause(PATH)
         scheduler.filesRenamedUnder(PATH, 'Renamed/A.md')
-        // The arm moved AND is live — nothing is left paused at either path.
-        expect(scheduler.nextDueAt('Renamed/A.md')).toEqual(1_000 + IDLE_MS)
+        // The arm moved but stays suppressed — the note's findings are still
+        // hidden at the new path, and the findings-shown gesture that lifts
+        // the pause moved with them.
+        expect(scheduler.nextDueAt('Renamed/A.md')).toBeNull()
         expect(scheduler.nextDueAt(PATH)).toBeNull()
+        // Resume at the new path lifts it — the arm survived the rename.
+        scheduler.resume('Renamed/A.md', 2_000)
+        expect(scheduler.nextDueAt('Renamed/A.md')).not.toBeNull()
     })
 })
 

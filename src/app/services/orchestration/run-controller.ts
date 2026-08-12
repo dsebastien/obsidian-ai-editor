@@ -22,7 +22,7 @@ import { anchorsOverlap, observationIdentity } from '../../domain/operations/cro
 import type { TrackedEdit } from '../../domain/operations/edit-apply'
 import { rawFindingIdentity } from '../../domain/operations/finding-identity'
 import { planPanelAggregation } from '../../domain/panels/panel-aggregation'
-import { isPathUnder } from '../../domain/path-scope'
+import { isPathUnder, remapPathUnder } from '../../domain/path-scope'
 import type {
     PanelAggregationBudget,
     PanelAggregationPlan,
@@ -633,7 +633,8 @@ interface InternalPanelState {
 }
 
 class ReviewRunHandle implements RunHandle {
-    readonly snapshot: DocumentSnapshot
+    /** Mutable ONLY through `renamedTo` — a vault rename re-keys the run. */
+    snapshot: DocumentSnapshot
     readonly findings: FindingStore
     readonly settled: Promise<void>
     readonly panelSettled: Promise<void>
@@ -828,6 +829,20 @@ class ReviewRunHandle implements RunHandle {
         // Covers the degenerate panel with no member stream at all: nothing
         // will ever call `terminate`, so the scorecard would wait forever.
         this.maybeAggregate()
+    }
+
+    /**
+     * Follows a vault rename (issue #47): same note, same text, new path.
+     * Only `filePath` changes — id, text, hash and selection are preserved,
+     * so every anchor, precondition and in-flight attempt stays valid (a
+     * rename never changes content; anchoring is content-based, BR #3/#4).
+     * Late results of an in-flight attempt land on this handle regardless
+     * of path, and observer reports made after the rename carry the new
+     * path, which is where history is re-keyed to.
+     */
+    renamedTo(newPath: string): void {
+        this.snapshot = { ...this.snapshot, filePath: newPath }
+        this.notify()
     }
 
     getEditorStates(): readonly EditorRunState[] {
@@ -2046,7 +2061,7 @@ function toPublicState(state: InternalEditorState): EditorRunState {
  * waiting for a permit stay 'pending'.
  */
 export class RunController {
-    private readonly runs = new Map<string, RunHandle>()
+    private readonly runs = new Map<string, ReviewRunHandle>()
     /**
      * The plugin-wide backend concurrency gate. Public so sibling
      * controllers running non-review operations (`TransformController`)
@@ -2107,10 +2122,11 @@ export class RunController {
     }
 
     /**
-     * Cancels and forgets the run for a file (file closed, deleted or
-     * renamed). Each retained run pins the full snapshot text plus its
-     * finding store, so runs must be discarded rather than left to
-     * accumulate for the lifetime of the plugin.
+     * Cancels and forgets the run for a file (file closed or deleted — a
+     * rename goes through `renameUnder` instead). Each retained run pins
+     * the full snapshot text plus its finding store, so runs must be
+     * discarded rather than left to accumulate for the lifetime of the
+     * plugin.
      */
     discardRun(filePath: string): void {
         const run = this.runs.get(filePath)
@@ -2136,6 +2152,34 @@ export class RunController {
             if (isPathUnder(filePath, path)) {
                 this.discardRun(filePath)
             }
+        }
+    }
+
+    /**
+     * Follows a vault rename of `path` — a note, or a folder with notes
+     * under it (issue #47). A rename changes the path, never the content,
+     * so every content-anchored finding stays valid; discarding here (the
+     * pre-#47 behavior) wiped a live review the moment the user improved
+     * the note's title. Each affected run is re-keyed and its snapshot
+     * re-pathed (`renamedTo`), findings, threads and in-flight attempts
+     * intact. Prefix-aware for the same reason as `discardUnder`. A run
+     * already sitting at a target path (a stale leftover from a note the
+     * rename replaced) is discarded first — inheriting it would decorate
+     * the moved note with another note's findings.
+     */
+    renameUnder(oldPath: string, newPath: string): void {
+        for (const [filePath, run] of [...this.runs]) {
+            const moved = remapPathUnder(filePath, oldPath, newPath)
+            if (moved === null || moved === filePath) {
+                continue
+            }
+            const occupant = this.runs.get(moved)
+            if (occupant && occupant !== run) {
+                this.discardRun(moved)
+            }
+            this.runs.delete(filePath)
+            run.renamedTo(moved)
+            this.runs.set(moved, run)
         }
     }
 

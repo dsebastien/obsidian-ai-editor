@@ -1,5 +1,5 @@
 import type { Severity } from '../domain/operations/contract'
-import { deleteKeysUnder } from '../domain/path-scope'
+import { deleteKeysUnder, remapKeysUnder } from '../domain/path-scope'
 
 /**
  * Severity filter (plan M4 "Bulk triage": severity filter): a per-file VIEW
@@ -100,11 +100,19 @@ export class SeverityFilterStore {
     }
 
     /**
-     * `clear` for a path AND everything under it — a FOLDER rename or delete,
-     * which Obsidian reports without per-child events.
+     * `clear` for a path AND everything under it — a FOLDER delete, which
+     * Obsidian reports without per-child events.
      */
     clearUnder(path: string): void {
         deleteKeysUnder(this.byFile, path)
+    }
+
+    /**
+     * Follows a vault rename (issue #47): the run — and so the findings the
+     * lens filters — survives a rename, so the chosen lens follows the note.
+     */
+    renameUnder(oldPath: string, newPath: string): void {
+        remapKeysUnder(this.byFile, oldPath, newPath)
     }
 
     clearAll(): void {
