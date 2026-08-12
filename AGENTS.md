@@ -38,13 +38,14 @@ Three locations, do not mix them:
 
 ### Session-start checklist
 
-**v1 is feature-complete, released on GitHub (0.10.x line) and live-verified (full pass 2026-08-12); community-catalog submission is pending.** There is no plan to execute; there is a released plugin, a canonical description of it, and a backlog in GitHub. Read in this order:
+**v1 is feature-complete, released on GitHub (0.10.x line), live-verified (full pass 2026-08-12), and submitted to the community catalog (#41); docs site published.** There is no plan to execute; there is a released plugin, a canonical description of it, and a backlog in GitHub. Read in this order:
 
 1. `documentation/Business Rules.md` — mandatory invariants (see below).
 2. `documentation/Architecture.md` — how the code is structured and what each part guarantees. With `documentation/Domain Model.md` (entities) and `documentation/Configuration.md` (settings as the user sees them), these three describe what the plugin DOES; they win over anything else when they disagree.
-3. Only then, and only when you need the WHY: `documentation/plans/ai-editor-v1-implementation-plan.md` — vision, the product decisions locked with Sébastien, the design sketch, the risk register, and §0 for the current state and what is left for Sébastien personally. `documentation/plans/interaction-surfaces-design.md` is the shipped spec of the menu / command / CLI surface. Both are reference documents, not work queues.
-4. What is still open: **GitHub issues** (the backlog, including the bugs from live testing). `documentation/live-verification-checklist.md` is the human-in-a-vault REGRESSION checklist (full pass completed 2026-08-12 — re-run a section when a change touches its feature). `documentation/community-review-checklist.md` is the submission gate.
-5. Relevant sections of `node_modules/obsidian/obsidian.d.ts` whenever you are about to use an Obsidian API you have not recently used. Do not guess API shapes; they change between versions.
+3. What is still open: **GitHub issues** (the backlog, including the bugs from live testing). `documentation/live-verification-checklist.md` is the human-in-a-vault REGRESSION checklist (full pass completed 2026-08-12 — re-run a section when a change touches its feature). `documentation/community-review-checklist.md` is the submission gate, kept for re-submissions.
+4. Relevant sections of `node_modules/obsidian/obsidian.d.ts` whenever you are about to use an Obsidian API you have not recently used. Do not guess API shapes; they change between versions.
+
+The v1-era plan documents (vision, locked product decisions, interaction-surfaces spec, operation-contract-v2 design record) were retired and deleted on 2026-08-12 — recover them from git history if the WHY behind a shipped decision is needed; their parked work moved to issues #48-#51.
 
 ### Definition of done
 

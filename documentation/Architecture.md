@@ -1,6 +1,6 @@
 # Architecture
 
-High-level structure of the AI Editor plugin. See `Domain Model.md` for entities, `Business Rules.md` for invariants, and `plans/ai-editor-v1-implementation-plan.md` for the vision, the locked product decisions and the risk register.
+High-level structure of the AI Editor plugin. See `Domain Model.md` for entities and `Business Rules.md` for invariants. The v1 plan documents (vision, locked product decisions, risk register) were retired on 2026-08-12 — recover them from git history when the WHY behind a shipped decision is needed.
 
 ## Layers
 
