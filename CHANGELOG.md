@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.4](https://github.com/dsebastien/obsidian-ai-editor/compare/0.10.3...0.10.4) (2026-08-12)
+
+### Bug Fixes
+
+* **plugin:** keep review state across vault renames ([1791af4](https://github.com/dsebastien/obsidian-ai-editor/commit/1791af40f198cd63fb3ef935073875a8252d7a1c)), closes [#23](https://github.com/dsebastien/obsidian-ai-editor/issues/23) [#47](https://github.com/dsebastien/obsidian-ai-editor/issues/47)
+
 ## [0.10.3](https://github.com/dsebastien/obsidian-ai-editor/compare/0.10.2...0.10.3) (2026-08-08)
 
 ### Bug Fixes
@@ -398,6 +404,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 

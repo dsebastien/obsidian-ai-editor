@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.10.4 (2026-08-12)
+
+### Bug Fixes
+
+- **plugin:** keep review state across vault renames [#47](https://github.com/dsebastien/obsidian-ai-editor/issues/47)
+
 ## 0.10.3 (2026-08-08)
 
 ### Bug Fixes
