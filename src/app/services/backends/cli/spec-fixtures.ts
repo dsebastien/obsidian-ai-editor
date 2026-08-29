@@ -47,7 +47,7 @@ export const SLEEP_FOREVER_WITH_GRANDCHILD = `
 const { spawn } = require('node:child_process');
 const grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000);'], { stdio: 'ignore' });
 process.stdout.write(JSON.stringify({ parent: process.pid, grandchild: grandchild.pid }) + '\\n');
-setNodeTimer(() => {}, 600000);
+setTimeout(() => {}, 600000);
 `
 
 /**
@@ -74,7 +74,7 @@ process.exit(0);
  */
 export const MARK_AND_SLEEP = `
 require('node:fs').writeFileSync(process.argv[1], 'ran');
-setNodeTimer(() => {}, 600000);
+setTimeout(() => {}, 600000);
 `
 
 /** Whether a pid is still running (signal 0 delivers nothing). */
