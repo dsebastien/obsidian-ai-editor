@@ -50,7 +50,7 @@ Click a row with findings to step through them in the text. Click an idle row an
 
 **The review card.** Click a highlight and a card floats next to it: the critique, the quoted text, and — when the editor proposed changes — a labelled preview per edit (**Replace**, **Insert above**, **Insert below**, **Delete**: an insertion shows only what is added, so it never looks like a rewrite) with **Accept** and **Dismiss**. Accept applies the whole proposal as one undoable edit. Overlapping findings stack in one card, innermost first. Under it, a reply box: type your objection and the editor either withdraws the finding or holds its position and sharpens it.
 
-**The AI Editor Review panel.** A side panel — its tab reads **AI Editor Review** — lists every editor's status, summary, findings and verdict for the note it is bound to, under a pinned header that keeps **Review**, **Ask for comments** and section navigation in reach while you scroll. For panel runs the scorecard sits on top. Click a finding to jump to it in the text, or step through one editor's findings with the **‹ 2 of 5 ›** control in its section header — the same stepping the **Next finding** command does, on the same cursor, with the row it points at marked in the list and your keyboard left on the arrow. Findings whose quote could not be located are grouped under "Not anchored" rather than guessed into a position.
+**The AI Editor Review panel.** A side panel — its tab reads **AI Editor Review** — lists every editor's status, summary, findings and verdict for the note it is bound to, under a pinned header that keeps **Review**, **Ask for comments** and section navigation in reach while you scroll. For panel runs the scorecard sits on top. Click a finding to jump to it in the text, or step through one editor's findings with the **‹ 2 of 5 ›** control in its section header — the same stepping the **Next finding** command does, on the same cursor, with the row it points at marked in the list and your keyboard left on the arrow. Right-click a finding to go to it, open its card, accept it, dismiss it or copy its critique — no need to open the card first. Findings about the note's properties, whose highlight Obsidian's Properties widget hides, open their card straight from their row. Findings whose quote could not be located are grouped under "Not anchored" rather than guessed into a position.
 
 **The History tab**, right next to Review in that panel, is the session's archive: every finding, push-back reply and scorecard, grouped by day with filters by type and editor. "What did the Devil's Advocate say before I re-ran it?" has an answer. History lives for the session by default; a setting makes it durable per note, with retention and clearing under your control.
 
@@ -91,7 +91,7 @@ Requires Obsidian **1.13.0** or newer, on **desktop** (Windows, macOS, Linux).
 
 ### Community plugins
 
-Once the plugin is available in the community catalog:
+AI Editor is listed in the official community plugin catalog. [See its catalog page](https://community.obsidian.md/plugins/editor-ai-daemons) or install it from Obsidian:
 
 1. In Obsidian, go to **Settings → Community plugins**.
 2. Disable **Restricted mode** if it is enabled.

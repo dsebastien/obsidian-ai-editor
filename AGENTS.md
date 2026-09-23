@@ -38,7 +38,7 @@ Three locations, do not mix them:
 
 ### Session-start checklist
 
-**v1 is feature-complete, released on GitHub (0.10.x line), live-verified (full pass 2026-08-12), and submitted to the community catalog (#41); docs site published.** There is no plan to execute; there is a released plugin, a canonical description of it, and a backlog in GitHub. Read in this order:
+**v1 is feature-complete, released on GitHub (0.10.x line), live-verified (full pass 2026-08-12), and listed in the community catalog (submission #41, accepted); docs site published.** There is no plan to execute; there is a released plugin, a canonical description of it, and a backlog in GitHub. Read in this order:
 
 1. `documentation/Business Rules.md` — mandatory invariants (see below).
 2. `documentation/Architecture.md` — how the code is structured and what each part guarantees. With `documentation/Domain Model.md` (entities) and `documentation/Configuration.md` (settings as the user sees them), these three describe what the plugin DOES; they win over anything else when they disagree.

@@ -16,7 +16,7 @@ nav_order: 2
 
 ### Community plugins
 
-Once the plugin is available in the community catalog:
+AI Editor is listed in the official community plugin catalog. [See its catalog page](https://community.obsidian.md/plugins/editor-ai-daemons) or install it from Obsidian:
 
 1. Go to **Settings → Community plugins**.
 2. Disable **Restricted mode** if it is enabled.
