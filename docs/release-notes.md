@@ -1,5 +1,21 @@
 # Release Notes
 
+## 0.11.0 (2026-09-23)
+
+### Features
+
+- **build:** fail the build on a lockfile the catalog review cannot parse
+- **build:** make the rule floor check that it is still wired in
+- **build:** refuse commits that loosen the rules instead of fixing the finding
+- **plugin:** act on findings from the panel, including properties ones
+
+### Bug Fixes
+
+- **build:** exclude bun-types alongside @types/bun from the release-age gate
+- **deps:** move the fast-uri override off the vulnerable line
+- **plugin:** keep the panel's Review spinner turning across rebuilds
+- **plugin:** restore setTimeout inside the child-process spec fixtures
+
 ## 0.10.4 (2026-08-12)
 
 ### Bug Fixes

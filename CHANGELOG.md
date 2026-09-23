@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.10.4...0.11.0) (2026-09-23)
+
+### Features
+
+* **build:** fail the build on a lockfile the catalog review cannot parse ([0b4aa7f](https://github.com/dsebastien/obsidian-ai-editor/commit/0b4aa7fd6734833513307a35168c264e14c69272))
+* **build:** make the rule floor check that it is still wired in ([038290c](https://github.com/dsebastien/obsidian-ai-editor/commit/038290ce5b442f2acb385ebd1899d11274ee05be))
+* **build:** refuse commits that loosen the rules instead of fixing the finding ([f6cbc92](https://github.com/dsebastien/obsidian-ai-editor/commit/f6cbc922cb4b374e2c4e6a5588f29347a44014c5))
+* **plugin:** act on findings from the panel, including properties ones ([dfea1fd](https://github.com/dsebastien/obsidian-ai-editor/commit/dfea1fdf29d23b1ee9b6e39ef8f5c3da5a33e3b7))
+
+### Bug Fixes
+
+* **build:** exclude bun-types alongside @types/bun from the release-age gate ([2014c18](https://github.com/dsebastien/obsidian-ai-editor/commit/2014c18324b4b71eb95b6307ba5a27bc60892d24))
+* **deps:** move the fast-uri override off the vulnerable line ([4e43469](https://github.com/dsebastien/obsidian-ai-editor/commit/4e434691fa555c0368be464d57fdcbaafe6ec8cc))
+* **plugin:** keep the panel's Review spinner turning across rebuilds ([880f6f0](https://github.com/dsebastien/obsidian-ai-editor/commit/880f6f02f9f1f7aea39892924ace5e3fd01f02e3))
+* **plugin:** restore setTimeout inside the child-process spec fixtures ([f65e660](https://github.com/dsebastien/obsidian-ai-editor/commit/f65e66011cdad49cc5fa6c95205af81e69ade16b))
+
 ## [0.10.4](https://github.com/dsebastien/obsidian-ai-editor/compare/0.10.3...0.10.4) (2026-08-12)
 
 ### Bug Fixes
@@ -404,6 +420,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
