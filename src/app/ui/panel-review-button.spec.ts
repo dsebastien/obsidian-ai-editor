@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
+import {
+    panelEmptyStateText,
+    panelReviewButtonState,
+    REVIEW_SPINNER_PERIOD_MS,
+    reviewSpinnerPhaseDelay
+} from './panel-review-button'
 import type { PanelReviewButtonInput } from './panel-review-button'
 
 const OK: PanelReviewButtonInput = {
@@ -131,5 +136,20 @@ describe('panelEmptyStateText', () => {
         expect(panelEmptyStateText({ ...OK, gate: { status: 'ok' }, busy: true })).toContain(
             'Reviewing…'
         )
+    })
+})
+
+describe('reviewSpinnerPhaseDelay', () => {
+    it('is a negative delay equal to the elapsed part of the current turn', () => {
+        expect(reviewSpinnerPhaseDelay(REVIEW_SPINNER_PERIOD_MS * 3 + 250)).toBe('-250ms')
+    })
+
+    it('starts a turn on a period boundary', () => {
+        expect(reviewSpinnerPhaseDelay(REVIEW_SPINNER_PERIOD_MS * 5)).toBe('0ms')
+    })
+
+    it('gives two spinners built at the same instant the same angle', () => {
+        const now = 123_456.7
+        expect(reviewSpinnerPhaseDelay(now)).toBe(reviewSpinnerPhaseDelay(now))
     })
 })

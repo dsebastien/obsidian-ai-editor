@@ -163,3 +163,22 @@ export function panelEmptyStateText(input: PanelReviewButtonInput): string {
         ? 'No review yet. Select Review to start one.'
         : panelReviewButtonState(input).tooltip
 }
+
+/** One turn of the Review button's spinner; mirrored by its CSS animation. */
+export const REVIEW_SPINNER_PERIOD_MS = 800
+
+/**
+ * The `animation-delay` that puts a freshly created spinner at the angle a
+ * spinner running since page load would have reached by `nowMs`.
+ *
+ * The panel rebuilds its whole tree on every state push, and a run pushes on
+ * every streamed chunk. Each rebuild creates a NEW spinner element, whose CSS
+ * animation starts again from 0deg — so the spinner jerked back to the top a
+ * few times a second instead of turning. A negative delay derived from one
+ * shared clock makes every replacement pick up exactly where the previous one
+ * was, so the rebuilds become invisible.
+ */
+export function reviewSpinnerPhaseDelay(nowMs: number): string {
+    const phase = Math.round(nowMs % REVIEW_SPINNER_PERIOD_MS)
+    return phase === 0 ? '0ms' : `-${phase}ms`
+}

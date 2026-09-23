@@ -1,4 +1,4 @@
-import { ItemView, setIcon } from 'obsidian'
+import { ItemView, Menu, Notice, setIcon } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
 import { globalDismissView } from '../commands/bulk-triage'
 import type { NavigationDirection } from '../commands/finding-navigation'
@@ -30,7 +30,11 @@ import {
 import type { HistoryFilters } from './history-tab'
 import { orderRowsByPosition, sectionNavigationView } from './panel-finding-nav'
 import type { SectionNavigationView } from './panel-finding-nav'
-import { panelEmptyStateText, panelReviewButtonState } from './panel-review-button'
+import {
+    panelEmptyStateText,
+    panelReviewButtonState,
+    reviewSpinnerPhaseDelay
+} from './panel-review-button'
 import { buildScorecardView, scorecardMemberName } from './panel-scorecard'
 import type { ScorecardTopFix, ScorecardView, TopFixCandidate } from './panel-scorecard'
 import { passesSeverityFilter, severityFilterLabel } from './severity-filter'
@@ -80,6 +84,20 @@ export interface SidePanelBinding {
     /** Advances the lens: all → warnings and suggestions → warnings only. */
     readonly cycleSeverityFilter: () => void
     readonly revealFinding: (findingId: FindingId) => void
+    /** Reveals a finding and opens its card (triage cursor + card-on-jump). */
+    readonly openFinding: (findingId: FindingId) => void
+    /**
+     * Whether the finding is anchored in the note's properties block. Live
+     * Preview hides that block behind the Properties widget, so its highlight
+     * cannot be clicked: the panel opens the card itself for these rows.
+     */
+    readonly isInProperties: (findingId: FindingId) => boolean
+    /** Whether Accept is offered in the row's context menu. */
+    readonly canAcceptFinding: (findingId: FindingId) => boolean
+    /** Accepts one finding (same path as the card's Accept button). */
+    readonly acceptFinding: (findingId: FindingId) => void
+    /** Dismisses one finding (same path as the card's Dismiss button). */
+    readonly dismissFinding: (findingId: FindingId) => void
     /**
      * The file's shared triage cursor — the finding the palette's next/prev,
      * the decoration layer's current ring and this panel all consider current.
@@ -243,6 +261,16 @@ const QUOTE_EXCERPT_MAX = 120
  */
 function navFocusKey(editorId: string, direction: NavigationDirection): string {
     return `${editorId}:${direction}`
+}
+
+/** Copies through `win`'s clipboard: in a popout, that is the one in view. */
+async function copyText(win: Window, text: string): Promise<void> {
+    try {
+        await win.navigator.clipboard.writeText(text)
+        new Notice('Critique copied.')
+    } catch {
+        new Notice('Could not access the clipboard — select the text and copy it.')
+    }
 }
 
 function truncate(text: string, max: number): string {
@@ -806,9 +834,14 @@ export class ReviewSidePanelView extends ItemView {
             // Purely decorative: the label and the accessible name already say
             // "Reviewing…", so the spinner carries no information of its own
             // and must not be announced.
-            button
-                .createSpan({ cls: 'editor-ai-daemons-panel-review-spinner' })
-                .setAttribute('aria-hidden', 'true')
+            const spinner = button.createSpan({ cls: 'editor-ai-daemons-panel-review-spinner' })
+            spinner.setAttribute('aria-hidden', 'true')
+            // This element is rebuilt on every state push; the shared-clock
+            // phase keeps the turn continuous across the rebuilds.
+            spinner.style.setProperty(
+                '--editor-ai-daemons-spin-phase',
+                reviewSpinnerPhaseDelay(performance.now())
+            )
         }
         button.createSpan({ text: vm.text })
         button.setAttribute('aria-label', vm.ariaLabel)
@@ -1732,10 +1765,25 @@ export class ReviewSidePanelView extends ItemView {
                 text: 'Stale — the text changed since this finding was made.'
             })
         }
+        const inProperties = clickable && binding.isInProperties(finding.id)
+        if (inProperties) {
+            body.createDiv({
+                cls: 'editor-ai-daemons-panel-properties-note',
+                text: 'In the note properties'
+            })
+        }
+        item.addEventListener('contextmenu', (event: MouseEvent) => {
+            event.preventDefault()
+            this.showFindingMenu(event, binding, finding, clickable && !stale)
+        })
         if (clickable && !stale) {
             item.setAttribute('role', 'button')
             item.setAttribute('tabindex', '0')
-            const reveal = (): void => binding.revealFinding(finding.id)
+            // A properties finding has no clickable highlight in Live
+            // Preview (the Properties widget covers it), so the row opens
+            // the card itself instead of only jumping to the text.
+            const reveal = (): void =>
+                inProperties ? binding.openFinding(finding.id) : binding.revealFinding(finding.id)
             item.addEventListener('click', () => {
                 // Selecting text ends with a click on the row (issue #34):
                 // jumping to the finding would re-render the panel and
@@ -1760,5 +1808,62 @@ export class ReviewSidePanelView extends ItemView {
                 }
             })
         }
+    }
+
+    /**
+     * Right-click menu of one finding row: the card's actions, reachable
+     * without opening the card — and the only route to act on a finding
+     * whose highlight cannot be clicked. Keyboard users get the same menu
+     * through the context-menu key (it fires `contextmenu` on the row).
+     */
+    private showFindingMenu(
+        event: MouseEvent,
+        binding: SidePanelBinding,
+        finding: TrackedFinding,
+        revealable: boolean
+    ): void {
+        const menu = new Menu()
+        if (revealable) {
+            menu.addItem((item) =>
+                item
+                    .setTitle('Go to finding')
+                    .setIcon('locate')
+                    .onClick(() => binding.revealFinding(finding.id))
+            )
+            menu.addItem((item) =>
+                item
+                    .setTitle('Open card')
+                    .setIcon('message-square')
+                    .onClick(() => binding.openFinding(finding.id))
+            )
+            menu.addSeparator()
+        }
+        if (binding.canAcceptFinding(finding.id)) {
+            menu.addItem((item) =>
+                item
+                    .setTitle('Accept')
+                    .setIcon('check')
+                    .onClick(() => binding.acceptFinding(finding.id))
+            )
+        }
+        menu.addItem((item) =>
+            item
+                .setTitle('Dismiss')
+                .setIcon('x')
+                .onClick(() => binding.dismissFinding(finding.id))
+        )
+        menu.addSeparator()
+        menu.addItem((item) =>
+            item
+                .setTitle('Copy critique')
+                .setIcon('copy')
+                .onClick(() => {
+                    void copyText(
+                        this.contentEl.ownerDocument.defaultView ?? window,
+                        finding.raw.critique
+                    )
+                })
+        )
+        menu.showAtMouseEvent(event)
     }
 }
