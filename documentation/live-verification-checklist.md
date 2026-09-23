@@ -14,6 +14,15 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## Panel finding context menu, properties findings, smooth spinner (2026-09-23)
+
+Status: not yet verified.
+
+- [ ] Right-click a finding row in the side panel: the menu offers Go to finding, Open card, Accept (only when the finding has an applicable proposal), Dismiss, Copy critique. Each does what it says; Accept is one undo step.
+- [ ] Context-menu key on a focused finding row opens the same menu.
+- [ ] With Strip frontmatter off, get a finding on a property (Live Preview): its panel row says "In the note properties"; clicking it opens its card near the top of the note; Accept from the card or the menu updates the property.
+- [ ] Start a review from the panel: the Review button's spinner turns smoothly while findings stream in, with no jumps back to the top.
+
 ## Per-note daemon mode + always-on setting (2026-08-06)
 
 Status: **verified 2026-08-12** (full pass by Sébastien).

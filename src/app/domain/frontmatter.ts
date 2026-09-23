@@ -50,3 +50,13 @@ export function stripFrontmatterBlock(text: string): StrippedFrontmatter {
     const removedChars = match[0].length
     return { text: text.slice(removedChars), removedChars }
 }
+
+/**
+ * Offset right after the leading frontmatter block (its closing delimiter
+ * line included), or `0` when the text opens with none. Findings anchored
+ * before this offset sit in the note's properties, which Live Preview hides
+ * behind Obsidian's Properties widget — no highlight can be clicked there.
+ */
+export function frontmatterEnd(text: string): number {
+    return FRONTMATTER_BLOCK.exec(text)?.[0].length ?? 0
+}

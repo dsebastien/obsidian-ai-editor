@@ -31,6 +31,7 @@ import type { EditorState, Extension } from '@codemirror/state'
 import { ViewPlugin } from '@codemirror/view'
 import type { EditorView, PluginValue, ViewUpdate } from '@codemirror/view'
 import { Menu, setIcon } from 'obsidian'
+import { frontmatterEnd } from '../../domain/frontmatter'
 import type { EditOp, Severity } from '../../domain/operations/contract'
 import { formatReference } from '../../domain/references'
 import { THREAD_MAX_TURNS, isThreadFull } from '../../domain/operations/thread'
@@ -721,7 +722,25 @@ class FindingCardPlugin implements PluginValue {
         this.view.requestMeasure({
             read: () => {
                 const span = findingSpanById(this.view.state, findingId)
-                return span ? this.view.coordsAtPos(span.from) : null
+                if (!span) {
+                    return null
+                }
+                const rect = this.view.coordsAtPos(span.from)
+                if (rect !== null || retry) {
+                    return rect
+                }
+                // Last try: a span in the properties block has no laid-out
+                // text in Live Preview (the Properties widget replaces it),
+                // so anchor the card at the top of the note instead of never
+                // opening it — the panel is the only way to reach it.
+                const doc = this.view.state.doc
+                if (
+                    span.from >= frontmatterEnd(doc.sliceString(0, Math.min(doc.length, 100_000)))
+                ) {
+                    return null
+                }
+                const top = this.view.contentDOM.getBoundingClientRect()
+                return { left: top.left, top: top.top, bottom: top.top }
             },
             write: (rect) => {
                 if (!rect) {

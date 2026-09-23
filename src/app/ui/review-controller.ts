@@ -38,6 +38,7 @@ import { planEditChanges } from '../domain/operations/edit-apply'
 import { sectionInsertionPoint } from '../domain/sections'
 import { wordDiff } from '../domain/diff/word-diff'
 import type { DiffSegment } from '../domain/diff/word-diff'
+import { frontmatterEnd } from '../domain/frontmatter'
 import { asFindingId } from '../domain/ids'
 import {
     deleteKeysUnder,
@@ -2836,6 +2837,77 @@ export class ReviewController {
         this.scheduleRefresh()
     }
 
+    // -- Per-finding triage from the side panel ----------------------------
+
+    /**
+     * Longest prefix scanned for a frontmatter block. Generous for any real
+     * properties block, and it keeps the per-refresh cost off the note length.
+     */
+    private static readonly PROPERTIES_SCAN_MAX = 100_000
+
+    /** End offset of the note's properties block in the live editor, or 0. */
+    private propertiesEnd(path: string): number {
+        const doc = this.editorViewFor(path)?.state.doc
+        if (!doc) {
+            return 0
+        }
+        return frontmatterEnd(
+            doc.sliceString(0, Math.min(doc.length, ReviewController.PROPERTIES_SCAN_MAX))
+        )
+    }
+
+    /**
+     * Reveals a finding AND opens its card — the panel's route for a finding
+     * whose highlight cannot be clicked (it sits in the properties block,
+     * which Live Preview renders as the Properties widget). Goes through the
+     * triage cursor like every other card-on-jump.
+     */
+    private openPanelFinding(path: string, run: RunHandle, findingId: FindingId): void {
+        const anchor = run.findings.get(findingId)?.anchor ?? null
+        if (anchor === null || anchor.state !== 'anchored') {
+            return
+        }
+        this.moveTriageCursor(path, run, { id: findingId, from: anchor.from, to: anchor.to })
+    }
+
+    /**
+     * Accepts one finding from the panel's context menu through the exact
+     * card-button path (`FindingStore.accept` re-verifies against the live
+     * text, BR #3; one undoable, history-isolated transaction).
+     */
+    private acceptPanelFinding(path: string, findingId: FindingId): void {
+        const editorView = this.editorViewFor(path)
+        if (!editorView) {
+            new Notice('Open the note in an editor to accept this finding.')
+            return
+        }
+        const outcome = this.acceptFinding(findingId, editorView.state.doc.toString())
+        if (!outcome.ok) {
+            new Notice('The proposal no longer applies — the text changed since it was made.')
+            this.scheduleRefresh()
+            return
+        }
+        editorView.dispatch({
+            changes: outcome.changes.map((change) => ({
+                from: change.from,
+                to: change.to,
+                insert: change.insert
+            })),
+            effects: removeFindingsEffect.of([findingId]),
+            annotations: [isolateHistory.of('full'), triageEditAnnotation.of(true)]
+        })
+        this.scheduleRefresh()
+    }
+
+    /** Dismisses one finding from the panel's context menu (card-button path). */
+    private dismissPanelFinding(path: string, findingId: FindingId): void {
+        this.dismissFinding(findingId)
+        this.editorViewFor(path)?.dispatch({
+            effects: [removeFindingsEffect.of([findingId]), refreshFindingCardEffect.of(null)]
+        })
+        this.scheduleRefresh()
+    }
+
     /** The CM6 view of an open markdown view showing `path`, if any. */
     private editorViewFor(path: string): EditorView | null {
         const view = this.findMarkdownView(path)
@@ -3148,6 +3220,9 @@ export class ReviewController {
             return null
         }
         const colors = this.editorColors()
+        // Read once per binding, on first use: the binding is rebuilt on every
+        // refresh, and a doc change always triggers one.
+        let propertiesEnd: number | null = null
         return {
             filePath: path,
             run,
@@ -3164,6 +3239,34 @@ export class ReviewController {
             },
             revealFinding: (findingId: FindingId): void => {
                 void this.revealFinding(path, findingId)
+            },
+            openFinding: (findingId: FindingId): void => {
+                this.openPanelFinding(path, run, findingId)
+            },
+            isInProperties: (findingId: FindingId): boolean => {
+                const anchor = run.findings.get(findingId)?.anchor ?? null
+                if (anchor === null) {
+                    return false
+                }
+                propertiesEnd ??= this.propertiesEnd(path)
+                return anchor.from < propertiesEnd
+            },
+            // Accept is offered on the same predicate as the card's button
+            // (minus the stale-proposal marker, which the accept itself
+            // re-checks against the live text and reports).
+            canAcceptFinding: (findingId: FindingId): boolean => {
+                const finding = run.findings.get(findingId)
+                return (
+                    finding !== null &&
+                    finding.edits.length > 0 &&
+                    run.findings.isActionable(findingId)
+                )
+            },
+            acceptFinding: (findingId: FindingId): void => {
+                this.acceptPanelFinding(path, findingId)
+            },
+            dismissFinding: (findingId: FindingId): void => {
+                this.dismissPanelFinding(path, findingId)
             },
             // Read live at render time (like `isBusy` above): a step moves the
             // cursor through a coalesced refresh, and a captured id would

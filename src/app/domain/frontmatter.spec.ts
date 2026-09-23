@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { stripFrontmatterBlock } from './frontmatter'
+import { frontmatterEnd, stripFrontmatterBlock } from './frontmatter'
 
 describe('stripFrontmatterBlock', () => {
     it('removes a leading block and reports what it removed', () => {
@@ -44,5 +44,20 @@ describe('stripFrontmatterBlock', () => {
     it('removes only the FIRST block', () => {
         const text = '---\na: 1\n---\n---\nb: 2\n---\n'
         expect(stripFrontmatterBlock(text).text).toBe('---\nb: 2\n---\n')
+    })
+})
+
+describe('frontmatterEnd', () => {
+    it('is 0 without a leading block', () => {
+        expect(frontmatterEnd('# Title\n---\nkey: value\n---\n')).toBe(0)
+    })
+
+    it('is the offset right after the closing delimiter line', () => {
+        const block = '---\ntags: [a]\n---\n'
+        expect(frontmatterEnd(`${block}Body`)).toBe(block.length)
+    })
+
+    it('handles a note that is nothing but frontmatter', () => {
+        expect(frontmatterEnd('---\nkey: v\n---')).toBe('---\nkey: v\n---'.length)
     })
 })
