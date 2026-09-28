@@ -204,19 +204,22 @@ function backendRowItem(ctx: TabContext, backend: BackendInstance): SettingDefin
     return {
         name: backend.label,
         desc: backendRowDetails(backend),
-        render: (setting): void => {
-            if (backend.family === 'cli') {
-                // The consent state is the single most important thing about a
-                // CLI backend row: an enabled-but-unconsented one is skipped by
-                // every run, and without this line the user would only find out
-                // from a skip report after asking for a review.
-                setting.descEl.createDiv({
-                    cls: hasLaunchConsent(backend)
-                        ? 'editor-ai-daemons-consent-line'
-                        : 'editor-ai-daemons-consent-line is-missing',
-                    text: launchConsentLine(backend)
-                })
-            }
+        render: (setting): (() => void) => {
+            // The consent state is the single most important thing about a
+            // CLI backend row: an enabled-but-unconsented one is skipped by
+            // every run, and without this line the user would only find out
+            // from a skip report after asking for a review. It is appended to
+            // the description, which update() does not reset on a reused row,
+            // so the returned cleanup removes it before the hook re-runs.
+            const consentEl =
+                backend.family === 'cli'
+                    ? setting.descEl.createDiv({
+                          cls: hasLaunchConsent(backend)
+                              ? 'editor-ai-daemons-consent-line'
+                              : 'editor-ai-daemons-consent-line is-missing',
+                          text: launchConsentLine(backend)
+                      })
+                    : null
             setting.addToggle((toggle) => {
                 toggle.setValue(backend.enabled)
                 toggle.setTooltip(backend.enabled ? 'Enabled' : 'Disabled')
@@ -250,6 +253,7 @@ function backendRowItem(ctx: TabContext, backend: BackendInstance): SettingDefin
                         openBackendModal(ctx, backend)
                     })
             })
+            return () => consentEl?.remove()
         }
     }
 }

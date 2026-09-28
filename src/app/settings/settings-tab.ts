@@ -175,12 +175,17 @@ export class AIEditorPluginSettingTab extends PluginSettingTab {
                     // Not a setting: keeping it out of search stops it
                     // answering queries looking for something configurable.
                     searchable: false,
-                    render: (setting): void => {
+                    render: (setting): (() => void) => {
                         setting.settingEl.addClass('editor-ai-daemons-settings-embed')
                         setting.infoEl.remove() // the section draws its own headings
-                        renderSupportSection(setting.settingEl, (el) => {
+                        // In a wrapper removed by the returned cleanup: update() re-runs
+                        // this hook on the SAME row and only resets its control area, so
+                        // content appended straight to settingEl would pile up.
+                        const blockEl = setting.settingEl.createDiv()
+                        renderSupportSection(blockEl, (el) => {
                             this.renderBuyMeACoffeeBadge(el)
                         })
+                        return () => blockEl.remove()
                     }
                 }
             ]

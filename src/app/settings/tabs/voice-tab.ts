@@ -51,10 +51,14 @@ export function voicePageItems(ctx: TabContext): SettingDefinitionItem[] {
                     // and deleting the row made this control vanish entirely,
                     // leaving the voice profile notes unconfigurable (reported
                     // 2026-08-08).
-                    render: (setting): void => {
+                    render: (setting): (() => void) => {
                         setting.settingEl.addClass('editor-ai-daemons-settings-embed')
                         setting.infoEl.remove() // the helper draws its own name + desc
-                        renderNoteRefsEditor(setting.settingEl, {
+                        // In a wrapper removed by the returned cleanup: update() re-runs
+                        // this hook on the SAME row and only resets its control area, so
+                        // content appended straight to settingEl would pile up.
+                        const blockEl = setting.settingEl.createDiv()
+                        renderNoteRefsEditor(blockEl, {
                             app: ctx.app,
                             name: 'Voice profile notes',
                             desc: 'Vault notes appended in order at run time (e.g. My Voice Profile). Editing those notes immediately affects every subsequent run.',
@@ -64,6 +68,7 @@ export function voicePageItems(ctx: TabContext): SettingDefinitionItem[] {
                                     draft.voiceProfile.notePaths = paths
                                 })
                         })
+                        return () => blockEl.remove()
                     }
                 },
                 {

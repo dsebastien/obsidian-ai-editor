@@ -171,7 +171,7 @@ function builtInActionItem(ctx: TabContext, verb: BuiltInActionId): SettingGroup
     return {
         name: builtInActionLabel(verb),
         desc: BUILT_IN_ACTION_DESCRIPTIONS[verb],
-        render: (setting): void => {
+        render: (setting): (() => void) => {
             const settings = ctx.facade.getSettings()
             const existing = settings.actions.find((action) => action.actionId === verb)
             // Only review-class verbs may bind to a panel (a transform/generate
@@ -194,9 +194,10 @@ function builtInActionItem(ctx: TabContext, verb: BuiltInActionId): SettingGroup
                     )
                 })
             })
-            if (existing) {
-                renderBindingWarning(setting, existing, ctx)
-            }
+            // Appended to the description, which update() does not reset on a
+            // reused row: the cleanup keeps each refresh from stacking a copy.
+            const warningEl = existing ? renderBindingWarning(setting, existing, ctx) : null
+            return () => warningEl?.remove()
         }
     }
 }
@@ -212,7 +213,7 @@ function builtInActionItem(ctx: TabContext, verb: BuiltInActionId): SettingGroup
 function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupItem {
     return {
         name: action.customName.length > 0 ? action.customName : 'Unnamed action',
-        render: (setting): void => {
+        render: (setting): (() => void) => {
             const settings = ctx.facade.getSettings()
             const mutate = (
                 mutator: (target: ActionBinding) => void,
@@ -277,7 +278,7 @@ function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupI
                 })
             })
 
-            renderBindingWarning(setting, action, ctx)
+            const warningEl = renderBindingWarning(setting, action, ctx)
 
             // The instruction is a prompt source (text + ordered note refs +
             // follow-links), not a scalar, so the existing editors build it.
@@ -324,6 +325,13 @@ function customActionItem(ctx: TabContext, action: ActionBinding): SettingGroupI
                         })
                 }
             })
+            // update() re-runs this hook on the SAME row and resets only its
+            // control area: without the cleanup, every refresh would stack
+            // another instruction editor (whose stale copy would still save).
+            return () => {
+                warningEl?.remove()
+                extras.remove()
+            }
         }
     }
 }
@@ -349,15 +357,19 @@ function customInstructionDesc(verbClass: VerbClass | null): string {
  * menu and the palette — say why instead. Unbound is a deliberate state
  * and stays quiet.
  */
-function renderBindingWarning(row: Setting, action: ActionBinding, ctx: TabContext): void {
+function renderBindingWarning(
+    row: Setting,
+    action: ActionBinding,
+    ctx: TabContext
+): HTMLElement | null {
     if (!action.binding) {
-        return
+        return null
     }
     const resolution = resolveActionBinding(ctx.facade.getSettings(), action)
     if (resolution.ok) {
-        return
+        return null
     }
-    row.descEl.createDiv({
+    return row.descEl.createDiv({
         cls: 'editor-ai-daemons-binding-warning',
         text: `Hidden from menus and the command palette: ${actionInvalidReasonLabel(resolution.reason)}.`
     })
