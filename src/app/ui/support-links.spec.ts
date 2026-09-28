@@ -114,8 +114,9 @@ describe('release footer', () => {
     })
 
     test('the release workflow appends the footer to the release body', () => {
-        expect(workflow).toContain('cat .github/release-footer.md >> $GITHUB_OUTPUT')
-        expect(workflow).toContain("printf '\\n---\\n\\n' >> $GITHUB_OUTPUT")
+        expect(workflow).toContain('cat .github/release-footer.md >> release-body.md')
+        expect(workflow).toContain("printf '\\n---\\n\\n' >> release-body.md")
+        expect(workflow).toContain('body_path: release-body.md')
     })
 })
 
