@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.11.0...0.12.0) (2026-09-28)
+
+### Fixed
+
+- Settings pages no longer pile up copies of their editors after you change something. The voice profile notes, the excluded folders and tags, the support section and each custom action's instruction editor could appear twice or more after a few changes, and a leftover copy of an instruction editor could save outdated text over your latest edit.
+- The plugin builds with the version of Bun the community catalog uses to review it, so the "What's new" notes are always included in the published build.
+
+### Changed
+
+- From this release on, "What's new" shows release notes written for you, the same text as on the GitHub release page, instead of a list of internal commit messages.
+- Nothing changes in how the plugin looks or works otherwise: buttons such as Delete and Withdraw keep their look.
+
 ## [0.11.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.10.4...0.11.0) (2026-09-23)
 
 ### Features
@@ -420,6 +432,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
