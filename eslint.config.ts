@@ -3,6 +3,17 @@ import tseslint from 'typescript-eslint'
 import eslintConfigPrettier from 'eslint-config-prettier'
 import globals from 'globals'
 import obsidianmd from 'eslint-plugin-obsidianmd'
+// Passing `brands` REPLACES the plugin's default list rather than extending it
+// (see sentenceCaseUtil.js: `options?.brands ?? DEFAULT_BRANDS`). Listing only
+// this plugin's own names would therefore silently strip "Obsidian", "Git",
+// "Markdown", "GitHub", "Windows" and the other 40-odd defaults — and the
+// community catalog reviewer, which runs the plugin's own ruleset, would keep
+// enforcing every one of them. The loss shows up as findings you never see
+// locally, not as findings that go away.
+// Deep path because the package exports only its default plugin object; it is
+// pinned exactly, and a break here is a loud module-resolution error, never a
+// silent shrinking of the list.
+import { DEFAULT_BRANDS } from 'eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js'
 import { defineConfig } from 'eslint/config'
 
 // eslint-plugin-obsidianmd 0.4.x lowered these rules from error to warn in its
@@ -191,9 +202,10 @@ export default defineConfig([
             // has to be declared or correct text is reported:
             //
             // - `brands` REPLACES the plugin's default list (`?? DEFAULT_BRANDS`),
-            //   so this array must carry every brand this codebase names, the
-            //   plugin's own included. A new brand in a UI string is reported
-            //   until it is added here — loud, which is the point.
+            //   so the array spreads DEFAULT_BRANDS first and then adds only
+            //   the names this plugin uses that are not defaults. A new brand
+            //   in a UI string is reported until it is added here — loud,
+            //   which is the point.
             // - `ignoreWords` covers single tokens that are literal UI labels
             //   quoted inside prose ("Select **Test connection** again"), key
             //   names, and one environment variable. Only consulted for tokens
@@ -209,39 +221,25 @@ export default defineConfig([
                 {
                     enforceCamelCaseLower: true,
                     brands: [
-                        // Defaults this codebase relies on
-                        'Obsidian',
-                        'Obsidian Sync',
-                        'Obsidian Publish',
+                        ...DEFAULT_BRANDS,
+                        // Not a default (only 'iCloud Drive' is)
                         'iCloud',
-                        'iOS',
-                        'macOS',
-                        'Windows',
-                        'Linux',
-                        'Android',
-                        'GitHub',
-                        'Git',
-                        'YouTube',
-                        'Markdown',
-                        'JavaScript',
-                        'TypeScript',
-                        'Node.js',
                         'GitHub Sponsors',
                         // The side panel's tab title is a name (its own
                         // exemption used to be two now-forbidden inline
                         // disables — the vocabulary IS the config, 0.4.1).
                         'AI Editor Review',
-                        // Backends, tools and products this plugin names
+                        // Backends, tools and products this plugin names.
+                        // Add only names that are not defaults; do NOT add
+                        // ordinary UI words such as 'Settings' — as a brand
+                        // it makes every lowercase occurrence a violation.
                         'AI Editor',
-                        'Anthropic',
                         'Azure OpenAI',
-                        'Claude',
                         'Claude Code',
                         'Codex',
                         'Knowii',
                         'LM Studio',
                         'Ollama',
-                        'OpenAI',
                         'OpenRouter'
                     ],
                     ignoreWords: [
