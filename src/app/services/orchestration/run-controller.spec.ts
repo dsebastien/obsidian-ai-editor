@@ -1680,11 +1680,13 @@ describe('RunController panel runs', () => {
             panel: {
                 panelId: 'panel-1',
                 panelName: 'Panel',
-                // An aggregation that only ever ends by being aborted.
-                aggregate: (_request, signal) => {
-                    aggregationSignal = signal
-                    return streamEndingOnAbort<OperationEvent>(signal)
-                }
+                // An aggregation that only ever ends by being aborted. The
+                // signal is recorded once the controller READS the stream, so
+                // a controller that only created it would fail this test.
+                aggregate: (_request, signal) =>
+                    streamEndingOnAbort<OperationEvent>(signal, () => {
+                        aggregationSignal = signal
+                    })
             }
         })
 

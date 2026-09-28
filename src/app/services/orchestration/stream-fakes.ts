@@ -25,12 +25,23 @@ export function hangingStream<T>(): AsyncIterable<T> {
     return iterable<T>(() => new Promise<IteratorResult<T>>(() => undefined))
 }
 
-/** Produces nothing and ends only once `signal` aborts. */
-export function streamEndingOnAbort<T>(signal: AbortSignal): AsyncIterable<T> {
-    return iterable<T>(
-        () =>
-            new Promise<IteratorResult<T>>((resolve) => {
-                signal.addEventListener('abort', () => resolve({ done: true, value: undefined }))
-            })
-    )
+/**
+ * Produces nothing and ends only once `signal` aborts. `onFirstRead` runs when
+ * the consumer first asks for an event, so a spec can tell a stream that was
+ * read from one that was only created.
+ */
+export function streamEndingOnAbort<T>(
+    signal: AbortSignal,
+    onFirstRead: () => void = (): void => undefined
+): AsyncIterable<T> {
+    let read = false
+    return iterable<T>(() => {
+        if (!read) {
+            read = true
+            onFirstRead()
+        }
+        return new Promise<IteratorResult<T>>((resolve) => {
+            signal.addEventListener('abort', () => resolve({ done: true, value: undefined }))
+        })
+    })
 }
