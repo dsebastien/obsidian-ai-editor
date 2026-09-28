@@ -55,8 +55,9 @@ export function voicePageItems(ctx: TabContext): SettingDefinitionItem[] {
                         setting.settingEl.addClass('editor-ai-daemons-settings-embed')
                         setting.infoEl.remove() // the helper draws its own name + desc
                         // In a wrapper removed by the returned cleanup: update() re-runs
-                        // this hook on the SAME row and only resets its control area, so
-                        // content appended straight to settingEl would pile up.
+                        // this hook on the SAME row and resets its name, description and
+                        // control area, not other settingEl children, so content appended
+                        // straight to settingEl would pile up.
                         const blockEl = setting.settingEl.createDiv()
                         renderNoteRefsEditor(blockEl, {
                             app: ctx.app,
