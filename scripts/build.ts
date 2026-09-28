@@ -69,6 +69,31 @@ async function buildStyles(): Promise<void> {
     }
 }
 
+/**
+ * CHANGELOG.md as a string literal for the bundler to substitute.
+ *
+ * Read here rather than imported from source: markdown import attributes are
+ * not resolvable on every Bun version, and Obsidian's plugin review builds with
+ * one where they are not — the build failed there while succeeding locally.
+ * Missing file yields an empty string so a checkout without a changelog still
+ * builds.
+ */
+export async function readChangelogDefine(path = 'CHANGELOG.md'): Promise<Record<string, string>> {
+    const file = Bun.file(path)
+    const text = (await file.exists()) ? await file.text() : ''
+    return { __PLUGIN_CHANGELOG__: JSON.stringify(text) }
+}
+
+/**
+ * 'none' instead of `false`: the catalog reviewer builds with an older Bun
+ * that only accepts the string form — `false` fails its archive build before
+ * main.js exists, while 'none' works everywhere. A local build on a current
+ * Bun cannot catch a regression, so the spec pins the value.
+ */
+export function sourcemapFor(prod: boolean): 'none' | 'inline' {
+    return prod ? 'none' : 'inline'
+}
+
 async function buildJs(): Promise<void> {
     console.log(`Building plugin in ${isProd ? 'production' : 'development'} mode...`)
     const { success, logs } = await Bun.build({
@@ -78,8 +103,9 @@ async function buildJs(): Promise<void> {
         external: EXTERNAL_MODULES,
         format: 'cjs',
         target: 'node',
+        define: await readChangelogDefine(),
         minify: isProd,
-        sourcemap: isProd ? false : 'inline',
+        sourcemap: sourcemapFor(isProd),
         throw: isProd
     })
     if (success) {
