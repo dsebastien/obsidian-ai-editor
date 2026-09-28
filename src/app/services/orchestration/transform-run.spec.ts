@@ -7,6 +7,7 @@ import {
     type StartTransformInput,
     type TransformOperationRequest
 } from './transform-run'
+import { failingStream, hangingStream } from './stream-fakes'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -363,11 +364,7 @@ describe('TransformRunHandle protocol', () => {
         const run = controller.startTransform(
             makeInput({
                 redactError: (message) => message.split('sk-secret').join('[redacted]'),
-                // eslint-disable-next-line require-yield -- reason: a stream that ends (or hangs) without yielding IS the behavior under test
-                execute: async function* execute(): AsyncGenerator<OperationEvent> {
-                    await Promise.resolve()
-                    throw new Error('boom sk-secret boom')
-                }
+                execute: () => failingStream<OperationEvent>(new Error('boom sk-secret boom'))
             })
         )
         await run.settled
@@ -461,10 +458,7 @@ describe('TransformRunHandle cancellation and concurrency', () => {
         // when cancel() terminates the run.
         const run = controller.startTransform(
             makeInput({
-                // eslint-disable-next-line require-yield -- reason: a stream that ends (or hangs) without yielding IS the behavior under test
-                execute: async function* execute(): AsyncGenerator<OperationEvent> {
-                    await new Promise(() => undefined) // hangs forever
-                }
+                execute: () => hangingStream<OperationEvent>()
             })
         )
         await tick()

@@ -7,7 +7,9 @@ import type {
     ThreadTurnRequest
 } from '../../domain/operations/contract'
 import { THREAD_MAX_TURNS } from '../../domain/operations/thread'
+import { streamOf } from '../../utils/async-stream'
 import { RunController, type RunEditorSpec, type RunHandle } from './run-controller'
+import { failingStream } from './stream-fakes'
 
 /**
  * Thread turns on the run handle: the backend round trip of a per-finding
@@ -36,9 +38,16 @@ async function runWithFinding(findings: RawFinding[] = [raw()]): Promise<RunHand
     const editor: RunEditorSpec = {
         editorId: 'alpha',
         editorName: 'Alpha',
-        execute: async function* (request) {
-            yield { type: 'result', runId: request.runId, result: { kind: 'review', findings } }
-        }
+        execute: (request) =>
+            streamOf(
+                (function* () {
+                    yield {
+                        type: 'result',
+                        runId: request.runId,
+                        result: { kind: 'review', findings }
+                    } as OperationEvent
+                })()
+            )
     }
     const run = controller.startRun({
         snapshot: createSnapshot({ filePath: 'notes/test.md', text: DOC }),
@@ -77,15 +86,16 @@ describe('RunHandle.startThreadTurn request shape', () => {
         const run = await runWithFinding()
         const id = run.findings.list()[0]!.id
         const seen: ThreadTurnRequest[] = []
-        const execute = async function* (
-            request: ThreadTurnRequest
-        ): AsyncIterable<OperationEvent> {
-            seen.push(request)
-            yield turnResult(request.runId, {
-                reply: 'Holding',
-                revisedEdits: [{ op: 'replace', text: 'sharper wording' }]
-            })
-        }
+        const execute = (request: ThreadTurnRequest): AsyncIterable<OperationEvent> =>
+            streamOf(
+                (function* () {
+                    seen.push(request)
+                    yield turnResult(request.runId, {
+                        reply: 'Holding',
+                        revisedEdits: [{ op: 'replace', text: 'sharper wording' }]
+                    })
+                })()
+            )
 
         const first = run.startThreadTurn({
             findingId: id,
@@ -134,21 +144,22 @@ describe('RunHandle.startThreadTurn request shape', () => {
         const run = await runWithFinding()
         const id = run.findings.list()[0]!.id
         const seen: ThreadTurnRequest[] = []
-        const execute = async function* (
-            request: ThreadTurnRequest
-        ): AsyncIterable<OperationEvent> {
-            seen.push(request)
-            yield {
-                type: 'result',
-                runId: request.runId,
-                result: {
-                    kind: 'thread-turn',
-                    reply: 'Sharpened',
-                    concede: false,
-                    revisedCritique: 'The repetition buries the verb'
-                }
-            }
-        }
+        const execute = (request: ThreadTurnRequest): AsyncIterable<OperationEvent> =>
+            streamOf(
+                (function* () {
+                    seen.push(request)
+                    yield {
+                        type: 'result',
+                        runId: request.runId,
+                        result: {
+                            kind: 'thread-turn',
+                            reply: 'Sharpened',
+                            concede: false,
+                            revisedCritique: 'The repetition buries the verb'
+                        }
+                    } as OperationEvent
+                })()
+            )
         const first = run.startThreadTurn({ findingId: id, message: 'why?', quote: 'q', execute })
         if (first.ok) {
             await first.settled
@@ -169,12 +180,15 @@ describe('RunHandle.startThreadTurn outcomes', () => {
             findingId: id,
             message: 'give me better',
             quote: 'quick brown',
-            execute: async function* (request) {
-                yield turnResult(request.runId, {
-                    reply: 'Try this',
-                    revisedEdits: [{ op: 'replace', text: 'swift auburn fox' }]
-                })
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield turnResult(request.runId, {
+                            reply: 'Try this',
+                            revisedEdits: [{ op: 'replace', text: 'swift auburn fox' }]
+                        })
+                    })()
+                )
         })
         expect(start.ok).toBeTrue()
         if (!start.ok) {
@@ -194,9 +208,12 @@ describe('RunHandle.startThreadTurn outcomes', () => {
             findingId: id,
             message: 'why?',
             quote: 'quick brown',
-            execute: async function* (request) {
-                yield turnResult(request.runId, { reply: 'Because it reads flat' })
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield turnResult(request.runId, { reply: 'Because it reads flat' })
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -216,9 +233,15 @@ describe('RunHandle.startThreadTurn outcomes', () => {
             findingId: id,
             message: 'it is intentional',
             quote: 'quick brown',
-            execute: async function* (request) {
-                yield turnResult(request.runId, { reply: 'Fair, withdrawing', concede: true })
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield turnResult(request.runId, {
+                            reply: 'Fair, withdrawing',
+                            concede: true
+                        })
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -232,12 +255,13 @@ describe('RunHandle.startThreadTurn outcomes', () => {
         const run = await runWithFinding()
         const id = run.findings.list()[0]!.id
         let calls = 0
-        const execute = async function* (
-            request: ThreadTurnRequest
-        ): AsyncIterable<OperationEvent> {
-            calls += 1
-            yield turnResult(request.runId, { reply: 'never sent' })
-        }
+        const execute = (request: ThreadTurnRequest): AsyncIterable<OperationEvent> =>
+            streamOf(
+                (function* () {
+                    calls += 1
+                    yield turnResult(request.runId, { reply: 'never sent' })
+                })()
+            )
         expect(run.startThreadTurn({ findingId: id, message: '   ', quote: 'q', execute })).toEqual(
             {
                 ok: false,
@@ -284,11 +308,12 @@ describe('RunHandle.startThreadTurn outcomes', () => {
     it('stops at the turn cap', async () => {
         const run = await runWithFinding()
         const id = run.findings.list()[0]!.id
-        const execute = async function* (
-            request: ThreadTurnRequest
-        ): AsyncIterable<OperationEvent> {
-            yield turnResult(request.runId, { reply: 'again' })
-        }
+        const execute = (request: ThreadTurnRequest): AsyncIterable<OperationEvent> =>
+            streamOf(
+                (function* () {
+                    yield turnResult(request.runId, { reply: 'again' })
+                })()
+            )
         for (let turn = 0; turn < THREAD_MAX_TURNS; turn++) {
             const start = run.startThreadTurn({
                 findingId: id,
@@ -315,13 +340,16 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            execute: async function* (request) {
-                yield {
-                    type: 'result',
-                    runId: request.runId,
-                    result: { kind: 'review', findings: [] }
-                }
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield {
+                            type: 'result',
+                            runId: request.runId,
+                            result: { kind: 'review', findings: [] }
+                        } as OperationEvent
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -347,9 +375,16 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            execute: async function* (request) {
-                yield { type: 'progress', runId: request.runId, message: 'thinking' }
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield {
+                            type: 'progress',
+                            runId: request.runId,
+                            message: 'thinking'
+                        } as OperationEvent
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -368,13 +403,16 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             message: 'push',
             quote: 'q',
             redactError: (message) => message.replace('sk-secret', '***'),
-            execute: async function* (request) {
-                yield {
-                    type: 'error',
-                    runId: request.runId,
-                    error: { code: 'auth', message: 'rejected key sk-secret' }
-                }
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield {
+                            type: 'error',
+                            runId: request.runId,
+                            error: { code: 'auth', message: 'rejected key sk-secret' }
+                        } as OperationEvent
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -393,11 +431,14 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            execute: async function* (request) {
-                yield turnResult('some-other-run', { reply: 'foreign', concede: true })
-                yield turnResult(request.runId, { reply: 'mine' })
-                yield turnResult(request.runId, { reply: 'late', concede: true })
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield turnResult('some-other-run', { reply: 'foreign', concede: true })
+                        yield turnResult(request.runId, { reply: 'mine' })
+                        yield turnResult(request.runId, { reply: 'late', concede: true })
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -417,10 +458,9 @@ describe('RunHandle.startThreadTurn protocol enforcement', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            // eslint-disable-next-line require-yield -- reason: a generator that throws before yielding IS the failure mode under test
-            execute: async function* () {
-                throw new Error('socket closed')
-            }
+            // A stream that throws before yielding is the failure mode under test.
+            execute: (): AsyncIterable<OperationEvent> =>
+                failingStream<OperationEvent>(new Error('socket closed'))
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -498,9 +538,12 @@ describe('thread turns, cancellation and concurrency', () => {
             findingId: id,
             message: 'push',
             quote: 'q',
-            execute: async function* (request) {
-                yield turnResult(request.runId, { reply: 'still here' })
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield turnResult(request.runId, { reply: 'still here' })
+                    })()
+                )
         })
         if (!start.ok) {
             throw new Error('expected the turn to start')
@@ -578,14 +621,17 @@ describe('thread turns, cancellation and concurrency', () => {
                 {
                     editorId: 'beta',
                     editorName: 'Beta',
-                    execute: async function* (request) {
-                        secondStarted = true
-                        yield {
-                            type: 'result',
-                            runId: request.runId,
-                            result: { kind: 'review', findings: [] }
-                        }
-                    }
+                    execute: (request) =>
+                        streamOf(
+                            (function* () {
+                                secondStarted = true
+                                yield {
+                                    type: 'result',
+                                    runId: request.runId,
+                                    result: { kind: 'review', findings: [] }
+                                } as OperationEvent
+                            })()
+                        )
                 }
             ]
         })

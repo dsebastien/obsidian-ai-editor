@@ -115,8 +115,9 @@ export function trackedRunDir(): { create: CreateRunDir; paths: string[] } {
         paths.push(path)
         const handle: RunDirHandle = {
             path,
-            dispose: async (): Promise<void> => {
+            dispose: (): Promise<void> => {
                 rmSync(path, { recursive: true, force: true })
+                return Promise.resolve()
             }
         }
         return Promise.resolve(handle)

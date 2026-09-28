@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import type { FetchFn } from './backends/resolve-fetch'
 import type { FindingId } from '../domain/ids'
 import { rawFindingSchema } from '../domain/operations/contract'
+import type { OperationEvent } from '../domain/operations/contract'
 import {
     apiBackendSchema,
     editorConfigSchema,
@@ -13,6 +14,7 @@ import type { NoteMetadata, VaultReader } from './context/vault-reader.intf'
 import { RunController } from './orchestration/run-controller'
 import type { RunHandle } from './orchestration/run-controller'
 import { startThreadTurn } from './thread-service'
+import { streamOf } from '../utils/async-stream'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -58,8 +60,8 @@ class FakeVault implements VaultReader {
     readonly metadata = new Map<string, NoteMetadata>()
     readonly noteTypeIds = new Map<string, readonly string[]>()
 
-    async readNote(path: string): Promise<string | null> {
-        return this.notes.get(path) ?? null
+    readNote(path: string): Promise<string | null> {
+        return Promise.resolve(this.notes.get(path) ?? null)
     }
 
     resolveLink(): string | null {
@@ -131,22 +133,25 @@ async function runWithFinding(
             {
                 editorId,
                 editorName: 'Devil’s Advocate',
-                execute: async function* (request) {
-                    yield {
-                        type: 'result',
-                        runId: request.runId,
-                        result: {
-                            kind: 'review',
-                            findings: [
-                                rawFindingSchema.parse({
-                                    quote: 'quick brown',
-                                    critique: 'Too generic',
-                                    suggestion: 'swift auburn'
-                                })
-                            ]
-                        }
-                    }
-                }
+                execute: (request) =>
+                    streamOf(
+                        (function* () {
+                            yield {
+                                type: 'result',
+                                runId: request.runId,
+                                result: {
+                                    kind: 'review',
+                                    findings: [
+                                        rawFindingSchema.parse({
+                                            quote: 'quick brown',
+                                            critique: 'Too generic',
+                                            suggestion: 'swift auburn'
+                                        })
+                                    ]
+                                }
+                            } as OperationEvent
+                        })()
+                    )
             }
         ]
     })

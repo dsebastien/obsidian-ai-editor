@@ -38,8 +38,9 @@ function harness(initial: PluginSettingsV1): Harness {
     let settings = initial
     const facade: SettingsFacade = {
         getSettings: () => settings,
-        update: async (mutator) => {
+        update: (mutator) => {
             settings = produce(settings, mutator)
+            return Promise.resolve()
         },
         subscribe: () => () => {}
     }

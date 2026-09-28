@@ -288,7 +288,7 @@ describe('createSettingsFacade (host-provided facade)', () => {
         expect(notifications).toBe(0)
     })
 
-    test('delegates subscribe to the host when it provides one', async () => {
+    test('delegates subscribe to the host when it provides one', () => {
         let hostSubscribeCalls = 0
         const host: SettingsHost = {
             loadData: () => Promise.reject(new Error('must not be called')),

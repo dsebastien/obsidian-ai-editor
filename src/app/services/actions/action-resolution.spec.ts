@@ -83,9 +83,9 @@ class FakeVault implements VaultReader {
     readonly links = new Map<string, readonly string[]>()
     readonly reads: string[] = []
 
-    async readNote(path: string): Promise<string | null> {
+    readNote(path: string): Promise<string | null> {
         this.reads.push(path)
-        return this.notes.get(path) ?? null
+        return Promise.resolve(this.notes.get(path) ?? null)
     }
 
     resolveLink(): string | null {

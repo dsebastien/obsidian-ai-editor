@@ -67,8 +67,8 @@ class FakeVault implements VaultReader {
      */
     readonly nullMetadataPaths = new Set<string>()
 
-    async readNote(path: string): Promise<string | null> {
-        return this.notes.get(path) ?? null
+    readNote(path: string): Promise<string | null> {
+        return Promise.resolve(this.notes.get(path) ?? null)
     }
 
     resolveLink(): string | null {

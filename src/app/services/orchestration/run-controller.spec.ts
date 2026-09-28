@@ -9,7 +9,9 @@ import type {
     ThreadTurnRequest
 } from '../../domain/operations/contract'
 import { CONTRACT_VERSION } from '../../domain/operations/contract'
+import { streamOf } from '../../utils/async-stream'
 import { RunController, type RunEditorSpec } from './run-controller'
+import { endedStream, streamEndingOnAbort } from './stream-fakes'
 
 const DOC = 'The quick brown fox jumps over the lazy dog. The fox is fast.'
 
@@ -76,11 +78,14 @@ describe('RunController happy path', () => {
         const alpha: RunEditorSpec = {
             editorId: 'alpha',
             editorName: 'Alpha',
-            execute: async function* (request) {
-                seenRequests.push(request)
-                yield finding(request.runId, raw())
-                yield result(request.runId, [], 'Alpha summary')
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        seenRequests.push(request)
+                        yield finding(request.runId, raw())
+                        yield result(request.runId, [], 'Alpha summary')
+                    })()
+                )
         }
         const beta = scriptedEditor('beta', (runId) => [
             finding(
@@ -172,10 +177,13 @@ describe('RunController happy path', () => {
         const editor: RunEditorSpec = {
             editorId: 'sel',
             editorName: 'Sel',
-            execute: async function* (request) {
-                seen = request
-                yield result(request.runId, [])
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        seen = request
+                        yield result(request.runId, [])
+                    })()
+                )
         }
         const run = controller.startRun({
             snapshot: snapshot(DOC, { from: 4, to: 15 }),
@@ -352,13 +360,16 @@ describe('RunController event protocol', () => {
         const editor: RunEditorSpec = {
             editorId: 'wrong-kind',
             editorName: 'Wrong kind',
-            execute: async function* (request) {
-                yield {
-                    type: 'result',
-                    runId: request.runId,
-                    result: { kind: 'insert-at', insertion: 'nope', evidence: [] }
-                }
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield {
+                            type: 'result',
+                            runId: request.runId,
+                            result: { kind: 'insert-at', insertion: 'nope', evidence: [] }
+                        } as OperationEvent
+                    })()
+                )
         }
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
         await run.settled
@@ -370,10 +381,13 @@ describe('RunController event protocol', () => {
         const editor: RunEditorSpec = {
             editorId: 'crashing',
             editorName: 'Crashing',
-            execute: async function* (request) {
-                yield { type: 'progress', runId: request.runId }
-                throw new Error('backend exploded')
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield { type: 'progress', runId: request.runId } as OperationEvent
+                        throw new Error('backend exploded')
+                    })()
+                )
         }
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
         await run.settled
@@ -388,10 +402,13 @@ describe('RunController event protocol', () => {
             editorId: 'leaky-throw',
             editorName: 'Leaky throw',
             redactError: (message) => message.split('sk-secret-123').join('[redacted]'),
-            execute: async function* (request) {
-                yield { type: 'progress', runId: request.runId }
-                throw new Error('401 Incorrect API key provided: sk-secret-123')
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield { type: 'progress', runId: request.runId } as OperationEvent
+                        throw new Error('401 Incorrect API key provided: sk-secret-123')
+                    })()
+                )
         }
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
         await run.settled
@@ -406,13 +423,16 @@ describe('RunController event protocol', () => {
             editorId: 'leaky-event',
             editorName: 'Leaky event',
             redactError: (message) => message.split('sk-secret-123').join('[redacted]'),
-            execute: async function* (request) {
-                yield {
-                    type: 'error',
-                    runId: request.runId,
-                    error: { code: 'auth', message: 'denied for key sk-secret-123' }
-                }
-            }
+            execute: (request) =>
+                streamOf(
+                    (function* () {
+                        yield {
+                            type: 'error',
+                            runId: request.runId,
+                            error: { code: 'auth', message: 'denied for key sk-secret-123' }
+                        } as OperationEvent
+                    })()
+                )
         }
         const run = controller.startRun({ snapshot: snapshot(), editors: [editor] })
         await run.settled
@@ -1587,10 +1607,13 @@ describe('RunController panel runs', () => {
             panel: {
                 panelId: 'panel-1',
                 panelName: 'Panel',
-                aggregate: async function* (request) {
-                    called = true
-                    yield panelResultEvent(request.runId)
-                }
+                aggregate: (request) =>
+                    streamOf(
+                        (function* () {
+                            called = true
+                            yield panelResultEvent(request.runId)
+                        })()
+                    )
             }
         })
 
@@ -1625,10 +1648,13 @@ describe('RunController panel runs', () => {
             panel: {
                 panelId: 'panel-1',
                 panelName: 'Panel',
-                aggregate: async function* (request) {
-                    called = true
-                    yield panelResultEvent(request.runId)
-                }
+                aggregate: (request) =>
+                    streamOf(
+                        (function* () {
+                            called = true
+                            yield panelResultEvent(request.runId)
+                        })()
+                    )
             }
         })
 
@@ -1654,12 +1680,10 @@ describe('RunController panel runs', () => {
             panel: {
                 panelId: 'panel-1',
                 panelName: 'Panel',
-                // eslint-disable-next-line require-yield -- reason: models an aggregation that only ever ends by being aborted
-                aggregate: async function* (_request, signal) {
+                // An aggregation that only ever ends by being aborted.
+                aggregate: (_request, signal) => {
                     aggregationSignal = signal
-                    await new Promise<void>((resolve) =>
-                        signal.addEventListener('abort', () => resolve())
-                    )
+                    return streamEndingOnAbort<OperationEvent>(signal)
                 }
             }
         })
@@ -1804,10 +1828,8 @@ describe('RunController panel runs', () => {
             panel: {
                 panelId: 'panel-1',
                 panelName: 'Panel',
-                // eslint-disable-next-line require-yield -- reason: models the protocol violation of a stream ending without a terminal event
-                aggregate: async function* () {
-                    await Promise.resolve()
-                }
+                // The protocol violation of a stream ending without a terminal event.
+                aggregate: () => endedStream<OperationEvent>()
             }
         })
 

@@ -55,8 +55,8 @@ class FakeVault implements VaultReader {
     readonly metadata = new Map<string, NoteMetadata>()
     readonly noteTypeIds = new Map<string, readonly string[]>()
 
-    async readNote(path: string): Promise<string | null> {
-        return this.notes.get(path) ?? null
+    readNote(path: string): Promise<string | null> {
+        return Promise.resolve(this.notes.get(path) ?? null)
     }
 
     resolveLink(): string | null {

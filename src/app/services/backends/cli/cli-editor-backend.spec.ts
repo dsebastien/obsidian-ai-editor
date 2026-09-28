@@ -392,9 +392,9 @@ describe('createCliEditorExecutor — cancellation', () => {
     it('reports cancellation even when the boundary raced to another failure', async () => {
         const controller = new AbortController()
         const { events } = await run(
-            async () => {
+            () => {
                 controller.abort()
-                return failedOutcome('nonzero-exit')
+                return Promise.resolve(failedOutcome('nonzero-exit'))
             },
             { signal: controller.signal }
         )
