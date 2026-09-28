@@ -115,9 +115,14 @@ export function trackedRunDir(): { create: CreateRunDir; paths: string[] } {
         paths.push(path)
         const handle: RunDirHandle = {
             path,
+            // Like the real async dispose, a failing removal rejects.
             dispose: (): Promise<void> => {
-                rmSync(path, { recursive: true, force: true })
-                return Promise.resolve()
+                try {
+                    rmSync(path, { recursive: true, force: true })
+                    return Promise.resolve()
+                } catch (error) {
+                    return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+                }
             }
         }
         return Promise.resolve(handle)

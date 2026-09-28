@@ -54,9 +54,14 @@ function buildContext(initial: PluginSettingsV1): TabContext {
     let settings = initial
     const facade: SettingsFacade = {
         getSettings: () => settings,
+        // Like the real facade, a failing mutation rejects instead of throwing.
         update: (mutator) => {
-            settings = produce(settings, mutator)
-            return Promise.resolve()
+            try {
+                settings = produce(settings, mutator)
+                return Promise.resolve()
+            } catch (error) {
+                return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+            }
         },
         subscribe: () => () => {}
     }
