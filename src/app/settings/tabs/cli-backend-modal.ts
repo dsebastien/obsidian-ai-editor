@@ -256,7 +256,8 @@ export class CliBackendModal extends Modal {
             if (granted) {
                 button
                     .setButtonText('Withdraw')
-                    .setWarning()
+                    .setDestructive()
+                    .setCta()
                     .onClick(() => {
                         this.update((draft) => {
                             draft.consent = revokeLaunchConsent()
@@ -290,7 +291,8 @@ export class CliBackendModal extends Modal {
             if (granted) {
                 button
                     .setButtonText('Turn off')
-                    .setWarning()
+                    .setDestructive()
+                    .setCta()
                     .onClick(() => {
                         // Revoking tools never touches the backend itself.
                         this.update((draft) => {

@@ -143,7 +143,7 @@ export function taskkillEnv(executablePath: string): Record<string, string> {
     return { SystemRoot: root, windir: root }
 }
 
-async function sendPosix(pid: number, signal: 'graceful' | 'forced'): Promise<void> {
+function sendPosix(pid: number, signal: 'graceful' | 'forced'): void {
     try {
         process.kill(-pid, signal === 'graceful' ? 'SIGTERM' : 'SIGKILL')
     } catch (error) {
@@ -239,7 +239,12 @@ export async function killProcessTree(input: KillProcessTreeInput): Promise<Kill
         send:
             platform === 'win32'
                 ? (): Promise<void> => sendWindows(pid, sourceEnv, probe)
-                : (signal): Promise<void> => sendPosix(pid, signal),
+                : (signal): Promise<void> =>
+                      // Settles as a promise so a failed kill rejects like the
+                      // Windows path instead of throwing synchronously.
+                      Promise.resolve().then(() => {
+                          sendPosix(pid, signal)
+                      }),
         isAlive: () => isTreeAlive(platform, pid),
         graceMs: input.graceMs ?? DEFAULT_KILL_GRACE_MS,
         pollMs: input.pollMs ?? DEFAULT_KILL_POLL_MS,

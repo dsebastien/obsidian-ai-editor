@@ -332,7 +332,8 @@ class DeleteCommentModal extends Modal {
             .addButton((button) => {
                 button
                     .setButtonText('Delete')
-                    .setWarning()
+                    .setDestructive()
+                    .setCta()
                     .onClick(() => {
                         this.close()
                         this.onConfirm()

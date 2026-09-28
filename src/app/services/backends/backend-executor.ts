@@ -13,6 +13,7 @@ import { redactSecret } from './providers'
 import { decideRetry } from './retry-policy'
 import type { FetchFn } from './resolve-fetch'
 import { setTimer, clearTimer } from '../../../utils/timers'
+import { streamOf } from '../../utils/async-stream'
 
 /**
  * The one place a resolved backend becomes something the orchestrator can
@@ -361,16 +362,18 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
  */
 function refuseUnconsentedCli(backend: CliBackend): BackendExecutor {
     const tool = getCliToolAdapter(backend.kind).displayName
-    return async function* refuse(request: OperationRequest): AsyncGenerator<OperationEvent> {
-        yield {
-            type: 'error',
-            runId: request.runId,
-            error: {
-                code: 'unknown',
-                message:
-                    `“${backend.label}” has not been allowed to run yet. Open the Backends tab ` +
-                    `and allow it, so you can see which file ${tool} would start.`
+    return function refuse(request: OperationRequest): AsyncGenerator<OperationEvent> {
+        return streamOf<OperationEvent>([
+            {
+                type: 'error',
+                runId: request.runId,
+                error: {
+                    code: 'unknown',
+                    message:
+                        `“${backend.label}” has not been allowed to run yet. Open the Backends tab ` +
+                        `and allow it, so you can see which file ${tool} would start.`
+                }
             }
-        }
+        ])
     }
 }
