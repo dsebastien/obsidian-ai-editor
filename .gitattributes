@@ -41,13 +41,18 @@
 
 # Don't include in releases.
 #
-# NOTE: anything listed here is ABSENT from the GitHub source archive, which is
-# what the community-catalog reviewer builds and lints. Never export-ignore a
-# file the build or the lint run reads:
-#   - CHANGELOG.md is imported by src/app/whats-new.ts (`with { type: 'text' }`);
-#     stripping it broke build verification for 0.4.0.
-#   - eslint.config.ts is the lint config; without it the reviewer falls back to
-#     its own ruleset and every local nuance is invisible.
+# CHANGELOG.md and eslint.config.ts are deliberately NOT listed. The Obsidian
+# community catalog reviewer builds the *git archive*, not your working tree:
+#   - scripts/build.ts injects CHANGELOG.md as __PLUGIN_CHANGELOG__ for the
+#     What's new view. Export-ignoring it does not fail the build, and users
+#     still get the notes (release.yml builds from the checkout, where
+#     export-ignore has no effect). But the reviewer's archive build would
+#     embed empty notes, so its main.js would not match the released one.
+#   - export-ignoring eslint.config.ts would take this repo's lint config
+#     away from the reviewer's archive.
+# Verify before submitting:
+#   git archive --format=tar HEAD | tar -x -C /tmp/a && cd /tmp/a \
+#     && bun install && bun run build
 .github/ export-ignore
 .husky/ export-ignore
 prettier.config.cjs export-ignore
