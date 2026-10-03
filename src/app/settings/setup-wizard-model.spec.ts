@@ -46,10 +46,11 @@ describe('step copy', () => {
 })
 
 describe('the two disclosures that must be right', () => {
-    it('says keys are stored in plain text inside the vault', () => {
-        expect(KEY_STORAGE_DISCLOSURE).toContain('plain text')
+    it('says keys live in secret storage, per device, not in the vault', () => {
+        expect(KEY_STORAGE_DISCLOSURE).toContain('secret storage')
         expect(KEY_STORAGE_DISCLOSURE).toContain('data.json')
-        expect(KEY_STORAGE_DISCLOSURE).toContain('vault')
+        expect(KEY_STORAGE_DISCLOSURE).toContain('each device')
+        expect(KEY_STORAGE_DISCLOSURE).not.toContain('plain text')
     })
 
     it('states the cost implication of daemon mode (Business Rule #1)', () => {

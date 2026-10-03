@@ -35,6 +35,13 @@ export interface ProviderCapabilities {
     readonly reportsUsage: boolean
 }
 
+/**
+ * An API backend with its key resolved from SecretStorage for ONE request.
+ * Built only by `createBackendExecutor` at dispatch time and never persisted:
+ * the settings model holds the secret NAME, not the key.
+ */
+export type ResolvedApiBackend = ApiBackend & { readonly apiKey: string }
+
 /** Everything an adapter needs to build one operation request. */
 export interface BuildRequestInput {
     readonly operation: OperationRequest
@@ -42,7 +49,7 @@ export interface BuildRequestInput {
     readonly systemPrompt: string
     /** Resolved model id (backend default or per-editor override). */
     readonly model: string
-    readonly config: ApiBackend
+    readonly config: ResolvedApiBackend
 }
 
 /**

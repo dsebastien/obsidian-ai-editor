@@ -3,6 +3,12 @@ import type { SettingDefinition, SettingDefinitionItem } from 'obsidian'
 import { validateCliBackend } from '../../domain/settings/backend-validation'
 import { grantLaunchConsent, hasLaunchConsent } from '../../domain/settings/cli-consent'
 import { apiProviderKindSchema } from '../../domain/settings/settings-schema'
+import {
+    LEGACY_KEY_GRACE_DAYS,
+    clearLegacyApiKeys,
+    hasLegacyApiKeys
+} from '../../domain/settings/api-key-secrets'
+import { isApiKeyMissing } from '../../services/backends/secret-reader'
 import type { BackendInstance, CliBackend } from '../../domain/settings/settings-schema'
 import { currentCliPlatform, nodeExecutableProbe } from '../../services/backends/cli'
 import { launchConsentCopy, launchConsentLine } from '../cli-consent-copy'
@@ -76,11 +82,26 @@ export function backendsPageItems(ctx: TabContext): SettingDefinitionItem[] {
             heading: 'About backends',
             items: [
                 {
-                    name: 'API keys are stored in plain text',
-                    desc: 'Keys live in this plugin’s data.json inside your vault. If the vault syncs (Obsidian Sync, iCloud, Git…), the keys travel with it. Use minimal-scope keys and rotate them if the vault ever leaks.',
+                    name: 'API keys are stored in Obsidian’s secret storage',
+                    desc: 'Each backend names a secret in Obsidian’s secret storage; only that name is saved in the vault. Secret storage is per device: on another device, set the secret once if the backend says it is missing.',
                     // Disclosure, not a setting: keeping it out of search stops
                     // it outranking the backends themselves on every query.
                     searchable: false
+                },
+                {
+                    name: 'Remove plain-text copy now',
+                    desc: `Earlier versions kept API keys in plain text in data.json. Every device moves them into its own secret storage on its next start, and the plain-text copy is removed automatically ${LEGACY_KEY_GRACE_DAYS} days after the first move. Remove it now once all your devices run this version.`,
+                    visible: (): boolean => hasLegacyApiKeys(ctx.facade.getSettings()),
+                    render: (setting): void => {
+                        setting.addButton((button) => {
+                            button
+                                .setButtonText('Remove')
+                                .setDestructive()
+                                .onClick(() => {
+                                    confirmLegacyKeyRemoval(ctx)
+                                })
+                        })
+                    }
                 },
                 {
                     name: 'CLI backends run on this computer',
@@ -204,7 +225,17 @@ function backendRowItem(ctx: TabContext, backend: BackendInstance): SettingDefin
     return {
         name: backend.label,
         desc: backendRowDetails(backend),
-        render: (setting): void => {
+        render: (setting): void | (() => void) => {
+            // Secret storage is per device: a synced data.json can name a
+            // secret this device never received. Removed on re-render, or
+            // `update()` would stack copies (AGENTS.md, declarative traps).
+            const missingKeyEl =
+                backend.family === 'api' && isApiKeyMissing(backend)
+                    ? setting.descEl.createDiv({
+                          cls: 'editor-ai-daemons-consent-line is-missing',
+                          text: 'API key not set on this device — edit the backend and set its secret.'
+                      })
+                    : null
             if (backend.family === 'cli') {
                 // The consent state is the single most important thing about a
                 // CLI backend row: an enabled-but-unconsented one is skipped by
@@ -250,6 +281,7 @@ function backendRowItem(ctx: TabContext, backend: BackendInstance): SettingDefin
                         openBackendModal(ctx, backend)
                     })
             })
+            return missingKeyEl ? () => missingKeyEl.remove() : undefined
         }
     }
 }
@@ -287,6 +319,27 @@ function openAddMenu(ctx: TabContext, el: HTMLElement): void {
     }
     const rect = el.getBoundingClientRect()
     menu.showAtPosition({ x: rect.left, y: rect.bottom })
+}
+
+/** Confirms, then drops every legacy plaintext API key from data.json. */
+function confirmLegacyKeyRemoval(ctx: TabContext): void {
+    new ConfirmModal(ctx.app, {
+        title: 'Remove plain-text API keys',
+        message:
+            'Remove the plain-text copy of your API keys from data.json? Devices that have not started this version yet will need the key set again.',
+        impactLines: [],
+        ctaLabel: 'Remove',
+        onConfirm: () => {
+            commit(
+                ctx,
+                (draft) => {
+                    clearLegacyApiKeys(draft)
+                },
+                { refresh: true }
+            )
+            new Notice('AI Editor: plain-text API keys removed from data.json.')
+        }
+    }).open()
 }
 
 /**

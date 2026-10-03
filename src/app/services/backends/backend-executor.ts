@@ -2,6 +2,7 @@ import type { OperationEvent, OperationRequest } from '../../domain/operations/c
 import { stripFrontmatterBlock } from '../../domain/frontmatter'
 import { hasLaunchConsent } from '../../domain/settings/cli-consent'
 import type {
+    ApiBackend,
     BackendInstance,
     BehaviorSettings,
     CliBackend
@@ -10,6 +11,7 @@ import { createApiEditorExecutor } from './api-editor-backend'
 import { backendHealth, type BackendHealthRegistry } from './backend-health'
 import { cliTimeoutMs, createCliEditorExecutor, getCliToolAdapter } from './cli'
 import { redactSecret } from './providers'
+import { lookupApiKey, missingSecretMessage } from './secret-reader'
 import { decideRetry } from './retry-policy'
 import type { FetchFn } from './resolve-fetch'
 import { setTimer, clearTimer } from '../../../utils/timers'
@@ -46,6 +48,11 @@ import { streamOf } from '../../utils/async-stream'
  *   binary by forgetting to ask. Consent is the premise of this whole
  *   subsystem, so it is enforced where the process is created, not where it is
  *   requested.
+ * - **The key.** An API backend's key is read from SecretStorage HERE, per
+ *   executor, and handed to the adapter for that request only — the settings
+ *   model holds the secret NAME. A name with no value on this device (a
+ *   synced `data.json`, SecretStorage is device-local) yields an executor
+ *   that reports it, never a keyless request that fails cryptically.
  * - **Redaction.** An API backend's error messages are scrubbed of its key
  *   (Business Rules #12). A CLI backend has no key to scrub — its credential
  *   lives in the tool's own login, which the plugin never reads — so its
@@ -338,17 +345,43 @@ export function createBackendExecutor(input: CreateBackendExecutorInput): Resolv
             )
         }
     }
+    const key = lookupApiKey(backend)
+    if (key.status === 'missing') {
+        return {
+            redactError: (message: string): string => message,
+            // Not a backend failure: never retried, never feeds the breaker.
+            execute: refuseMissingSecret(backend, key.name)
+        }
+    }
+    const apiKey = key.status === 'ok' ? key.key : ''
     return {
-        redactError: (message: string): string => redactSecret(message, backend.apiKey),
+        redactError: (message: string): string => redactSecret(message, apiKey),
         execute: finish(
             createApiEditorExecutor({
-                backendConfig: backend,
+                backendConfig: { ...backend, apiKey },
                 model,
                 systemPrompt,
                 timeoutMs,
                 fetchImpl: input.fetchImpl
             })
         )
+    }
+}
+
+/**
+ * The executor an API backend gets when its secret is not set on this
+ * device: one error event, no request. Same shape as a real executor so
+ * every caller reports it through the path it already has.
+ */
+function refuseMissingSecret(backend: ApiBackend, name: string): BackendExecutor {
+    return function refuse(request: OperationRequest): AsyncGenerator<OperationEvent> {
+        return streamOf<OperationEvent>([
+            {
+                type: 'error',
+                runId: request.runId,
+                error: { code: 'unknown', message: missingSecretMessage(backend.label, name) }
+            }
+        ])
     }
 }
 

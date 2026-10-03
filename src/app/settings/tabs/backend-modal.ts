@@ -4,6 +4,13 @@ import { validateApiBackend } from '../../domain/settings/backend-validation'
 import { apiBackendSchema } from '../../domain/settings/settings-schema'
 import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings-schema'
 import { generateId } from '../../domain/ids'
+import {
+    chooseSecretName,
+    claimedSecretNames,
+    dropStaleLegacyKey
+} from '../../domain/settings/api-key-secrets'
+import { getSecretStore } from '../../services/backends/secret-reader'
+import { addApiKeySetting, apiKindNeedsKey } from '../api-key-setting'
 import { apiKindLabel, isInsecureRemoteUrl } from '../helpers'
 import { commit } from './shared'
 import type { TabContext } from './shared'
@@ -37,6 +44,8 @@ export class BackendModal extends Modal {
     private readonly ctx: TabContext
     private readonly draft: ApiBackend
     private readonly isNew: boolean
+    /** Secret name at open: another name picked makes the legacy copy stale. */
+    private readonly originalSecretName: string
 
     constructor(app: App, ctx: TabContext, existing: ApiBackend | null, kind: ApiProviderKind) {
         super(app)
@@ -50,6 +59,16 @@ export class BackendModal extends Modal {
                   kind,
                   label: apiKindLabel(kind)
               })
+        this.originalSecretName = existing?.apiKeySecretName ?? ''
+        if (existing === null && apiKindNeedsKey(kind)) {
+            // Pre-filled name, so pasting the key is the only step left.
+            this.draft.apiKeySecretName = chooseSecretName(
+                this.draft,
+                '',
+                claimedSecretNames(ctx.facade.getSettings()),
+                getSecretStore()
+            )
+        }
     }
 
     override onOpen(): void {
@@ -80,17 +99,15 @@ export class BackendModal extends Modal {
                 })
             })
 
-        new Setting(contentEl)
-            .setName('API key')
-            .setDesc('Stored in plain text in data.json. Leave empty if the endpoint needs no key.')
-            .addText((text) => {
-                text.inputEl.type = 'password'
-                text.inputEl.setAttribute('autocomplete', 'new-password')
-                text.setValue(this.draft.apiKey)
-                text.onChange((value) => {
-                    this.draft.apiKey = value
-                })
-            })
+        addApiKeySetting(this.app, contentEl, {
+            desc: 'Stored in Obsidian’s secret storage on this device; only the secret name is saved in the vault. Leave empty if the endpoint needs no key.',
+            getName: () => this.draft.apiKeySecretName,
+            setName: (name) => {
+                this.draft.apiKeySecretName = name
+            },
+            hasLegacyCopy: () => this.draft.apiKey.length > 0,
+            ...(this.isNew ? {} : { onClear: () => this.clearKey() })
+        })
 
         new Setting(contentEl)
             .setName('Base URL')
@@ -259,13 +276,43 @@ export class BackendModal extends Modal {
         }
     }
 
+    /**
+     * "Clear": empties this device's secret (SecretStorage has no delete;
+     * '' reads as absent) and drops the legacy plaintext copy, persisted at
+     * once so a cancelled dialog cannot resurrect it on the next load.
+     */
+    private clearKey(): void {
+        const name = this.draft.apiKeySecretName
+        if (name.length > 0) {
+            try {
+                getSecretStore().setSecret(name, '')
+            } catch {
+                new Notice('AI Editor: could not clear the secret.')
+            }
+        }
+        this.draft.apiKey = ''
+        const id = this.draft.id
+        commit(this.ctx, (draft) => {
+            const target = draft.backends.find((candidate) => candidate.id === id)
+            if (target && target.family === 'api') {
+                target.apiKey = ''
+            }
+        })
+    }
+
     private save(): void {
         const validation = validateApiBackend(this.draft)
         if (!validation.ok) {
             new Notice(validation.message)
             return
         }
-        const backend = validation.backend
+        // A new value or another secret makes the legacy plaintext copy
+        // stale: new values only ever live in SecretStorage.
+        const validated = validation.backend
+        const backend =
+            validated.apiKeySecretName === this.originalSecretName
+                ? dropStaleLegacyKey(validated, getSecretStore())
+                : { ...validated, apiKey: '' }
         commit(
             this.ctx,
             (draft) => {

@@ -10,8 +10,9 @@ import { generateId } from '../ids'
  *   salvages per entity (array elements, behavior fields) rather than
  *   discarding whole sections — and reports what it dropped so callers can
  *   warn instead of silently losing API keys or privacy exclusions.
- * - API keys live inside `data.json` — documented prominently in README and
- *   the Backends tab; never logged.
+ * - API keys live in Obsidian's SecretStorage (device-local); `data.json`
+ *   holds each backend's secret NAME (plus, during a 60-day grace period, the
+ *   legacy plaintext copy as a per-device bootstrap). Never logged.
  */
 
 export const SETTINGS_SCHEMA_VERSION = 1
@@ -59,6 +60,21 @@ export const apiBackendSchema = z.object({
     kind: apiProviderKindSchema,
     /** User-facing label ("Work OpenRouter", "Local Ollama"). */
     label: z.string().min(1).max(100),
+    /**
+     * NAME of the Obsidian SecretStorage entry holding this backend's API key
+     * ('' = no key). Keys are read at request time through
+     * `services/backends/secret-reader.ts` (Business Rules #12).
+     */
+    apiKeySecretName: z.string().max(200).default(''),
+    /**
+     * LEGACY plaintext key (≤0.12.x). Read-only bootstrap during the grace
+     * period: every device copies it into its own SecretStorage on load
+     * (SecretStorage is device-local, so deleting it on the first device
+     * would log out the others). Never written with a new value; cleared on
+     * rotation, on "clear key", by the "Remove plain-text copy now" button,
+     * and automatically 60 days after `legacySecretMigratedAt`
+     * (`domain/settings/api-key-secrets.ts`).
+     */
     apiKey: z.string().max(500).default(''),
     /** Required for openai-compatible/azure-openai/ollama; optional overrides elsewhere. */
     baseUrl: z.string().max(1_000).default(''),
@@ -411,7 +427,13 @@ export const pluginSettingsSchema = z.object({
      */
     starterPackVersion: z.number().int().min(0).default(0),
     /** True once the setup wizard completed or was skipped. */
-    onboarded: z.boolean().default(false)
+    onboarded: z.boolean().default(false),
+    /**
+     * ISO timestamp of the first legacy API key migration into SecretStorage
+     * ('' = never). Starts the 60-day grace period after which the legacy
+     * plaintext `apiKey` fields are purged from data.json.
+     */
+    legacySecretMigratedAt: z.string().max(50).default('')
 })
 export type PluginSettingsV1 = z.infer<typeof pluginSettingsSchema>
 
@@ -598,7 +620,8 @@ export function loadSettingsDetailed(raw: unknown): LoadedSettings {
         'voiceProfile',
         'behavior',
         'starterPackVersion',
-        'onboarded'
+        'onboarded',
+        'legacySecretMigratedAt'
     ]
     /** Whether the value is valid as this section within otherwise-default settings. */
     const sectionIsValid = (key: keyof PluginSettingsV1, value: unknown): boolean =>

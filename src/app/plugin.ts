@@ -4,6 +4,8 @@ import type { Draft } from 'immer'
 import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings/settings-schema'
 import type { PluginSettingsV1 } from './domain/settings/settings-schema'
 import { bootstrapSettings } from './settings/settings-bootstrap'
+import { reconcileApiKeySecrets } from './domain/settings/api-key-secrets'
+import { getSecretStore, setSecretStore } from './services/backends/secret-reader'
 import { createSettingsNotifier } from './settings/settings-facade'
 import type { SettingsFacade, SettingsListener } from './settings/settings-facade'
 import { AIEditorPluginSettingTab } from './settings/settings-tab'
@@ -109,6 +111,16 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
         log('Initializing', 'debug')
         // Must run before anything can call saveData (fresh-install detection)
         registerWhatsNewView(this)
+        // API keys are read from this device's SecretStorage at request time.
+        const secretStorage = this.app.secretStorage
+        this.register(
+            setSecretStore({
+                getSecret: (id) => secretStorage.getSecret(id),
+                setSecret: (id, secret) => {
+                    secretStorage.setSecret(id, secret)
+                }
+            })
+        )
         await this.loadPluginSettings()
         await this.loadMarginComments()
 
@@ -594,7 +606,29 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 )}). Review the plugin settings — especially backend assignments.`
             )
         }
-        if (boot.needsSave) {
+        // Per-device API key migration (legacy plaintext → SecretStorage,
+        // 60-day grace period): see `domain/settings/api-key-secrets.ts`.
+        const secrets = reconcileApiKeySecrets(this.settings, getSecretStore(), new Date())
+        this.settings = secrets.settings
+        if (secrets.migrated.length > 0) {
+            log(`API keys moved to secret storage: ${secrets.migrated.join(', ')}`, 'debug')
+        }
+        if (secrets.failed.length > 0) {
+            log(`Could not store API keys in secret storage: ${secrets.failed.join(', ')}`, 'warn')
+            new Notice(
+                `AI Editor: could not move the API key of ${secrets.failed.join(
+                    ', '
+                )} to Obsidian's secret storage. It keeps working from the plain-text copy for now.`
+            )
+        }
+        if (secrets.missing.length > 0) {
+            new Notice(
+                `AI Editor: the API key of ${secrets.missing.join(
+                    ', '
+                )} is not set on this device. Secrets are stored per device: open Settings → AI Editors → Backends, edit the backend and set its secret.`
+            )
+        }
+        if (boot.needsSave || secrets.changed) {
             await this.persistSettings()
         }
         log('Settings loaded', 'debug')

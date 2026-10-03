@@ -207,7 +207,7 @@ export function rejectionLine(rejection: ImportRejection): string {
 export function adjustmentLine(adjustment: ImportAdjustment): string {
     switch (adjustment.kind) {
         case 'api-key-cleared':
-            return `${adjustment.label} — its API key was not imported; enter yours.`
+            return `${adjustment.label} — its API key was not imported; set your own secret for it in the Backends tab.`
         case 'backend-disabled':
             return `${adjustment.label} — imported switched off; enable it in the Backends tab once you have checked where it points.`
         case 'cli-consent-cleared':

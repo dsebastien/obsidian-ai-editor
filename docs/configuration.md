@@ -85,7 +85,7 @@ Up to 50 backends.
 | Field                        | Type     | Default   | Shown for                                |
 | ---------------------------- | -------- | --------- | ---------------------------------------- |
 | **Label**                    | text     | —         | all (required)                           |
-| **API key**                  | password | empty     | all                                      |
+| **API key**                  | secret   | empty     | all                                      |
 | **Base URL**                 | text     | empty     | all                                      |
 | **Deployment**               | text     | empty     | Azure OpenAI (required)                  |
 | **API version**              | text     | empty     | Azure OpenAI                             |
@@ -94,6 +94,8 @@ Up to 50 backends.
 | **Thinking budget (tokens)** | int      | `8192`    | Anthropic, legacy mode only (1024–32000) |
 | **Reasoning effort**         | dropdown | `Default` | OpenAI, Azure OpenAI, OpenRouter         |
 | **Extra request body**       | JSON     | empty     | OpenAI-compatible, OpenRouter            |
+
+**API key** is an Obsidian secret picker: select or create a secret in Obsidian's secret storage. Only the secret's name is saved in `data.json`; the key stays on this device and must be set once per device. See [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
 ### CLI backend fields
 

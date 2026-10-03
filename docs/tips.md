@@ -71,7 +71,7 @@ Once you have personas you like, **Behavior → Import & export → Export…** 
 
 ## Rotate keys you have synced
 
-If your vault syncs, your API keys sync with it. That is not a reason to avoid the plugin; it is a reason to use minimal-scope keys and rotate them on the same schedule you rotate anything else. See [Privacy and security](privacy-and-security.md#where-api-keys-live).
+API keys live in Obsidian's secret storage, per device, so they do not travel with a synced vault. Still use minimal-scope keys and rotate them on the same schedule you rotate anything else. See [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
 ## Read the seeded prompts before writing your own
 

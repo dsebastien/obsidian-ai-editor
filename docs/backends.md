@@ -18,7 +18,7 @@ Both families are resolved through the same code path, so anything that can run 
 
 ## Add an API backend
 
-![The Backends settings page: the plain-text API key warning callout, the global default backend, and a configured Ollama backend with an enable toggle](images/backends-tab.png)
+![The Backends settings page: the API key storage callout, the global default backend, and a configured Ollama backend with an enable toggle](images/backends-tab.png)
 
 1. **Settings → AI Editor → Backends → Add backend**, pick the provider, select **Add**.
 2. Fill in the fields the provider needs (below).
@@ -30,7 +30,7 @@ Both families are resolved through the same code path, so anything that can run 
 | Field                        | Shown for                        | Needed by                                                    |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------------ |
 | **Label**                    | all                              | all — it is how you pick the backend elsewhere               |
-| **API key**                  | all                              | all except Ollama                                            |
+| **API key**                  | all                              | all except Ollama — a secret in Obsidian's secret storage    |
 | **Base URL**                 | all                              | OpenAI-compatible, Azure OpenAI; optional override elsewhere |
 | **Deployment**               | Azure OpenAI                     | Azure OpenAI                                                 |
 | **API version**              | Azure OpenAI                     | Azure OpenAI                                                 |

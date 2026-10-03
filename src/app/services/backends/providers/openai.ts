@@ -1,4 +1,3 @@
-import type { ApiBackend } from '../../../domain/settings/settings-schema'
 import { buildUserMessage, resultJsonSchema } from './prompt'
 import {
     extractJsonPayload,
@@ -12,7 +11,8 @@ import {
     type BuildRequestInput,
     type HttpRequestDescriptor,
     type ProviderAdapter,
-    type ProviderCapabilities
+    type ProviderCapabilities,
+    type ResolvedApiBackend
 } from './types'
 
 /**
@@ -100,7 +100,7 @@ export function chatCompletionContent(raw: unknown, providerName: string): strin
  * edited data.json. Throws `invalid-config` (key-redacted) on anything
  * that is not a JSON object.
  */
-function parseExtraBody(config: ApiBackend): Record<string, unknown> {
+function parseExtraBody(config: ResolvedApiBackend): Record<string, unknown> {
     let parsed: unknown
     try {
         parsed = JSON.parse(config.extraBodyJson) as unknown

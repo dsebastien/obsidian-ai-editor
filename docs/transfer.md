@@ -11,7 +11,7 @@ The editors, panels, actions, rules and voice profile you build are portable. **
 
 **Export…** lets you tick what to include — backends, editors, panels, actions, rules, voice profile — and writes it either to a JSON file inside your vault or to the clipboard. Sections you did not tick are absent from the file, not present and empty. An existing file is only overwritten after you confirm.
 
-**API keys are never exported.** Every API backend leaves with an empty key field, and the stripping happens inside the export itself so no caller can forget.
+**API keys are never exported.** Every API backend leaves with an empty key field and an empty secret name, and the stripping happens inside the export itself so no caller can forget.
 
 Two fields can still hold a credential and are therefore **declared rather than blanked**, because blanking them would break the backend they configure:
 
@@ -36,7 +36,7 @@ Nothing is written until you confirm a summary that lists **what will be added, 
 
 ### Imported backends arrive switched off
 
-API keys are never imported either — even when the file carries one, so importing someone else's export cannot quietly bill their account.
+API keys and secret names are never imported either — even when the file carries one, so importing someone else's export cannot quietly bill their account, nor point your own secret at their host. Pick your own secret for each imported backend.
 
 But a stripped key protects nothing on its own: Ollama needs none, an OpenAI-compatible host takes whatever key is typed later, and an imported editor arrives enabled and review-capable, which makes it a participant in every review. So:
 
@@ -50,7 +50,7 @@ Enabling one means opening the Backends page, where its URL is in front of you.
 
 ## Syncing a vault instead
 
-If your vault syncs, the plugin's `data.json` syncs with it — settings **and API keys**. That is convenient and it is a real exposure; see [Privacy and security](privacy-and-security.md#where-api-keys-live).
+If your vault syncs, the plugin's `data.json` syncs with it — settings and the secret **names**, not the keys. Keys live in each device's secret storage: set them once per device. See [Privacy and security](privacy-and-security.md#where-api-keys-live).
 
 Margin comments live in a separate file that also syncs. A write that finds changes this session has not seen merges the two rather than reverting whatever another device parked.
 

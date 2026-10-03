@@ -335,7 +335,7 @@ Timers use `window.setTimeout` / `window.setInterval` and are typed as plain `nu
 | No telemetry                                | **PASS**        | No analytics endpoint, no beacon, no usage reporting anywhere in `src/`.                                                                     |
 | No remote code execution                    | **PASS**        | Nothing is fetched and evaluated; `no-eval` / `no-implied-eval` clean. CLI backends run a user-chosen local binary through the § 6 boundary. |
 | Secrets kept out of logs                    | **PASS**        | Business Rules #12; the run's redaction seam is applied to every surfaced error message.                                                     |
-| API-key storage disclosed                   | **PASS**        | Callout at the top of the Backends tab ("API keys are stored in plain text"), plus `docs/privacy-and-security.md`.                           |
+| API-key storage disclosed                   | **PASS**        | Keys in Obsidian SecretStorage; callout at the top of the Backends tab, plus `docs/privacy-and-security.md`.                                 |
 
 **Plugin logging.** `src/utils/log.ts` keeps the level switch but every `console.*` line is commented out, so the shipped bundle emits nothing. Catch blocks route through `log(msg, 'error', err)` rather than calling the console directly.
 

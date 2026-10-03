@@ -114,6 +114,17 @@ describe('exportSettings', () => {
         expect(exportSettingsJson(populated(), ALL_SECTIONS)).not.toContain('sk-secret')
     })
 
+    it('strips the SecretStorage name too', () => {
+        const settings = settingsOf({
+            backends: [
+                { ...apiBackend('b1', ''), apiKeySecretName: 'editor-ai-daemons-b1-api-key' }
+            ]
+        })
+        const document = exportSettings(settings, ALL_SECTIONS)
+        expect(document.backends?.[0]).toMatchObject({ apiKeySecretName: '', apiKey: '' })
+        expect(exportSettingsJson(settings, ALL_SECTIONS)).not.toContain('b1-api-key')
+    })
+
     it('names the backends whose export can still carry a credential', () => {
         const settings = settingsOf({
             backends: [
@@ -282,6 +293,14 @@ describe('planImport', () => {
             { kind: 'backend-disabled', label: 'Backend b1' },
             { kind: 'api-key-cleared', label: 'Backend b1' }
         ])
+    })
+
+    it('clears an imported secret name, so it can never pick up a local secret', () => {
+        const plan = planOf({
+            backends: [{ ...apiBackend('b1', ''), apiKeySecretName: 'editor-ai-daemons-x-api-key' }]
+        })
+        expect(plan.additions.backends[0]).toMatchObject({ apiKey: '', apiKeySecretName: '' })
+        expect(plan.adjustments).toContainEqual({ kind: 'api-key-cleared', label: 'Backend b1' })
     })
 
     it('imports a CLI backend inert: switched off and unconsented', () => {

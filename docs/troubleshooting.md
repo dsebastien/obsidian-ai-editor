@@ -176,4 +176,4 @@ Separately, the **context budget** (default 200000 characters) governs what fits
 
 ## Nothing here helped
 
-[Open an issue](https://github.com/dsebastien/obsidian-ai-editor/issues) with what you did, what you expected, and what happened. Include your Obsidian version and which backend kind you use — but **never paste your `data.json`**: it contains your API keys.
+[Open an issue](https://github.com/dsebastien/obsidian-ai-editor/issues) with what you did, what you expected, and what happened. Include your Obsidian version and which backend kind you use — but **never paste your `data.json`**: vaults upgraded from earlier versions may still hold a plain-text copy of your API keys for up to 60 days.

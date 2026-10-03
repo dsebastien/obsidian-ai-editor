@@ -78,11 +78,15 @@ export function validateApiBackend(draft: ApiBackend): BackendValidation {
             message: 'OpenAI-compatible backends need a base URL.'
         }
     }
-    if (normalized.kind === 'openrouter' && normalized.apiKey.trim().length === 0) {
+    if (
+        normalized.kind === 'openrouter' &&
+        normalized.apiKeySecretName.trim().length === 0 &&
+        normalized.apiKey.trim().length === 0
+    ) {
         return {
             ok: false,
             code: 'api-key-required',
-            message: 'OpenRouter backends need an API key.'
+            message: 'OpenRouter backends need an API key: select or create its secret.'
         }
     }
     if (normalized.kind === 'azure-openai' && normalized.azureDeployment.trim().length === 0) {

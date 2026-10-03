@@ -27,6 +27,7 @@ void mock.module('obsidian', () => ({
     TFolder: class TFolder {},
     AbstractInputSuggest: class AbstractInputSuggest {},
     SearchComponent: class SearchComponent {},
+    SecretComponent: class SecretComponent {},
     // Modal primitives — needed for ConfirmModal-style replacements
     // for the forbidden window.confirm(). See AGENTS.md.
     Modal: class Modal {

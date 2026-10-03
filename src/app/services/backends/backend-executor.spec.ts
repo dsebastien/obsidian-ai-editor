@@ -16,6 +16,7 @@ import {
     resolvedBackendLabel,
     reviewTimeoutMs
 } from './backend-executor'
+import { setSecretStore } from './secret-reader'
 
 const API_KEY = 'sk-secret-value'
 
@@ -98,6 +99,50 @@ describe('createBackendExecutor', () => {
             fetchImpl: neverCalledFetch
         })
         expect(executor.redactError(`401 echoing ${API_KEY}`)).toBe('401 echoing [redacted]')
+    })
+
+    it('redacts a key read from secret storage', () => {
+        const restore = setSecretStore({
+            getSecret: (id) => (id === 'editor-ai-daemons-a-api-key' ? 'sk-from-storage' : null),
+            setSecret: () => {}
+        })
+        try {
+            const executor = createBackendExecutor({
+                backend: {
+                    ...apiBackend(),
+                    apiKey: '',
+                    apiKeySecretName: 'editor-ai-daemons-a-api-key'
+                },
+                model: 'claude-test-1',
+                systemPrompt: 'Be harsh.',
+                behavior,
+                fetchImpl: neverCalledFetch
+            })
+            expect(executor.redactError('echo sk-from-storage')).toBe('echo [redacted]')
+        } finally {
+            restore()
+        }
+    })
+
+    it('refuses, without a request, a backend whose secret is not set on this device', async () => {
+        const executor = createBackendExecutor({
+            backend: { ...apiBackend(), apiKey: '', apiKeySecretName: 'editor-ai-daemons-gone' },
+            model: 'claude-test-1',
+            systemPrompt: 'Be harsh.',
+            behavior,
+            fetchImpl: neverCalledFetch
+        })
+        const events: OperationEvent[] = []
+        for await (const event of executor.execute(operation(), new AbortController().signal)) {
+            events.push(event)
+        }
+        expect(events).toHaveLength(1)
+        const only = events[0]
+        expect(only?.type).toBe('error')
+        if (only?.type === 'error') {
+            expect(only.error.message).toContain('not set on this device')
+            expect(only.error.message).toContain('editor-ai-daemons-gone')
+        }
     })
 
     it('leaves a CLI backend message alone — there is no key of ours in it', () => {

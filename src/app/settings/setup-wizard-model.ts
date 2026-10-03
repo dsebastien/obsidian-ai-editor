@@ -77,7 +77,7 @@ export function stepBody(stepId: SetupWizardStepId): readonly string[] {
  * to trust the plugin at all, once where they actually paste the secret.
  */
 export const KEY_STORAGE_DISCLOSURE =
-    'API keys you enter are stored in plain text in this plugin’s data.json inside your vault. If your vault is synced or backed up, the keys travel with it. Exported settings never include them.'
+    'API keys you enter are stored in Obsidian’s secret storage on this device, not in your vault: only the secret’s name is saved in this plugin’s data.json. Secret storage does not sync, so set the secret once on each device. Exported settings never include keys or secret names.'
 
 /** Cost implication of daemon mode — stated plainly, per Business Rule #1. */
 export const DAEMON_COST_WARNING =

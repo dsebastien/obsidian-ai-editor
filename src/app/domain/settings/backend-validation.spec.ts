@@ -62,6 +62,13 @@ describe('validateApiBackend', () => {
         }
     })
 
+    it('accepts an OpenRouter backend that names its key secret', () => {
+        const result = validateApiBackend(
+            makeBackend({ kind: 'openrouter', apiKeySecretName: 'editor-ai-daemons-or-api-key' })
+        )
+        expect(result.ok).toBe(true)
+    })
+
     it('requires a deployment for Azure OpenAI', () => {
         const result = validateApiBackend(makeBackend({ kind: 'azure-openai' }))
         expect(result.ok).toBe(false)
@@ -72,7 +79,11 @@ describe('validateApiBackend', () => {
 
     it('rejects an extra request body that is not a JSON object', () => {
         const result = validateApiBackend(
-            makeBackend({ kind: 'openrouter', apiKey: 'k', extraBodyJson: '[1]' })
+            makeBackend({
+                kind: 'openrouter',
+                apiKeySecretName: 'editor-ai-daemons-openrouter-api-key',
+                extraBodyJson: '[1]'
+            })
         )
         expect(result.ok).toBe(false)
         if (!result.ok) {

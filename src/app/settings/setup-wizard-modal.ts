@@ -15,6 +15,9 @@ import type { SetupWizardState } from '../domain/settings/setup-wizard'
 import { apiBackendSchema, apiProviderKindSchema } from '../domain/settings/settings-schema'
 import type { ApiBackend, ApiProviderKind } from '../domain/settings/settings-schema'
 import { checkBackendHealth } from '../services/backends/health-check'
+import { getSecretStore } from '../services/backends/secret-reader'
+import { chooseSecretName, claimedSecretNames } from '../domain/settings/api-key-secrets'
+import { addApiKeySetting, apiKindNeedsKey } from './api-key-setting'
 import type { BackendHealthResult } from '../services/backends/health-check'
 import { hasReviewCapableEditor } from '../services/reviewability'
 import { renderNoteRefsEditor } from './components'
@@ -236,17 +239,14 @@ export class SetupWizardModal extends Modal {
                 })
             })
 
-        new Setting(contentEl)
-            .setName('API key')
-            .setDesc(KEY_STORAGE_DISCLOSURE)
-            .addText((text) => {
-                text.inputEl.type = 'password'
-                text.inputEl.setAttribute('autocomplete', 'new-password')
-                text.setValue(draft.apiKey)
-                text.onChange((value) => {
-                    this.patchBackend({ apiKey: value })
-                })
-            })
+        addApiKeySetting(this.app, contentEl, {
+            desc: KEY_STORAGE_DISCLOSURE,
+            getName: () => this.state.draft.backend?.apiKeySecretName ?? '',
+            setName: (name) => {
+                this.patchBackend({ apiKeySecretName: name })
+            },
+            hasLegacyCopy: () => false
+        })
 
         const needsBaseUrl =
             draft.kind === 'openai-compatible' ||
@@ -389,13 +389,26 @@ export class SetupWizardModal extends Modal {
     }
 
     private newBackend(kind: ApiProviderKind): ApiBackend {
-        return apiBackendSchema.parse({
+        const backend = apiBackendSchema.parse({
             id: generateId(),
             family: 'api',
             kind,
             label: apiKindLabel(kind),
             ...(kind === 'ollama' ? { baseUrl: 'http://localhost:11434' } : {})
         })
+        if (!apiKindNeedsKey(kind)) {
+            return backend
+        }
+        // Pre-filled name, so pasting the key is the only step left.
+        return {
+            ...backend,
+            apiKeySecretName: chooseSecretName(
+                backend,
+                '',
+                claimedSecretNames(this.facade.getSettings()),
+                getSecretStore()
+            )
+        }
     }
 
     private setBackendDraft(backend: ApiBackend | null): void {

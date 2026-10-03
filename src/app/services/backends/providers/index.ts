@@ -32,5 +32,6 @@ export type {
     HttpRequestDescriptor,
     ProviderAdapter,
     ProviderCapabilities,
-    ProviderErrorCode
+    ProviderErrorCode,
+    ResolvedApiBackend
 } from './types'

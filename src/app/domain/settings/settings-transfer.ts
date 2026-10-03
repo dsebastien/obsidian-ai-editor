@@ -30,7 +30,10 @@ import type {
  * Four rules this module exists to enforce:
  *
  * 1. **Credentials and consent never leave the vault.** Exported API backends
- *    carry an empty `apiKey` and exported CLI backends an empty consent record
+ *    carry an empty legacy `apiKey` AND an empty `apiKeySecretName` (the name
+ *    is harmless alone, but an import keeping it would send the importing
+ *    user's own secret of that name to whatever host the file points at), and
+ *    exported CLI backends an empty consent record
  *    (permission to launch a program is a decision about one machine and one
  *    user, and does not belong in a file people share). An import clears both
  *    too — even when the file being imported
@@ -192,7 +195,7 @@ export function exportSettingsJson(
  */
 function withoutSecrets(backend: BackendInstance): BackendInstance {
     if (backend.family === 'api') {
-        return { ...backend, apiKey: '' }
+        return { ...backend, apiKey: '', apiKeySecretName: '' }
     }
     return { ...backend, consent: { launchPath: '', toolsPath: '' } }
 }
@@ -238,7 +241,7 @@ export function baseUrlCarriesCredentials(baseUrl: string): boolean {
 
 /**
  * The backends in this export whose remaining fields could still hold a
- * secret. `apiKey` is stripped by {@link exportSettings}; `baseUrl` and
+ * secret. `apiKey` and `apiKeySecretName` are stripped by {@link exportSettings}; `baseUrl` and
  * `extraBodyJson` are not, because they configure the request. The export
  * dialog states these instead of claiming the file contains no credentials —
  * an absolute promise the format cannot keep.
@@ -468,10 +471,10 @@ export function planImport(
             adjustments.push({ kind: 'backend-disabled', label: backend.label })
         }
         if (backend.family === 'api') {
-            if (backend.apiKey.length > 0) {
+            if (backend.apiKey.length > 0 || backend.apiKeySecretName.length > 0) {
                 adjustments.push({ kind: 'api-key-cleared', label: backend.label })
             }
-            return { ...backend, id, apiKey: '', enabled: false }
+            return { ...backend, id, apiKey: '', apiKeySecretName: '', enabled: false }
         }
         // A CLI backend arrives inert: switched off AND unconsented. Consent
         // names an executable path on the importing machine, and a file cannot

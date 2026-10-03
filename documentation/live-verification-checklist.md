@@ -14,6 +14,17 @@ Test vault note: the plugin folder is `.obsidian/plugins/editor-ai-daemons/`, an
 
 ---
 
+## API keys in Obsidian secret storage (2026-10-03)
+
+Status: not yet verified.
+
+- [ ] Upgrade a vault whose `data.json` has a plaintext `apiKey`: the backend keeps working with no action; `data.json` now has `apiKeySecretName` and `legacySecretMigratedAt`, and the plaintext `apiKey` is still there; Settings → Keychain lists `editor-ai-daemons-<label>-api-key`.
+- [ ] Second synced device (fresh secret storage, same `data.json`): starts, backend works with no action, no "not set on this device" notice.
+- [ ] Backends page shows **Remove plain-text copy now** while any copy remains; confirming removes every `apiKey` from `data.json` and the row disappears; the backend still works.
+- [ ] Edit a backend: the API key row is a secret picker with "Set on this device."; pick another secret and save → its plaintext copy is gone. **Clear** empties the secret and the copy; the row then says the key is not set on this device and a review reports it.
+- [ ] Device with a secret name but no secret and no plaintext copy: load Notice, a red line on the backend row, a review fails with "not set on this device" (no request sent).
+- [ ] Add an Anthropic/OpenAI/OpenRouter/Azure backend: the secret name is pre-filled; setting the value through the picker makes **Test connection** pass. Setup wizard: same.
+
 ## Panel finding context menu, properties findings, smooth spinner (2026-09-23)
 
 Status: not yet verified.
@@ -382,7 +393,7 @@ The rail went from a stack of coloured dots to a card of named rows with status 
 - A custom action set to "Write more at the cursor", run with a collapsed cursor: the insertion preview appears; it must NOT demand a selection.
 - Give a custom action an instruction note plus **Follow links**, and run "Preview what will be sent" — the linked notes are not in the system prompt (an instruction is not context); confirm the instruction reached the request by watching the action's result, or by checking the request in a proxy if one is configured.
 - A custom action whose only instruction note sits in an excluded folder: the Notice says its instruction notes are missing or excluded, and no request goes out.
-- Export with everything ticked to `ai-editor-settings.json`: open the file — every `apiKey` is `""`. Export again to the same path: an overwrite confirmation appears first.
+- Export with everything ticked to `ai-editor-settings.json`: open the file — every `apiKey` and `apiKeySecretName` is `""`. Export again to the same path: an overwrite confirmation appears first.
 - Export with nothing ticked: a Notice asks for at least one section; no file is written.
 - Export to a path inside a folder that does not exist: the Notice says the write failed and the dialog stays open.
 - Copy to clipboard, then Import… and paste: the summary says what will be added, the voice-profile line says REPLACED, and the key notice points at the Backends tab. Confirm, and the counts match what the settings tabs then show; the entities you already had are untouched and still bound to each other.

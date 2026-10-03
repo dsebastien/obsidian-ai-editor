@@ -55,10 +55,11 @@ The History tab keeps clipped records of what your editors said — including **
 
 ## Where API keys live
 
-**In this plugin's `data.json`, inside your vault.** That is Obsidian's storage for plugin settings, and it is worth stating rather than burying:
+**In Obsidian's secret storage, on each device — not in your vault.** Each API backend names a secret (for example `editor-ai-daemons-openrouter-api-key`); only that name is saved in the plugin's `data.json`. The key itself is read from secret storage when a request is built.
 
-- **If the vault syncs — Obsidian Sync, iCloud, Dropbox, Syncthing, git — the keys travel with it.**
-- Use minimal-scope keys, and rotate them if the vault ever leaks.
+- **Secret storage does not sync.** A vault synced to another device carries the secret's name, not its value. If a backend says its key is not set on this device, edit it and set the secret once.
+- **Upgrading from an earlier version needs no action.** Earlier versions kept keys in plain text in `data.json`. Every device moves them into its own secret storage on its next start, so every synced device keeps working. The plain-text copy stays in `data.json` for 60 days as a bootstrap for devices that have not started the new version yet, then is removed automatically. Remove it sooner with **Remove plain-text copy now** on the Backends page, once all your devices run this version.
+- Changing a backend's key, picking another secret, or selecting **Clear** next to the key removes the plain-text copy at once. **Clear** also empties the secret on this device.
 - The Backends page repeats this in a callout above the first field.
 
 Keys and prompts are redacted from logs and error reports, and provider error bodies are never shown verbatim — a provider that echoes your key in an error message cannot leak it through a notice. [Exported settings](transfer.md) never contain a key.

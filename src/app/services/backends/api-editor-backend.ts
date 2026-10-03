@@ -1,9 +1,9 @@
 import { guardTruncation } from './providers/result'
 import type { ValidatedOperationResult } from './providers/result'
 import type { OperationEvent, OperationRequest } from '../../domain/operations/contract'
-import type { ApiBackend, ApiProviderKind } from '../../domain/settings/settings-schema'
+import type { ApiProviderKind } from '../../domain/settings/settings-schema'
 import { getProviderAdapter, ProviderError } from './providers'
-import type { HttpRequestDescriptor, ProviderAdapter } from './providers'
+import type { HttpRequestDescriptor, ProviderAdapter, ResolvedApiBackend } from './providers'
 import { parseSseJson, SseDecoder, type SseEvent } from './transport/sse'
 import { resolveFetchImpl, type FetchFn } from './resolve-fetch'
 import { setTimer, clearTimer } from '../../../utils/timers'
@@ -44,7 +44,8 @@ export type ApiEditorExecutor = (
 ) => AsyncIterable<OperationEvent>
 
 export interface CreateApiEditorExecutorInput {
-    readonly backendConfig: ApiBackend
+    /** Key resolved from SecretStorage at dispatch (`createBackendExecutor`). */
+    readonly backendConfig: ResolvedApiBackend
     /** Resolved model id (backend default or per-editor override). */
     readonly model: string
     /** Fully assembled system prompt (voice profile + persona + context). */
