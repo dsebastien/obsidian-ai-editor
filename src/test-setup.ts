@@ -28,6 +28,9 @@ void mock.module('obsidian', () => ({
     AbstractInputSuggest: class AbstractInputSuggest {},
     SearchComponent: class SearchComponent {},
     SecretComponent: class SecretComponent {},
+    // Read by the plugin and the CLI backend dialog to pick this system's
+    // CLI executable (issue #63).
+    Platform: { isWin: false, isMacOS: false, isLinux: true, isDesktopApp: true },
     // Modal primitives — needed for ConfirmModal-style replacements
     // for the forbidden window.confirm(). See AGENTS.md.
     Modal: class Modal {

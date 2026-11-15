@@ -707,3 +707,9 @@ Runs, findings and all per-note review state must survive a vault rename (Busine
 - [ ] Triage position and severity lens survive the rename (step-next continues from the same finding; the lens keeps its mode).
 - [ ] Rename with a pending transform preview: the preview stays presented and Apply still works when the target text is unchanged.
 - [ ] DELETE a note with a live run: run, findings and all per-note state are gone; recreating a note at the same path starts clean.
+
+## Per-system CLI executables (issue #63)
+
+- Open a CLI backend: the path row reads "Executable on <system> (this device)"; "Executables on other systems" folds and unfolds, and stays open across the re-render after a consent change.
+- Set another system's path, save, reopen: the value is there; this system's path and consent are unchanged.
+- On the other system (synced vault): the backend uses that path and asks for consent once; back on the first system, no new prompt.

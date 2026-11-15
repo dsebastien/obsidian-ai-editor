@@ -270,6 +270,17 @@ describe('exportSettings — CLI consent', () => {
                             launchPath: '/home/alice/.local/bin/claude',
                             toolsPath: '/home/alice/.local/bin/claude'
                         },
+                        platformPaths: {
+                            windows: {
+                                executablePath: 'C:/Users/alice/.local/bin/claude.exe',
+                                consent: {
+                                    launchPath: 'C:/Users/alice/.local/bin/claude.exe',
+                                    toolsPath: ''
+                                }
+                            },
+                            linux: null,
+                            macos: null
+                        },
                         timeoutSeconds: 300,
                         enabled: true
                     }
@@ -279,6 +290,15 @@ describe('exportSettings — CLI consent', () => {
         )
         const cli = exported.backends?.find((backend) => backend.id === 'cli-1')
         expect(cli).toMatchObject({ consent: { launchPath: '', toolsPath: '' } })
+        // Per-system consent is a decision about a machine too (issue #63).
+        expect(cli).toMatchObject({
+            platformPaths: {
+                windows: {
+                    executablePath: 'C:/Users/alice/.local/bin/claude.exe',
+                    consent: { launchPath: '', toolsPath: '' }
+                }
+            }
+        })
         // The path itself is functional configuration and stays, like baseUrl.
         expect(cli).toMatchObject({ executablePath: '/home/alice/.local/bin/claude' })
     })

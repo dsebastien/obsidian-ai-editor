@@ -1,4 +1,11 @@
-import { Modal, Notice, Setting } from 'obsidian'
+import { Modal, Notice, Platform, Setting } from 'obsidian'
+import {
+    HOST_PLATFORMS,
+    PLATFORM_LABELS,
+    detectHostPlatform,
+    withOtherPlatformPath,
+    type HostPlatform
+} from '../../domain/settings/cli-platform-paths'
 import type { App } from 'obsidian'
 import { validateCliBackend } from '../../domain/settings/backend-validation'
 import {
@@ -64,6 +71,8 @@ export class CliBackendModal extends Modal {
     private detectLine = ''
     /** Other usable paths detection found, offered as alternatives. */
     private detectAlternatives: readonly string[] = []
+    /** Whether "Executables on other systems" is unfolded (kept across re-renders). */
+    private otherSystemsOpen = false
 
     constructor(app: App, ctx: TabContext, existing: CliBackend | null, kind: CliBackend['kind']) {
         super(app)
@@ -188,10 +197,18 @@ export class CliBackendModal extends Modal {
      * is no longer in the field.
      */
     private renderExecutableField(contentEl: HTMLElement): void {
+        const host = currentHostPlatform()
         const setting = new Setting(contentEl)
-            .setName('Executable')
+            .setName(
+                host === null
+                    ? 'Executable'
+                    : `Executable on ${PLATFORM_LABELS[host]} (this device)`
+            )
             .setDesc(
-                'Full path to the tool’s program. A bare name or a relative path is refused: it would be resolved through PATH or the working directory, neither of which is safe to trust.'
+                'Full path to the tool’s program. A bare name or a relative path is refused: it would be resolved through PATH or the working directory, neither of which is safe to trust.' +
+                    (host === null
+                        ? ''
+                        : ' Used on this system only: your other systems keep their own path, set below.')
             )
         setting.addText((text) => {
             text.setPlaceholder('/usr/local/bin/claude')
@@ -244,6 +261,41 @@ export class CliBackendModal extends Modal {
                     list.createEl('li', { text: path })
                 }
             }
+        }
+        if (host !== null) {
+            this.renderOtherSystems(contentEl, host)
+        }
+    }
+
+    /**
+     * The executables of the other systems (issue #63), for a vault that syncs
+     * between devices. Only the path is set here: permission to run it is
+     * given on that system, about the program that is actually there, so a
+     * new path never carries a consent.
+     */
+    private renderOtherSystems(contentEl: HTMLElement, host: HostPlatform): void {
+        const details = contentEl.createEl('details', { cls: 'editor-ai-daemons-other-systems' })
+        details.open = this.otherSystemsOpen
+        details.addEventListener('toggle', () => {
+            this.otherSystemsOpen = details.open
+        })
+        details.createEl('summary', { text: 'Executables on other systems' })
+        details.createDiv({
+            cls: 'editor-ai-daemons-modal-hint',
+            text: 'For a vault that syncs between devices. Leave a field empty to use the shared path. Permission to run the program is given on that system.'
+        })
+        for (const platform of HOST_PLATFORMS) {
+            if (platform === host) continue
+            const slot = this.draft.platformPaths[platform]
+            new Setting(details).setName(PLATFORM_LABELS[platform]).addText((text) => {
+                text.setPlaceholder(OTHER_SYSTEM_PLACEHOLDERS[platform])
+                text.setValue(slot?.executablePath ?? '')
+                text.inputEl.addClass('editor-ai-daemons-wide-input')
+                text.inputEl.addEventListener('change', () => {
+                    const value = text.inputEl.value
+                    this.draft = withOtherPlatformPath(this.draft, platform, value)
+                })
+            })
         }
     }
 
@@ -457,4 +509,17 @@ export class CliBackendModal extends Modal {
         )
         this.close()
     }
+}
+
+const OTHER_SYSTEM_PLACEHOLDERS: Record<HostPlatform, string> = {
+    windows: 'C:\\Users\\me\\.local\\bin\\claude.exe',
+    linux: '/home/me/.local/bin/claude',
+    macos: '/Users/me/.local/bin/claude'
+}
+
+/** The system this device runs, from Obsidian's `Platform` flags. */
+function currentHostPlatform(): HostPlatform | null {
+    return detectHostPlatform(
+        Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : Platform.isLinux ? 'linux' : ''
+    )
 }

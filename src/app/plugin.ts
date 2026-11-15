@@ -5,6 +5,13 @@ import { DEFAULT_PLUGIN_SETTINGS, pluginSettingsSchema } from './domain/settings
 import type { PluginSettingsV1 } from './domain/settings/settings-schema'
 import { bootstrapSettings } from './settings/settings-bootstrap'
 import { reconcileApiKeySecrets } from './domain/settings/api-key-secrets'
+import {
+    detectHostPlatform,
+    foldForPlatform,
+    projectForPlatform,
+    type HostPlatform,
+    type SharedCliValues
+} from './domain/settings/cli-platform-paths'
 import { getSecretStore, setSecretStore } from './services/backends/secret-reader'
 import { createSettingsNotifier } from './settings/settings-facade'
 import type { SettingsFacade, SettingsListener } from './settings/settings-facade'
@@ -76,6 +83,21 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
      * versions never lose data.
      */
     private foreignKeys: Record<string, unknown> = {}
+
+    /**
+     * The system this device runs (issue #63): CLI backends use its own
+     * executable and consent. `null` on any other system (shared values).
+     */
+    readonly hostPlatform: HostPlatform | null = detectHostPlatform(
+        Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : Platform.isLinux ? 'linux' : ''
+    )
+
+    /**
+     * The shared CLI executable and consent of each backend as loaded, restored
+     * on every save (`cli-platform-paths.ts`): in memory, `executablePath` and
+     * `consent` hold this system's values.
+     */
+    private sharedCliValues: SharedCliValues = new Map()
 
     /** Settings mutation observers, notified after every successful persist. */
     private readonly settingsNotifier = createSettingsNotifier()
@@ -628,6 +650,11 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
                 )} is not set on this device. Secrets are stored per device: open Settings → AI Editors → Backends, edit the backend and set its secret.`
             )
         }
+        // Per-system CLI executables (issue #63): from here on, every consumer
+        // sees this system's executable and consent.
+        const projected = projectForPlatform(this.settings, this.hostPlatform)
+        this.settings = projected.settings
+        this.sharedCliValues = projected.shared
         if (boot.needsSave || secrets.changed) {
             await this.persistSettings()
         }
@@ -693,7 +720,8 @@ export class AIEditorPlugin extends Plugin implements SettingsFacade {
     }
 
     private async persistSettings(): Promise<void> {
-        await this.saveData({ ...this.foreignKeys, ...this.settings })
+        const persisted = foldForPlatform(this.settings, this.hostPlatform, this.sharedCliValues)
+        await this.saveData({ ...this.foreignKeys, ...persisted })
         log('Settings saved', 'debug')
         this.settingsNotifier.notify()
     }

@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { platformPathsHaveConsent, platformPathsWithoutConsent } from './cli-platform-paths'
 import { generateId } from '../ids'
 import {
     SETTINGS_SCHEMA_VERSION,
@@ -197,7 +198,11 @@ function withoutSecrets(backend: BackendInstance): BackendInstance {
     if (backend.family === 'api') {
         return { ...backend, apiKey: '', apiKeySecretName: '' }
     }
-    return { ...backend, consent: { launchPath: '', toolsPath: '' } }
+    return {
+        ...backend,
+        consent: { launchPath: '', toolsPath: '' },
+        platformPaths: platformPathsWithoutConsent(backend)
+    }
 }
 
 /**
@@ -479,10 +484,20 @@ export function planImport(
         // A CLI backend arrives inert: switched off AND unconsented. Consent
         // names an executable path on the importing machine, and a file cannot
         // establish that the user was ever shown what launching it means.
-        if (backend.consent.launchPath.length > 0 || backend.consent.toolsPath.length > 0) {
+        if (
+            backend.consent.launchPath.length > 0 ||
+            backend.consent.toolsPath.length > 0 ||
+            platformPathsHaveConsent(backend)
+        ) {
             adjustments.push({ kind: 'cli-consent-cleared', label: backend.label })
         }
-        return { ...backend, id, enabled: false, consent: { launchPath: '', toolsPath: '' } }
+        return {
+            ...backend,
+            id,
+            enabled: false,
+            consent: { launchPath: '', toolsPath: '' },
+            platformPaths: platformPathsWithoutConsent(backend)
+        }
     })
     const newEditors = keptEditors.map((editor) => {
         const id = freshId()

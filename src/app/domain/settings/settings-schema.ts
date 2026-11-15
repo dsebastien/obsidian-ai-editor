@@ -145,6 +145,28 @@ export const cliConsentSchema = z.object({
 })
 export type CliConsent = z.infer<typeof cliConsentSchema>
 
+/**
+ * One system's own executable and the consent given for it (issue #63).
+ *
+ * `data.json` syncs, so one shared `executablePath` cannot fit a vault opened
+ * on Windows and on Linux: each system gets its own slot. A `null` slot means
+ * "this system uses the shared `executablePath` / `consent`". Consent stays
+ * bound to the path of its own slot, so a consent given on Linux never
+ * authorizes a binary on Windows (Business Rules #9).
+ */
+export const cliPlatformSlotSchema = z.object({
+    executablePath: z.string().max(1_000).default(''),
+    consent: cliConsentSchema.default({ launchPath: '', toolsPath: '' })
+})
+export type CliPlatformSlot = z.infer<typeof cliPlatformSlotSchema>
+
+export const cliPlatformPathsSchema = z.object({
+    windows: cliPlatformSlotSchema.nullable().default(null),
+    linux: cliPlatformSlotSchema.nullable().default(null),
+    macos: cliPlatformSlotSchema.nullable().default(null)
+})
+export type CliPlatformPaths = z.infer<typeof cliPlatformPathsSchema>
+
 export const cliBackendSchema = z.object({
     id: z.string().min(1),
     family: z.literal('cli'),
@@ -160,6 +182,15 @@ export const cliBackendSchema = z.object({
      * through `hasLaunchConsent` / `hasToolsConsent`.
      */
     consent: cliConsentSchema.default({ launchPath: '', toolsPath: '' }),
+    /**
+     * Per-system executables (issue #63). In memory, `executablePath` and
+     * `consent` above already hold THIS system's values and this system's slot
+     * is `null`: `cli-platform-paths.ts` projects on load and folds back on
+     * save, so every consumer keeps reading `executablePath` / `consent`.
+     * On disk, the two fields above are the shared fallback (and what older
+     * plugin versions read).
+     */
+    platformPaths: cliPlatformPathsSchema.default({ windows: null, linux: null, macos: null }),
     timeoutSeconds: z.number().int().min(10).max(3_600).default(300),
     enabled: z.boolean().default(false)
 })

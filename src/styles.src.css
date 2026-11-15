@@ -531,6 +531,16 @@
     @apply w-full;
 }
 
+/* "Executables on other systems" in the CLI backend dialog (issue #63) */
+.editor-ai-daemons-other-systems {
+    @apply mb-3;
+}
+
+.editor-ai-daemons-other-systems > summary {
+    @apply cursor-pointer py-1;
+    color: var(--text-muted);
+}
+
 /* Consent state under a CLI backend row (settings/tabs/backends-tab.ts) */
 .editor-ai-daemons-consent-line {
     @apply mt-1 text-xs;

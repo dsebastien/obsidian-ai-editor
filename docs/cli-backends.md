@@ -44,10 +44,18 @@ The second consent is offered only where the plugin can actually enforce the off
 
 **Consent names an executable, not a backend.** If the path changes — you edit it, you import settings, or `data.json` syncs from another machine — the earlier agreement no longer applies and you are asked again about the program that is actually there. Imported settings never carry consent, and imported backends always arrive switched off.
 
+## Windows, Linux and macOS
+
+If your vault syncs between devices, each system keeps its own executable and its own consent. The path field in the backend dialog is for the system of the device you are on, for example **Executable on Windows (this device)**. Under it, **Executables on other systems** lets you set the paths of your other devices from this one.
+
+- A consent you give on one system is stored for that system only. It never allows a program on another system.
+- A path you set for another system starts without consent. You give it on that system, about the program that is actually there.
+- An empty field uses the shared path, which is the one saved before this feature existed. Your current backends keep working without a change.
+
 ## Setting one up
 
 1. **Settings → AI Editor → Backends → Add backend** → **Claude Code (runs locally)** or **Codex (runs locally)**.
-2. **Executable**: paste the full path, or select **Detect**. Detection walks a curated list of install locations — `~/.local/bin`, `~/.claude/local`, `~/.bun/bin`, `~/.volta/bin`, `~/.cargo/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` — and only asks the filesystem whether something is there. **It never runs anything and never searches `PATH`.** On Windows it deliberately returns nothing, because every candidate there is a `.cmd` shim the boundary would refuse. If it finds nothing, run `which claude` or `which codex` in a terminal and paste what it prints.
+2. **Executable** (for the system of this device): paste the full path, or select **Detect**. Detection walks a curated list of install locations — `~/.local/bin`, `~/.claude/local`, `~/.bun/bin`, `~/.volta/bin`, `~/.cargo/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` — and only asks the filesystem whether something is there. **It never runs anything and never searches `PATH`.** On Windows it deliberately returns nothing, because every candidate there is a `.cmd` shim the boundary would refuse. If it finds nothing, run `which claude` or `which codex` in a terminal and paste what it prints.
 3. Optionally set a **Default model**. Leave it empty to let the tool use its own current default.
 4. **Timeout**: how long one run may take before the tool and everything it started are stopped. Default **300 seconds**, range 10–3600. Agents are much slower than a chat completion, which is why this is separate from the request timeout in the Behavior page — and why raising _that_ one does nothing for a CLI backend.
 5. **Test connection** runs one trivial review through the whole path — same executable, same temporary folder, same environment and timeout. It asks for the first consent before running, because running it _is_ launching the program.
