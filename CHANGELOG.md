@@ -6,13 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### CLI backends on Windows, Linux and macOS
 
-If your vault syncs between devices, a Claude Code or Codex backend now keeps one executable path and one permission for each system. You no longer edit the path, or give the permission again, each time you change device.
+If your vault syncs between devices, a Claude Code or Codex backend now keeps one executable path and one permission per system. No more editing the path, or giving the permission again, every time you switch devices.
 
-- The path in the backend dialog is for the system of the device you are on.
-- **Executables on other systems** lets you set the paths of your other devices from this one. Each of them still asks for permission once, on that device.
+- The path field in the backend dialog is for the system of the device you're on, e.g. **Executable on Windows (this device)**.
+- **Executables on other systems** lets you set the paths of your other devices from this one. A path set that way starts without permission: you give it on that system, about the program that's actually there.
 - A permission given on one system never allows a program on another.
 
-Your current backends keep working: their path becomes the shared one, used by any system that has no path of its own.
+Your current backends keep working: their path becomes the shared one, used by any system that has no path of its own. An empty path field uses it too.
 
 ## [0.12.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.12.0...0.12.1) (2026-10-03)
 
