@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0](https://github.com/dsebastien/obsidian-ai-editor/compare/0.12.1...0.13.0) (2026-11-15)
+
+### CLI backends on Windows, Linux and macOS
+
+If your vault syncs between devices, a Claude Code or Codex backend now keeps one executable path and one permission for each system. You no longer edit the path, or give the permission again, each time you change device.
+
+- The path in the backend dialog is for the system of the device you are on.
+- **Executables on other systems** lets you set the paths of your other devices from this one. Each of them still asks for permission once, on that device.
+- A permission given on one system never allows a program on another.
+
+Your current backends keep working: their path becomes the shared one, used by any system that has no path of its own.
+
 ## [0.12.1](https://github.com/dsebastien/obsidian-ai-editor/compare/0.12.0...0.12.1) (2026-10-03)
 
 ### API keys now live in Obsidian's secret storage
@@ -444,6 +456,7 @@ Installs below it no longer receive the plugin.
 * **context:** one view of the vault per run, not one per editor ([dce515a](https://github.com/dsebastien/obsidian-ai-editor/commit/dce515a112a569d941519386a885f017c457f752))
 * **diff:** a large rewrite gets a real diff, not a before/after ([a15973e](https://github.com/dsebastien/obsidian-ai-editor/commit/a15973e6476cc8b67f734f83ff57df10405a4550))
 * **ui:** the highlights are capped, and the panel says by how much ([f560297](https://github.com/dsebastien/obsidian-ai-editor/commit/f5602978d7c9151b56aa2f20221185822ca8e359))
+
 
 
 
